@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { NavLink, Link, useLocation } from "react-router-dom";
-import { Menu, X, Phone, Sun, Moon, ChevronDown } from "lucide-react";
+import { Menu, X, Phone, Sun, Moon, ChevronDown, User, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BelafspraakDialog } from "./BelafspraakDialog";
 import { useTheme } from "@/hooks/use-theme";
+import { useAuth } from "@/context/AuthContext";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,6 +32,7 @@ export const Header = () => {
   const [partijMobileOpen, setPartijMobileOpen] = useState(false);
   const [belOpen, setBelOpen] = useState(false);
   const { theme, toggle } = useTheme();
+  const { isAuthenticated, logout } = useAuth();
   const location = useLocation();
   const partijActive = partijItems.some(i => location.pathname === i.to);
 
@@ -112,8 +114,28 @@ export const Header = () => {
               className="hidden sm:flex bg-primary hover:bg-primary/90 text-primary-foreground border border-accent/40 uppercase tracking-wider text-xs font-semibold px-5"
             >
               <Phone className="w-4 h-4" />
-              Plan een belafspraak
+              Plan belafspraak
             </Button>
+            {isAuthenticated ? (
+              <div className="hidden sm:flex items-center gap-2">
+                <Link to="/dashboard">
+                  <Button variant="outline" className="border-accent text-accent hover:bg-accent hover:text-accent-foreground uppercase tracking-wider text-xs font-semibold">
+                    <User className="w-4 h-4 mr-2" />
+                    Dashboard
+                  </Button>
+                </Link>
+                <Button variant="ghost" onClick={logout} className="uppercase tracking-wider text-xs font-semibold text-foreground/80 hover:text-foreground">
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Uitloggen
+                </Button>
+              </div>
+            ) : (
+              <Link to="/login" className="hidden sm:inline-flex">
+                <Button variant="outline" className="border-accent text-accent hover:bg-accent hover:text-accent-foreground uppercase tracking-wider text-xs font-semibold">
+                  Inloggen
+                </Button>
+              </Link>
+            )}
             <button
               onClick={() => setMobileOpen(!mobileOpen)}
               className="md:hidden p-2 text-foreground"
@@ -170,6 +192,26 @@ export const Header = () => {
               >
                 <Phone className="w-4 h-4" /> Plan een belafspraak
               </Button>
+              {isAuthenticated ? (
+                <>
+                  <Link to="/dashboard" onClick={() => setMobileOpen(false)}>
+                    <Button variant="outline" className="w-full mt-2 border-accent text-accent hover:bg-accent hover:text-accent-foreground uppercase tracking-wider text-xs font-semibold">
+                      <User className="w-4 h-4 mr-2" />
+                      Dashboard
+                    </Button>
+                  </Link>
+                  <Button variant="ghost" onClick={() => { logout(); setMobileOpen(false); }} className="w-full mt-2 uppercase tracking-wider text-xs font-semibold text-foreground/80 hover:text-foreground justify-start px-3">
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Uitloggen
+                  </Button>
+                </>
+              ) : (
+                <Link to="/login" onClick={() => setMobileOpen(false)}>
+                  <Button variant="outline" className="w-full mt-2 border-accent text-accent hover:bg-accent hover:text-accent-foreground uppercase tracking-wider text-xs font-semibold">
+                    Inloggen
+                  </Button>
+                </Link>
+              )}
               <button
                 onClick={toggle}
                 className="mt-2 px-3 py-3 flex items-center gap-2 text-sm uppercase tracking-wider border border-accent/40 text-accent"
