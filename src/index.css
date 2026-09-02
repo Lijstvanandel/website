@@ -1,0 +1,134 @@
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Lijst van Andel — Premium Dark Design System (overgenomen template) */
+@layer base {
+  :root {
+    --background: 150 25% 6%;
+    --foreground: 40 30% 94%;
+
+    --card: 150 22% 9%;
+    --card-foreground: 40 30% 94%;
+
+    --popover: 150 25% 7%;
+    --popover-foreground: 40 30% 94%;
+
+    --primary: 150 35% 42%;
+    --primary-foreground: 40 30% 96%;
+
+    --secondary: 150 22% 12%;
+    --secondary-foreground: 40 30% 94%;
+
+    --muted: 150 15% 14%;
+    --muted-foreground: 40 15% 70%;
+
+    --accent: 43 50% 60%;
+    --accent-foreground: 150 25% 6%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 40 30% 98%;
+
+    --border: 43 30% 25%;
+    --input: 150 15% 16%;
+    --ring: 43 50% 60%;
+
+    --radius: 0.25rem;
+
+    --twente-red: 150 35% 42%;
+    --twente-red-deep: 150 40% 16%;
+    --twente-black: 150 25% 6%;
+    --twente-gold: 43 50% 60%;
+    --twente-gold-bright: 43 70% 70%;
+
+    --gradient-hero: linear-gradient(135deg, hsl(150 25% 6% / 0.85), hsl(150 40% 16% / 0.7));
+    --gradient-gold: linear-gradient(135deg, hsl(43 50% 60%), hsl(43 70% 70%));
+    --gradient-red: linear-gradient(135deg, hsl(150 35% 42%), hsl(150 40% 22%));
+
+    --shadow-gold: 0 10px 40px -10px hsl(43 50% 60% / 0.4);
+    --shadow-red: 0 20px 60px -20px hsl(150 35% 42% / 0.5);
+    --shadow-deep: 0 30px 80px -20px hsl(0 0% 0% / 0.6);
+
+    --transition-smooth: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .light {
+    --background: 140 25% 96%;
+    --foreground: 150 30% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 150 30% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 150 30% 10%;
+
+    --primary: 150 40% 32%;
+    --primary-foreground: 40 30% 98%;
+
+    --secondary: 140 20% 92%;
+    --secondary-foreground: 150 30% 10%;
+
+    --muted: 140 15% 90%;
+    --muted-foreground: 150 15% 35%;
+
+    --accent: 38 65% 42%;
+    --accent-foreground: 40 30% 98%;
+
+    --border: 140 20% 80%;
+    --input: 140 15% 90%;
+    --ring: 38 65% 42%;
+
+    --twente-red: 150 40% 32%;
+    --twente-red-deep: 140 30% 88%;
+    --twente-black: 140 25% 96%;
+    --twente-gold: 38 65% 42%;
+    --twente-gold-bright: 38 75% 50%;
+
+    --gradient-hero: linear-gradient(135deg, hsl(140 25% 96% / 0.85), hsl(140 30% 88% / 0.7));
+    --gradient-gold: linear-gradient(135deg, hsl(38 65% 42%), hsl(38 75% 50%));
+    --gradient-red: linear-gradient(135deg, hsl(150 40% 32%), hsl(150 40% 22%));
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', sans-serif;
+    font-feature-settings: "ss01", "cv11";
+  }
+  h1, h2, h3, h4, .font-display {
+    font-family: 'Bebas Neue', sans-serif;
+    letter-spacing: 0.02em;
+  }
+}
+
+@layer utilities {
+  .text-gradient-gold {
+    background: var(--gradient-gold);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .border-gold-line { position: relative; }
+  .border-gold-line::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0;
+    width: 60px; height: 3px;
+    background: var(--gradient-gold);
+  }
+  .stadium-bg {
+    background:
+      radial-gradient(ellipse at top, hsl(150 35% 42% / 0.15), transparent 60%),
+      radial-gradient(ellipse at bottom, hsl(43 50% 60% / 0.08), transparent 60%),
+      hsl(var(--background));
+  }
+  .hover-lift { transition: var(--transition-smooth); }
+  .hover-lift:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-gold);
+  }
+}
