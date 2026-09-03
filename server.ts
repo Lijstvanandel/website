@@ -2444,7 +2444,10 @@ async function startServer() {
   // --- ADMIN SYSTEM, CACHE & GITHUB UPDATE ENDPOINTS ---
   async function runCmd(cmd: string, timeout = 120000) {
     try {
-      const res = await execPromise(cmd, {
+      const normalizedCmd = cmd.startsWith("git ")
+        ? cmd.replace(/^git\s+/, "git -c safe.directory=* ")
+        : cmd;
+      const res = await execPromise(normalizedCmd, {
         cwd: process.cwd(),
         timeout,
         maxBuffer: 10 * 1024 * 1024,
@@ -2452,7 +2455,8 @@ async function startServer() {
           ...process.env,
           GIT_CONFIG_COUNT: "1",
           GIT_CONFIG_KEY_0: "safe.directory",
-          GIT_CONFIG_VALUE_0: "*"
+          GIT_CONFIG_VALUE_0: "*",
+          GIT_TERMINAL_PROMPT: "0"
         }
       });
       return { stdout: (res.stdout || "").toString().trim(), stderr: (res.stderr || "").toString().trim(), success: true };
@@ -2463,6 +2467,45 @@ async function startServer() {
         success: false,
         error: err
       };
+    }
+  }
+
+  function parseGitHubRepoFromRemote(remoteUrl: string): string {
+    if (!remoteUrl) return "Lijstvanandel/website";
+    const match = remoteUrl.match(/github\.com[/:]([^/]+)\/([^/.]+)(\.git)?/i);
+    if (match) return `${match[1]}/${match[2]}`;
+    return "Lijstvanandel/website";
+  }
+
+  async function fetchGitHubCommitsApi(repo = "Lijstvanandel/website", branch = "main", perPage = 15) {
+    try {
+      const url = `https://api.github.com/repos/${repo}/commits?sha=${encodeURIComponent(branch)}&per_page=${perPage}`;
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": "LijstVanAndel-SystemUpdater",
+          "Accept": "application/vnd.github.v3+json"
+        }
+      });
+      if (!res.ok) {
+        return { success: false, status: res.status, error: `GitHub API status ${res.status}` };
+      }
+      const data = await res.json();
+      if (!Array.isArray(data)) {
+        return { success: false, error: "Onverwacht GitHub API antwoordformaat" };
+      }
+      return {
+        success: true,
+        commits: data.map((c: any) => ({
+          hash: c.sha ? c.sha.substring(0, 7) : "",
+          fullHash: c.sha || "",
+          message: c.commit?.message ? c.commit.message.split("\n")[0] : "",
+          author: c.commit?.author?.name || c.author?.login || "GitHub",
+          date: c.commit?.author?.date || "",
+          url: c.html_url || `https://github.com/${repo}/commit/${c.sha}`
+        }))
+      };
+    } catch (err: any) {
+      return { success: false, error: err.message || "Netwerkfout bij aanroepen GitHub API" };
     }
   }
 
@@ -2623,47 +2666,166 @@ async function startServer() {
   // 3. Check for updates from GitHub
   app.post("/api/admin/system/check-updates", requireAuth, requireAdmin, async (req: any, res: any) => {
     const isGitRepo = fs.existsSync(path.join(process.cwd(), ".git"));
-    if (!isGitRepo) {
-      return res.json({
-        success: true,
-        isGitRepo: false,
-        updatesAvailable: false,
-        behindCount: 0,
-        pendingCommits: [],
-        message: "Geen lokale Git repository gevonden in deze sandboxomgeving. Op uw live Ubuntu VPS wordt Git direct uitgelezen."
-      });
-    }
+    let branch = "main";
+    let repoName = "Lijstvanandel/website";
+    let currentHash = "";
+    let currentFullHash = "";
 
-    // git fetch origin
-    const fetchRes = await runCmd("git fetch origin", 25000);
-    const branchRes = await runCmd("git rev-parse --abbrev-ref HEAD");
-    const branch = branchRes.stdout || "main";
-
-    const countRes = await runCmd(`git rev-list --count HEAD..origin/${branch}`);
-    const behindCount = parseInt(countRes.stdout, 10) || 0;
-
-    let pendingCommits: Array<{ hash: string; message: string; author: string; time: string }> = [];
-    if (behindCount > 0) {
-      const commitsRes = await runCmd(`git log HEAD..origin/${branch} --pretty=format:"%h||%s||%an||%cr" -n 10`);
-      if (commitsRes.success && commitsRes.stdout) {
-        pendingCommits = commitsRes.stdout.split("\n").filter(Boolean).map(line => {
-          const [hash, message, author, time] = line.split("||");
-          return { hash: hash || "", message: message || "", author: author || "", time: time || "" };
-        });
+    // 1. Haal de lokale actieve branch, remote en commit hash op
+    if (isGitRepo) {
+      const branchRes = await runCmd("git rev-parse --abbrev-ref HEAD");
+      if (branchRes.success && branchRes.stdout && branchRes.stdout !== "HEAD") {
+        branch = branchRes.stdout;
+      }
+      const remoteRes = await runCmd("git config --get remote.origin.url");
+      if (remoteRes.success && remoteRes.stdout) {
+        repoName = parseGitHubRepoFromRemote(remoteRes.stdout);
+      }
+      const headRes = await runCmd("git rev-parse HEAD");
+      if (headRes.success && headRes.stdout) {
+        currentFullHash = headRes.stdout.trim();
+        currentHash = currentFullHash.substring(0, 7);
       }
     }
 
-    res.json({
+    // Fallback naar version.json indien HEAD niet direct via git beschikbaar was
+    if (!currentHash) {
+      const versionFiles = [
+        path.join(process.cwd(), "dist", "version.json"),
+        path.join(process.cwd(), "public", "version.json"),
+        path.join(process.cwd(), "version.json")
+      ];
+      for (const vf of versionFiles) {
+        if (fs.existsSync(vf)) {
+          try {
+            const vData = JSON.parse(fs.readFileSync(vf, "utf-8"));
+            if (vData.hash && vData.hash !== "onbekend") {
+              currentHash = vData.hash;
+              currentFullHash = vData.fullHash || vData.hash;
+              if (vData.branch) branch = vData.branch;
+              break;
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+      }
+    }
+
+    // 2. Lokale git fetch origin proberen om lokale refs te vernieuwen
+    let fetchOutput = "";
+    let localGitBehindCount: number | null = null;
+    let localGitCommits: any[] = [];
+    if (isGitRepo) {
+      const fetchRes = await runCmd(`git fetch origin ${branch}`, 25000);
+      fetchOutput = fetchRes.stdout || fetchRes.stderr;
+      const countRes = await runCmd(`git rev-list --count HEAD..origin/${branch}`);
+      if (countRes.success && countRes.stdout) {
+        localGitBehindCount = parseInt(countRes.stdout, 10);
+        if (isNaN(localGitBehindCount)) localGitBehindCount = null;
+      }
+      if (localGitBehindCount && localGitBehindCount > 0) {
+        const commitsRes = await runCmd(`git log HEAD..origin/${branch} --pretty=format:"%h||%H||%s||%an||%cr" -n 15`);
+        if (commitsRes.success && commitsRes.stdout) {
+          localGitCommits = commitsRes.stdout.split("\n").filter(Boolean).map(line => {
+            const [h, fh, msg, author, time] = line.split("||");
+            return {
+              hash: h || "",
+              fullHash: fh || h,
+              message: msg || "",
+              author: author || "",
+              time: time || "",
+              url: `https://github.com/${repoName}/commit/${fh || h}`
+            };
+          });
+        }
+      }
+    }
+
+    // 3. Raadpleeg direct de officiële GitHub REST API (100% accuraat en onafhankelijk van lokale git authenticatie)
+    const apiResult = await fetchGitHubCommitsApi(repoName, branch, 15);
+
+    if (apiResult.success && apiResult.commits && apiResult.commits.length > 0) {
+      const remoteCommits = apiResult.commits;
+      const latestRemote = remoteCommits[0];
+
+      // Vergelijk huidige lokale commit met de nieuwste commit op GitHub
+      const isUpToDate = currentFullHash
+        ? latestRemote.fullHash === currentFullHash || latestRemote.hash === currentHash
+        : false;
+
+      let behindCount = 0;
+      let pendingCommits: any[] = [];
+
+      if (!isUpToDate) {
+        let foundIndex = -1;
+        if (currentHash) {
+          foundIndex = remoteCommits.findIndex((c: any) =>
+            (currentFullHash && c.fullHash === currentFullHash) ||
+            c.hash === currentHash ||
+            (c.fullHash && currentHash && c.fullHash.startsWith(currentHash)) ||
+            (currentFullHash && c.hash && currentFullHash.startsWith(c.hash))
+          );
+        }
+
+        if (foundIndex > 0) {
+          behindCount = foundIndex;
+          pendingCommits = remoteCommits.slice(0, foundIndex);
+        } else if (foundIndex === 0) {
+          behindCount = 0;
+          pendingCommits = [];
+        } else {
+          // Niet gevonden in de top 15 commits van GitHub -> server loopt voorop of minimaal 15 commits achter
+          behindCount = Math.max(localGitBehindCount || 0, remoteCommits.length);
+          pendingCommits = remoteCommits.slice(0, 10);
+        }
+      }
+
+      if (localGitBehindCount && localGitBehindCount > behindCount) {
+        behindCount = localGitBehindCount;
+        if (localGitCommits.length > 0) pendingCommits = localGitCommits;
+      }
+
+      return res.json({
+        success: true,
+        isGitRepo,
+        branch,
+        repo: repoName,
+        updatesAvailable: behindCount > 0,
+        behindCount,
+        currentCommitHash: currentHash || "onbekend",
+        latestRemoteCommit: latestRemote,
+        pendingCommits: pendingCommits.map((c: any) => ({
+          hash: c.hash,
+          message: c.message,
+          author: c.author,
+          time: c.date ? new Date(c.date).toLocaleString("nl-NL") : (c.time || "Recent"),
+          url: c.url
+        })),
+        fetchOutput,
+        checkMethod: "github_api",
+        message: behindCount > 0
+          ? `Er zijn ${behindCount} nieuwe commit(s) gevonden op GitHub (${repoName})!`
+          : `De server is up-to-date. Actieve commit #${currentHash || "huidig"} is gelijk aan de nieuwste commit op GitHub (#${latestRemote.hash}).`
+      });
+    }
+
+    // 4. Fallback op lokale Git als GitHub API tijdelijk onbereikbaar is
+    const behindCount = localGitBehindCount || 0;
+    return res.json({
       success: true,
-      isGitRepo: true,
+      isGitRepo,
       branch,
+      repo: repoName,
       updatesAvailable: behindCount > 0,
       behindCount,
-      pendingCommits,
-      fetchOutput: fetchRes.stdout || fetchRes.stderr,
+      currentCommitHash: currentHash,
+      pendingCommits: localGitCommits,
+      fetchOutput,
+      checkMethod: "git_cli",
       message: behindCount > 0
-        ? `Er zijn ${behindCount} nieuwe commit(s) gevonden op GitHub!`
-        : "De server is up-to-date met de laatste commit op GitHub."
+        ? `Er zijn ${behindCount} nieuwe commit(s) gevonden via Git!`
+        : `De server is up-to-date met origin/${branch}.`
     });
   });
 
@@ -2683,30 +2845,26 @@ async function startServer() {
     clearLocalTempCaches();
     log("Tijdelijke cachebestanden zijn succesvol verwijderd.");
 
-    // Stap 2: Git status & pull
+    // Stap 2: Git pull uitvoeren
     let updated = false;
     let branch = "main";
 
     if (isGitRepo) {
-      log("Stap 2: GitHub repository raadplegen (git fetch origin)...");
-      const fetchRes = await runCmd("git fetch origin", 30000);
-      if (fetchRes.stdout) log(fetchRes.stdout);
-
       const branchRes = await runCmd("git rev-parse --abbrev-ref HEAD");
-      branch = branchRes.stdout || "main";
+      branch = (branchRes.success && branchRes.stdout && branchRes.stdout !== "HEAD") ? branchRes.stdout : "main";
       log(`Actieve branch op de server: ${branch}`);
 
-      const countRes = await runCmd(`git rev-list --count HEAD..origin/${branch}`);
-      const behindCount = parseInt(countRes.stdout, 10) || 0;
+      log(`Stap 2: Wijzigingen ophalen van GitHub (git pull origin ${branch})...`);
+      // Zorg dat we altijd ophalen
+      const pullRes = await runCmd(`git pull origin ${branch}`, 45000);
+      if (pullRes.stdout) log(pullRes.stdout);
+      if (pullRes.stderr && !pullRes.success) log(`Fout/Waarschuwing: ${pullRes.stderr}`);
 
-      if (behindCount > 0 || req.body?.force) {
-        log(`Er zijn ${behindCount} nieuwe wijzigingen gevonden op GitHub. Ophalen via git pull origin ${branch}...`);
-        const pullRes = await runCmd(`git pull origin ${branch}`, 30000);
-        if (pullRes.stdout) log(pullRes.stdout);
-        if (pullRes.stderr) log(pullRes.stderr);
+      if (pullRes.stdout.includes("Already up to date") || pullRes.stdout.includes("Al up-to-date")) {
+        log(`Lokale repository is reeds up-to-date met origin/${branch}.`);
+      } else if (pullRes.success) {
+        log("Nieuwste bestanden succesvol binnengehaald vanaf GitHub!");
         updated = true;
-      } else {
-        log("Geen nieuwe wijzigingen op GitHub; lokale branch is al gelijk met origin/" + branch);
       }
     } else {
       log("Stap 2: Geen Git repository gevonden in deze cloud-preview container. Git-pull overgeslagen.");

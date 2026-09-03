@@ -46,19 +46,33 @@ interface SystemStatus {
 
 interface PendingCommit {
   hash: string;
+  fullHash?: string;
   message: string;
   author: string;
   time: string;
+  url?: string;
 }
 
 interface CheckUpdatesResult {
   success: boolean;
   isGitRepo: boolean;
   branch?: string;
+  repo?: string;
   updatesAvailable: boolean;
   behindCount: number;
+  currentCommitHash?: string;
+  latestRemoteCommit?: {
+    hash: string;
+    fullHash?: string;
+    message: string;
+    author: string;
+    date: string;
+    url?: string;
+  };
   pendingCommits: PendingCommit[];
   message: string;
+  fetchOutput?: string;
+  checkMethod?: "github_api" | "git_cli";
 }
 
 interface SystemManagerProps {
@@ -543,9 +557,9 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ token }) => {
       {/* Lijst met wachtende commits indien updates beschikbaar */}
       {updateResult?.updatesAvailable && updateResult.pendingCommits?.length > 0 && (
         <div className="bg-card rounded-xl border border-amber-500/30 p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
             <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 font-semibold text-sm">
-              <Sparkles className="w-4 h-4" />
+              <Sparkles className="w-4 h-4 shrink-0" />
               <span>Klaarstaande wijzigingen op GitHub ({updateResult.pendingCommits.length})</span>
             </div>
             <Button
@@ -553,7 +567,7 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ token }) => {
               size="sm"
               onClick={() => handleFullSync(false)}
               disabled={syncing}
-              className="bg-amber-600 hover:bg-amber-700 text-white text-xs gap-1.5 cursor-pointer"
+              className="bg-amber-600 hover:bg-amber-700 text-white text-xs gap-1.5 cursor-pointer shrink-0"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} />
               <span>Nu installeren & bouwen</span>
@@ -563,18 +577,54 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ token }) => {
           <div className="divide-y divide-border/60">
             {updateResult.pendingCommits.map((c, i) => (
               <div key={i} className="py-2.5 flex items-start justify-between gap-4 text-xs">
-                <div className="space-y-0.5">
-                  <div className="font-medium text-foreground">{c.message}</div>
+                <div className="space-y-0.5 min-w-0 flex-1">
+                  <div className="font-medium text-foreground truncate">{c.message}</div>
                   <div className="text-muted-foreground text-[11px]">
                     door {c.author} • {c.time}
                   </div>
                 </div>
-                <span className="font-mono text-[11px] bg-muted px-2 py-0.5 rounded border border-border shrink-0 text-accent font-semibold">
-                  #{c.hash}
-                </span>
+                {c.url ? (
+                  <a
+                    href={c.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-mono text-[11px] bg-muted hover:bg-muted/80 px-2 py-0.5 rounded border border-border shrink-0 text-accent font-semibold inline-flex items-center gap-1 cursor-pointer transition-colors"
+                    title="Bekijk deze commit op GitHub"
+                  >
+                    <span>#{c.hash}</span>
+                    <ExternalLink className="w-3 h-3 text-muted-foreground" />
+                  </a>
+                ) : (
+                  <span className="font-mono text-[11px] bg-muted px-2 py-0.5 rounded border border-border shrink-0 text-accent font-semibold">
+                    #{c.hash}
+                  </span>
+                )}
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Reassuring Banner indien zojuist gecontroleerd en up-to-date */}
+      {updateResult && !updateResult.updatesAvailable && updateResult.latestRemoteCommit && (
+        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 flex items-center justify-between gap-3 text-xs text-emerald-800 dark:text-emerald-300">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+            <span>
+              <strong>Geverifieerd met GitHub:</strong> Actieve server commit <span className="font-mono font-semibold">#{updateResult.currentCommitHash || status?.currentCommit?.hash}</span> komt 1-op-1 overeen met de nieuwste commit op GitHub (<span className="font-mono font-semibold">#{updateResult.latestRemoteCommit.hash}</span>: &quot;{updateResult.latestRemoteCommit.message}&quot;).
+            </span>
+          </div>
+          {updateResult.latestRemoteCommit.url && (
+            <a
+              href={updateResult.latestRemoteCommit.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 hover:underline shrink-0 font-medium"
+            >
+              <span>GitHub</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          )}
         </div>
       )}
 
