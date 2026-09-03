@@ -3,14 +3,23 @@ import lezingImg from "@/assets/markt-steenwijk.jpg";
 export interface EventItem {
   id: string;
   title: string;
+  shortDescription?: string;
   description: string;
-  longDescription: string;
+  longDescription?: string;
   date: string; // ISO yyyy-mm-dd
-  time: string;
-  location: string;
-  coords: [number, number];
-  image: string;
-  ticketUrl: string;
+  time?: string;
+  startTime?: string;
+  endTime?: string;
+  address?: string;
+  location?: string;
+  coords?: [number, number];
+  image?: string;
+  thumbnailUrl?: string;
+  ticketUrl?: string;
+  isPublic?: boolean;
+  isPublished?: boolean;
+  isCancelled?: boolean;
+  attendees?: string[];
 }
 
 export const events: EventItem[] = [

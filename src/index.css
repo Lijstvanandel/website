@@ -131,4 +131,28 @@
     transform: translateY(-4px);
     box-shadow: var(--shadow-gold);
   }
+
+  /* Leaflet custom map theme */
+  .leaflet-popup-content-wrapper {
+    background: #0d1e15 !important;
+    color: #f6f3eb !important;
+    border: 1px solid rgba(223, 190, 111, 0.45) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6) !important;
+    padding: 2px !important;
+  }
+  .leaflet-popup-tip {
+    background: #0d1e15 !important;
+    border: 1px solid rgba(223, 190, 111, 0.45) !important;
+  }
+  .leaflet-popup-close-button {
+    color: #dfbe6f !important;
+  }
+  .leaflet-container {
+    font-family: 'Inter', sans-serif !important;
+  }
+  .custom-searched-marker, .custom-event-marker {
+    background: transparent !important;
+    border: none !important;
+  }
 }

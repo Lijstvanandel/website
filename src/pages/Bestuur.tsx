@@ -2,6 +2,7 @@ import { Mail, Instagram, Facebook, Linkedin, FileText } from "lucide-react";
 import placeholder from "@/assets/silhouette.png";
 
 interface Bestuurslid {
+  id: string;
   naam: string;
   voornaam: string;
   rol: string;
@@ -12,6 +13,7 @@ interface Bestuurslid {
 
 const bestuur: Bestuurslid[] = [
   {
+    id: "voorzitter",
     naam: "Peggy Noort",
     voornaam: "peggy",
     rol: "Voorzitter",
@@ -20,6 +22,7 @@ const bestuur: Bestuurslid[] = [
     socials: { instagram: "#", facebook: "#", linkedin: "#" },
   },
   {
+    id: "secretaris",
     naam: "?",
     voornaam: "?",
     rol: "Secretaris",
@@ -28,6 +31,7 @@ const bestuur: Bestuurslid[] = [
     socials: { instagram: "#", facebook: "#", linkedin: "#" },
   },
   {
+    id: "penningmeester",
     naam: "Wanda Nicolai",
     voornaam: "Wanda",
     rol: "Penningmeester",
@@ -36,6 +40,7 @@ const bestuur: Bestuurslid[] = [
     socials: { instagram: "#", facebook: "#", linkedin: "#" },
   },
   {
+    id: "algemeen-bestuurslid",
     naam: "?",
     voornaam: "",
     rol: "Algemeen bestuurslid",
@@ -69,7 +74,7 @@ const Bestuur = () => {
         <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
           {bestuur.map((p) => (
             <article
-              key={p.naam}
+              key={p.id}
               className="group relative bg-card border border-border overflow-hidden hover-lift flex flex-col"
             >
               <div className="absolute top-3 left-3 z-10 px-3 py-1 bg-twente-black/80 backdrop-blur border border-accent text-[10px] uppercase tracking-widest text-accent font-semibold">
@@ -88,13 +93,23 @@ const Bestuur = () => {
                 <h3 className="font-display text-2xl mb-3">{p.naam}</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed mb-4">{p.bio}</p>
 
-                <a
-                  href={`mailto:${p.voornaam}@lijstvanandel.nl`}
-                  className="flex items-center gap-2 text-xs text-accent hover:text-accent/80 mb-3 break-all"
-                >
-                  <Mail className="w-3.5 h-3.5 shrink-0" />
-                  {p.voornaam}@lijstvanandel.nl
-                </a>
+                {p.voornaam && p.voornaam !== "?" ? (
+                  <a
+                    href={`mailto:${p.voornaam.toLowerCase()}@lijstvanandel.nl`}
+                    className="flex items-center gap-2 text-xs text-accent hover:text-accent/80 mb-3 break-all"
+                  >
+                    <Mail className="w-3.5 h-3.5 shrink-0" />
+                    {p.voornaam.toLowerCase()}@lijstvanandel.nl
+                  </a>
+                ) : (
+                  <a
+                    href="mailto:bestuur@lijstvanandel.nl"
+                    className="flex items-center gap-2 text-xs text-accent hover:text-accent/80 mb-3 break-all"
+                  >
+                    <Mail className="w-3.5 h-3.5 shrink-0" />
+                    bestuur@lijstvanandel.nl
+                  </a>
+                )}
 
                 <div className="flex items-center gap-2 mt-auto">
                   {p.socials.instagram && (

@@ -3,101 +3,386 @@ import path from "path";
 import fs from "fs";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import multer from "multer";
 import { createServer as createViteServer } from "vite";
+import { BUURTKAART_43_WIJKEN, syncWijkenWithBuurtkaart, LEGACY_SLUG_MAP } from "./src/data/defaultWijken.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "super-secret-dev-key";
-
-// Simple JSON-based database for prototype persistence
 const DB_FILE = path.join(process.cwd(), "db.json");
+
+// Ensure upload directories exist
+const UPLOAD_DIRS = [
+  "public/uploads",
+  "public/uploads/fractieleden",
+  "public/uploads/videos",
+  "public/uploads/news",
+  "public/uploads/events",
+  "public/uploads/wijken",
+  "public/uploads/documents",
+];
+UPLOAD_DIRS.forEach((dir) => {
+  const fullPath = path.join(process.cwd(), dir);
+  if (!fs.existsSync(fullPath)) {
+    fs.mkdirSync(fullPath, { recursive: true });
+  }
+});
+
 if (!fs.existsSync(DB_FILE)) {
-  fs.writeFileSync(DB_FILE, JSON.stringify({ users: [] }));
+  fs.writeFileSync(DB_FILE, JSON.stringify({ users: [], fractieleden: [], videos: [], news: [], events: [] }));
 }
 
 function getDb() {
-  return JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
+  const db = JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
+  if (!db.fractieleden) db.fractieleden = [];
+  if (!db.videos) db.videos = [];
+  if (!db.news || !Array.isArray(db.news) || db.news.length === 0) {
+    db.news = [
+      {
+        id: "kopwijzer-rtv-slos",
+        title: "Sammy van Andel te gast bij Kopwijzer (RTV SLOS)",
+        excerpt: "In de uitzending van Kopwijzer sprak Sammy met de presentator over de speerpunten van Lijst van Andel en de lokale agenda.",
+        description: "In de uitzending van Kopwijzer sprak Sammy met de presentator over de speerpunten van Lijst van Andel en de lokale agenda.",
+        content: "<p>Tijdens de uitzending van Kopwijzer op RTV SLOS ging Sammy van Andel uitgebreid in op de lokale prioriteiten van Lijst van Andel.</p><p>Onderwerpen die voorbijkwamen waren onder meer voorrang voor eigen inwoners op de woningmarkt, het behoud van de Weerribben-Wieden en een bestuurscultuur die dichter bij de inwoner staat. Sammy benadrukte het belang van een lokale, onafhankelijke stem in de raad — vrij van Haagse invloeden.</p>",
+        date: "2026-04-18",
+        createdAt: "2026-04-18T10:00:00.000Z",
+        author: "Redactie",
+        thumbnailUrl: "/assets/news-kopwijzer.jpg",
+        headerUrl: "/assets/news-kopwijzer.jpg",
+        category: "Media"
+      },
+      {
+        id: "nieuwe-impulsen-binnenstad",
+        title: "Lijst van Andel pleit voor nieuwe impulsen in de binnenstad",
+        excerpt: "De fractie dient een motie in om leegstand op de Markt actief aan te pakken en lokale ondernemers ruimte te geven.",
+        description: "De fractie dient een motie in om leegstand op de Markt actief aan te pakken en lokale ondernemers ruimte te geven.",
+        content: "<p>In de komende raadsvergadering dient Lijst van Andel een motie in die het college oproept met een concreet plan te komen om leegstand in het centrum van Steenwijk te bestrijden.</p><p>Volgens de fractie verdient de binnenstad een impuls die past bij de identiteit van de gemeente: ruimte voor lokale ondernemers, sfeer op de Markt en een aantrekkelijk verblijfsklimaat voor inwoners én bezoekers.</p>",
+        date: "2026-05-02",
+        createdAt: "2026-05-02T14:30:00.000Z",
+        author: "Lijst van Andel",
+        thumbnailUrl: "/assets/markt-steenwijk.jpg",
+        headerUrl: "/assets/markt-steenwijk.jpg",
+        category: "Politiek",
+        wijkSlug: "steenwijk-centrum",
+        wijkNaam: "Steenwijk Centrum / Binnenstad"
+      }
+    ];
+    saveDb(db);
+  }
+  if (!db.events || !Array.isArray(db.events) || db.events.length === 0) {
+    db.events = [
+      {
+        id: "1788383596955",
+        title: "Inloopavond en Ideeëncafé Steenwijkerland",
+        date: "2026-09-15",
+        address: "Markt 1, Steenwijk",
+        startTime: "19:30",
+        endTime: "21:30",
+        shortDescription: "Praat mee over de toekomst van onze gemeente. Iedereen is welkom voor een open gesprek met fractieleden onder het genot van koffie.",
+        description: "<p>Lijst van Andel organiseert een openbare inloopavond in het hart van Steenwijk. Tijdens dit ideeëncafé gaan fractieleden en inwoners met elkaar in gesprek over actuele thema's die spelen in onze wijken en kernen.</p><h3>Wat staat er op de agenda?</h3><ul class=\"list-disc pl-6 my-4 space-y-1\"><li>Woningbouw en voorrang voor lokale inwoners</li><li>Leefbaarheid in de dorpen en bereikbaarheid van voorzieningen</li><li>Ruimte voor vragen, ideeën en directe input voor de gemeenteraad</li></ul><p>Aanmelden is gratis. We zien u graag op dinsdag 15 september op de Markt in Steenwijk!</p>",
+        isPublic: true,
+        isPublished: true,
+        isCancelled: false,
+        lat: 52.7901,
+        lng: 6.1186,
+        thumbnailUrl: "/assets/markt-steenwijk.jpg",
+        attendees: [],
+        createdAt: "2026-09-02T21:13:16.955Z"
+      }
+    ];
+    saveDb(db);
+  } else {
+    // Ensure all existing events have shortDescription
+    let changed = false;
+    db.events.forEach((e: any) => {
+      if (!e.shortDescription) {
+        e.shortDescription = e.description ? e.description.replace(/<[^>]*>/g, '').substring(0, 160) : "";
+        changed = true;
+      }
+    });
+    if (changed) saveDb(db);
+  }
+  if (!db.categories || !Array.isArray(db.categories) || db.categories.length === 0) {
+    db.categories = [
+      { id: "cat-1", name: "Politiek", slug: "politiek", description: "Standpunten, moties en raadsdebatten van de fractie", color: "#c6a858" },
+      { id: "cat-2", name: "Media", slug: "media", description: "Interviews, artikelen en optredens in de media", color: "#2d6a4f" },
+      { id: "cat-3", name: "Wijken & Kernen", slug: "wijken-en-kernen", description: "Lokaal nieuws uit de wijken en dorpen in Steenwijkerland", color: "#3d5a80" },
+      { id: "cat-4", name: "Woningbouw", slug: "woningbouw", description: "Huisvesting, woningmarkt en nieuwbouw voor inwoners", color: "#d4a373" },
+      { id: "cat-5", name: "Evenementen", slug: "evenementen", description: "Inloopavonden, bijeenkomsten en acties", color: "#e76f51" },
+      { id: "cat-6", name: "Algemeen", slug: "algemeen", description: "Algemene mededelingen van Lijst van Andel", color: "#6c757d" }
+    ];
+    saveDb(db);
+  }
+  if (!db.contactMessages || !Array.isArray(db.contactMessages)) {
+    db.contactMessages = [
+      {
+        id: "msg-1",
+        name: "Jan Mulder",
+        email: "jan.mulder@outlook.com",
+        phone: "06-12345678",
+        subject: "Vraag over starterslening en nieuwbouw Steenwijkerland",
+        message: "Beste fractie van Lijst van Andel,\n\nIk las jullie speerpunt over voorrang voor eigen inwoners bij woningbouw. Ik woon al mijn hele leven in Steenwijk en zoek al geruime tijd een betaalbare starterswoning. Hebben jullie plannen om de starterslening in onze gemeente te verruimen of nieuwe projecten te versnellen?\n\nMet vriendelijke groet,\nJan Mulder",
+        status: "moet nog beantwoord worden",
+        createdAt: "2026-09-01T14:20:00.000Z",
+        handledAt: null,
+        handledBy: null,
+        notes: ""
+      },
+      {
+        id: "msg-2",
+        name: "Astrid de Boer",
+        email: "astrid.deboer@gmail.com",
+        phone: "06-98765432",
+        subject: "Snelheid en verkeersveiligheid Oostermeenthe",
+        message: "Goedemiddag,\n\nGraag wil ik aandacht vragen voor de verkeerssituatie rondom de basisschool in Oostermeenthe. Er wordt regelmatig te hard gereden tijdens het halen en brengen van de kinderen. Kan de fractie hier aandacht voor vragen in de raad of een verzoek indienen bij het college?\n\nAlvast hartelijk dank,\nAstrid de Boer",
+        status: "afgehandeld",
+        createdAt: "2026-08-28T09:15:00.000Z",
+        handledAt: "2026-08-29T11:00:00.000Z",
+        handledBy: "Sammy van Andel",
+        notes: "Telefonisch besproken met mw. De Boer. Schriftelijke vragen voorbereid voor wethouder mobiliteit."
+      }
+    ];
+    saveDb(db);
+  }
+  if (!db.faqs || !Array.isArray(db.faqs) || db.faqs.length === 0) {
+    db.faqs = [
+      {
+        id: "faq-1",
+        question: "Wat is de werkwijze van Lijst van Andel in Steenwijkerland?",
+        answer: "Lijst van Andel staat voor een nuchtere, transparante en direct benaderbare lokale politiek. Wij geloven in duidelijke taal, gezond verstand en besluitvorming mét de inwoners in plaats van over hen. Wij zijn actief in alle wijken van Steenwijk en de omliggende kernen van Steenwijkerland.",
+        category: "Algemeen",
+        order: 1,
+        published: true,
+        createdAt: "2026-08-15T10:00:00.000Z"
+      },
+      {
+        id: "faq-2",
+        question: "Hoe kan ik als inwoner een probleem of idee doorgeven aan de fractie?",
+        answer: "U kunt ons direct een bericht sturen via het contactformulier op deze pagina, een persoonlijke belafspraak van maximaal 30 minuten inplannen met een van onze raadsleden, of ons mailen via info@lijstvanandel.nl. Wij reageren doorgaans binnen 1 tot 2 werkdagen en brengen relevante signalen in bij de gemeenteraad of commissievergaderingen.",
+        category: "Contact & Inwoners",
+        order: 2,
+        published: true,
+        createdAt: "2026-08-15T10:05:00.000Z"
+      },
+      {
+        id: "faq-3",
+        question: "Wat houdt een belafspraak met een fractielid precies in?",
+        answer: "Iedere woensdag-, donderdag- en vrijdagavond tussen 19:00 en 21:00 reserveren onze raadsleden tijd voor een-op-een telefonische gesprekken met inwoners. U kiest zelf het gewenste tijdslot via de knop 'Belafspraak inplannen'. Het gesprek duurt maximaal 30 minuten, is vertrouwelijk en vrijblijvend.",
+        category: "Contact & Inwoners",
+        order: 3,
+        published: true,
+        createdAt: "2026-08-15T10:10:00.000Z"
+      },
+      {
+        id: "faq-4",
+        question: "Wat zijn de belangrijkste speerpunten van Lijst van Andel?",
+        answer: "Onze kernprioriteiten zijn: voorrang voor eigen inwoners bij woningbouw en toewijzing, behoud en versterking van onze natuur en het veengebied, behoud van voorzieningen en basisscholen in de dorpen en kernen, lagere lokale lasten en een moderne, digitale en efficiënte overheid.",
+        category: "Politiek & Standpunten",
+        order: 4,
+        published: true,
+        createdAt: "2026-08-15T10:15:00.000Z"
+      },
+      {
+        id: "faq-5",
+        question: "Hoe kan ik lid worden of mij inzetten voor de fractie?",
+        answer: "Iedere inwoner van Steenwijkerland die zich herkent in onze visie kan zich aansluiten via de pagina 'Lid worden' of de steunfractie versterken. Als lid ontvangt u uitnodigingen voor onze inloopbijeenkomsten, fractievergaderingen en kunt u meedenken over moties en plannen.",
+        category: "Lidmaatschap",
+        order: 5,
+        published: true,
+        createdAt: "2026-08-15T10:20:00.000Z"
+      },
+      {
+        id: "faq-6",
+        question: "Hoe kan ik een raadsvergadering bijwonen of inspreken?",
+        answer: "De vergaderingen van de gemeenteraad van Steenwijkerland in het gemeentehuis te Steenwijk zijn openbaar. U kunt inspreken tijdens het vragenuur voor inwoners aan het begin van raads- en commissievergaderingen. Neem gerust vooraf contact met ons op als u advies wilt over het inspreekrecht of om uw onderwerp samen voor te bereiden.",
+        category: "Politiek & Standpunten",
+        order: 6,
+        published: true,
+        createdAt: "2026-08-15T10:25:00.000Z"
+      }
+    ];
+    saveDb(db);
+  }
+
+  const DEFAULT_WIJKEN = BUURTKAART_43_WIJKEN;
+
+  // Ensure database is populated and synchronized with the official 43 Buurtkaart units
+  if (!db.wijken || !Array.isArray(db.wijken) || db.wijken.length < 43) {
+    db.wijken = syncWijkenWithBuurtkaart(db.wijken || []);
+    saveDb(db);
+  }
+
+  if (!db.documents || !Array.isArray(db.documents) || db.documents.length === 0) {
+    db.documents = [
+      {
+        id: "doc-concept-programma-2026",
+        title: "Concept Partijprogramma 2026-2030",
+        description: "Meest recente vertrouwelijke versie ter inzage voor de ALV en fractieberaad met amendementsruimte.",
+        category: "Partijprogramma",
+        confidentiality: "Vertrouwelijk - Alleen Leden",
+        date: "2026-05-10",
+        fileUrl: "/uploads/documents/concept_partijprogramma_2026.pdf",
+        fileName: "concept_partijprogramma_2026.pdf",
+        fileSize: "1.8 MB",
+        pageCount: 3,
+        author: "Sammy van Andel & Programmacommissie",
+        createdAt: "2026-05-10T09:00:00.000Z",
+        content: "HOOFDSTUK 1: WONINGBOUW & LEEFBAARHEID IN STEENWIJKERLAND\\n\\n1.1 Voorrang voor lokale woningzoekenden\\nLijst van Andel stelt vast dat starters en senioren uit onze eigen kernen en wijken te vaak buiten de boot vallen. In het nieuwe programma eisen wij bindende voorrangsregels voor lokale inwoners bij nieuwbouwprojecten in Steenwijk en omliggende kernen.\\n\\n1.2 Behoud van het unieke landschap\\nBouwen doen we met respect voor het Weerribben-Wieden gebied en ons waardevolle cultuurlandschap. Geen massale hoogbouw in authentieke dorpsgezichten.\\n\\nHOOFDSTUK 2: VOORZIENINGEN & BEREIKBAARHEID\\n\\n2.1 Basisscholen en dorpshuizen\\nIedere kern moet kunnen rekenen op het behoud van ontmoetingsplekken. Het buurthuis is het kloppend hart van de dorpsgemeenschap.\\n\\n2.2 Openbaar vervoer en buurtbussen\\nVerbetering van de aansluiting tussen de buitengebieden en het NS-station in Steenwijk.\\n\\nHOOFDSTUK 3: TRANSPARANTE BESTUURSSTIJL\\n\\nFractieleden zijn direct aanspreekbaar. Besluiten worden genomen in open dialoog met wijkvertegenwoordigers."
+      },
+      {
+        id: "doc-financieel-jaarverslag-2025",
+        title: "Financieel Jaarverslag & Begroting 2026",
+        description: "Volledige financiële verantwoording van de penningmeester inclusief kascommissieverslag en reserveopbouw.",
+        category: "Financiën",
+        confidentiality: "Strikt Vertrouwelijk",
+        date: "2026-03-28",
+        fileUrl: "/uploads/documents/financieel_jaarverslag_2025.pdf",
+        fileName: "financieel_jaarverslag_2025.pdf",
+        fileSize: "840 KB",
+        pageCount: 2,
+        author: "Penningmeester Lijst van Andel",
+        createdAt: "2026-03-28T14:30:00.000Z",
+        content: "FINANCIEEL OVERZICHT BOEKJAAR 2025\\n\\n1. BATEN & INKOMSTEN\\n- Contributies geregistreerde leden: € 14.850,-\\n- Vrijwillige donaties & giften: € 6.420,-\\n- Totaal baten: € 21.270,-\\n\\n2. LASTEN & UITGAVEN\\n- Communicatie, website & ledenportaal: € 4.150,-\\n- Zaalhuur ALV & wijkbijeenkomsten: € 2.800,-\\n- Drukwerk & flyers kernenbezoek: € 3.200,-\\n- Reserve campagnekas gemeenteraad 2026: € 9.500,-\\n- Algemene administratie & bankkosten: € 820,-\\n- Totaal lasten: € 20.470,-\\n\\n3. RESULTAAT & BALANS\\nPositief exploitatiesaldo van € 800,- toegevoegd aan de algemene reserve.\\n\\n4. KASCOMMISSIEVERKLARING\\nDe kascommissie heeft de boeken en bankafschriften gecontroleerd en adviseert de ALV om het bestuur decharge te verlenen."
+      },
+      {
+        id: "doc-fractiestatuut-reglement",
+        title: "Fractiestatuut & Huishoudelijk Reglement",
+        description: "Interne gedragsregels, stemprocedures en vertrouwelijkheidsrichtlijnen van Lijst van Andel.",
+        category: "Statuten & Reglementen",
+        confidentiality: "Vertrouwelijk - Alleen Leden",
+        date: "2026-01-15",
+        fileUrl: "/uploads/documents/fractiestatuut_en_reglement.pdf",
+        fileName: "fractiestatuut_en_reglement.pdf",
+        fileSize: "620 KB",
+        pageCount: 2,
+        author: "Fractiebestuur",
+        createdAt: "2026-01-15T11:00:00.000Z",
+        content: "FRACTIESTATUUT LIJST VAN ANDEL\\n\\nARTIKEL 1: GEMEENSCHAPPELIJKE VERANTWOORDELIJKHEID\\n1. De fractie van Lijst van Andel vertegenwoordigt de inwoners van Steenwijkerland op basis van het verkiezingsprogramma en lokale speerpunten.\\n2. Leden en fractieleden handelen te allen tijde integer, transparant en met respect voor elkaar.\\n\\nARTIKEL 2: VERTROUWELIJKHEID & DIGITALE STUKKEN\\n1. Documenten aangemerkt als vertrouwelijk zijn uitsluitend bestemd voor geregistreerde leden en fractieleden.\\n2. Het delen, exporteren of kopiëren van interne beraadstukken zonder schriftelijke instemming van de fractievoorzitter is uitdrukkelijk verboden.\\n\\nARTIKEL 3: BESLUITVORMING & STEMPROCEDURE\\n1. Besluiten binnen de fractie worden bij voorkeur genomen op basis van consensus.\\n2. Bij stemming beslist de gewone meerderheid der uitgebrachte geldige stemmen."
+      }
+    ];
+    saveDb(db);
+  }
+
+  return db;
 }
 
 function saveDb(data: any) {
   fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
 }
 
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    if (file.fieldname === 'img') {
+      cb(null, 'public/uploads/fractieleden');
+    } else if (file.fieldname === 'video') {
+      cb(null, 'public/uploads/videos');
+    } else if (req.url.includes('/news')) {
+      cb(null, 'public/uploads/news');
+    } else if (req.url.includes('/events')) {
+      cb(null, 'public/uploads/events');
+    } else if (req.url.includes('/wijken') || file.fieldname === 'banner' || file.fieldname === 'foto') {
+      cb(null, 'public/uploads/wijken');
+    } else if (req.url.includes('/documents') || file.fieldname === 'document' || file.fieldname === 'pdf') {
+      cb(null, 'public/uploads/documents');
+    } else {
+      cb(null, 'public/uploads');
+    }
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+const upload = multer({ storage: storage });
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
-
   app.use(express.json());
+  // Explicitly serve uploaded assets
+  app.use("/uploads", express.static(path.join(process.cwd(), "public/uploads")));
 
-  // API Routes
+  // Middleware for checking auth & admin
+  const requireAuth = (req: any, res: any, next: any) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Niet geautoriseerd" });
+    }
+    const token = authHeader.split(" ")[1];
+    try {
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      const db = getDb();
+      const user = db.users.find((u: any) => u.id === decoded.id);
+      if (!user) return res.status(404).json({ error: "Gebruiker niet gevonden" });
+      req.user = user;
+      next();
+    } catch (error) {
+      return res.status(401).json({ error: "Ongeldige token" });
+    }
+  };
+
+  const requireAdmin = (req: any, res: any, next: any) => {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: "Toegang geweigerd: beheerdersrechten vereist" });
+    }
+    next();
+  };
+
+  // Auth Routes
   app.post("/api/register", async (req, res) => {
-    const { 
+    const { salutation, fullName, address, city, username, email, password, remarks, directDebit, newsletterSubscribed } = req.body;
+    const db = getDb();
+    if (db.users.find((u: any) => u.username === username)) {
+      return res.status(400).json({ error: "Gebruikersnaam is al in gebruik." });
+    }
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const isFirstUser = db.users.length === 0;
+    const isAdminUser = username === 'admin' || isFirstUser;
+    const resolvedEmail = (email && typeof email === 'string') ? email.trim() : (username.includes('@') ? username : '');
+    const newUser = {
+      id: Date.now().toString(),
       salutation, 
       fullName, 
       address, 
       city, 
       username, 
-      password, 
+      email: resolvedEmail,
+      password: hashedPassword, 
       remarks, 
-      directDebit 
-    } = req.body;
-
-    const db = getDb();
-    
-    // Check if user exists
-    if (db.users.find((u: any) => u.username === username)) {
-      res.status(400).json({ error: "Gebruikersnaam is al in gebruik." });
-      return;
-    }
-
-    // Hash the password for security
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const newUser = {
-      id: Date.now().toString(),
-      salutation,
-      fullName,
-      address,
-      city,
-      username,
-      password: hashedPassword,
-      remarks,
       directDebit,
+      newsletterSubscribed: newsletterSubscribed !== undefined ? Boolean(newsletterSubscribed) : true,
+      role: isAdminUser ? 'admin' : 'member',
+      isActive: true,
       createdAt: new Date().toISOString()
     };
-
     db.users.push(newUser);
     saveDb(db);
-
     res.status(201).json({ message: "Registratie succesvol", user: { id: newUser.id, username: newUser.username } });
   });
 
   app.post("/api/login", async (req, res) => {
     const { username, password } = req.body;
     const db = getDb();
-    
     const user = db.users.find((u: any) => u.username === username);
-    
-    if (!user) {
-      res.status(401).json({ error: "Ongeldige inloggegevens" });
-      return;
-    }
-
-    // Compare the provided password with the hashed password
+    if (!user) return res.status(401).json({ error: "Ongeldige inloggegevens" });
     const isMatch = await bcrypt.compare(password, user.password);
-
     if (isMatch) {
-      // Generate a JSON Web Token
-      const token = jwt.sign(
-        { id: user.id, username: user.username },
-        JWT_SECRET,
-        { expiresIn: "24h" }
-      );
-
+      const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: "24h" });
+      const resolvedEmail = user.email || (user.username.includes('@') ? user.username : '');
+      const newsletterSubscribed = user.newsletterSubscribed !== undefined ? Boolean(user.newsletterSubscribed) : true;
       res.status(200).json({ 
         message: "Succesvol ingelogd", 
         user: { 
           id: user.id, 
           username: user.username, 
-          fullName: user.fullName 
+          fullName: user.fullName, 
+          salutation: user.salutation,
+          address: user.address,
+          city: user.city,
+          email: resolvedEmail,
+          role: user.role, 
+          isActive: user.isActive,
+          newsletterSubscribed,
+          createdAt: user.createdAt
         },
         token
       });
@@ -106,31 +391,1267 @@ async function startServer() {
     }
   });
 
-  // Get user profile (Protected route example)
-  app.get("/api/me", (req, res) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      res.status(401).json({ error: "Niet geautoriseerd" });
-      return;
+  app.get("/api/me", requireAuth, (req: any, res: any) => {
+    const { password, ...userProfile } = req.user;
+    if (userProfile.newsletterSubscribed === undefined) {
+      userProfile.newsletterSubscribed = true;
+    }
+    if (!userProfile.email && userProfile.username?.includes('@')) {
+      userProfile.email = userProfile.username;
+    }
+    res.status(200).json({ user: userProfile });
+  });
+
+  // Member Newsletter Preferences Toggle & Email update
+  app.patch("/api/me/newsletter", requireAuth, (req: any, res: any) => {
+    const { newsletterSubscribed, email } = req.body;
+    const db = getDb();
+    const user = db.users.find((u: any) => u.id === req.user.id);
+    if (!user) return res.status(404).json({ error: "Gebruiker niet gevonden" });
+
+    if (typeof newsletterSubscribed === "boolean") {
+      user.newsletterSubscribed = newsletterSubscribed;
+    }
+    if (typeof email === "string") {
+      user.email = email.trim();
+    }
+    saveDb(db);
+    const { password, ...userProfile } = user;
+    res.status(200).json({
+      message: user.newsletterSubscribed
+        ? "U ontvangt voortaan onze nieuwsbrief."
+        : "U bent afgemeld voor de nieuwsbrief.",
+      user: userProfile
+    });
+  });
+
+  // Member Registration Profile Update (Edit profile data)
+  app.put("/api/me/profile", requireAuth, async (req: any, res: any) => {
+    const { salutation, fullName, email, address, city, username, password, remarks, directDebit } = req.body;
+    const db = getDb();
+    const userIndex = db.users.findIndex((u: any) => u.id === req.user.id);
+    if (userIndex === -1) return res.status(404).json({ error: "Gebruiker niet gevonden" });
+    const existingUser = db.users[userIndex];
+
+    // Check if username changed and is already taken
+    if (username && username.trim() !== existingUser.username) {
+      const trimmedUsername = username.trim();
+      const conflict = db.users.find((u: any) => u.username.toLowerCase() === trimmedUsername.toLowerCase() && u.id !== existingUser.id);
+      if (conflict) {
+        return res.status(400).json({ error: "Deze gebruikersnaam is al in gebruik door een ander lid." });
+      }
+      existingUser.username = trimmedUsername;
     }
 
-    const token = authHeader.split(" ")[1];
+    if (salutation !== undefined) existingUser.salutation = salutation;
+    if (fullName !== undefined && fullName.trim()) existingUser.fullName = fullName.trim();
+    if (email !== undefined) existingUser.email = email.trim();
+    if (address !== undefined) existingUser.address = address.trim();
+    if (city !== undefined) existingUser.city = city.trim();
+    if (remarks !== undefined) existingUser.remarks = remarks;
+    if (directDebit !== undefined) existingUser.directDebit = Boolean(directDebit);
+
+    if (password && typeof password === "string" && password.trim().length > 0) {
+      if (password.trim().length < 6) {
+        return res.status(400).json({ error: "Het nieuwe wachtwoord moet minimaal 6 tekens bevatten." });
+      }
+      existingUser.password = await bcrypt.hash(password.trim(), 10);
+    }
+
+    saveDb(db);
+
+    const token = jwt.sign({ id: existingUser.id, username: existingUser.username }, JWT_SECRET, { expiresIn: "24h" });
+    const { password: _p, ...safeUser } = existingUser;
+
+    res.status(200).json({
+      message: "Uw gegevens zijn succesvol bijgewerkt!",
+      user: safeUser,
+      token
+    });
+  });
+
+  // Admin Routes - Users
+  app.get("/api/admin/users", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const safeUsers = db.users.map((u: any) => {
+      const { password, ...rest } = u;
+      if (rest.newsletterSubscribed === undefined) {
+        rest.newsletterSubscribed = true;
+      }
+      return rest;
+    });
+    res.json(safeUsers);
+  });
+
+  app.patch("/api/admin/users/:id/status", requireAuth, requireAdmin, (req: any, res: any) => {
+    const { isActive } = req.body;
+    const db = getDb();
+    const user = db.users.find((u: any) => u.id === req.params.id);
+    if (!user) return res.status(404).json({ error: "Gebruiker niet gevonden" });
+    user.isActive = isActive;
+    saveDb(db);
+    res.json({ message: "Status bijgewerkt", user });
+  });
+
+  app.patch("/api/admin/users/:id/role", requireAuth, requireAdmin, (req: any, res: any) => {
+    const { role } = req.body;
+    const db = getDb();
+    const user = db.users.find((u: any) => u.id === req.params.id);
+    if (!user) return res.status(404).json({ error: "Gebruiker niet gevonden" });
+    user.role = role;
+    saveDb(db);
+    res.json({ message: "Rol bijgewerkt", user });
+  });
+
+  app.patch("/api/admin/users/:id/newsletter", requireAuth, requireAdmin, (req: any, res: any) => {
+    const { newsletterSubscribed } = req.body;
+    const db = getDb();
+    const user = db.users.find((u: any) => u.id === req.params.id);
+    if (!user) return res.status(404).json({ error: "Gebruiker niet gevonden" });
+    user.newsletterSubscribed = Boolean(newsletterSubscribed);
+    saveDb(db);
+    res.json({ message: "Nieuwsbriefstatus bijgewerkt", user });
+  });
+
+  // Export all newsletter subscribers
+  app.get("/api/admin/users/export-newsletter", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const format = (req.query.format as string) || "csv";
+    
+    // Select members who want the newsletter
+    const subscribers = db.users.filter((u: any) => {
+      const isSubscribed = u.newsletterSubscribed !== undefined ? Boolean(u.newsletterSubscribed) : true;
+      return isSubscribed && u.isActive !== false;
+    });
+
+    if (format === "txt") {
+      const emails = subscribers
+        .map((u: any) => (u.email && u.email.trim()) || (u.username?.includes("@") ? u.username : `${u.username}@leden.lijstvanandel.nl`))
+        .filter(Boolean);
+
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      res.setHeader("Content-Disposition", "attachment; filename=\"nieuwsbrief-leden-steenwijkerland.txt\"");
+      return res.send(emails.join("\n"));
+    }
+
+    // CSV format with UTF-8 BOM for Microsoft Excel compatibility
+    const csvHeader = "Volledige Naam,Aanhef,Gebruikersnaam,E-mailadres,Woonplaats,Rol,Status,Nieuwsbrief,Registratiedatum\r\n";
+    const escapeCsv = (str: any) => `"${String(str || "").replace(/"/g, '""')}"`;
+    
+    const csvRows = subscribers.map((u: any) => {
+      const email = (u.email && u.email.trim()) || (u.username?.includes("@") ? u.username : `${u.username}@leden.lijstvanandel.nl`);
+      return [
+        escapeCsv(u.fullName || ""),
+        escapeCsv(u.salutation || ""),
+        escapeCsv(u.username || ""),
+        escapeCsv(email),
+        escapeCsv(u.city || ""),
+        escapeCsv(u.role || "member"),
+        escapeCsv(u.isActive ? "Actief" : "Inactief"),
+        escapeCsv("Aangemeld"),
+        escapeCsv(u.createdAt || "")
+      ].join(",");
+    }).join("\r\n");
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", "attachment; filename=\"nieuwsbrief-leden-steenwijkerland.csv\"");
+    return res.send("\uFEFF" + csvHeader + csvRows);
+  });
+
+  // Admin Routes - Fractieleden
+  app.get("/api/fractieleden", (req, res) => {
+    const db = getDb();
+    res.json(db.fractieleden || []);
+  });
+
+  app.post("/api/admin/fractieleden", requireAuth, requireAdmin, upload.single('img'), (req: any, res: any) => {
+    const db = getDb();
+    const { name, firstName, role, type, bio, speerpunten, email, facebook, instagram, linkedin } = req.body;
+    const imgUrl = req.file ? `/uploads/fractieleden/${req.file.filename}` : '';
+    const newLid = {
+      id: Date.now().toString(),
+      name, firstName, role, type, bio,
+      speerpunten: speerpunten ? JSON.parse(speerpunten) : [],
+      email, socials: { facebook, instagram, linkedin }, imgUrl
+    };
+    db.fractieleden.push(newLid);
+    saveDb(db);
+    res.status(201).json(newLid);
+  });
+
+  app.delete("/api/admin/fractieleden/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    db.fractieleden = db.fractieleden.filter((f: any) => f.id !== req.params.id);
+    saveDb(db);
+    res.json({ message: "Verwijderd" });
+  });
+
+  // Admin Routes - Videos
+  app.get("/api/videos", (req, res) => {
+    const db = getDb();
+    let videos = db.videos || [];
+    if (req.query.memberId) videos = videos.filter((v: any) => v.fractieledenIds?.includes(req.query.memberId));
+    if (req.query.wijkSlug) videos = videos.filter((v: any) => v.wijkSlug === req.query.wijkSlug);
+    res.json(videos);
+  });
+
+  app.post("/api/admin/videos", requireAuth, requireAdmin, upload.single('video'), (req: any, res: any) => {
+    const db = getDb();
+    const { title, category, date, fractieledenIds, wijkSlug } = req.body;
+    const videoUrl = req.file ? `/uploads/videos/${req.file.filename}` : req.body.videoUrl;
+    const newVideo = {
+      id: Date.now().toString(),
+      title, category, date, videoUrl,
+      fractieledenIds: fractieledenIds ? JSON.parse(fractieledenIds) : [], wijkSlug
+    };
+    db.videos.push(newVideo);
+    saveDb(db);
+    res.status(201).json(newVideo);
+  });
+
+  app.delete("/api/admin/videos/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    db.videos = db.videos.filter((v: any) => v.id !== req.params.id);
+    saveDb(db);
+    res.json({ message: "Verwijderd" });
+  });
+
+  // News Routes
+  app.get("/api/news", (req, res) => {
+    const db = getDb();
+    let newsList = db.news || [];
+    const { wijkSlug, category } = req.query;
+    if (wijkSlug) {
+      newsList = newsList.filter((n: any) => n.wijkSlug === wijkSlug);
+    }
+    if (category) {
+      newsList = newsList.filter((n: any) => n.category?.toLowerCase() === String(category).toLowerCase());
+    }
+    res.json(newsList);
+  });
+  
+  app.get("/api/news/:id", (req, res) => {
+    const db = getDb();
+    const article = db.news.find((n: any) => n.id === req.params.id);
+    if (!article) return res.status(404).json({ error: "Nieuws niet gevonden" });
+    res.json(article);
+  });
+
+  app.post("/api/admin/news", requireAuth, requireAdmin, upload.fields([{ name: 'thumbnail', maxCount: 1 }, { name: 'header', maxCount: 1 }]), (req: any, res: any) => {
+    const db = getDb();
+    const { title, category, description, content, wijkSlug, wijkNaam } = req.body;
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+    const thumbnailUrl = files?.['thumbnail']?.[0] ? `/uploads/news/${files['thumbnail'][0].filename}` : '';
+    const headerUrl = files?.['header']?.[0] ? `/uploads/news/${files['header'][0].filename}` : '';
+    
+    const newArticle = {
+      id: Date.now().toString(),
+      title,
+      category: category || "Algemeen",
+      description: description || "",
+      content: content || "",
+      wijkSlug: wijkSlug || "",
+      wijkNaam: wijkNaam || "",
+      thumbnailUrl,
+      headerUrl,
+      createdAt: new Date().toISOString()
+    };
+    db.news.push(newArticle);
+    saveDb(db);
+    res.status(201).json(newArticle);
+  });
+
+  app.put("/api/admin/news/:id", requireAuth, requireAdmin, upload.fields([{ name: 'thumbnail', maxCount: 1 }, { name: 'header', maxCount: 1 }]), (req: any, res: any) => {
+    const db = getDb();
+    const index = db.news.findIndex((n: any) => n.id === req.params.id);
+    if (index === -1) return res.status(404).json({ error: "Nieuws niet gevonden" });
+
+    const { title, category, description, content, wijkSlug, wijkNaam } = req.body;
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+    const current = db.news[index];
+
+    const thumbnailUrl = files?.['thumbnail']?.[0] ? `/uploads/news/${files['thumbnail'][0].filename}` : current.thumbnailUrl;
+    const headerUrl = files?.['header']?.[0] ? `/uploads/news/${files['header'][0].filename}` : current.headerUrl;
+
+    db.news[index] = {
+      ...current,
+      title: title !== undefined ? title : current.title,
+      category: category !== undefined ? category : current.category,
+      description: description !== undefined ? description : current.description,
+      content: content !== undefined ? content : current.content,
+      wijkSlug: wijkSlug !== undefined ? wijkSlug : current.wijkSlug,
+      wijkNaam: wijkNaam !== undefined ? wijkNaam : current.wijkNaam,
+      thumbnailUrl,
+      headerUrl,
+      updatedAt: new Date().toISOString()
+    };
+    saveDb(db);
+    res.json(db.news[index]);
+  });
+
+  app.delete("/api/admin/news/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    db.news = db.news.filter((n: any) => n.id !== req.params.id);
+    saveDb(db);
+    res.json({ message: "Nieuws verwijderd" });
+  });
+
+  // Category Management Routes
+  app.get("/api/categories", (req, res) => {
+    const db = getDb();
+    res.json(db.categories || []);
+  });
+
+  app.post("/api/admin/categories", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const { name, description, color, slug } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: "Categorienaam is verplicht" });
+    }
+
+    const trimmedName = name.trim();
+    const cleanSlug = (slug && slug.trim() ? slug : trimmedName)
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+
+    const exists = db.categories.some(
+      (c: any) => c.name.toLowerCase() === trimmedName.toLowerCase() || c.slug === cleanSlug
+    );
+    if (exists) {
+      return res.status(400).json({ error: "Een categorie met deze naam of slug bestaat al" });
+    }
+
+    const newCategory = {
+      id: Date.now().toString(),
+      name: trimmedName,
+      slug: cleanSlug || `cat-${Date.now()}`,
+      description: description ? description.trim() : "",
+      color: color || "#c6a858",
+      createdAt: new Date().toISOString()
+    };
+
+    db.categories.push(newCategory);
+    saveDb(db);
+    res.status(201).json(newCategory);
+  });
+
+  app.put("/api/admin/categories/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const index = db.categories.findIndex((c: any) => c.id === req.params.id);
+    if (index === -1) return res.status(404).json({ error: "Categorie niet gevonden" });
+
+    const { name, description, color, slug } = req.body;
+    const current = db.categories[index];
+
+    let cleanSlug = current.slug;
+    if (slug && slug.trim()) {
+      cleanSlug = slug
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+    }
+
+    db.categories[index] = {
+      ...current,
+      name: name && name.trim() ? name.trim() : current.name,
+      slug: cleanSlug,
+      description: description !== undefined ? description.trim() : current.description,
+      color: color || current.color || "#c6a858",
+      updatedAt: new Date().toISOString()
+    };
+
+    saveDb(db);
+    res.json(db.categories[index]);
+  });
+
+  app.delete("/api/admin/categories/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const cat = db.categories.find((c: any) => c.id === req.params.id);
+    if (!cat) return res.status(404).json({ error: "Categorie niet gevonden" });
+
+    db.categories = db.categories.filter((c: any) => c.id !== req.params.id);
+    saveDb(db);
+    res.json({ message: "Categorie verwijderd" });
+  });
+
+  // Events/Agenda Routes
+  app.get("/api/events", (req: any, res: any) => {
+    const db = getDb();
+    // Parse token optionally to see if user is member
+    let isMember = false;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      try {
+        const token = authHeader.split(" ")[1];
+        jwt.verify(token, JWT_SECRET);
+        isMember = true;
+      } catch (e) {}
+    }
+
+    let events = db.events.filter((e: any) => e.isPublished);
+    if (!isMember) {
+      events = events.filter((e: any) => e.isPublic);
+    }
+    res.json(events);
+  });
+
+  app.get("/api/events/:id", (req: any, res: any) => {
+    const db = getDb();
+    let isMember = false;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      try {
+        const token = authHeader.split(" ")[1];
+        jwt.verify(token, JWT_SECRET);
+        isMember = true;
+      } catch (e) {}
+    }
+
+    const ev = db.events.find((e: any) => e.id === req.params.id);
+    if (!ev) {
+      return res.status(404).json({ error: "Evenement niet gevonden" });
+    }
+
+    if (!ev.isPublished && !isMember) {
+      return res.status(404).json({ error: "Evenement niet gevonden" });
+    }
+
+    if (!ev.isPublic && !isMember) {
+      return res.json({
+        ...ev,
+        address: "Locatie zichtbaar voor leden na inloggen",
+        isPrivateForUser: true,
+      });
+    }
+
+    res.json(ev);
+  });
+
+  app.get("/api/admin/events", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    res.json(db.events);
+  });
+
+  app.post("/api/admin/events", requireAuth, requireAdmin, upload.single('thumbnail'), (req: any, res: any) => {
+    const db = getDb();
+    const { title, date, address, startTime, endTime, shortDescription, description, isPublic, isPublished, lat, lng } = req.body;
+    const thumbnailUrl = req.file ? `/uploads/events/${req.file.filename}` : '';
+    
+    const newEvent = {
+      id: Date.now().toString(),
+      title: title || "",
+      date: date || "",
+      address: address || "",
+      startTime: startTime || "",
+      endTime: endTime || "",
+      shortDescription: shortDescription || (description ? description.replace(/<[^>]*>/g, '').substring(0, 160) : ""),
+      description: description || "",
+      isPublic: isPublic === 'true' || isPublic === true,
+      isPublished: isPublished === 'true' || isPublished === true,
+      isCancelled: false,
+      lat: lat ? parseFloat(lat) : undefined,
+      lng: lng ? parseFloat(lng) : undefined,
+      thumbnailUrl,
+      attendees: [],
+      createdAt: new Date().toISOString()
+    };
+    db.events.push(newEvent);
+    saveDb(db);
+    res.status(201).json(newEvent);
+  });
+
+  // Geocoding Proxy Route with Steenwijkerland Context
+  app.get("/api/geocode", async (req, res) => {
+    const query = ((req.query.q as string) || "").trim();
+    if (!query) return res.status(400).json({ error: "Geen adres opgegeven" });
+
     try {
-      const decoded: any = jwt.verify(token, JWT_SECRET);
-      const db = getDb();
-      const user = db.users.find((u: any) => u.id === decoded.id);
-      
-      if (!user) {
-        res.status(404).json({ error: "Gebruiker niet gevonden" });
-        return;
+      let searchQuery = query;
+      const lower = searchQuery.toLowerCase();
+      if (
+        !lower.includes("steenwijk") &&
+        !lower.includes("steenwijkerland") &&
+        !lower.includes("nederland") &&
+        !lower.includes("overijssel")
+      ) {
+        searchQuery += ", Steenwijkerland, Nederland";
       }
 
-      // Return user data without password
-      const { password, ...userProfile } = user;
-      res.status(200).json({ user: userProfile });
-    } catch (error) {
-      res.status(401).json({ error: "Ongeldige token" });
+      const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+        searchQuery
+      )}&limit=1&addressdetails=1`;
+
+      const geoRes = await fetch(nominatimUrl, {
+        headers: {
+          "User-Agent": "LijstVanAndel-Portal/1.0 (info@lijstvanandel.nl)",
+          "Accept-Language": "nl",
+        },
+      });
+
+      if (geoRes.ok) {
+        const data: any = await geoRes.json();
+        if (Array.isArray(data) && data.length > 0) {
+          return res.json({
+            lat: parseFloat(data[0].lat),
+            lng: parseFloat(data[0].lon),
+            displayName: data[0].display_name,
+          });
+        }
+      }
+
+      // Fallback: Steenwijkerland Kernen / Belangrijke locaties
+      const knownLocations: Record<string, [number, number]> = {
+        steenwijk: [52.7885, 6.1172],
+        markt: [52.7901, 6.1186],
+        "de meenthe": [52.7887, 6.113],
+        meenthe: [52.7887, 6.113],
+        oostermeenthe: [52.7932, 6.136],
+        woldmeenthe: [52.7925, 6.104],
+        tuk: [52.8022, 6.0965],
+        oldemarkt: [52.8206, 5.9739],
+        vollenhove: [52.6797, 5.9525],
+        giethoorn: [52.7408, 6.0792],
+        blokzijl: [52.7267, 5.9611],
+        kuinre: [52.788, 5.841],
+        "sint jansklooster": [52.6775, 6.0028],
+        wanneperveen: [52.7058, 6.1264],
+        willemsoord: [52.8258, 6.0667],
+        "de blesse": [52.839, 6.046],
+        scheerwolde: [52.7975, 5.9928],
+        "belt-schutsloot": [52.6739, 6.0642],
+        eesveen: [52.8122, 6.1369],
+        onna: [52.7761, 6.1492],
+        zuidveen: [52.7753, 6.1175],
+        steenwijkerwold: [52.8078, 6.0658],
+      };
+
+      for (const [key, coords] of Object.entries(knownLocations)) {
+        if (lower.includes(key)) {
+          return res.json({
+            lat: coords[0],
+            lng: coords[1],
+            displayName: `${query} (in de buurt van ${key}, Steenwijkerland)`,
+          });
+        }
+      }
+
+      // Default to Steenwijk center
+      return res.json({
+        lat: 52.7885,
+        lng: 6.1172,
+        displayName: query,
+        fallback: true,
+      });
+    } catch (err) {
+      return res.json({
+        lat: 52.7885,
+        lng: 6.1172,
+        displayName: query,
+        fallback: true,
+      });
     }
+  });
+
+  app.put("/api/admin/events/:id", requireAuth, requireAdmin, upload.single('thumbnail'), (req: any, res: any) => {
+    const db = getDb();
+    const ev = db.events.find((e: any) => e.id === req.params.id);
+    if (!ev) return res.status(404).json({ error: "Evenement niet gevonden" });
+    
+    const {
+      title,
+      date,
+      address,
+      startTime,
+      endTime,
+      shortDescription,
+      description,
+      isPublic,
+      isPublished,
+      isCancelled,
+      lat,
+      lng
+    } = req.body;
+
+    if (title !== undefined) ev.title = title;
+    if (date !== undefined) ev.date = date;
+    if (address !== undefined) ev.address = address;
+    if (startTime !== undefined) ev.startTime = startTime;
+    if (endTime !== undefined) ev.endTime = endTime;
+    if (shortDescription !== undefined) ev.shortDescription = shortDescription;
+    if (description !== undefined) ev.description = description;
+    if (isPublic !== undefined) ev.isPublic = isPublic === 'true' || isPublic === true;
+    if (isPublished !== undefined) ev.isPublished = isPublished === 'true' || isPublished === true;
+    if (isCancelled !== undefined) ev.isCancelled = isCancelled === 'true' || isCancelled === true;
+    if (lat !== undefined && lat !== "") ev.lat = parseFloat(lat);
+    if (lng !== undefined && lng !== "") ev.lng = parseFloat(lng);
+    if (req.file) {
+      ev.thumbnailUrl = `/uploads/events/${req.file.filename}`;
+    }
+    
+    saveDb(db);
+    res.json(ev);
+  });
+
+  app.delete("/api/admin/events/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    db.events = db.events.filter((e: any) => e.id !== req.params.id);
+    saveDb(db);
+    res.json({ message: "Evenement verwijderd" });
+  });
+
+  app.get("/api/admin/events/:id/attendees", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const ev = db.events.find((e: any) => e.id === req.params.id);
+    if (!ev) return res.status(404).json({ error: "Evenement niet gevonden" });
+    
+    const attendees = ev.attendees.map((uid: string) => {
+      const u = db.users.find((u: any) => u.id === uid);
+      return u ? { id: u.id, fullName: u.fullName, email: u.username } : null;
+    }).filter(Boolean);
+    
+    res.json(attendees);
+  });
+
+  app.post("/api/events/:id/attend", requireAuth, (req: any, res: any) => {
+    const db = getDb();
+    const ev = db.events.find((e: any) => e.id === req.params.id);
+    if (!ev) return res.status(404).json({ error: "Evenement niet gevonden" });
+    if (ev.isCancelled) return res.status(400).json({ error: "Evenement is geannuleerd" });
+    
+    if (!ev.attendees.includes(req.user.id)) {
+      ev.attendees.push(req.user.id);
+      saveDb(db);
+    }
+    res.json({ message: "Succesvol aangemeld" });
+  });
+
+  app.get("/api/me/events", requireAuth, (req: any, res: any) => {
+    const db = getDb();
+    const now = new Date().toISOString().split('T')[0];
+    
+    const attending = db.events.filter((e: any) => e.attendees?.includes(req.user.id) && e.date >= now && !e.isCancelled);
+    const cancelled = db.events.filter((e: any) => e.isCancelled && e.date >= now);
+    
+    res.json({ attending, cancelled });
+  });
+
+  // Contact Messages Routes
+  // Public endpoint for submitting contact form
+  app.post("/api/contact", (req, res) => {
+    const { name, email, phone, subject, message } = req.body;
+    if (!name || !email || !message) {
+      return res.status(400).json({ error: "Vul alstublieft alle verplichte velden in (naam, e-mail en bericht)." });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: "Vul een geldig e-mailadres in." });
+    }
+
+    const db = getDb();
+    if (!db.contactMessages) db.contactMessages = [];
+
+    const newMessage = {
+      id: Date.now().toString(),
+      name: String(name).trim(),
+      email: String(email).trim(),
+      phone: phone ? String(phone).trim() : "",
+      subject: subject && String(subject).trim() ? String(subject).trim() : "Bericht via contactformulier",
+      message: String(message).trim(),
+      status: "moet nog beantwoord worden",
+      createdAt: new Date().toISOString(),
+      handledAt: null,
+      handledBy: null,
+      notes: ""
+    };
+
+    db.contactMessages.unshift(newMessage);
+    saveDb(db);
+
+    res.status(201).json({
+      success: true,
+      message: "Uw bericht is succesvol verzonden. We nemen zo snel mogelijk contact met u op.",
+      data: newMessage
+    });
+  });
+
+  // Admin: Get all contact messages
+  app.get("/api/admin/contact-messages", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const messages = (db.contactMessages || []).slice().sort((a: any, b: any) => {
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+    res.json(messages);
+  });
+
+  // Admin: Update status / notes of contact message
+  app.put("/api/admin/contact-messages/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const msg = (db.contactMessages || []).find((m: any) => m.id === req.params.id);
+    if (!msg) return res.status(404).json({ error: "Bericht niet gevonden" });
+
+    const { status, notes } = req.body;
+    if (status !== undefined) {
+      if (status === "afgehandeld") {
+        msg.status = "afgehandeld";
+        msg.handledAt = new Date().toISOString();
+        msg.handledBy = req.user?.fullName || req.user?.username || "Beheerder";
+      } else {
+        msg.status = "moet nog beantwoord worden";
+        msg.handledAt = null;
+        msg.handledBy = null;
+      }
+    }
+
+    if (notes !== undefined) {
+      msg.notes = String(notes);
+    }
+
+    saveDb(db);
+    res.json({ message: "Status succesvol bijgewerkt", data: msg });
+  });
+
+  // Admin: Delete contact message
+  app.delete("/api/admin/contact-messages/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    db.contactMessages = (db.contactMessages || []).filter((m: any) => m.id !== req.params.id);
+    saveDb(db);
+    res.json({ message: "Bericht verwijderd" });
+  });
+
+  // Public: Get published FAQs
+  app.get("/api/faqs", (req: any, res: any) => {
+    const db = getDb();
+    const faqs = (db.faqs || [])
+      .filter((f: any) => f.published !== false)
+      .sort((a: any, b: any) => (a.order ?? 99) - (b.order ?? 99));
+    res.json(faqs);
+  });
+
+  // Admin: Get all FAQs (including unpublished)
+  app.get("/api/admin/faqs", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const faqs = (db.faqs || []).sort((a: any, b: any) => (a.order ?? 99) - (b.order ?? 99));
+    res.json(faqs);
+  });
+
+  // Admin: Create new FAQ
+  app.post("/api/admin/faqs", requireAuth, requireAdmin, (req: any, res: any) => {
+    const { question, answer, category, order, published } = req.body;
+    if (!question || !String(question).trim() || !answer || !String(answer).trim()) {
+      return res.status(400).json({ error: "Vraag en antwoord zijn verplicht" });
+    }
+
+    const db = getDb();
+    if (!db.faqs) db.faqs = [];
+
+    const maxOrder = db.faqs.reduce((max: number, f: any) => Math.max(max, f.order || 0), 0);
+    const newFaq = {
+      id: "faq-" + Date.now(),
+      question: String(question).trim(),
+      answer: String(answer).trim(),
+      category: category ? String(category).trim() : "Algemeen",
+      order: typeof order === "number" ? order : maxOrder + 1,
+      published: published !== false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    db.faqs.push(newFaq);
+    saveDb(db);
+    res.status(201).json({ message: "FAQ succesvol aangemaakt", data: newFaq });
+  });
+
+  // Admin: Update FAQ
+  app.put("/api/admin/faqs/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    const { question, answer, category, order, published } = req.body;
+    const db = getDb();
+    if (!db.faqs) db.faqs = [];
+
+    const faqIndex = db.faqs.findIndex((f: any) => f.id === req.params.id);
+    if (faqIndex === -1) {
+      return res.status(404).json({ error: "FAQ niet gevonden" });
+    }
+
+    const faq = db.faqs[faqIndex];
+    if (question !== undefined) faq.question = String(question).trim();
+    if (answer !== undefined) faq.answer = String(answer).trim();
+    if (category !== undefined) faq.category = String(category).trim();
+    if (order !== undefined) faq.order = Number(order);
+    if (published !== undefined) faq.published = Boolean(published);
+    faq.updatedAt = new Date().toISOString();
+
+    saveDb(db);
+    res.json({ message: "FAQ succesvol bijgewerkt", data: faq });
+  });
+
+  // Admin: Reorder FAQs
+  app.put("/api/admin/faqs-reorder", requireAuth, requireAdmin, (req: any, res: any) => {
+    const { ids } = req.body;
+    if (!Array.isArray(ids)) {
+      return res.status(400).json({ error: "Array met IDs is vereist" });
+    }
+
+    const db = getDb();
+    if (!db.faqs) db.faqs = [];
+
+    ids.forEach((id: string, index: number) => {
+      const item = db.faqs.find((f: any) => f.id === id);
+      if (item) {
+        item.order = index + 1;
+      }
+    });
+
+    saveDb(db);
+    res.json({ message: "Volgorde bijgewerkt", data: db.faqs });
+  });
+
+  // Admin: Delete FAQ
+  app.delete("/api/admin/faqs/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    db.faqs = (db.faqs || []).filter((f: any) => f.id !== req.params.id);
+    saveDb(db);
+    res.json({ message: "FAQ verwijderd" });
+  });
+
+  // ==========================================
+  // WIJKEN EN KERNEN API
+  // ==========================================
+
+  // Public: Get all wijken en kernen
+  app.get("/api/wijken", (req, res) => {
+    const db = getDb();
+    res.json(db.wijken || []);
+  });
+
+  // Public: Get single wijk by slug (with alias resolution)
+  app.get("/api/wijken/:slug", (req, res) => {
+    const db = getDb();
+    const rawSlug = req.params.slug.toLowerCase();
+    const slug = LEGACY_SLUG_MAP[rawSlug] || rawSlug;
+    const wijk = (db.wijken || []).find((w: any) => w.slug.toLowerCase() === slug || w.slug.toLowerCase() === rawSlug);
+    if (!wijk) {
+      return res.status(404).json({ error: "Wijk of kern niet gevonden" });
+    }
+    res.json(wijk);
+  });
+
+  // Admin: Force reset / synchronize with official 43 Buurtkaart units
+  app.post("/api/admin/wijken/sync-buurtkaart", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    db.wijken = syncWijkenWithBuurtkaart(db.wijken || []);
+    saveDb(db);
+    res.json({
+      message: "Wijken en kernen succesvol gesynchroniseerd met de 43 Buurtkaart-gebieden",
+      count: db.wijken.length,
+      data: db.wijken,
+    });
+  });
+
+  // Admin: Upload photo (banner or vertegenwoordiger foto) for a wijk/kern
+  app.post("/api/admin/wijken/upload", requireAuth, requireAdmin, upload.single("file"), (req: any, res: any) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "Geen bestand geüpload" });
+    }
+    const url = `/uploads/wijken/${req.file.filename}`;
+    res.json({ url });
+  });
+
+  // Admin: Update wijk/kern (achtergrondfoto, beschrijving, vertegenwoordiger)
+  app.put("/api/admin/wijken/:slug", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const slug = req.params.slug.toLowerCase();
+    const wijkIndex = (db.wijken || []).findIndex((w: any) => w.slug.toLowerCase() === slug);
+
+    if (wijkIndex === -1) {
+      return res.status(404).json({ error: "Wijk of kern niet gevonden" });
+    }
+
+    const {
+      bannerUrl,
+      beschrijving,
+      vertegenwoordiger,
+      naam,
+      type,
+      gemeente,
+    } = req.body;
+
+    const wijk = db.wijken[wijkIndex];
+
+    if (bannerUrl !== undefined) wijk.bannerUrl = String(bannerUrl).trim();
+    if (beschrijving !== undefined) wijk.beschrijving = String(beschrijving).trim();
+    if (naam !== undefined && naam) wijk.naam = String(naam).trim();
+    if (type !== undefined && (type === "Wijk" || type === "Kern")) wijk.type = type;
+    if (gemeente !== undefined && gemeente) wijk.gemeente = String(gemeente).trim();
+
+    if (vertegenwoordiger === null || req.body.removeVertegenwoordiger) {
+      wijk.vertegenwoordiger = null;
+    } else if (vertegenwoordiger && typeof vertegenwoordiger === "object") {
+      const socials = vertegenwoordiger.socials || {};
+      wijk.vertegenwoordiger = {
+        voornaam: String(vertegenwoordiger.voornaam || "").trim(),
+        achternaam: String(vertegenwoordiger.achternaam || "").trim(),
+        fotoUrl: String(vertegenwoordiger.fotoUrl || "").trim(),
+        beschrijving: String(vertegenwoordiger.beschrijving || "").trim(),
+        email: String(vertegenwoordiger.email || "").trim(),
+        rol: String(vertegenwoordiger.rol || (wijk.type === "Wijk" ? "Wijkvertegenwoordiger" : "Kernvertegenwoordiger")).trim(),
+        socials: {
+          facebook: String(socials.facebook || "").trim(),
+          instagram: String(socials.instagram || "").trim(),
+          linkedin: String(socials.linkedin || "").trim(),
+          twitter: String(socials.twitter || socials.x || "").trim(),
+          telegram: String(socials.telegram || "").trim(),
+          tiktok: String(socials.tiktok || "").trim(),
+        },
+      };
+    }
+
+    wijk.updatedAt = new Date().toISOString();
+    saveDb(db);
+    res.json({ message: "Wijk succesvol bijgewerkt", data: wijk });
+  });
+
+  // Admin: Add custom wijk/kern
+  app.post("/api/admin/wijken", requireAuth, requireAdmin, (req: any, res: any) => {
+    const { naam, type, gemeente, bannerUrl, beschrijving, vertegenwoordiger } = req.body;
+    if (!naam || !type) {
+      return res.status(400).json({ error: "Naam en type zijn verplicht" });
+    }
+
+    const slug = naam
+      .toLowerCase()
+      .replace(/[,]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+
+    const db = getDb();
+    if (!db.wijken) db.wijken = [];
+
+    const exists = db.wijken.some((w: any) => w.slug === slug);
+    if (exists) {
+      return res.status(400).json({ error: "Een wijk of kern met deze naam bestaat al" });
+    }
+
+    const newWijk = {
+      slug,
+      naam: String(naam).trim(),
+      type: type === "Kern" ? "Kern" : "Wijk",
+      gemeente: String(gemeente || (type === "Wijk" ? "Steenwijk" : "Steenwijkerland")).trim(),
+      bannerUrl: String(bannerUrl || "/assets/hero-banner.jpg").trim(),
+      beschrijving: String(beschrijving || "").trim(),
+      vertegenwoordiger: vertegenwoordiger ? {
+        voornaam: String(vertegenwoordiger.voornaam || "").trim(),
+        achternaam: String(vertegenwoordiger.achternaam || "").trim(),
+        fotoUrl: String(vertegenwoordiger.fotoUrl || "").trim(),
+        beschrijving: String(vertegenwoordiger.beschrijving || "").trim(),
+        email: String(vertegenwoordiger.email || "").trim(),
+        rol: String(vertegenwoordiger.rol || (type === "Wijk" ? "Wijkvertegenwoordiger" : "Kernvertegenwoordiger")).trim(),
+        socials: {
+          facebook: String(vertegenwoordiger.socials?.facebook || "").trim(),
+          instagram: String(vertegenwoordiger.socials?.instagram || "").trim(),
+          linkedin: String(vertegenwoordiger.socials?.linkedin || "").trim(),
+          twitter: String(vertegenwoordiger.socials?.twitter || "").trim(),
+          telegram: String(vertegenwoordiger.socials?.telegram || "").trim(),
+          tiktok: String(vertegenwoordiger.socials?.tiktok || "").trim(),
+        },
+      } : null,
+      updatedAt: new Date().toISOString(),
+    };
+
+    db.wijken.push(newWijk);
+    saveDb(db);
+    res.status(201).json({ message: "Wijk of kern succesvol toegevoegd", data: newWijk });
+  });
+
+  // ==========================================
+  // VACATURES & OPENSTAANDE FUNCTIES API
+  // ==========================================
+
+  // Public / Member: Get all open positions
+  app.get("/api/vacancies", (req, res) => {
+    const db = getDb();
+    const positions: any[] = [];
+
+    // 1. Wijken and Kernen without representative
+    const openWijken = (db.wijken || []).filter((w: any) => !w.vertegenwoordiger || !w.vertegenwoordiger.voornaam);
+    for (const w of openWijken) {
+      const typeLabel = w.type === "Kern" ? "Kernvertegenwoordiger" : "Wijkvertegenwoordiger";
+      positions.push({
+        id: `wijk-${w.slug}`,
+        type: "wijkvertegenwoordiger",
+        title: `${typeLabel} ${w.naam}`,
+        wijkNaam: w.naam,
+        wijkSlug: w.slug,
+        gemeente: w.gemeente || (w.type === "Wijk" ? "Steenwijk" : "Steenwijkerland"),
+        category: w.type === "Kern" ? "Kernvertegenwoordiger" : "Wijkvertegenwoordiger",
+        description: `Als vertegenwoordiger bent u de ogen en oren voor Lijst van Andel in ${w.naam}. U spreekt met bewoners, signaleert knelpunten rond leefbaarheid, woningbouw of verkeer, en brengt lokale signalen direct in bij onze raadsfractie.`,
+        isOpen: true,
+        isWijk: true
+      });
+    }
+
+    // 2. Custom administrative / general vacancies
+    const customVacancies = (db.vacancies || []).filter((v: any) => v.isOpen !== false);
+    for (const cv of customVacancies) {
+      positions.push({
+        id: cv.id,
+        type: "custom",
+        title: cv.title,
+        wijkNaam: cv.wijkNaam || "Gemeente Steenwijkerland",
+        wijkSlug: null,
+        gemeente: "Steenwijkerland",
+        category: cv.category || "Algemeen",
+        description: cv.description || "Ondersteun onze partij en fractie in een actieve vrijwilligersrol.",
+        isOpen: true,
+        isWijk: false
+      });
+    }
+
+    res.json(positions);
+  });
+
+  // Member apply for open position (requiresAuth)
+  app.post("/api/vacancies/apply", requireAuth, (req: any, res: any) => {
+    const { vacancyId, vacancyTitle, wijkNaam, motivation, applicantName, applicantEmail } = req.body;
+    if (!motivation || typeof motivation !== "string" || motivation.trim().length < 5) {
+      return res.status(400).json({ error: "Schrijf alstublieft een motiverende beschrijving van minimaal enkele zinnen." });
+    }
+
+    const db = getDb();
+    if (!db.applications) db.applications = [];
+
+    const user = req.user;
+    const newApp = {
+      id: "app-" + Date.now(),
+      vacancyId: vacancyId || "onbekend",
+      vacancyTitle: vacancyTitle || "Openstaande Functie",
+      wijkNaam: wijkNaam || "Steenwijkerland",
+      userId: user.id,
+      applicantName: (applicantName && String(applicantName).trim()) || user.fullName || "Lid",
+      applicantEmail: (applicantEmail && String(applicantEmail).trim()) || user.email || (user.username?.includes("@") ? user.username : `${user.username}@leden.lijstvanandel.nl`),
+      motivation: motivation.trim(),
+      status: "nieuw", // nieuw | in_behandeling | gecontacteerd | afgerond
+      adminNotes: "",
+      createdAt: new Date().toISOString()
+    };
+
+    db.applications.unshift(newApp);
+    saveDb(db);
+
+    res.status(201).json({
+      message: `Uw aanmelding voor '${newApp.vacancyTitle}' is succesvol verstuurd! We nemen spoedig contact met u op.`,
+      application: newApp
+    });
+  });
+
+  // Admin: Get all applications
+  app.get("/api/admin/vacancies/applications", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    res.json(db.applications || []);
+  });
+
+  // Admin: Update application status or notes
+  app.patch("/api/admin/vacancies/applications/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    const { status, adminNotes } = req.body;
+    const db = getDb();
+    const appItem = (db.applications || []).find((a: any) => a.id === req.params.id);
+    if (!appItem) return res.status(404).json({ error: "Aanmelding niet gevonden" });
+
+    if (status) appItem.status = status;
+    if (adminNotes !== undefined) appItem.adminNotes = adminNotes;
+    saveDb(db);
+
+    res.json({ message: "Aanmelding bijgewerkt", application: appItem });
+  });
+
+  // Admin: Delete application
+  app.delete("/api/admin/vacancies/applications/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    db.applications = (db.applications || []).filter((a: any) => a.id !== req.params.id);
+    saveDb(db);
+    res.json({ message: "Aanmelding verwijderd" });
+  });
+
+  // Admin: Custom vacancies CRUD
+  app.get("/api/admin/vacancies/custom", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    res.json(db.vacancies || []);
+  });
+
+  app.post("/api/admin/vacancies/custom", requireAuth, requireAdmin, (req: any, res: any) => {
+    const { title, category, wijkNaam, description, isOpen } = req.body;
+    if (!title || !title.trim()) return res.status(400).json({ error: "Titel is verplicht" });
+    const db = getDb();
+    if (!db.vacancies) db.vacancies = [];
+    const newVac = {
+      id: "vac-" + Date.now(),
+      title: title.trim(),
+      category: category?.trim() || "Algemeen",
+      wijkNaam: wijkNaam?.trim() || "Heel Steenwijkerland",
+      description: description?.trim() || "",
+      isOpen: isOpen !== undefined ? Boolean(isOpen) : true,
+      createdAt: new Date().toISOString()
+    };
+    db.vacancies.push(newVac);
+    saveDb(db);
+    res.status(201).json({ message: "Vacature aangemaakt", vacancy: newVac });
+  });
+
+  app.put("/api/admin/vacancies/custom/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    const { title, category, wijkNaam, description, isOpen } = req.body;
+    const db = getDb();
+    const vac = (db.vacancies || []).find((v: any) => v.id === req.params.id);
+    if (!vac) return res.status(404).json({ error: "Vacature niet gevonden" });
+
+    if (title) vac.title = title.trim();
+    if (category !== undefined) vac.category = category.trim();
+    if (wijkNaam !== undefined) vac.wijkNaam = wijkNaam.trim();
+    if (description !== undefined) vac.description = description.trim();
+    if (isOpen !== undefined) vac.isOpen = Boolean(isOpen);
+    saveDb(db);
+    res.json({ message: "Vacature bijgewerkt", vacancy: vac });
+  });
+
+  app.delete("/api/admin/vacancies/custom/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    db.vacancies = (db.vacancies || []).filter((v: any) => v.id !== req.params.id);
+    saveDb(db);
+    res.json({ message: "Vacature verwijderd" });
+  });
+
+  // ==================== EXCLUSIEVE LEDEN DOCUMENTEN ====================
+  // Get all documents for authenticated members
+  app.get("/api/member-documents", requireAuth, (req: any, res: any) => {
+    const db = getDb();
+    const documents = (db.documents || []).slice().sort((a: any, b: any) => {
+      return new Date(b.date || b.createdAt).getTime() - new Date(a.date || a.createdAt).getTime();
+    });
+    res.json(documents);
+  });
+
+  // Get single document by ID
+  app.get("/api/member-documents/:id", requireAuth, (req: any, res: any) => {
+    const db = getDb();
+    const doc = (db.documents || []).find((d: any) => d.id === req.params.id);
+    if (!doc) {
+      return res.status(404).json({ error: "Document niet gevonden" });
+    }
+    res.json(doc);
+  });
+
+  // Admin: Get all documents
+  app.get("/api/admin/documents", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const documents = (db.documents || []).slice().sort((a: any, b: any) => {
+      return new Date(b.date || b.createdAt).getTime() - new Date(a.date || a.createdAt).getTime();
+    });
+    res.json(documents);
+  });
+
+  // Admin: Upload a PDF or document file
+  app.post("/api/admin/documents/upload", requireAuth, requireAdmin, upload.single("file"), (req: any, res: any) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "Geen bestand geüpload" });
+    }
+    const url = `/uploads/documents/${req.file.filename}`;
+    const sizeInMb = (req.file.size / (1024 * 1024)).toFixed(2);
+    const fileSize = req.file.size > 1024 * 1024 ? `${sizeInMb} MB` : `${Math.round(req.file.size / 1024)} KB`;
+
+    res.json({
+      url,
+      fileName: req.file.originalname,
+      fileSize,
+    });
+  });
+
+  // Admin: Create a new document
+  app.post("/api/admin/documents", requireAuth, requireAdmin, (req: any, res: any) => {
+    const { title, description, category, confidentiality, date, fileUrl, fileName, fileSize, pageCount, content, author } = req.body;
+    if (!title || !title.trim()) {
+      return res.status(400).json({ error: "Titel is verplicht" });
+    }
+
+    const db = getDb();
+    if (!db.documents) db.documents = [];
+
+    const newDoc = {
+      id: "doc-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
+      title: title.trim(),
+      description: (description || "").trim(),
+      category: (category || "Algemeen").trim(),
+      confidentiality: (confidentiality || "Vertrouwelijk - Alleen Leden").trim(),
+      date: date || new Date().toISOString().split("T")[0],
+      fileUrl: fileUrl || "",
+      fileName: fileName || "",
+      fileSize: fileSize || "1.0 MB",
+      pageCount: Number(pageCount) || 1,
+      content: content || "",
+      author: author || req.user.fullName || req.user.username || "Beheerder",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    db.documents.unshift(newDoc);
+    saveDb(db);
+
+    res.status(201).json({
+      message: "Document succesvol toegevoegd",
+      document: newDoc,
+    });
+  });
+
+  // Admin: Update existing document
+  app.put("/api/admin/documents/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    const { title, description, category, confidentiality, date, fileUrl, fileName, fileSize, pageCount, content, author } = req.body;
+    const db = getDb();
+    if (!db.documents) db.documents = [];
+
+    const docIndex = db.documents.findIndex((d: any) => d.id === req.params.id);
+    if (docIndex === -1) {
+      return res.status(404).json({ error: "Document niet gevonden" });
+    }
+
+    const existing = db.documents[docIndex];
+    const updated = {
+      ...existing,
+      title: title !== undefined ? title.trim() : existing.title,
+      description: description !== undefined ? description.trim() : existing.description,
+      category: category !== undefined ? category.trim() : existing.category,
+      confidentiality: confidentiality !== undefined ? confidentiality.trim() : existing.confidentiality,
+      date: date !== undefined ? date : existing.date,
+      fileUrl: fileUrl !== undefined ? fileUrl : existing.fileUrl,
+      fileName: fileName !== undefined ? fileName : existing.fileName,
+      fileSize: fileSize !== undefined ? fileSize : existing.fileSize,
+      pageCount: pageCount !== undefined ? Number(pageCount) : existing.pageCount,
+      content: content !== undefined ? content : existing.content,
+      author: author !== undefined ? author.trim() : existing.author,
+      updatedAt: new Date().toISOString(),
+    };
+
+    db.documents[docIndex] = updated;
+    saveDb(db);
+
+    res.json({
+      message: "Document succesvol bijgewerkt",
+      document: updated,
+    });
+  });
+
+  // Admin: Delete document
+  app.delete("/api/admin/documents/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const doc = (db.documents || []).find((d: any) => d.id === req.params.id);
+    if (!doc) {
+      return res.status(404).json({ error: "Document niet gevonden" });
+    }
+
+    db.documents = (db.documents || []).filter((d: any) => d.id !== req.params.id);
+    saveDb(db);
+
+    res.json({ message: "Document succesvol verwijderd" });
   });
 
   // Vite middleware for development

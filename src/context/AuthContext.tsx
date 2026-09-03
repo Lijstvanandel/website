@@ -1,10 +1,20 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import { toast } from "sonner";
 
-interface User {
+export interface User {
   id: string;
   username: string;
   fullName: string;
+  salutation?: string;
+  address?: string;
+  city?: string;
+  email?: string;
+  role?: string;
+  isActive?: boolean;
+  remarks?: string;
+  directDebit?: boolean;
+  newsletterSubscribed?: boolean;
+  createdAt?: string;
 }
 
 interface AuthContextType {
@@ -12,6 +22,7 @@ interface AuthContextType {
   token: string | null;
   login: (user: User, token: string) => void;
   logout: () => void;
+  updateUser: (partialUser: Partial<User>, newToken?: string) => void;
   isAuthenticated: boolean;
 }
 
@@ -37,23 +48,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const login = (userData: User, authToken: string) => {
+  const login = useCallback((userData: User, authToken: string) => {
     setUser(userData);
     setToken(authToken);
     localStorage.setItem("auth_user", JSON.stringify(userData));
     localStorage.setItem("auth_token", authToken);
-  };
+  }, []);
 
-  const logout = () => {
+  const updateUser = useCallback((partialUser: Partial<User>, newToken?: string) => {
+    setUser((prev) => {
+      if (!prev) return null;
+      const updated = { ...prev, ...partialUser };
+      localStorage.setItem("auth_user", JSON.stringify(updated));
+      return updated;
+    });
+    if (newToken) {
+      setToken(newToken);
+      localStorage.setItem("auth_token", newToken);
+    }
+  }, []);
+
+  const logout = useCallback(() => {
     setUser(null);
     setToken(null);
     localStorage.removeItem("auth_user");
     localStorage.removeItem("auth_token");
     toast.success("U bent uitgelogd.");
-  };
+  }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, isAuthenticated: !!token }}>
+    <AuthContext.Provider value={{ user, token, login, logout, updateUser, isAuthenticated: !!token }}>
       {children}
     </AuthContext.Provider>
   );

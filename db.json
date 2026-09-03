@@ -1,0 +1,848 @@
+{
+  "users": [
+    {
+      "id": "1788365405085",
+      "salutation": "De heer",
+      "fullName": "Admin Gebruiker",
+      "address": "",
+      "city": "Steenwijk",
+      "username": "admin",
+      "password": "$2a$10$C8H1cO/2Oq5R59n.V.pG/.T6tL/9D8J.o/uH9u8T6tL/9D8J.o/uH",
+      "role": "admin",
+      "isActive": true,
+      "email": "info@lijstvanandel.nl",
+      "newsletterSubscribed": true
+    },
+    {
+      "id": "1788366262062",
+      "salutation": "Mevr.",
+      "fullName": "Lisa Mars",
+      "address": "Feldweg",
+      "city": "Oldemarkt",
+      "username": "Lisa123",
+      "password": "$2b$10$wauS2nMqcHPDp8KkKjdRou2g4jYFdawqW8h0OLJnT4q8wjLUkpZ7K",
+      "remarks": "",
+      "directDebit": false,
+      "role": "admin",
+      "isActive": true,
+      "createdAt": "2026-09-02T16:24:22.062Z",
+      "email": "lisa@lijstvanandel.nl",
+      "newsletterSubscribed": false
+    },
+    {
+      "id": "1788367826430",
+      "salutation": "Dhr.",
+      "fullName": "Stef mars",
+      "address": "Het Schar 73",
+      "city": "Steenwijk",
+      "username": "Stef123",
+      "password": "$2b$10$dN8GgU8rz8VcdV/iWfPmNuDkKXAIQWllwT4RdcwUk1hoU4pF2z3Tq",
+      "remarks": "",
+      "directDebit": false,
+      "role": "member",
+      "isActive": true,
+      "createdAt": "2026-09-02T16:50:26.430Z",
+      "email": "stef@lijstvanandel.nl",
+      "newsletterSubscribed": true
+    }
+  ],
+  "fractieleden": [
+    {
+      "id": "1",
+      "name": "Sammy van Andel",
+      "firstName": "sammy",
+      "role": "Fractievoorzitter",
+      "type": "Raadslid",
+      "bio": "26 jaar, geboren en getogen in Steenwijk. Werkt als informatiearchitect na zijn HBO-ICT opleiding. Zet zich met een frisse, analytische blik in voor Steenwijkerland.",
+      "speerpunten": [
+        "Voorrang voor eigen inwoners",
+        "Behoud van de natuur",
+        "Slimmer & digitaal bestuur"
+      ],
+      "email": "sammy@lijstvanandel.nl",
+      "socials": {
+        "facebook": "#",
+        "instagram": "#",
+        "linkedin": "#"
+      },
+      "imgUrl": "/assets/sammy.png"
+    },
+    {
+      "id": "2",
+      "name": "Lisa Mars",
+      "firstName": "lisa",
+      "role": "Raadslid",
+      "type": "Raadslid",
+      "bio": "Als raadslid zet Lisa zich dagelijks in voor de inwoners van Steenwijkerland. Bevlogen, benaderbaar en met oog voor het persoonlijke verhaal achter beleid.",
+      "speerpunten": [
+        "Sociale samenhang",
+        "Veilige leefomgeving",
+        "Aandacht voor jongeren"
+      ],
+      "email": "lisa@lijstvanandel.nl",
+      "socials": {},
+      "imgUrl": "/assets/lisa.png"
+    }
+  ],
+  "videos": [
+    {
+      "id": "1001",
+      "title": "Bijdrage over woningbouw Oostermeenthe",
+      "category": "Raadsdebat",
+      "date": "2024-05-15",
+      "videoUrl": "https://www.w3schools.com/html/mov_bbb.mp4",
+      "fractieledenIds": [
+        "1"
+      ],
+      "wijkSlug": "oostermeenthe"
+    }
+  ],
+  "news": [
+    {
+      "id": "kopwijzer-rtv-slos",
+      "title": "Sammy van Andel te gast bij Kopwijzer (RTV SLOS)",
+      "excerpt": "In de uitzending van Kopwijzer sprak Sammy met de presentator over de speerpunten van Lijst van Andel en de lokale agenda.",
+      "description": "In de uitzending van Kopwijzer sprak Sammy met de presentator over de speerpunten van Lijst van Andel en de lokale agenda.",
+      "content": "<p>Tijdens de uitzending van Kopwijzer op RTV SLOS ging Sammy van Andel uitgebreid in op de lokale prioriteiten van Lijst van Andel.</p><p>Onderwerpen die voorbijkwamen waren onder meer voorrang voor eigen inwoners op de woningmarkt, het behoud van de Weerribben-Wieden en een bestuurscultuur die dichter bij de inwoner staat. Sammy benadrukte het belang van een lokale, onafhankelijke stem in de raad — vrij van Haagse invloeden.</p>",
+      "date": "2026-04-18",
+      "createdAt": "2026-04-18T10:00:00.000Z",
+      "author": "Redactie",
+      "thumbnailUrl": "/assets/news-kopwijzer.jpg",
+      "headerUrl": "/assets/news-kopwijzer.jpg",
+      "category": "Media"
+    },
+    {
+      "id": "nieuwe-impulsen-binnenstad",
+      "title": "Lijst van Andel pleit voor nieuwe impulsen in de binnenstad",
+      "excerpt": "De fractie dient een motie in om leegstand op de Markt actief aan te pakken en lokale ondernemers ruimte te geven.",
+      "description": "De fractie dient een motie in om leegstand op de Markt actief aan te pakken en lokale ondernemers ruimte te geven.",
+      "content": "<p>In de komende raadsvergadering dient Lijst van Andel een motie in die het college oproept met een concreet plan te komen om leegstand in het centrum van Steenwijk te bestrijden.</p><p>Volgens de fractie verdient de binnenstad een impuls die past bij de identiteit van de gemeente: ruimte voor lokale ondernemers, sfeer op de Markt en een aantrekkelijk verblijfsklimaat voor inwoners én bezoekers.</p>",
+      "date": "2026-05-02",
+      "createdAt": "2026-05-02T14:30:00.000Z",
+      "author": "Lijst van Andel",
+      "thumbnailUrl": "/assets/markt-steenwijk.jpg",
+      "headerUrl": "/assets/markt-steenwijk.jpg",
+      "category": "Politiek",
+      "wijkSlug": "steenwijk-centrum",
+      "wijkNaam": "Steenwijk Centrum / Binnenstad"
+    }
+  ],
+  "events": [
+    {
+      "id": "1788383596955",
+      "title": "Tijd voor verbetering — Inloopavond Steenwijkerland",
+      "date": "2026-09-15",
+      "address": "Het Schar 73, Steenwijk",
+      "startTime": "19:30",
+      "endTime": "21:30",
+      "shortDescription": "Een interactieve avond over de toekomst van onze gemeente. Kom meepraten met Sammy van Andel en de fractie over wonen, zorg en lokale voorzieningen.",
+      "description": "<p>Lijst van Andel organiseert een openbare inloopavond onder het motto <em>'Tijd voor verbetering'</em> in Steenwijk. Tijdens deze bijeenkomst gaan we openhartig in gesprek over wat er beter kan en moet in Steenwijkerland.</p><h3 class=\"text-xl font-display text-accent mt-6 mb-2\">Belangrijkste agendapunten</h3><ul class=\"list-disc pl-6 my-4 space-y-1\"><li><strong>Lokale woningbouw:</strong> Waarom starters en senioren voorrang moeten krijgen in hun eigen kern of dorp.</li><li><strong>Zorg & leefbaarheid:</strong> Behoud van maatschappelijke voorzieningen en een betrouwbaar lokaal bestuur.</li><li><strong>Directe inspraak:</strong> Breng uw eigen idee of signaal direct in bij de raadsfractie.</li></ul><p class=\"mt-4\">Na een korte aftrap door lijsttrekker Sammy van Andel is er volop ruimte voor informele gesprekken, vragen en discussie onder het genot van koffie en thee. Iedereen is van harte welkom!</p>",
+      "isPublic": true,
+      "isPublished": true,
+      "isCancelled": false,
+      "lat": 52.7901,
+      "lng": 6.1186,
+      "thumbnailUrl": "/assets/markt-steenwijk.jpg",
+      "attendees": [
+        "1788366262062"
+      ],
+      "createdAt": "2026-09-02T21:13:16.955Z"
+    }
+  ],
+  "categories": [
+    {
+      "id": "cat-1",
+      "name": "Politiek",
+      "slug": "politiek",
+      "description": "Standpunten, moties en raadsdebatten van de fractie",
+      "color": "#c6a858"
+    },
+    {
+      "id": "cat-2",
+      "name": "Media",
+      "slug": "media",
+      "description": "Interviews, artikelen en optredens in de media",
+      "color": "#2d6a4f"
+    },
+    {
+      "id": "cat-3",
+      "name": "Wijken & Kernen",
+      "slug": "wijken-en-kernen",
+      "description": "Lokaal nieuws uit de wijken en dorpen in Steenwijkerland",
+      "color": "#3d5a80"
+    },
+    {
+      "id": "cat-4",
+      "name": "Woningbouw",
+      "slug": "woningbouw",
+      "description": "Huisvesting, woningmarkt en nieuwbouw voor inwoners",
+      "color": "#d4a373"
+    },
+    {
+      "id": "cat-5",
+      "name": "Evenementen",
+      "slug": "evenementen",
+      "description": "Inloopavonden, bijeenkomsten en acties",
+      "color": "#e76f51"
+    },
+    {
+      "id": "cat-6",
+      "name": "Algemeen",
+      "slug": "algemeen",
+      "description": "Algemene mededelingen van Lijst van Andel",
+      "color": "#6c757d"
+    }
+  ],
+  "contactMessages": [
+    {
+      "id": "msg-1",
+      "name": "Jan Mulder",
+      "email": "jan.mulder@outlook.com",
+      "phone": "06-12345678",
+      "subject": "Vraag over starterslening en nieuwbouw Steenwijkerland",
+      "message": "Beste fractie van Lijst van Andel,\n\nIk las jullie speerpunt over voorrang voor eigen inwoners bij woningbouw. Ik woon al mijn hele leven in Steenwijk en zoek al geruime tijd een betaalbare starterswoning. Hebben jullie plannen om de starterslening in onze gemeente te verruimen of nieuwe projecten te versnellen?\n\nMet vriendelijke groet,\nJan Mulder",
+      "status": "moet nog beantwoord worden",
+      "createdAt": "2026-09-01T14:20:00.000Z",
+      "handledAt": null,
+      "handledBy": null,
+      "notes": ""
+    },
+    {
+      "id": "msg-2",
+      "name": "Astrid de Boer",
+      "email": "astrid.deboer@gmail.com",
+      "phone": "06-98765432",
+      "subject": "Snelheid en verkeersveiligheid Oostermeenthe",
+      "message": "Goedemiddag,\n\nGraag wil ik aandacht vragen voor de verkeerssituatie rondom de basisschool in Oostermeenthe. Er wordt regelmatig te hard gereden tijdens het halen en brengen van de kinderen. Kan de fractie hier aandacht voor vragen in de raad of een verzoek indienen bij het college?\n\nAlvast hartelijk dank,\nAstrid de Boer",
+      "status": "afgehandeld",
+      "createdAt": "2026-08-28T09:15:00.000Z",
+      "handledAt": "2026-08-29T11:00:00.000Z",
+      "handledBy": "Sammy van Andel",
+      "notes": "Telefonisch besproken met mw. De Boer. Schriftelijke vragen voorbereid voor wethouder mobiliteit."
+    }
+  ],
+  "faqs": [
+    {
+      "id": "faq-1",
+      "question": "Wat is de werkwijze van Lijst van Andel in Steenwijkerland?",
+      "answer": "Lijst van Andel staat voor een nuchtere, transparante en direct benaderbare lokale politiek. Wij geloven in duidelijke taal, gezond verstand en besluitvorming mét de inwoners in plaats van over hen. Wij zijn actief in alle wijken van Steenwijk en de omliggende kernen van Steenwijkerland.",
+      "category": "Algemeen",
+      "order": 1,
+      "published": true,
+      "createdAt": "2026-08-15T10:00:00.000Z"
+    },
+    {
+      "id": "faq-2",
+      "question": "Hoe kan ik als inwoner een probleem of idee doorgeven aan de fractie?",
+      "answer": "U kunt ons direct een bericht sturen via het contactformulier op deze pagina, een persoonlijke belafspraak van maximaal 30 minuten inplannen met een van onze raadsleden, of ons mailen via info@lijstvanandel.nl. Wij reageren doorgaans binnen 1 tot 2 werkdagen en brengen relevante signalen in bij de gemeenteraad of commissievergaderingen.",
+      "category": "Contact & Inwoners",
+      "order": 2,
+      "published": true,
+      "createdAt": "2026-08-15T10:05:00.000Z"
+    },
+    {
+      "id": "faq-3",
+      "question": "Wat houdt een belafspraak met een fractielid precies in?",
+      "answer": "Iedere woensdag-, donderdag- en vrijdagavond tussen 19:00 en 21:00 reserveren onze raadsleden tijd voor een-op-een telefonische gesprekken met inwoners. U kiest zelf het gewenste tijdslot via de knop 'Belafspraak inplannen'. Het gesprek duurt maximaal 30 minuten, is vertrouwelijk en vrijblijvend.",
+      "category": "Contact & Inwoners",
+      "order": 3,
+      "published": true,
+      "createdAt": "2026-08-15T10:10:00.000Z"
+    },
+    {
+      "id": "faq-4",
+      "question": "Wat zijn de belangrijkste speerpunten van Lijst van Andel?",
+      "answer": "Onze kernprioriteiten zijn: voorrang voor eigen inwoners bij woningbouw en toewijzing, behoud en versterking van onze natuur en het veengebied, behoud van voorzieningen en basisscholen in de dorpen en kernen, lagere lokale lasten en een moderne, digitale en efficiënte overheid.",
+      "category": "Politiek & Standpunten",
+      "order": 4,
+      "published": true,
+      "createdAt": "2026-08-15T10:15:00.000Z",
+      "updatedAt": "2026-09-03T03:22:17.283Z"
+    },
+    {
+      "id": "faq-5",
+      "question": "Hoe kan ik lid worden of mij inzetten voor de fractie?",
+      "answer": "Iedere inwoner van Steenwijkerland die zich herkent in onze visie kan zich aansluiten via de pagina 'Lid worden' of de steunfractie versterken. Als lid ontvangt u uitnodigingen voor onze inloopbijeenkomsten, fractievergaderingen en kunt u meedenken over moties en plannen.",
+      "category": "Lidmaatschap",
+      "order": 5,
+      "published": true,
+      "createdAt": "2026-08-15T10:20:00.000Z"
+    },
+    {
+      "id": "faq-6",
+      "question": "Hoe kan ik een raadsvergadering bijwonen of inspreken?",
+      "answer": "De vergaderingen van de gemeenteraad van Steenwijkerland in het gemeentehuis te Steenwijk zijn openbaar. U kunt inspreken tijdens het vragenuur voor inwoners aan het begin van raads- en commissievergaderingen. Neem gerust vooraf contact met ons op als u advies wilt over het inspreekrecht of om uw onderwerp samen voor te bereiden.",
+      "category": "Politiek & Standpunten",
+      "order": 6,
+      "published": true,
+      "createdAt": "2026-08-15T10:25:00.000Z"
+    }
+  ],
+  "wijken": [
+    {
+      "slug": "centrum-steenwijk",
+      "naam": "Steenwijk Centrum / Binnenstad",
+      "type": "Wijk",
+      "gemeente": "Steenwijk",
+      "is_grouped": false,
+      "bannerUrl": "/assets/markt-steenwijk.jpg",
+      "beschrijving": "Het historische hart van Steenwijk met de Markt, winkels, horeca en cultuur. Lijst van Andel zet zich in voor een bruisend centrum met minder leegstand en goede bereikbaarheid.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "clingenborgh",
+      "naam": "Clingenborgh",
+      "type": "Wijk",
+      "gemeente": "Steenwijk",
+      "is_grouped": false,
+      "bannerUrl": "/assets/steenwijk-aerial.jpg",
+      "beschrijving": "Rustige woonwijk met royale groenstroken en een gemoedelijke sfeer nabij de uitvalswegen van Steenwijk.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "de-gagels",
+      "naam": "De Gagels",
+      "type": "Wijk",
+      "gemeente": "Steenwijk",
+      "is_grouped": false,
+      "bannerUrl": "/assets/steenwijk-aerial.jpg",
+      "beschrijving": "Een geliefde woonwijk in Steenwijk met veel groen, scholen en gezinnen. Aandachtspunten zijn speelvoorzieningen en veilige routes voor fietsers en schoolgaande jeugd.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "nieuwe-gagels",
+      "naam": "Nieuwe gagels",
+      "type": "Wijk",
+      "gemeente": "Steenwijk",
+      "is_grouped": false,
+      "bannerUrl": "/assets/steenwijk-aerial.jpg",
+      "beschrijving": "Moderne uitbreidingswijk aansluitend op De Gagels met een gevarieerd woningaanbod voor jong en oud.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "dolderkanaal",
+      "naam": "Dolderkanaal",
+      "type": "Wijk",
+      "gemeente": "Steenwijk",
+      "is_grouped": false,
+      "bannerUrl": "/assets/steenwijk-aerial.jpg",
+      "beschrijving": "Wijk langs het Steenwijkerdiep en Dolderkanaal met een mix van bedrijvigheid en wonen aan het water.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "groot-verlaat",
+      "naam": "Groot Verlaat",
+      "type": "Wijk",
+      "gemeente": "Steenwijk",
+      "is_grouped": false,
+      "bannerUrl": "/assets/steenwijk-aerial.jpg",
+      "beschrijving": "Dynamisch bedrijventerrein en ondernemersgebied aan de zuidelijke invalsweg van Steenwijk.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "oostermeenthe",
+      "naam": "Oostermeenthe",
+      "type": "Wijk",
+      "gemeente": "Steenwijk",
+      "is_grouped": false,
+      "bannerUrl": "/assets/oostermeenthe-banner.jpg",
+      "beschrijving": "Oostermeenthe is een ruim opgezette woonwijk aan de oostzijde van Steenwijk. Een wijk met karakter, met aandacht voor verkeersveiligheid, groen onderhoud en voorzieningen voor jong en oud.",
+      "vertegenwoordiger": {
+        "voornaam": "Stef",
+        "achternaam": "Mars",
+        "fotoUrl": "/assets/stef-mars.jpg",
+        "rol": "Wijkvertegenwoordiger",
+        "beschrijving": "Stef is uw aanspreekpunt in Oostermeenthe. Hij verzamelt signalen uit de wijk en brengt deze onder de aandacht van de fractie.",
+        "email": "stef@lijstvanandel.nl",
+        "socials": {
+          "facebook": "https://facebook.com",
+          "instagram": "https://instagram.com",
+          "linkedin": "https://linkedin.com",
+          "twitter": "",
+          "telegram": "",
+          "tiktok": ""
+        }
+      },
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "oostwijken-de-beitel",
+      "naam": "Oostwijken, De Beitel",
+      "type": "Wijk",
+      "gemeente": "Steenwijk",
+      "is_grouped": false,
+      "bannerUrl": "/assets/steenwijk-aerial.jpg",
+      "beschrijving": "Bedrijvige en goed ontsloten wijk aan de oostzijde van Steenwijk met gevarieerde bedrijvigheid en werkgelegenheid.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "paddenpoel-en-kornputkwartier",
+      "naam": "Paddenpoel en Kornputkwartier",
+      "type": "Wijk",
+      "gemeente": "Steenwijk",
+      "is_grouped": false,
+      "bannerUrl": "/assets/steenwijk-aerial.jpg",
+      "beschrijving": "Populaire jonge woonwijk met moderne architectuur, veilige speelzones en veel waterpartijen.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "steenwijk-west",
+      "naam": "Steenwijk West",
+      "type": "Wijk",
+      "gemeente": "Steenwijk",
+      "is_grouped": false,
+      "bannerUrl": "/assets/steenwijk-aerial.jpg",
+      "beschrijving": "Een veelzijdige wijk met sterke sociale samenhang en hechte buurten, waar Lijst van Andel inzet op leefbaarheid en buurtinitiatieven.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "steenwijkerdiep",
+      "naam": "Steenwijkerdiep",
+      "type": "Wijk",
+      "gemeente": "Steenwijk",
+      "is_grouped": false,
+      "bannerUrl": "/assets/steenwijk-aerial.jpg",
+      "beschrijving": "Waterrijke stadszone aan het historische vaarwater tussen het centrum en de waterverbindingen naar de Kop van Overijssel.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "torenlanden",
+      "naam": "Torenlanden",
+      "type": "Wijk",
+      "gemeente": "Steenwijk",
+      "is_grouped": false,
+      "bannerUrl": "/assets/steenwijk-aerial.jpg",
+      "beschrijving": "Aangename woonwijk gunstig gesitueerd nabij sportfaciliteiten, scholen en op korte afstand van het centrum.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "woldmeenthe",
+      "naam": "Woldmeenthe",
+      "type": "Wijk",
+      "gemeente": "Steenwijk",
+      "is_grouped": false,
+      "bannerUrl": "/assets/steenwijk-aerial.jpg",
+      "beschrijving": "Een moderne en waterrijke woonwijk met een kenmerkende architectonische uitstraling aan de rand van Steenwijk.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "barsbeek-heetveld-en-kadoelen",
+      "naam": "Barsbeek, Heetveld en Kadoelen",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Prachtige plattelandsbuurtschappen en lintbebouwing op de glooiingen rondom Sint Jansklooster en Vollenhove.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "belt-schutsloot",
+      "naam": "Belt-Schutsloot",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Rustig waterdorp tussen de meren van de Wieden met volop natuurschoon en watersport.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "blankenham",
+      "naam": "Blankenham",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Langs de voormalige Zuiderzeedijk met historische boerderijen, rust en uitzicht over de polder.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "blokzijl",
+      "naam": "Blokzijl",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Pittoresk havenstadje aan de rand van de Weerribben met monumentale gevels en een rijke culinaire traditie.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "de-pol-baars-en-de-bult",
+      "naam": "De Pol, Baars en de Bult",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Bosrijke buurtschappen en landelijke woonomgevingen aan de noordrand van de gemeente nabij landgoed De Eese.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "doosje",
+      "naam": "Doosje",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": false,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Markante, rustieke buurtschap gelegen in het water- en weidelandschap tussen Wanneperveen en Meppel.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "eeserwold",
+      "naam": "Eeserwold",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Innovatief en duurzaam woon- en werklandschap rond het meer van Eeserwold met moderne ecologische ambities.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "eesveen",
+      "naam": "Eesveen",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/steenwijk-aerial.jpg",
+      "beschrijving": "Dorp aan de voet van Landgoed De Eese met een prachtige bosrijke omgeving en wandelpaden.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "giethoorn",
+      "naam": "Giethoorn",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Het wereldberoemde waterdorp van onze gemeente. Balans tussen recreatie, natuurbehoud en leefbaarheid voor de eigen inwoners staat hier voorop.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "groot-binnenwater",
+      "naam": "Groot binnenwater",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": false,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Het uitgestrekte meren- en plassengebied van Nationaal Park Weerribben-Wieden met Beulaker- en Belterwijde.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "ijsselham-paasloo-en-de-basse",
+      "naam": "Basse",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Karakteristieke kern met weidse vergezichten over het glooiende Steenwijkerlandse landschap.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "jonen-en-dwarsgracht",
+      "naam": "Jonen en Dwarsgracht",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Pittoreske waterdorpen in de Weerribben-Wieden, slechts bereikbaar via het water, per fiets of over typische vonders.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "kalenberg",
+      "naam": "Kalenberg",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Rietdorp in het hart van Nationaal Park Weerribben-Wieden, bereikbaar per boot of fietspad.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "kallenkote",
+      "naam": "Kallenkote",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Gastvrij en gemoedelijk esdorp tussen Steenwijk en Drenthe, omgeven door groen en boswachterijen.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "klosse-roekebos-en-dinxterveen",
+      "naam": "Klosse, Roekebos en Dinxterveen",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Vreedzame buurtschappen in het karakteristieke veenweide- en moeraslandschap ten zuiden van Giethoorn.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "kuinre",
+      "naam": "Kuinre",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Voormalige Zuiderzeehaven aan de grens met Friesland en Flevoland, omgeven door het uitgestrekte Kuinderbos.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "marijenkampen-en-willemsoord",
+      "naam": "Willemsoord",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Historische Kolonie van Weldadigheid met monumentale lanen, koloniehuisjes en erfgoed.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "moespot-en-leeuwte",
+      "naam": "Moespot en Leeuwte",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Schitterende buurtschappen aan de noord- en oostzijde van Vollenhove in het waterrijke poldergebied.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "nederland-en-baarlo",
+      "naam": "Nederland",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Iconische buurtschap in het rietlandschap van de Weerribben met unieke waterwegen.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "oldemarkt",
+      "naam": "Oldemarkt",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Grote kern met sterke voorzieningen, lokale winkeliers, bloeiend verenigingsleven en basisonderwijs.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "onna",
+      "naam": "Onna",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Landelijk dorp met een hechte buurtvereniging en fraaie natuur rondom de Onnastraat.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "ossenzijl",
+      "naam": "Ossenzijl",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Noordelijke poort naar de Weerribben met het bezoekerscentrum en volop waterrecreatie.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "scheerwolde",
+      "naam": "Scheerwolde",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Gemoedelijk dorp in het polderlandschap tussen Steenwijk en de Weerribben.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "sint-jansklooster",
+      "naam": "Sint Jansklooster",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Hooggelegen dorp met de iconische watertoren, het spectaculaire corso en uitzicht over het veenland.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "steenwijkerwold-en-witte-paarden",
+      "naam": "Steenwijkerwold",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Gastvrij dorp met hechte gemeenschap, rijk verenigingsleven en sterke lokale basisscholen.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "tuk",
+      "naam": "Tuk",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/steenwijk-aerial.jpg",
+      "beschrijving": "Prachtig gelegen tegen de Woldberg en de heide, met een actief dorpsbelang en hoge kwaliteit van wonen.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "vollenhove",
+      "naam": "Vollenhove",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Historische stad met havezaten, pittoreske haven en de befaamde bloemencorsocultuur.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "wanneperveen",
+      "naam": "Wanneperveen",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Langgerekt lintdorp met agrarische oorsprong en directe ligging aan de meren van de Wieden.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "wetering",
+      "naam": "Wetering",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Karakteristiek lintdorp aan weerszijden van de Wetering in het rietland van de Weerribben.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    },
+    {
+      "slug": "zuidveen",
+      "naam": "Zuidveen",
+      "type": "Kern",
+      "gemeente": "Steenwijkerland",
+      "is_grouped": true,
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "beschrijving": "Historisch lintdorp direct ten zuiden van Steenwijk met een sterke eigen identiteit en landelijke sfeer.",
+      "vertegenwoordiger": null,
+      "updatedAt": "2026-09-03T03:43:16.094Z"
+    }
+  ],
+  "vacancies": [
+    {
+      "id": "vac-campagne",
+      "title": "Campagne & Evenementen Coördinator",
+      "category": "Campagneteam",
+      "wijkNaam": "Heel Steenwijkerland",
+      "description": "Help onze partij zichtbaar te maken tijdens markten, bijeenkomsten en de komende gemeenteraadsverkiezingen.",
+      "isOpen": true,
+      "createdAt": "2026-09-03T04:23:02.999Z"
+    },
+    {
+      "id": "vac-socials",
+      "title": "Social Media & Content Creator",
+      "category": "Communicatie",
+      "wijkNaam": "Steenwijk / Digitaal",
+      "description": "Schrijf korte berichten, maak reels en foto-updates over raadsvergaderingen en lokale acties van Lijst van Andel.",
+      "isOpen": true,
+      "createdAt": "2026-09-03T04:23:03.000Z"
+    },
+    {
+      "id": "vac-fractie-assistent",
+      "title": "Fractie-ondersteuner Thema Wonen & Zorg",
+      "category": "Beleid & Raad",
+      "wijkNaam": "Gemeente Steenwijkerland",
+      "description": "Ondersteun onze raadsleden bij het voorbereiden van moties, schriftelijke vragen en raadsvoorstellen.",
+      "isOpen": true,
+      "createdAt": "2026-09-03T04:23:03.000Z"
+    }
+  ],
+  "applications": [],
+  "documents": [
+    {
+      "id": "doc-concept-programma-2026",
+      "title": "Concept Partijprogramma 2026-2030",
+      "description": "Meest recente vertrouwelijke versie ter inzage voor de ALV en fractieberaad met amendementsruimte.",
+      "category": "Partijprogramma",
+      "confidentiality": "Vertrouwelijk - Alleen Leden",
+      "date": "2026-05-10",
+      "fileUrl": "/uploads/documents/concept_partijprogramma_2026.pdf",
+      "fileName": "concept_partijprogramma_2026.pdf",
+      "fileSize": "1.8 MB",
+      "pageCount": 3,
+      "author": "Sammy van Andel & Programmacommissie",
+      "createdAt": "2026-05-10T09:00:00.000Z",
+      "content": "HOOFDSTUK 1: WONINGBOUW & LEEFBAARHEID IN STEENWIJKERLAND\\n\\n1.1 Voorrang voor lokale woningzoekenden\\nLijst van Andel stelt vast dat starters en senioren uit onze eigen kernen en wijken te vaak buiten de boot vallen. In het nieuwe programma eisen wij bindende voorrangsregels voor lokale inwoners bij nieuwbouwprojecten in Steenwijk en omliggende kernen.\\n\\n1.2 Behoud van het unieke landschap\\nBouwen doen we met respect voor het Weerribben-Wieden gebied en ons waardevolle cultuurlandschap. Geen massale hoogbouw in authentieke dorpsgezichten.\\n\\nHOOFDSTUK 2: VOORZIENINGEN & BEREIKBAARHEID\\n\\n2.1 Basisscholen en dorpshuizen\\nIedere kern moet kunnen rekenen op het behoud van ontmoetingsplekken. Het buurthuis is het kloppend hart van de dorpsgemeenschap.\\n\\n2.2 Openbaar vervoer en buurtbussen\\nVerbetering van de aansluiting tussen de buitengebieden en het NS-station in Steenwijk.\\n\\nHOOFDSTUK 3: TRANSPARANTE BESTUURSSTIJL\\n\\nFractieleden zijn direct aanspreekbaar. Besluiten worden genomen in open dialoog met wijkvertegenwoordigers."
+    },
+    {
+      "id": "doc-financieel-jaarverslag-2025",
+      "title": "Financieel Jaarverslag & Begroting 2026",
+      "description": "Volledige financiële verantwoording van de penningmeester inclusief kascommissieverslag en reserveopbouw.",
+      "category": "Financiën",
+      "confidentiality": "Strikt Vertrouwelijk",
+      "date": "2026-03-28",
+      "fileUrl": "/uploads/documents/financieel_jaarverslag_2025.pdf",
+      "fileName": "financieel_jaarverslag_2025.pdf",
+      "fileSize": "840 KB",
+      "pageCount": 2,
+      "author": "Penningmeester Lijst van Andel",
+      "createdAt": "2026-03-28T14:30:00.000Z",
+      "content": "FINANCIEEL OVERZICHT BOEKJAAR 2025\\n\\n1. BATEN & INKOMSTEN\\n- Contributies geregistreerde leden: € 14.850,-\\n- Vrijwillige donaties & giften: € 6.420,-\\n- Totaal baten: € 21.270,-\\n\\n2. LASTEN & UITGAVEN\\n- Communicatie, website & ledenportaal: € 4.150,-\\n- Zaalhuur ALV & wijkbijeenkomsten: € 2.800,-\\n- Drukwerk & flyers kernenbezoek: € 3.200,-\\n- Reserve campagnekas gemeenteraad 2026: € 9.500,-\\n- Algemene administratie & bankkosten: € 820,-\\n- Totaal lasten: € 20.470,-\\n\\n3. RESULTAAT & BALANS\\nPositief exploitatiesaldo van € 800,- toegevoegd aan de algemene reserve.\\n\\n4. KASCOMMISSIEVERKLARING\\nDe kascommissie heeft de boeken en bankafschriften gecontroleerd en adviseert de ALV om het bestuur decharge te verlenen."
+    },
+    {
+      "id": "doc-fractiestatuut-reglement",
+      "title": "Fractiestatuut & Huishoudelijk Reglement",
+      "description": "Interne gedragsregels, stemprocedures en vertrouwelijkheidsrichtlijnen van Lijst van Andel.",
+      "category": "Statuten & Reglementen",
+      "confidentiality": "Vertrouwelijk - Alleen Leden",
+      "date": "2026-01-15",
+      "fileUrl": "/uploads/documents/fractiestatuut_en_reglement.pdf",
+      "fileName": "fractiestatuut_en_reglement.pdf",
+      "fileSize": "620 KB",
+      "pageCount": 2,
+      "author": "Fractiebestuur",
+      "createdAt": "2026-01-15T11:00:00.000Z",
+      "content": "FRACTIESTATUUT LIJST VAN ANDEL\\n\\nARTIKEL 1: GEMEENSCHAPPELIJKE VERANTWOORDELIJKHEID\\n1. De fractie van Lijst van Andel vertegenwoordigt de inwoners van Steenwijkerland op basis van het verkiezingsprogramma en lokale speerpunten.\\n2. Leden en fractieleden handelen te allen tijde integer, transparant en met respect voor elkaar.\\n\\nARTIKEL 2: VERTROUWELIJKHEID & DIGITALE STUKKEN\\n1. Documenten aangemerkt als vertrouwelijk zijn uitsluitend bestemd voor geregistreerde leden en fractieleden.\\n2. Het delen, exporteren of kopiëren van interne beraadstukken zonder schriftelijke instemming van de fractievoorzitter is uitdrukkelijk verboden.\\n\\nARTIKEL 3: BESLUITVORMING & STEMPROCEDURE\\n1. Besluiten binnen de fractie worden bij voorkeur genomen op basis van consensus.\\n2. Bij stemming beslist de gewone meerderheid der uitgebrachte geldige stemmen."
+    }
+  ]
+}

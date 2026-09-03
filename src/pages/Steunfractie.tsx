@@ -2,6 +2,7 @@ import { Mail, Instagram, Facebook, Linkedin } from "lucide-react";
 import silhouette from "@/assets/silhouette.png";
 
 interface Steunlid {
+  id: string;
   naam: string;
   voornaam: string;
   rol: string;
@@ -12,6 +13,7 @@ interface Steunlid {
 
 const steunfractie: Steunlid[] = [
   {
+    id: "nico-noort",
     naam: "Nico Noort",
     voornaam: "Nico",
     rol: "Steunfractielid",
@@ -20,6 +22,7 @@ const steunfractie: Steunlid[] = [
     socials: { instagram: "#", facebook: "#", linkedin: "#" },
   },
   {
+    id: "antonius-nicola",
     naam: "Antonius Nicola",
     voornaam: "Antonius",
     rol: "Steunfractielid",
@@ -28,7 +31,8 @@ const steunfractie: Steunlid[] = [
     socials: { instagram: "#", facebook: "#", linkedin: "#" },
   },
   {
-    naam: "Volt nog",
+    id: "volgt-nog",
+    naam: "Volgt nog",
     voornaam: "info",
     rol: "Steunfractielid",
     img: silhouette,
@@ -50,9 +54,9 @@ const Steunfractie = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {steunfractie.map((p, i) => (
+        {steunfractie.map((p) => (
           <article
-            key={i}
+            key={p.id}
             className="group relative bg-card border border-border overflow-hidden hover-lift flex flex-col"
           >
             <div className="absolute top-3 left-3 z-10 px-3 py-1 bg-twente-black/80 backdrop-blur border border-accent text-[10px] uppercase tracking-widest text-accent font-semibold">

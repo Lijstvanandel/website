@@ -13,6 +13,7 @@ import Steunfractie from "./pages/Steunfractie";
 import Standpunten from "./pages/Standpunten";
 import Contact from "./pages/Contact";
 import Agenda from "./pages/Agenda";
+import AgendaDetail from "./pages/AgendaDetail";
 import Nieuws from "./pages/Nieuws";
 import NieuwsDetail from "./pages/NieuwsDetail";
 import WijkenEnKernen from "./pages/WijkenEnKernen";
@@ -21,6 +22,7 @@ import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
+import AdminDashboard from "./pages/AdminDashboard";
 
 const queryClient = new QueryClient();
 
@@ -41,14 +43,18 @@ const App = () => (
                 <Route path="/raadsleden" element={<Raadsleden />} />
                 <Route path="/standpunten" element={<Standpunten />} />
                 <Route path="/agenda" element={<Agenda />} />
+                <Route path="/agenda/:id" element={<AgendaDetail />} />
                 <Route path="/nieuws" element={<Nieuws />} />
                 <Route path="/nieuws/:id" element={<NieuwsDetail />} />
                 <Route path="/wijken-en-kernen" element={<WijkenEnKernen />} />
                 <Route path="/wijken-en-kernen/:slug" element={<WijkDetail />} />
+                <Route path="/wijken-en/kernen" element={<WijkenEnKernen />} />
+                <Route path="/wijken-en/kernen/:slug" element={<WijkDetail />} />
                 <Route path="/contact" element={<Contact />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/registreren" element={<Register />} />
                 <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/admin" element={<AdminDashboard />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>

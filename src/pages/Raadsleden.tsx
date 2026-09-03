@@ -1,77 +1,23 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Phone, Calendar, Mail, Instagram, Facebook, Linkedin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BelafspraakDialog } from "@/components/BelafspraakDialog";
-import sammyImg from "@/assets/sammy.png";
-import lisaImg from "@/assets/lisa.png";
-import nathanImg from "@/assets/nathan.png";
-import chrisImg from "@/assets/chris.jpg";
-
-interface Lid {
-  naam: string;
-  voornaam: string;
-  rol: string;
-  type: "Raadslid" | "Burgerraadslid";
-  img: string;
-  bio: string;
-  speerpunten: string[];
-  selectValue: string;
-  socials: { instagram?: string; facebook?: string; linkedin?: string };
-}
-
-const leden: Lid[] = [
-  {
-    naam: "Sammy van Andel",
-    voornaam: "sammy",
-    rol: "Fractievoorzitter",
-    type: "Raadslid",
-    img: sammyImg,
-    bio: "26 jaar, geboren en getogen in Steenwijk. Werkt als informatiearchitect na zijn HBO-ICT opleiding. Zet zich met een frisse, analytische blik in voor Steenwijkerland.",
-    speerpunten: ["Voorrang voor eigen inwoners", "Behoud van de natuur", "Slimmer & digitaal bestuur"],
-    selectValue: "Sammy van Andel — Fractievoorzitter",
-    socials: { instagram: "#", facebook: "#", linkedin: "#" },
-  },
-  {
-    naam: "Lisa Mars",
-    voornaam: "lisa",
-    rol: "Raadslid",
-    type: "Raadslid",
-    img: lisaImg,
-    bio: "Als raadslid zet Lisa zich dagelijks in voor de inwoners van Steenwijkerland. Bevlogen, benaderbaar en met oog voor het persoonlijke verhaal achter beleid.",
-    speerpunten: ["Sociale samenhang", "Veilige leefomgeving", "Aandacht voor jongeren"],
-    selectValue: "Lisa Mars — Raadslid",
-    socials: { instagram: "#", facebook: "#", linkedin: "#" },
-  },
-  {
-    naam: "Nathan ten Wolde",
-    voornaam: "nathan",
-    rol: "Burgerraadslid",
-    type: "Burgerraadslid",
-    img: nathanImg,
-    bio: "Diep geworteld in de gemeente. Actief lid van muziekvereniging De Woldklank en belijdend lid van de Christelijk Gereformeerde Kerk. Kent de agrarische praktijk van binnenuit.",
-    speerpunten: ["Boerenpraktijk in beleid", "Behoud agrarisch landschap", "Bestuur vanuit principes"],
-    selectValue: "Nathan ten Wolde — Burgerraadslid",
-    socials: { instagram: "#", facebook: "#", linkedin: "#" },
-  },
-  {
-    naam: "Chris van Andel",
-    voornaam: "chris",
-    rol: "Burgerraadslid",
-    type: "Burgerraadslid",
-    img: chrisImg,
-    bio: "Burgerraadslid met jarenlange betrokkenheid bij Steenwijkerland. Brengt levenservaring, nuchterheid en een scherp oog voor lokaal belang naar de fractie.",
-    speerpunten: ["Realistisch lokaal beleid", "Aandacht voor ondernemers", "Korte lijnen met inwoners"],
-    selectValue: "Chris van Andel — Burgerraadslid",
-    socials: { instagram: "#", facebook: "#", linkedin: "#" },
-  },
-];
+import { Link } from "react-router-dom";
+import { VideoPlayer } from "@/components/VideoPlayer";
 
 const Raadsleden = () => {
   const [belOpen, setBelOpen] = useState(false);
   const [voorgeselecteerd, setVoorgeselecteerd] = useState<string | undefined>(undefined);
+  const [leden, setLeden] = useState<any[]>([]);
+  const [videos, setVideos] = useState<any[]>([]);
 
-  const openMet = (lid: Lid) => {
-    setVoorgeselecteerd(lid.selectValue);
+  useEffect(() => {
+    fetch("/api/fractieleden").then(res => res.json()).then(setLeden);
+    fetch("/api/videos").then(res => res.json()).then(setVideos);
+  }, []);
+
+  const openMet = (lid: any) => {
+    setVoorgeselecteerd(`${lid.name} — ${lid.role}`);
     setBelOpen(true);
   };
 
@@ -81,8 +27,7 @@ const Raadsleden = () => {
         <div className="text-xs uppercase tracking-[0.3em] text-accent mb-3">Onze fractie</div>
         <h1 className="font-display text-6xl md:text-7xl mb-6 border-gold-line pb-5">Fractie</h1>
         <p className="text-lg text-muted-foreground">
-          Twee raadsleden en twee burgerraadsleden. Vier mensen die week in, week uit knokken
-          voor een beter Steenwijkerland — en die u rechtstreeks kunt spreken.
+          Mensen die week in, week uit knokken voor een beter Steenwijkerland — en die u rechtstreeks kunt spreken.
         </p>
       </div>
 
@@ -105,75 +50,95 @@ const Raadsleden = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {leden.map((p) => (
-          <article key={p.naam} className="group relative bg-card border border-border overflow-hidden hover-lift flex flex-col">
+        {leden.length === 0 && <div className="col-span-2 text-center text-muted-foreground py-10">Nog geen fractieleden toegevoegd via het dashboard.</div>}
+        {leden.map((p) => {
+          const personalVideos = videos.filter(v => v.fractieledenIds?.includes(p.id)).slice(0, 3);
+          
+          return (
+          <article key={p.id} className="group relative bg-card border border-border overflow-hidden hover-lift flex flex-col">
             <div className="absolute top-3 left-3 z-10 px-3 py-1 bg-twente-black/80 backdrop-blur border border-accent text-[10px] uppercase tracking-widest text-accent font-semibold">
-              {p.rol}
+              {p.role}
             </div>
             <div className="grid grid-cols-[160px_1fr] sm:grid-cols-[200px_1fr]">
-              <div className="aspect-[4/5] overflow-hidden">
-                <img
-                  src={p.img}
-                  alt={`${p.naam} - ${p.rol}`}
-                  loading="lazy"
-                  width={800}
-                  height={1000}
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                />
+              <div className="aspect-[4/5] overflow-hidden bg-muted flex items-center justify-center">
+                {p.imgUrl ? (
+                  <img src={p.imgUrl} alt={p.name} loading="lazy" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                ) : (
+                  <div className="text-muted-foreground text-xs uppercase tracking-wider">Geen foto</div>
+                )}
               </div>
               <div className="p-5 md:p-6 flex flex-col">
-                <div className="text-[10px] uppercase tracking-widest text-accent mb-1">{p.rol}</div>
-                <h3 className="font-display text-3xl mb-3">{p.naam}</h3>
+                <div className="text-[10px] uppercase tracking-widest text-accent mb-1">{p.type}</div>
+                <h3 className="font-display text-3xl mb-3">{p.name}</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed mb-4">{p.bio}</p>
-                <ul className="space-y-1.5 mb-4">
-                  {p.speerpunten.map(s => (
-                    <li key={s} className="flex items-start gap-2 text-xs text-foreground/80">
-                      <span className="w-1 h-1 rounded-full bg-accent mt-1.5 shrink-0" />
-                      {s}
-                    </li>
-                  ))}
-                </ul>
-
-                <a
-                  href={`mailto:${p.voornaam}@lijstvanandel.nl`}
-                  className="flex items-center gap-2 text-xs text-accent hover:text-accent/80 mb-3 break-all"
-                >
-                  <Mail className="w-3.5 h-3.5 shrink-0" />
-                  {p.voornaam}@lijstvanandel.nl
-                </a>
-
+                
+                {p.speerpunten && p.speerpunten.length > 0 && (
+                  <ul className="space-y-1.5 mb-4">
+                    {p.speerpunten.map((s: string) => (
+                      <li key={s} className="flex items-start gap-2 text-xs text-foreground/80">
+                        <span className="w-1 h-1 rounded-full bg-accent mt-1.5 shrink-0" />
+                        {s}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                
+                {p.email && (
+                  <a href={`mailto:${p.email}`} className="flex items-center gap-2 text-xs text-accent hover:text-accent/80 mb-3 break-all">
+                    <Mail className="w-3.5 h-3.5 shrink-0" />
+                    {p.email}
+                  </a>
+                )}
+                
                 <div className="flex items-center gap-2 mb-4">
-                  {p.socials.instagram && (
-                    <a href={p.socials.instagram} target="_blank" rel="noopener noreferrer" aria-label={`Instagram van ${p.naam}`}
-                       className="w-8 h-8 flex items-center justify-center border border-accent/40 text-accent hover:bg-accent hover:text-accent-foreground transition-colors">
+                  {p.socials?.instagram && (
+                    <a href={p.socials.instagram} target="_blank" rel="noopener noreferrer" className="w-8 h-8 flex items-center justify-center border border-accent/40 text-accent hover:bg-accent hover:text-accent-foreground transition-colors">
                       <Instagram className="w-4 h-4" />
                     </a>
                   )}
-                  {p.socials.facebook && (
-                    <a href={p.socials.facebook} target="_blank" rel="noopener noreferrer" aria-label={`Facebook van ${p.naam}`}
-                       className="w-8 h-8 flex items-center justify-center border border-accent/40 text-accent hover:bg-accent hover:text-accent-foreground transition-colors">
+                  {p.socials?.facebook && (
+                    <a href={p.socials.facebook} target="_blank" rel="noopener noreferrer" className="w-8 h-8 flex items-center justify-center border border-accent/40 text-accent hover:bg-accent hover:text-accent-foreground transition-colors">
                       <Facebook className="w-4 h-4" />
                     </a>
                   )}
-                  {p.socials.linkedin && (
-                    <a href={p.socials.linkedin} target="_blank" rel="noopener noreferrer" aria-label={`LinkedIn van ${p.naam}`}
-                       className="w-8 h-8 flex items-center justify-center border border-accent/40 text-accent hover:bg-accent hover:text-accent-foreground transition-colors">
+                  {p.socials?.linkedin && (
+                    <a href={p.socials.linkedin} target="_blank" rel="noopener noreferrer" className="w-8 h-8 flex items-center justify-center border border-accent/40 text-accent hover:bg-accent hover:text-accent-foreground transition-colors">
                       <Linkedin className="w-4 h-4" />
                     </a>
                   )}
                 </div>
-
-                <Button
-                  onClick={() => openMet(p)}
-                  variant="outline"
-                  className="mt-auto border-accent text-accent hover:bg-accent hover:text-accent-foreground uppercase tracking-wider text-xs font-semibold w-fit"
-                >
+                <Button onClick={() => openMet(p)} variant="outline" className="mt-auto border-accent text-accent hover:bg-accent hover:text-accent-foreground uppercase tracking-wider text-xs font-semibold w-fit">
                   <Phone className="w-3.5 h-3.5" /> Belafspraak inplannen
                 </Button>
               </div>
             </div>
+            
+            {/* Videobijdragen sectie */}
+            {personalVideos.length > 0 && (
+              <div className="border-t border-border p-5 bg-black/20">
+                <h4 className="text-xs uppercase tracking-widest text-muted-foreground mb-3 font-semibold">Laatste Bijdragen ({personalVideos.length})</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {personalVideos.map(v => (
+                    <div key={v.id} className="bg-background rounded overflow-hidden border border-border flex flex-col">
+                      <div className="aspect-video bg-black flex-shrink-0 relative overflow-hidden">
+                        <VideoPlayer url={v.videoUrl} title={v.title} className="w-full h-full" />
+                        {v.wijkSlug && (
+                          <Link to={`/wijken-en-kernen/${v.wijkSlug}`} className="absolute top-1 left-1 bg-secondary/90 text-secondary-foreground px-1.5 py-0.5 rounded text-[8px] hover:bg-secondary transition-colors z-10">
+                            Wijk/Kern
+                          </Link>
+                        )}
+                      </div>
+                      <div className="p-2">
+                        <div className="text-[9px] uppercase tracking-wider text-accent mb-1">{v.category} • {v.date}</div>
+                        <div className="text-xs font-semibold leading-tight line-clamp-2">{v.title}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </article>
-        ))}
+        )})}
       </div>
 
       <BelafspraakDialog

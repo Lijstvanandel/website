@@ -1,0 +1,2213 @@
+import { useState, useEffect, useCallback } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { Navigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
+import {
+  Users,
+  Video,
+  ShieldCheck,
+  Check,
+  X,
+  Upload,
+  Newspaper,
+  CalendarDays,
+  MapPin,
+  Tag,
+  Pencil,
+  ExternalLink,
+  MessageSquare,
+  Mail,
+  Phone,
+  Clock,
+  CheckCircle,
+  AlertCircle,
+  RotateCcw,
+  Search,
+  Trash2,
+  Send,
+  Inbox,
+  HelpCircle,
+  Download,
+  Copy,
+  FileSpreadsheet,
+  Briefcase,
+  FileText,
+} from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { VideoPlayer } from "@/components/VideoPlayer";
+import { NewsContentEditor } from "@/components/NewsContentEditor";
+import { CategoryManager, NewsCategory } from "@/components/CategoryManager";
+import { FaqManager } from "@/components/FaqManager";
+import { WijkManager } from "@/components/WijkManager";
+import { VacancyManager } from "@/components/VacancyManager";
+import { DocumentManager } from "@/components/DocumentManager";
+import { WIJKEN_EN_KERNEN } from "@/data/wijken";
+import { NewsItem } from "@/data/news";
+
+interface UserItem {
+  id: string;
+  salutation?: string;
+  fullName: string;
+  username: string;
+  email?: string;
+  city?: string;
+  role: string;
+  isActive: boolean;
+  newsletterSubscribed?: boolean;
+  createdAt?: string;
+}
+
+interface FractielidItem {
+  id: string;
+  name: string;
+  firstName?: string;
+  role: string;
+  type: string;
+  bio?: string;
+  speerpunten?: string[];
+  email?: string;
+  facebook?: string;
+  instagram?: string;
+  linkedin?: string;
+  imageUrl?: string;
+}
+
+interface VideoItem {
+  id: string;
+  title: string;
+  category: string;
+  date: string;
+  videoUrl?: string;
+  wijkSlug?: string;
+  fractieledenIds?: string[];
+}
+
+interface EventAttendee {
+  id: string;
+  fullName: string;
+  email: string;
+}
+
+interface EventItem {
+  id: string;
+  title: string;
+  date: string;
+  address: string;
+  startTime: string;
+  endTime: string;
+  shortDescription?: string;
+  description: string;
+  isPublic: boolean;
+  isPublished: boolean;
+  isCancelled?: boolean;
+  thumbnailUrl?: string;
+  attendees?: EventAttendee[];
+}
+
+export interface ContactMessage {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  subject?: string;
+  message: string;
+  status: "moet nog beantwoord worden" | "afgehandeld";
+  createdAt: string;
+  handledAt?: string | null;
+  handledBy?: string | null;
+  notes?: string;
+}
+
+export default function AdminDashboard() {
+  const { user, token, isAuthenticated } = useAuth();
+  const [activeTab, setActiveTab] = useState("users");
+
+  const [users, setUsers] = useState<UserItem[]>([]);
+  const [fractieleden, setFractieleden] = useState<FractielidItem[]>([]);
+  const [videos, setVideos] = useState<VideoItem[]>([]);
+  const [news, setNews] = useState<NewsItem[]>([]);
+  const [events, setEvents] = useState<EventItem[]>([]);
+  const [categories, setCategories] = useState<NewsCategory[]>([]);
+  const [attendeesMap, setAttendeesMap] = useState<Record<string, EventAttendee[]>>({});
+
+  // -- State for Contact Messages --
+  const [messages, setMessages] = useState<ContactMessage[]>([]);
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
+  const [messageFilter, setMessageFilter] = useState<"all" | "moet nog beantwoord worden" | "afgehandeld">("all");
+  const [messageSearch, setMessageSearch] = useState("");
+  const [adminNoteInput, setAdminNoteInput] = useState("");
+
+  // -- State for new Fractielid --
+  const [newFNaam, setNewFNaam] = useState("");
+  const [newFVoornaam, setNewFVoornaam] = useState("");
+  const [newFRol, setNewFRol] = useState("");
+  const [newFType, setNewFType] = useState("Raadslid");
+  const [newFBio, setNewFBio] = useState("");
+  const [newFSpeerpunten, setNewFSpeerpunten] = useState("");
+  const [newFEmail, setNewFEmail] = useState("");
+  const [newFFacebook, setNewFFacebook] = useState("");
+  const [newFInstagram, setNewFInstagram] = useState("");
+  const [newFLinkedin, setNewFLinkedin] = useState("");
+  const [newFFile, setNewFFile] = useState<File | null>(null);
+
+  // -- State for new Video --
+  const [newVTitle, setNewVTitle] = useState("");
+  const [newVCategory, setNewVCategory] = useState("");
+  const [newVDate, setNewVDate] = useState("");
+  const [newVUrl, setNewVUrl] = useState("");
+  const [newVFile, setNewVFile] = useState<File | null>(null);
+  const [selectedFleden, setSelectedFleden] = useState<string[]>([]);
+  const [newVWijk, setNewVWijk] = useState("");
+
+  // -- State for new News --
+  const [nTitle, setNTitle] = useState("");
+  const [nCategory, setNCategory] = useState("");
+  const [nWijkSlug, setNWijkSlug] = useState("");
+  const [nDesc, setNDesc] = useState("");
+  const [nContent, setNContent] = useState("");
+  const [nThumb, setNThumb] = useState<File | null>(null);
+  const [nHeader, setNHeader] = useState<File | null>(null);
+  const [editingNewsId, setEditingNewsId] = useState<string | null>(null);
+
+  // -- State for Event --
+  const [eTitle, setETitle] = useState("");
+  const [eDate, setEDate] = useState("");
+  const [eAddress, setEAddress] = useState("");
+  const [eStart, setEStart] = useState("");
+  const [eEnd, setEEnd] = useState("");
+  const [eShortDesc, setEShortDesc] = useState("");
+  const [eDesc, setEDesc] = useState("");
+  const [ePublic, setEPublic] = useState(true);
+  const [ePublish, setEPublish] = useState(true);
+  const [eThumb, setEThumb] = useState<File | null>(null);
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
+
+  const headers = { Authorization: `Bearer ${token}` };
+
+  const fetchUsers = useCallback(() => {
+    fetch("/api/admin/users", { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((data: UserItem[]) => setUsers(data))
+      .catch(console.error);
+  }, [token]);
+
+  const fetchFractieleden = useCallback(() => {
+    fetch("/api/fractieleden")
+      .then((r) => r.json())
+      .then((data: FractielidItem[]) => setFractieleden(data))
+      .catch(console.error);
+  }, []);
+
+  const fetchVideos = useCallback(() => {
+    fetch("/api/videos")
+      .then((r) => r.json())
+      .then((data: VideoItem[]) => setVideos(data))
+      .catch(console.error);
+  }, []);
+
+  const fetchNews = useCallback(() => {
+    fetch("/api/news")
+      .then((r) => r.json())
+      .then((data: NewsItem[]) => setNews(data))
+      .catch(console.error);
+  }, []);
+
+  const fetchEvents = useCallback(() => {
+    fetch("/api/admin/events", { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((data: EventItem[]) => setEvents(data))
+      .catch(console.error);
+  }, [token]);
+
+  const fetchCategories = useCallback(() => {
+    fetch("/api/categories")
+      .then((r) => r.json())
+      .then((data: NewsCategory[]) => {
+        if (Array.isArray(data)) {
+          setCategories(data);
+          if (!nCategory && data.length > 0) {
+            setNCategory(data[0].name);
+          }
+        }
+      })
+      .catch(console.error);
+  }, [nCategory]);
+
+  const fetchMessages = useCallback(() => {
+    fetch("/api/admin/contact-messages", { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((data: ContactMessage[]) => {
+        if (Array.isArray(data)) {
+          setMessages(data);
+          setSelectedMessageId((prev) => {
+            if (!prev && data.length > 0) return data[0].id;
+            return prev;
+          });
+        }
+      })
+      .catch(console.error);
+  }, [token]);
+
+  useEffect(() => {
+    if (user?.role === "admin") {
+      fetchUsers();
+      fetchFractieleden();
+      fetchVideos();
+      fetchNews();
+      fetchEvents();
+      fetchCategories();
+      fetchMessages();
+    }
+  }, [user, fetchUsers, fetchFractieleden, fetchVideos, fetchNews, fetchEvents, fetchCategories, fetchMessages]);
+
+  useEffect(() => {
+    if (selectedMessageId) {
+      const msg = messages.find((m) => m.id === selectedMessageId);
+      if (msg) {
+        setAdminNoteInput(msg.notes || "");
+      }
+    }
+  }, [selectedMessageId, messages]);
+
+  const updateMessageStatus = async (id: string, newStatus: "afgehandeld" | "moet nog beantwoord worden") => {
+    try {
+      const res = await fetch(`/api/admin/contact-messages/${id}`, {
+        method: "PUT",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (res.ok) {
+        toast.success(
+          newStatus === "afgehandeld"
+            ? "Bericht gemarkeerd als 'Afgehandeld'"
+            : "Status teruggezet naar 'Moet nog beantwoord worden'"
+        );
+        fetchMessages();
+      } else {
+        toast.error("Fout bij bijwerken status");
+      }
+    } catch {
+      toast.error("Fout bij bijwerken status");
+    }
+  };
+
+  const saveAdminNote = async (id: string) => {
+    try {
+      const res = await fetch(`/api/admin/contact-messages/${id}`, {
+        method: "PUT",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: adminNoteInput }),
+      });
+      if (res.ok) {
+        toast.success("Interne notitie opgeslagen");
+        fetchMessages();
+      } else {
+        toast.error("Fout bij opslaan notitie");
+      }
+    } catch {
+      toast.error("Fout bij opslaan notitie");
+    }
+  };
+
+  const deleteContactMessage = async (id: string) => {
+    if (confirm("Weet u zeker dat u dit contactbericht wilt verwijderen?")) {
+      try {
+        const res = await fetch(`/api/admin/contact-messages/${id}`, {
+          method: "DELETE",
+          headers,
+        });
+        if (res.ok) {
+          toast.success("Bericht verwijderd");
+          setSelectedMessageId((prev) => (prev === id ? null : prev));
+          fetchMessages();
+        } else {
+          toast.error("Fout bij verwijderen");
+        }
+      } catch {
+        toast.error("Fout bij verwijderen");
+      }
+    }
+  };
+
+  const fetchAttendees = async (eventId: string) => {
+    try {
+      const res = await fetch(`/api/admin/events/${eventId}/attendees`, { headers });
+      const data: EventAttendee[] = await res.json();
+      setAttendeesMap((prev) => ({ ...prev, [eventId]: data }));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const toggleUserStatus = async (id: string, currentStatus: boolean) => {
+    try {
+      const res = await fetch(`/api/admin/users/${id}/status`, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: !currentStatus }),
+      });
+      if (res.ok) {
+        toast.success("Gebruikersstatus bijgewerkt");
+        fetchUsers();
+      }
+    } catch (error) {
+      toast.error("Fout bij bijwerken");
+    }
+  };
+
+  const changeUserRole = async (id: string, newRole: string) => {
+    try {
+      const res = await fetch(`/api/admin/users/${id}/role`, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ role: newRole }),
+      });
+      if (res.ok) {
+        toast.success("Rol bijgewerkt");
+        fetchUsers();
+      }
+    } catch (error) {
+      toast.error("Fout bij bijwerken");
+    }
+  };
+
+  const toggleUserNewsletter = async (id: string, currentStatus: boolean) => {
+    try {
+      const res = await fetch(`/api/admin/users/${id}/newsletter`, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ newsletterSubscribed: !currentStatus }),
+      });
+      if (res.ok) {
+        toast.success("Nieuwsbriefvoorkeur bijgewerkt");
+        fetchUsers();
+      }
+    } catch (error) {
+      toast.error("Fout bij bijwerken nieuwsbriefvoorkeur");
+    }
+  };
+
+  const exportNewsletterCsv = () => {
+    const subscribers = users.filter((u) => u.newsletterSubscribed !== false && u.isActive !== false);
+    if (subscribers.length === 0) {
+      toast.error("Geen actieve leden gevonden die de nieuwsbrief willen ontvangen.");
+      return;
+    }
+
+    const csvHeader = "Volledige Naam,Aanhef,Gebruikersnaam,E-mailadres,Woonplaats,Rol,Status,Nieuwsbrief,Registratiedatum\r\n";
+    const escapeCsv = (str: string | undefined | null) => `"${String(str || "").replace(/"/g, '""')}"`;
+    
+    const csvRows = subscribers.map((u) => {
+      const email = (u.email && u.email.trim()) || (u.username?.includes("@") ? u.username : `${u.username}@leden.lijstvanandel.nl`);
+      return [
+        escapeCsv(u.fullName || ""),
+        escapeCsv(u.salutation || ""),
+        escapeCsv(u.username || ""),
+        escapeCsv(email),
+        escapeCsv(u.city || ""),
+        escapeCsv(u.role || "member"),
+        escapeCsv(u.isActive ? "Actief" : "Inactief"),
+        escapeCsv("Aangemeld"),
+        escapeCsv(u.createdAt || "")
+      ].join(",");
+    }).join("\r\n");
+
+    const blob = new Blob(["\uFEFF" + csvHeader + csvRows], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `nieuwsbrief-leden-steenwijkerland-${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success(`Export voltooid: ${subscribers.length} e-mailadressen geëxporteerd naar CSV!`);
+  };
+
+  const copyNewsletterEmails = () => {
+    const subscribers = users.filter((u) => u.newsletterSubscribed !== false && u.isActive !== false);
+    const emails = subscribers
+      .map((u) => (u.email && u.email.trim()) || (u.username?.includes("@") ? u.username : `${u.username}@leden.lijstvanandel.nl`))
+      .filter(Boolean);
+
+    if (emails.length === 0) {
+      toast.error("Geen e-mailadressen gevonden.");
+      return;
+    }
+
+    navigator.clipboard.writeText(emails.join(", "));
+    toast.success(`${emails.length} e-mailadressen gekopieerd naar het klembord!`);
+  };
+
+  const submitFractielid = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const formData = new FormData();
+    formData.append("name", newFNaam);
+    formData.append("firstName", newFVoornaam);
+    formData.append("role", newFRol);
+    formData.append("type", newFType);
+    formData.append("bio", newFBio);
+    formData.append(
+      "speerpunten",
+      JSON.stringify(newFSpeerpunten.split("\n").filter((s) => s.trim()))
+    );
+    formData.append("email", newFEmail);
+    formData.append("facebook", newFFacebook);
+    formData.append("instagram", newFInstagram);
+    formData.append("linkedin", newFLinkedin);
+    if (newFFile) formData.append("img", newFFile);
+
+    try {
+      const res = await fetch("/api/admin/fractieleden", {
+        method: "POST",
+        headers,
+        body: formData,
+      });
+      if (res.ok) {
+        toast.success("Lid toegevoegd!");
+        fetchFractieleden();
+      }
+    } catch (error) {
+      toast.error("Fout bij opslaan");
+    }
+  };
+
+  const deleteFractielid = async (id: string) => {
+    if (confirm("Lid verwijderen?")) {
+      await fetch(`/api/admin/fractieleden/${id}`, { method: "DELETE", headers });
+      toast.success("Lid verwijderd");
+      fetchFractieleden();
+    }
+  };
+
+  const handleFledSelect = (id: string) => {
+    setSelectedFleden((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const submitVideo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const formData = new FormData();
+    formData.append("title", newVTitle);
+    formData.append("category", newVCategory);
+    formData.append("date", newVDate);
+    formData.append("wijkSlug", newVWijk);
+    formData.append("fractieledenIds", JSON.stringify(selectedFleden));
+    if (newVUrl) formData.append("videoUrl", newVUrl);
+    if (newVFile) formData.append("video", newVFile);
+
+    try {
+      const res = await fetch("/api/admin/videos", {
+        method: "POST",
+        headers,
+        body: formData,
+      });
+      if (res.ok) {
+        toast.success("Video toegevoegd!");
+        fetchVideos();
+        setNewVFile(null);
+        setNewVUrl("");
+      }
+    } catch (error) {
+      toast.error("Fout bij opslaan");
+    }
+  };
+
+  const deleteVideo = async (id: string) => {
+    if (confirm("Video verwijderen?")) {
+      await fetch(`/api/admin/videos/${id}`, { method: "DELETE", headers });
+      toast.success("Verwijderd");
+      fetchVideos();
+    }
+  };
+
+  const startEditNews = (item: NewsItem) => {
+    setEditingNewsId(item.id);
+    setNTitle(item.title);
+    setNCategory(item.category || "Algemeen");
+    setNWijkSlug(item.wijkSlug || "");
+    setNDesc(item.description || item.excerpt || "");
+    setNContent(item.content || "");
+    setNThumb(null);
+    setNHeader(null);
+    toast.info(`Bericht '${item.title}' geladen in editor`);
+  };
+
+  const cancelEditNews = () => {
+    setEditingNewsId(null);
+    setNTitle("");
+    setNCategory("");
+    setNWijkSlug("");
+    setNDesc("");
+    setNContent("");
+    setNThumb(null);
+    setNHeader(null);
+  };
+
+  const submitNews = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nTitle.trim()) {
+      toast.error("Voer een titel in");
+      return;
+    }
+    if (!nContent.trim()) {
+      toast.error("Voer tekst of HTML-inhoud in");
+      return;
+    }
+
+    const selectedWijkObj = WIJKEN_EN_KERNEN.find((w) => w.slug === nWijkSlug);
+
+    const formData = new FormData();
+    formData.append("title", nTitle);
+    formData.append("category", nCategory || "Algemeen");
+    formData.append("wijkSlug", nWijkSlug);
+    formData.append("wijkNaam", selectedWijkObj ? selectedWijkObj.naam : "");
+    formData.append("description", nDesc);
+    formData.append("content", nContent);
+    if (nThumb) formData.append("thumbnail", nThumb);
+    if (nHeader) formData.append("header", nHeader);
+
+    try {
+      let res;
+      if (editingNewsId) {
+        res = await fetch(`/api/admin/news/${editingNewsId}`, {
+          method: "PUT",
+          headers,
+          body: formData,
+        });
+      } else {
+        res = await fetch("/api/admin/news", {
+          method: "POST",
+          headers,
+          body: formData,
+        });
+      }
+
+      if (res.ok) {
+        toast.success(editingNewsId ? "Nieuwsbericht succesvol bijgewerkt!" : "Nieuwsbericht gepubliceerd!");
+        fetchNews();
+        cancelEditNews();
+      } else {
+        toast.error("Fout bij opslaan van nieuwsbericht");
+      }
+    } catch (error) {
+      toast.error("Fout bij opslaan");
+    }
+  };
+
+  const deleteNews = async (id: string) => {
+    if (confirm("Nieuwsbericht verwijderen?")) {
+      await fetch(`/api/admin/news/${id}`, { method: "DELETE", headers });
+      toast.success("Nieuwsbericht verwijderd");
+      fetchNews();
+    }
+  };
+
+  const startEditEvent = (ev: EventItem) => {
+    setEditingEventId(ev.id);
+    setETitle(ev.title || "");
+    setEDate(ev.date || "");
+    setEAddress(ev.address || "");
+    setEStart(ev.startTime || "");
+    setEEnd(ev.endTime || "");
+    setEShortDesc(ev.shortDescription || "");
+    setEDesc(ev.description || "");
+    setEPublic(ev.isPublic !== false);
+    setEPublish(ev.isPublished !== false);
+    setEThumb(null);
+    window.scrollTo({ top: 350, behavior: "smooth" });
+  };
+
+  const cancelEditEvent = () => {
+    setEditingEventId(null);
+    setETitle("");
+    setEDate("");
+    setEAddress("");
+    setEStart("");
+    setEEnd("");
+    setEShortDesc("");
+    setEDesc("");
+    setEPublic(true);
+    setEPublish(true);
+    setEThumb(null);
+  };
+
+  const submitEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const formData = new FormData();
+    formData.append("title", eTitle);
+    formData.append("date", eDate);
+    formData.append("address", eAddress);
+    formData.append("startTime", eStart);
+    formData.append("endTime", eEnd);
+    formData.append("shortDescription", eShortDesc);
+    formData.append("description", eDesc);
+    formData.append("isPublic", String(ePublic));
+    formData.append("isPublished", String(ePublish));
+    if (eThumb) formData.append("thumbnail", eThumb);
+
+    try {
+      const url = editingEventId ? `/api/admin/events/${editingEventId}` : "/api/admin/events";
+      const method = editingEventId ? "PUT" : "POST";
+      const res = await fetch(url, { method, headers, body: formData });
+      if (res.ok) {
+        toast.success(editingEventId ? "Evenement succesvol bijgewerkt!" : "Evenement toegevoegd!");
+        fetchEvents();
+        cancelEditEvent();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Fout bij opslaan");
+      }
+    } catch (error) {
+      toast.error("Fout bij opslaan");
+    }
+  };
+
+  const toggleEventField = async (id: string, field: string, value: boolean) => {
+    await fetch(`/api/admin/events/${id}`, {
+      method: "PUT",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: value }),
+    });
+    fetchEvents();
+  };
+
+  const deleteEvent = async (id: string) => {
+    if (confirm("Evenement verwijderen?")) {
+      await fetch(`/api/admin/events/${id}`, { method: "DELETE", headers });
+      toast.success("Verwijderd");
+      fetchEvents();
+    }
+  };
+
+  if (!isAuthenticated) return <Navigate to="/login" />;
+  if (user?.role !== "admin") return <Navigate to="/dashboard" />;
+
+  const wijkenInSteenwijk = WIJKEN_EN_KERNEN.filter((w) => w.type === "Wijk");
+  const kernenInSteenwijkerland = WIJKEN_EN_KERNEN.filter((w) => w.type === "Kern");
+
+  const formatMessageDate = (dateStr?: string | null) => {
+    if (!dateStr) return "";
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString("nl-NL", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const filteredMessages = messages.filter((m) => {
+    if (messageFilter !== "all" && m.status !== messageFilter) {
+      return false;
+    }
+    if (messageSearch.trim()) {
+      const q = messageSearch.toLowerCase();
+      const matchName = m.name?.toLowerCase().includes(q);
+      const matchEmail = m.email?.toLowerCase().includes(q);
+      const matchSubject = m.subject?.toLowerCase().includes(q);
+      const matchMessage = m.message?.toLowerCase().includes(q);
+      const matchPhone = m.phone?.toLowerCase().includes(q);
+      return Boolean(matchName || matchEmail || matchSubject || matchMessage || matchPhone);
+    }
+    return true;
+  });
+
+  const selectedMsg = messages.find((m) => m.id === selectedMessageId);
+  const unansweredCount = messages.filter((m) => m.status === "moet nog beantwoord worden").length;
+
+  return (
+    <div className="min-h-screen pt-32 pb-24 container mx-auto px-6 max-w-6xl">
+      <div className="mb-10">
+        <div className="text-xs uppercase tracking-[0.3em] text-accent font-semibold mb-2">
+          Beheerdersportaal
+        </div>
+        <h1 className="text-4xl md:text-5xl font-display mb-3">Beheerderspaneel</h1>
+        <p className="text-muted-foreground text-sm">
+          Beheer leden, fractieleden, video's, nieuwsberichten, categorieën, agenda-evenementen en ingekomen berichten.
+        </p>
+      </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="mb-8 flex flex-wrap gap-2 h-auto bg-muted/40 p-1.5 rounded-xl border border-border">
+          <TabsTrigger value="users" className="gap-2 text-xs">
+            <Users className="w-4 h-4" /> Ledenbeheer
+          </TabsTrigger>
+          <TabsTrigger value="messages" className="gap-2 text-xs relative">
+            <Inbox className="w-4 h-4" /> Berichten
+            {messages.filter((m) => m.status === "moet nog beantwoord worden").length > 0 && (
+              <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                {messages.filter((m) => m.status === "moet nog beantwoord worden").length}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="fractie" className="gap-2 text-xs">
+            <ShieldCheck className="w-4 h-4" /> Fractieleden
+          </TabsTrigger>
+          <TabsTrigger value="videos" className="gap-2 text-xs">
+            <Video className="w-4 h-4" /> Video's
+          </TabsTrigger>
+          <TabsTrigger value="news" className="gap-2 text-xs">
+            <Newspaper className="w-4 h-4" /> Nieuws
+          </TabsTrigger>
+          <TabsTrigger value="categories" className="gap-2 text-xs">
+            <Tag className="w-4 h-4 text-accent" /> Categoriebeheer
+          </TabsTrigger>
+          <TabsTrigger value="agenda" className="gap-2 text-xs">
+            <CalendarDays className="w-4 h-4" /> Agenda
+          </TabsTrigger>
+          <TabsTrigger value="faqs" className="gap-2 text-xs">
+            <HelpCircle className="w-4 h-4 text-accent" /> FAQ Beheer
+          </TabsTrigger>
+          <TabsTrigger value="wijken" className="gap-2 text-xs">
+            <MapPin className="w-4 h-4 text-accent" /> Wijken & Kernen
+          </TabsTrigger>
+          <TabsTrigger value="vacatures" className="gap-2 text-xs">
+            <Briefcase className="w-4 h-4 text-accent" /> Vacatures & Aanmeldingen
+          </TabsTrigger>
+          <TabsTrigger value="documents" className="gap-2 text-xs">
+            <FileText className="w-4 h-4 text-accent" /> Exclusieve Documenten
+          </TabsTrigger>
+        </TabsList>
+
+        {/* LEDENBEHEER */}
+        <TabsContent value="users">
+          <div className="bg-card rounded-xl border border-border p-6 shadow-sm space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-border/60">
+              <div>
+                <h2 className="text-2xl font-display text-foreground">Geregistreerde Leden</h2>
+                <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs text-muted-foreground">
+                  <span className="px-2.5 py-0.5 rounded-full bg-muted border border-border font-medium">
+                    {users.length} leden totaal
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 font-semibold flex items-center gap-1">
+                    <Mail className="w-3 h-3" />
+                    {users.filter((u) => u.newsletterSubscribed !== false && u.isActive !== false).length} aangemeld voor nieuwsbrief
+                  </span>
+                </div>
+              </div>
+
+              {/* Export Buttons */}
+              <div className="flex flex-wrap items-center gap-2.5">
+                <Button
+                  onClick={copyNewsletterEmails}
+                  variant="outline"
+                  size="sm"
+                  className="h-9 px-3.5 text-xs font-semibold border-border bg-background hover:bg-muted"
+                  title="Kopieer alle e-mailadressen van nieuwsbriefontvangers naar klembord"
+                >
+                  <Copy className="w-3.5 h-3.5 mr-1.5" />
+                  Kopieer E-mails
+                </Button>
+
+                <Button
+                  onClick={exportNewsletterCsv}
+                  size="sm"
+                  className="h-9 px-4 text-xs font-semibold bg-accent text-accent-foreground hover:bg-accent/90 shadow-sm"
+                  title="Download een CSV bestand met alle nieuwsbriefleden voor Excel of Mailchimp"
+                >
+                  <Download className="w-3.5 h-3.5 mr-1.5" />
+                  Exporteer Nieuwsbrief (CSV)
+                </Button>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-muted/50 text-muted-foreground uppercase text-xs">
+                  <tr>
+                    <th className="px-4 py-3">Naam</th>
+                    <th className="px-4 py-3">Gebruikersnaam</th>
+                    <th className="px-4 py-3">E-mailadres</th>
+                    <th className="px-4 py-3">Woonplaats</th>
+                    <th className="px-4 py-3">Rol</th>
+                    <th className="px-4 py-3">Nieuwsbrief</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3 text-right">Acties</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((u) => {
+                    const resolvedEmail = (u.email && u.email.trim()) || (u.username.includes("@") ? u.username : `${u.username.toLowerCase()}@leden.lijstvanandel.nl`);
+                    const isSubscribed = u.newsletterSubscribed !== false;
+
+                    return (
+                      <tr key={u.id} className="border-b border-border hover:bg-muted/30 transition-colors">
+                        <td className="px-4 py-3 font-medium text-foreground">
+                          {u.salutation} {u.fullName}
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">{u.username}</td>
+                        <td className="px-4 py-3 font-mono text-xs text-foreground/90">
+                          {resolvedEmail}
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">{u.city || "-"}</td>
+                        <td className="px-4 py-3">
+                          {u.id !== user?.id ? (
+                            <select
+                              className={`text-xs px-2 py-1 rounded border outline-none cursor-pointer ${
+                                u.role === "admin"
+                                  ? "bg-accent/20 text-accent border-accent/20"
+                                  : "bg-secondary text-secondary-foreground border-border"
+                              }`}
+                              value={u.role}
+                              onChange={(e) => changeUserRole(u.id, e.target.value)}
+                            >
+                              <option value="admin">admin</option>
+                              <option value="member">member</option>
+                            </select>
+                          ) : (
+                            <span
+                              className={`px-2 py-1 rounded text-xs ${
+                                u.role === "admin"
+                                  ? "bg-accent/20 text-accent"
+                                  : "bg-secondary text-secondary-foreground"
+                              }`}
+                            >
+                              {u.role}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            onClick={() => toggleUserNewsletter(u.id, isSubscribed)}
+                            className="inline-flex items-center gap-1.5 transition-opacity hover:opacity-80 cursor-pointer"
+                            title={`Klik om nieuwsbrief voor ${u.fullName} ${isSubscribed ? "uit" : "aan"} te zetten`}
+                          >
+                            {isSubscribed ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                <Check className="w-3 h-3" /> Ontvangt
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground border border-border">
+                                <X className="w-3 h-3" /> Afgemeld
+                              </span>
+                            )}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3">
+                          {u.isActive ? (
+                            <span className="flex items-center text-green-500 text-xs">
+                              <Check className="w-3 h-3 mr-1" /> Actief
+                            </span>
+                          ) : (
+                            <span className="flex items-center text-red-500 text-xs">
+                              <X className="w-3 h-3 mr-1" /> Inactief
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {u.id !== user?.id && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs h-8"
+                              onClick={() => toggleUserStatus(u.id, u.isActive)}
+                            >
+                              {u.isActive ? "Deactiveer" : "Activeer"}
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* FRACTIELEDEN */}
+        <TabsContent value="fractie">
+          <div className="grid md:grid-cols-2 gap-8">
+            <div className="bg-card rounded-lg border border-border p-6">
+              <h2 className="text-2xl font-display mb-6">Nieuw Fractielid</h2>
+              <form onSubmit={submitFractielid} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Volledige Naam</label>
+                    <Input
+                      required
+                      value={newFNaam}
+                      onChange={(e) => setNewFNaam(e.target.value)}
+                      placeholder="Sammy van Andel"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Voornaam (kort)</label>
+                    <Input
+                      required
+                      value={newFVoornaam}
+                      onChange={(e) => setNewFVoornaam(e.target.value)}
+                      placeholder="sammy"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Type</label>
+                    <select
+                      className="w-full h-10 px-3 py-2 rounded-md border border-input bg-background text-sm"
+                      value={newFType}
+                      onChange={(e) => setNewFType(e.target.value)}
+                    >
+                      <option>Raadslid</option>
+                      <option>Burgerraadslid</option>
+                      <option>Ondersteuner</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Rol / Functie</label>
+                    <Input
+                      required
+                      value={newFRol}
+                      onChange={(e) => setNewFRol(e.target.value)}
+                      placeholder="Fractievoorzitter"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Biografie</label>
+                  <Textarea
+                    required
+                    value={newFBio}
+                    onChange={(e) => setNewFBio(e.target.value)}
+                    className="h-20"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1 block">
+                    Speerpunten (1 per regel)
+                  </label>
+                  <Textarea
+                    value={newFSpeerpunten}
+                    onChange={(e) => setNewFSpeerpunten(e.target.value)}
+                    className="h-20"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1 block">E-mailadres</label>
+                  <Input
+                    type="email"
+                    required
+                    value={newFEmail}
+                    onChange={(e) => setNewFEmail(e.target.value)}
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-xs font-medium mb-1 block">Facebook URL</label>
+                    <Input
+                      value={newFFacebook}
+                      onChange={(e) => setNewFFacebook(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium mb-1 block">Instagram URL</label>
+                    <Input
+                      value={newFInstagram}
+                      onChange={(e) => setNewFInstagram(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium mb-1 block">LinkedIn URL</label>
+                    <Input
+                      value={newFLinkedin}
+                      onChange={(e) => setNewFLinkedin(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-medium mb-1 block">Profielfoto</label>
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setNewFFile(e.target.files?.[0] || null)}
+                  />
+                </div>
+                <Button type="submit" className="w-full mt-4">
+                  <Upload className="w-4 h-4 mr-2" /> Opslaan
+                </Button>
+              </form>
+            </div>
+            <div className="bg-card rounded-lg border border-border p-6">
+              <h2 className="text-2xl font-display mb-6">Bestaande Fractieleden</h2>
+              <div className="space-y-4">
+                {fractieleden.map((f) => (
+                  <div
+                    key={f.id}
+                    className="flex justify-between items-center p-4 border border-border/50 rounded bg-background/50"
+                  >
+                    <div>
+                      <div className="font-semibold">{f.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {f.role} ({f.type})
+                      </div>
+                    </div>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => deleteFractielid(f.id)}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* VIDEOS */}
+        <TabsContent value="videos">
+          <div className="grid md:grid-cols-2 gap-8">
+            <div className="bg-card rounded-lg border border-border p-6">
+              <h2 className="text-2xl font-display mb-6">Nieuwe Video Uploaden</h2>
+              <form onSubmit={submitVideo} className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Titel</label>
+                  <Input
+                    required
+                    value={newVTitle}
+                    onChange={(e) => setNewVTitle(e.target.value)}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Categorie</label>
+                    <Input
+                      required
+                      value={newVCategory}
+                      onChange={(e) => setNewVCategory(e.target.value)}
+                      placeholder="Raadsdebat, Interview..."
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Datum</label>
+                    <Input
+                      type="date"
+                      required
+                      value={newVDate}
+                      onChange={(e) => setNewVDate(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1 block">
+                    Gekoppelde Wijk / Kern (optioneel)
+                  </label>
+                  <select
+                    className="w-full h-10 px-3 py-2 rounded-md border border-input bg-background text-sm"
+                    value={newVWijk}
+                    onChange={(e) => setNewVWijk(e.target.value)}
+                  >
+                    <option value="">Geen wijk / kern koppeling</option>
+                    {WIJKEN_EN_KERNEN.map((w) => (
+                      <option key={w.slug} value={w.slug}>
+                        {w.naam} ({w.type})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1 block">
+                    Externe Video URL (YouTube, Vimeo, directe MP4...)
+                  </label>
+                  <Input
+                    type="url"
+                    placeholder="https://www.youtube.com/watch?v=... of https://vimeo.com/..."
+                    value={newVUrl}
+                    onChange={(e) => setNewVUrl(e.target.value)}
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    YouTube links en Vimeo video's worden automatisch als werkende speler getoond.
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1 block">
+                    Of lokaal videobestand uploaden
+                  </label>
+                  <Input
+                    type="file"
+                    accept="video/*"
+                    onChange={(e) => setNewVFile(e.target.files?.[0] || null)}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-2 block">
+                    Gekoppelde Fractieleden
+                  </label>
+                  <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto border border-border p-2 rounded">
+                    {fractieleden.map((f) => (
+                      <label key={f.id} className="flex items-center gap-2 text-xs cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedFleden.includes(f.id)}
+                          onChange={() => handleFledSelect(f.id)}
+                        />
+                        {f.name}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <Button type="submit" className="w-full mt-4">
+                  <Upload className="w-4 h-4 mr-2" /> Opslaan
+                </Button>
+              </form>
+            </div>
+
+            <div className="bg-card rounded-lg border border-border p-6">
+              <h2 className="text-2xl font-display mb-6">Geüploade Video's ({videos.length})</h2>
+              <div className="space-y-4">
+                {videos.length === 0 && (
+                  <div className="text-sm text-muted-foreground italic py-6 text-center">
+                    Nog geen video's geüpload.
+                  </div>
+                )}
+                {videos.map((v) => (
+                  <div
+                    key={v.id}
+                    className="p-4 border border-border/50 rounded bg-background/50 flex flex-col sm:flex-row gap-4 items-start"
+                  >
+                    <div className="w-full sm:w-44 aspect-video bg-black rounded overflow-hidden shrink-0 border border-border">
+                      <VideoPlayer url={v.videoUrl} title={v.title} className="w-full h-full" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold truncate">{v.title}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {v.category} • {v.date}
+                      </div>
+                      {v.videoUrl && (
+                        <div className="text-[11px] text-accent mt-1 truncate font-mono">
+                          {v.videoUrl}
+                        </div>
+                      )}
+                    </div>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => deleteVideo(v.id)}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* NIEUWS */}
+        <TabsContent value="news">
+          <div className="grid lg:grid-cols-12 gap-8">
+            {/* Formulier */}
+            <div className="lg:col-span-7 bg-card rounded-xl border border-border p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-2xl font-display flex items-center gap-2">
+                    {editingNewsId ? "Nieuwsbericht Bewerken" : "Nieuws Aanmaken"}
+                    {editingNewsId && (
+                      <span className="text-xs px-2.5 py-0.5 rounded-full bg-accent/20 text-accent font-sans font-semibold">
+                        Bewerken actief
+                      </span>
+                    )}
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    {editingNewsId
+                      ? "Pas de titel, categorie, inhoud of afbeeldingen van dit bericht aan."
+                      : "Publiceer actuele nieuwsberichten voor inwoners van Steenwijkerland."}
+                  </p>
+                </div>
+                {editingNewsId && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={cancelEditNews}
+                    className="text-xs h-8"
+                  >
+                    Bewerken annuleren
+                  </Button>
+                )}
+              </div>
+
+              <form onSubmit={submitNews} className="space-y-5">
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Titel *</label>
+                  <Input
+                    required
+                    value={nTitle}
+                    onChange={(e) => setNTitle(e.target.value)}
+                    placeholder="Bijv. Lijst van Andel pleit voor nieuwe impulsen..."
+                  />
+                </div>
+
+                {/* Categorie met snelle link naar Categoriebeheer */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-sm font-medium">Categorie *</label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setActiveTab("categories")}
+                      className="text-xs text-accent hover:text-accent/80 h-6 px-2"
+                    >
+                      <Tag className="w-3 h-3 mr-1" /> Categorieën beheren
+                    </Button>
+                  </div>
+                  <div className="flex gap-2">
+                    <select
+                      className="w-full h-10 px-3 py-2 rounded-md border border-input bg-background text-sm"
+                      value={nCategory}
+                      onChange={(e) => setNCategory(e.target.value)}
+                      required
+                    >
+                      <option value="">-- Kies een categorie --</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.name}>
+                          {c.name}
+                        </option>
+                      ))}
+                      {categories.length === 0 && (
+                        <>
+                          <option value="Politiek">Politiek</option>
+                          <option value="Media">Media</option>
+                          <option value="Wijken & Kernen">Wijken & Kernen</option>
+                          <option value="Woningbouw">Woningbouw</option>
+                          <option value="Evenementen">Evenementen</option>
+                          <option value="Algemeen">Algemeen</option>
+                        </>
+                      )}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Optioneel: Wijk of Kern selecteren */}
+                <div>
+                  <label className="text-sm font-medium mb-1 block flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-accent" /> Wijk of Kern (optioneel)
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">Koppel direct aan gebied</span>
+                  </label>
+                  <select
+                    className="w-full h-10 px-3 py-2 rounded-md border border-input bg-background text-sm"
+                    value={nWijkSlug}
+                    onChange={(e) => setNWijkSlug(e.target.value)}
+                  >
+                    <option value="">Geen specifieke wijk of kern (Algemeen Steenwijkerland)</option>
+                    <optgroup label="Wijken in Steenwijk">
+                      {wijkenInSteenwijk.map((w) => (
+                        <option key={w.slug} value={w.slug}>
+                          {w.naam}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Kernen in Steenwijkerland">
+                      {kernenInSteenwijkerland.map((w) => (
+                        <option key={w.slug} value={w.slug}>
+                          {w.naam}
+                        </option>
+                      ))}
+                    </optgroup>
+                  </select>
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Als u een wijk of kern kiest, wordt dit bericht ook automatisch getoond op de betreffende wijkpagina.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium mb-1 block">
+                    Korte Beschrijving (intro / excerpt) *
+                  </label>
+                  <Textarea
+                    required
+                    value={nDesc}
+                    onChange={(e) => setNDesc(e.target.value)}
+                    placeholder="Een korte inleidende samenvatting die op het nieuwsoverzicht en in de lead wordt getoond..."
+                    className="h-20 text-sm"
+                  />
+                </div>
+
+                {/* Inhoud met .html invoegen en opmaak wijzigen */}
+                <div>
+                  <label className="text-sm font-medium mb-1 block flex items-center justify-between">
+                    <span>Inhoud & Opmaak *</span>
+                    <span className="text-xs text-accent font-normal">
+                      HTML-bestanden en opmaak ondersteund
+                    </span>
+                  </label>
+                  <NewsContentEditor
+                    value={nContent}
+                    onChange={setNContent}
+                    required
+                  />
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-4 pt-2">
+                  <div>
+                    <label className="text-xs font-medium mb-1 block">
+                      Thumbnail afbeelding (overzicht)
+                    </label>
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => setNThumb(e.target.files?.[0] || null)}
+                      className="text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium mb-1 block">
+                      Header banner (bovenaan artikel)
+                    </label>
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => setNHeader(e.target.files?.[0] || null)}
+                      className="text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 mt-4">
+                  <Button
+                    type="submit"
+                    className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold uppercase tracking-wider text-xs h-11"
+                  >
+                    {editingNewsId ? (
+                      <>
+                        <Check className="w-4 h-4 mr-2" /> Wijzigingen Opslaan
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4 mr-2" /> Nieuwsbericht Publiceren
+                      </>
+                    )}
+                  </Button>
+                  {editingNewsId && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={cancelEditNews}
+                      className="h-11 px-5 text-xs font-semibold uppercase tracking-wider"
+                    >
+                      Annuleren
+                    </Button>
+                  )}
+                </div>
+              </form>
+            </div>
+
+            {/* Overzicht van nieuwsberichten */}
+            <div className="lg:col-span-5 bg-card rounded-xl border border-border p-6 shadow-sm">
+              <h2 className="text-2xl font-display mb-2">Gepubliceerd Nieuws ({news.length})</h2>
+              <p className="text-xs text-muted-foreground mb-6">
+                Overzicht van alle geplaatste artikelen.
+              </p>
+
+              <div className="space-y-3">
+                {news.length === 0 && (
+                  <div className="text-sm text-muted-foreground italic py-8 text-center">
+                    Nog geen nieuwsberichten geplaatst.
+                  </div>
+                )}
+                {news.map((n) => (
+                  <div
+                    key={n.id}
+                    className={`p-4 border rounded-lg transition-colors flex gap-3 items-start justify-between ${
+                      editingNewsId === n.id
+                        ? "border-accent bg-accent/5 ring-1 ring-accent"
+                        : "border-border/60 bg-background/60 hover:bg-background"
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-sm leading-snug truncate">
+                        {n.title}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                        <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-accent/15 text-accent font-semibold">
+                          {n.category || "Algemeen"}
+                        </span>
+                        {n.wijkNaam && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-secondary text-foreground font-medium flex items-center gap-1">
+                            <MapPin className="w-2.5 h-2.5 text-accent" /> {n.wijkNaam}
+                          </span>
+                        )}
+                        <span className="text-[11px] text-muted-foreground">
+                          {n.createdAt ? new Date(n.createdAt).toLocaleDateString("nl-NL") : ""}
+                        </span>
+                      </div>
+                      {n.description && (
+                        <p className="text-xs text-muted-foreground line-clamp-2 mt-2">
+                          {n.description}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <a
+                        href={`/nieuws/${n.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                        title="Bekijk artikel in nieuw tabblad"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                      <Button
+                        type="button"
+                        variant={editingNewsId === n.id ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => startEditNews(n)}
+                        className="h-8 w-8 p-0"
+                        title="Nieuwsbericht bewerken"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => deleteNews(n.id)}
+                        className="h-8 w-8 p-0"
+                        title="Nieuwsbericht verwijderen"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* CATEGORIEBEHEER */}
+        <TabsContent value="categories">
+          <CategoryManager
+            token={token}
+            onCategoriesChange={(cats) => setCategories(cats)}
+          />
+        </TabsContent>
+
+        {/* AGENDA */}
+        <TabsContent value="agenda">
+          <div className="grid lg:grid-cols-12 gap-8">
+            <div className="lg:col-span-7 bg-card rounded-xl border border-border p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-2xl font-display">
+                    {editingEventId ? "Evenement Bewerken" : "Evenement Aanmaken"}
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {editingEventId
+                      ? "Pas de gegevens van het geselecteerde evenement aan."
+                      : "Plaats een nieuwe bijeenkomst of activiteit in de agenda."}
+                  </p>
+                </div>
+                {editingEventId && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={cancelEditEvent}
+                    className="text-xs border-accent/40 text-accent"
+                  >
+                    Bewerken annuleren
+                  </Button>
+                )}
+              </div>
+
+              {editingEventId && (
+                <div className="mb-5 p-3 rounded-lg bg-accent/10 border border-accent/30 flex items-center justify-between text-xs">
+                  <span className="font-medium text-foreground">
+                    U bewerkt momenteel een bestaand evenement.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={cancelEditEvent}
+                    className="text-accent underline font-semibold hover:text-accent/80"
+                  >
+                    Annuleren
+                  </button>
+                </div>
+              )}
+
+              <form onSubmit={submitEvent} className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Titel *</label>
+                  <Input
+                    required
+                    value={eTitle}
+                    onChange={(e) => setETitle(e.target.value)}
+                    placeholder="Bijv. Inloopavond Steenwijkerland — Tijd voor verbetering"
+                  />
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Datum *</label>
+                    <Input
+                      type="date"
+                      required
+                      value={eDate}
+                      onChange={(e) => setEDate(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Adres *</label>
+                    <Input
+                      required
+                      value={eAddress}
+                      onChange={(e) => setEAddress(e.target.value)}
+                      placeholder="Bijv. Markt 1, Steenwijk"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Starttijd *</label>
+                    <Input
+                      type="time"
+                      required
+                      value={eStart}
+                      onChange={(e) => setEStart(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Eindtijd *</label>
+                    <Input
+                      type="time"
+                      required
+                      value={eEnd}
+                      onChange={(e) => setEEnd(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium mb-1 block">
+                    Korte beschrijving (samenvatting op de /Agenda overzichtspagina) *
+                  </label>
+                  <Textarea
+                    required
+                    value={eShortDesc}
+                    onChange={(e) => setEShortDesc(e.target.value)}
+                    placeholder="Korte samenvatting van 1 à 2 zinnen die bezoekers direct zien op de agendapagina..."
+                    className="h-20"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Deze tekst verschijnt in het overzicht op /Agenda.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium mb-1.5 block">
+                    Volledige beschrijving / Inhoud (evenement detailpagina) *
+                  </label>
+                  <NewsContentEditor
+                    value={eDesc}
+                    onChange={(content) => setEDesc(content)}
+                    required
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Net zoals bij nieuwsberichten kunt u hier HTML, koppen, alinea's of een compleet .html bestand invoegen.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium mb-1 block">
+                    Thumbnail / Achtergrondfoto
+                  </label>
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setEThumb(e.target.files?.[0] || null)}
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    {editingEventId
+                      ? "Laat leeg om de huidige afbeelding te behouden. Wordt getoond als thumbnail en als achtergrondfoto op de detailpagina."
+                      : "Wordt getoond als thumbnail op /Agenda en als achtergrondfoto bovenaan de evenementpagina."}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-6 py-2">
+                  <label className="flex items-center text-sm gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={ePublic}
+                      onChange={(e) => setEPublic(e.target.checked)}
+                      className="rounded border-border text-accent focus:ring-accent"
+                    />{" "}
+                    Publiek toegankelijk (voor iedereen zichtbaar)
+                  </label>
+                  <label className="flex items-center text-sm gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={ePublish}
+                      onChange={(e) => setEPublish(e.target.checked)}
+                      className="rounded border-border text-accent focus:ring-accent"
+                    />{" "}
+                    Direct publiceren
+                  </label>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <Button type="submit" className="flex-1">
+                    <Upload className="w-4 h-4 mr-2" />
+                    {editingEventId ? "Wijzigingen Opslaan" : "Evenement Opslaan"}
+                  </Button>
+                  {editingEventId && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={cancelEditEvent}
+                    >
+                      Annuleren
+                    </Button>
+                  )}
+                </div>
+              </form>
+            </div>
+
+            <div className="lg:col-span-5 bg-card rounded-xl border border-border p-6 shadow-sm">
+              <h2 className="text-2xl font-display mb-2">Evenementen Beheer ({events.length})</h2>
+              <p className="text-xs text-muted-foreground mb-6">
+                Overzicht van alle geplande bijeenkomsten en activiteiten.
+              </p>
+
+              <div className="space-y-4">
+                {events.length === 0 && (
+                  <div className="text-sm text-muted-foreground italic py-8 text-center">
+                    Nog geen evenementen aangemaakt.
+                  </div>
+                )}
+                {events.map((e) => (
+                  <div
+                    key={e.id}
+                    className={`p-4 border rounded-lg transition-colors ${
+                      editingEventId === e.id
+                        ? "border-accent bg-accent/5 ring-1 ring-accent"
+                        : "border-border/60 bg-background/60 hover:bg-background"
+                    }`}
+                  >
+                    <div className="flex justify-between items-start mb-2 gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-sm leading-snug">{e.title}</div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {e.date} | {e.startTime} - {e.endTime}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          Locatie: {e.address || "Steenwijk"}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                          <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-accent/15 text-accent font-semibold">
+                            {e.isPublic ? "Publiek" : "Alleen leden"}
+                          </span>
+                          {e.isCancelled && (
+                            <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-red-500/15 text-red-500 font-semibold">
+                              Gecanceld
+                            </span>
+                          )}
+                          {!e.isPublished && (
+                            <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-semibold">
+                              Concept
+                            </span>
+                          )}
+                        </div>
+                        {e.shortDescription && (
+                          <p className="text-xs text-muted-foreground line-clamp-2 mt-2">
+                            {e.shortDescription}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <a
+                          href={`/agenda/${e.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                          title="Bekijk evenementpagina"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                        <Button
+                          variant={editingEventId === e.id ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => startEditEvent(e)}
+                          className="h-8 w-8 p-0"
+                          title="Evenement bewerken"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => toggleEventField(e.id, "isPublished", !e.isPublished)}
+                          className="text-xs h-8 px-2"
+                          title={e.isPublished ? "Depubliceer" : "Publiceer"}
+                        >
+                          {e.isPublished ? "Depubliceer" : "Publiceer"}
+                        </Button>
+                        <Button
+                          variant={e.isCancelled ? "secondary" : "destructive"}
+                          size="sm"
+                          onClick={() => toggleEventField(e.id, "isCancelled", !e.isCancelled)}
+                          className="text-xs h-8 px-2"
+                          title={e.isCancelled ? "Herstel" : "Cancel"}
+                        >
+                          {e.isCancelled ? "Herstel" : "Cancel"}
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => deleteEvent(e.id)}
+                          className="h-8 w-8 p-0"
+                          title="Verwijderen"
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 pt-3 border-t border-border/60">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => fetchAttendees(e.id)}
+                        className="w-full text-xs h-7"
+                      >
+                        Aanmeldingen Bekijken ({e.attendees?.length || 0})
+                      </Button>
+                      {attendeesMap[e.id] && (
+                        <div className="mt-2 space-y-1 text-xs">
+                          {attendeesMap[e.id].length === 0 && (
+                            <p className="text-muted-foreground italic">Nog geen aanmeldingen.</p>
+                          )}
+                          {attendeesMap[e.id].map((a: EventAttendee) => (
+                            <div
+                              key={a.id}
+                              className="flex justify-between bg-muted/50 p-2 rounded"
+                            >
+                              <span>{a.fullName}</span>
+                              <span className="text-muted-foreground">{a.email}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* CONTACTBERICHTEN BEHEER */}
+        <TabsContent value="messages">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            {/* Linker kolom: Detailweergave van het aangeklikte bericht */}
+            <div className="lg:col-span-7 space-y-6">
+              {selectedMsg ? (
+                <div className="bg-card rounded-2xl border border-border p-6 shadow-sm space-y-6">
+                  {/* Top Bar: Subject & Status */}
+                  <div className="border-b border-border/80 pb-5">
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+                      <span className="text-xs uppercase tracking-wider text-accent font-semibold flex items-center gap-1.5">
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        Contactbericht
+                      </span>
+                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5" />
+                        Ontvangen: {formatMessageDate(selectedMsg.createdAt)}
+                      </span>
+                    </div>
+                    <h2 className="text-2xl md:text-3xl font-display text-foreground leading-tight">
+                      {selectedMsg.subject || "Geen onderwerp opgegeven"}
+                    </h2>
+                  </div>
+
+                  {/* Status Banner met toggle knop */}
+                  <div
+                    className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all ${
+                      selectedMsg.status === "moet nog beantwoord worden"
+                        ? "bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-200"
+                        : "bg-emerald-500/10 border-emerald-500/30 text-emerald-900 dark:text-emerald-200"
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center gap-2 font-semibold text-sm">
+                        {selectedMsg.status === "moet nog beantwoord worden" ? (
+                          <>
+                            <span className="relative flex h-2.5 w-2.5">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                            </span>
+                            <span>Status: Moet nog beantwoord worden</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                            <span>Status: Afgehandeld</span>
+                          </>
+                        )}
+                      </div>
+                      <p className="text-xs opacity-80 mt-1">
+                        {selectedMsg.status === "moet nog beantwoord worden"
+                          ? "Dit bericht wacht nog op een reactie of actie vanuit de fractie."
+                          : `Afgehandeld${
+                              selectedMsg.handledAt ? ` op ${formatMessageDate(selectedMsg.handledAt)}` : ""
+                            }${selectedMsg.handledBy ? ` door ${selectedMsg.handledBy}` : ""}.`}
+                      </p>
+                    </div>
+
+                    <div className="shrink-0">
+                      {selectedMsg.status === "moet nog beantwoord worden" ? (
+                        <Button
+                          onClick={() => updateMessageStatus(selectedMsg.id, "afgehandeld")}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs h-9 px-4 rounded-lg shadow-sm w-full sm:w-auto"
+                        >
+                          <Check className="w-4 h-4 mr-1.5" />
+                          Zet op Afgehandeld
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          onClick={() => updateMessageStatus(selectedMsg.id, "moet nog beantwoord worden")}
+                          className="border-amber-500/50 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10 font-medium text-xs h-9 px-3.5 rounded-lg w-full sm:w-auto"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+                          Terug naar 'Moet nog beantwoord worden'
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Afzender gegevens kaart */}
+                  <div className="grid sm:grid-cols-3 gap-3 p-4 rounded-xl bg-muted/40 border border-border/80">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium mb-0.5">
+                        Afzender
+                      </div>
+                      <div className="text-sm font-semibold text-foreground truncate">
+                        {selectedMsg.name}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium mb-0.5">
+                        E-mailadres
+                      </div>
+                      <a
+                        href={`mailto:${selectedMsg.email}?subject=${encodeURIComponent(
+                          `Re: ${selectedMsg.subject || "Uw bericht aan Lijst van Andel"}`
+                        )}`}
+                        className="text-sm text-accent hover:underline flex items-center gap-1 font-medium truncate"
+                        title="Klik om e-mail te sturen"
+                      >
+                        <Mail className="w-3.5 h-3.5 shrink-0 text-accent" />
+                        <span className="truncate">{selectedMsg.email}</span>
+                      </a>
+                    </div>
+
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium mb-0.5">
+                        Telefoonnummer
+                      </div>
+                      {selectedMsg.phone ? (
+                        <a
+                          href={`tel:${selectedMsg.phone}`}
+                          className="text-sm text-foreground hover:text-accent hover:underline flex items-center gap-1 font-medium truncate"
+                          title="Klik om te bellen"
+                        >
+                          <Phone className="w-3.5 h-3.5 shrink-0 text-accent" />
+                          <span className="truncate">{selectedMsg.phone}</span>
+                        </a>
+                      ) : (
+                        <span className="text-xs text-muted-foreground italic">Niet opgegeven</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Bericht inhoud */}
+                  <div>
+                    <div className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+                      Bericht van inwoner
+                    </div>
+                    <div className="bg-muted/20 border border-border/70 rounded-xl p-5 text-sm md:text-base leading-relaxed whitespace-pre-wrap text-foreground selection:bg-accent/20">
+                      {selectedMsg.message}
+                    </div>
+                  </div>
+
+                  {/* Actieknoppen */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-border/70">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        variant="default"
+                        size="sm"
+                        asChild
+                        className="bg-primary hover:bg-primary/90 text-xs h-9 px-4 rounded-lg"
+                      >
+                        <a
+                          href={`mailto:${selectedMsg.email}?subject=${encodeURIComponent(
+                            `Re: ${selectedMsg.subject || "Uw bericht aan Lijst van Andel"}`
+                          )}`}
+                        >
+                          <Send className="w-3.5 h-3.5 mr-1.5" />
+                          Beantwoord via e-mail
+                        </a>
+                      </Button>
+
+                      {selectedMsg.phone && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          asChild
+                          className="text-xs h-9 px-3.5 rounded-lg border-border"
+                        >
+                          <a href={`tel:${selectedMsg.phone}`}>
+                            <Phone className="w-3.5 h-3.5 mr-1.5 text-accent" />
+                            Bellen ({selectedMsg.phone})
+                          </a>
+                        </Button>
+                      )}
+                    </div>
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deleteContactMessage(selectedMsg.id)}
+                      className="text-destructive hover:bg-destructive/10 hover:text-destructive text-xs h-9 px-3 rounded-lg"
+                      title="Verwijder dit bericht permanent"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                      Verwijder bericht
+                    </Button>
+                  </div>
+
+                  {/* Interne Notities */}
+                  <div className="pt-4 border-t border-border/70">
+                    <div className="flex items-center justify-between mb-2">
+                      <label htmlFor="adminNote" className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                        Interne notities (voor beheerder / fractie)
+                      </label>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => saveAdminNote(selectedMsg.id)}
+                        className="h-7 text-xs px-3 border-accent/40 text-accent hover:bg-accent/10"
+                      >
+                        Notitie opslaan
+                      </Button>
+                    </div>
+                    <Textarea
+                      id="adminNote"
+                      rows={3}
+                      value={adminNoteInput}
+                      onChange={(e) => setAdminNoteInput(e.target.value)}
+                      placeholder="Bijv. 02-09 telefonisch gesproken met indiener. Vraag doorgestuurd naar fractie."
+                      className="text-xs bg-muted/20"
+                    />
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Deze notities zijn alleen zichtbaar voor beheerders en niet voor de indiener.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-card rounded-2xl border border-dashed border-border p-12 text-center">
+                  <div className="w-14 h-14 rounded-full bg-muted/60 text-muted-foreground flex items-center justify-center mx-auto mb-4">
+                    <Inbox className="w-7 h-7" />
+                  </div>
+                  <h3 className="font-display text-xl mb-1 text-foreground">Geen bericht geselecteerd</h3>
+                  <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+                    Klik in de lijst aan de rechterkant op een bericht om de inhoud te lezen en de status aan te passen.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Rechter kolom: De lijst met berichten met status erbij */}
+            <div className="lg:col-span-5 space-y-4">
+              <div className="bg-card rounded-2xl border border-border p-5 shadow-sm space-y-4">
+                {/* Header lijst */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="font-display text-xl text-foreground flex items-center gap-2">
+                      <span>Ingekomen berichten</span>
+                      <span className="text-xs font-sans font-normal text-muted-foreground">
+                        ({filteredMessages.length})
+                      </span>
+                    </h2>
+                  </div>
+
+                  {unansweredCount > 0 ? (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                      {unansweredCount} onbeantwoord
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
+                      <Check className="w-3 h-3" />
+                      Alles afgehandeld
+                    </span>
+                  )}
+                </div>
+
+                {/* Zoekveld */}
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={messageSearch}
+                    onChange={(e) => setMessageSearch(e.target.value)}
+                    placeholder="Zoek op naam, e-mail of tekst..."
+                    className="pl-9 pr-8 text-xs h-9 rounded-lg"
+                  />
+                  {messageSearch && (
+                    <button
+                      onClick={() => setMessageSearch("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter tabs */}
+                <div className="flex gap-1.5 p-1 bg-muted/40 rounded-lg border border-border/60 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setMessageFilter("all")}
+                    className={`flex-1 py-1 px-2 rounded-md font-medium transition-all ${
+                      messageFilter === "all"
+                        ? "bg-card text-foreground shadow-sm font-semibold"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Alle ({messages.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMessageFilter("moet nog beantwoord worden")}
+                    className={`flex-1 py-1 px-2 rounded-md font-medium transition-all ${
+                      messageFilter === "moet nog beantwoord worden"
+                        ? "bg-card text-amber-700 dark:text-amber-400 shadow-sm font-semibold"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Open ({unansweredCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMessageFilter("afgehandeld")}
+                    className={`flex-1 py-1 px-2 rounded-md font-medium transition-all ${
+                      messageFilter === "afgehandeld"
+                        ? "bg-card text-emerald-700 dark:text-emerald-400 shadow-sm font-semibold"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Afgehandeld ({messages.length - unansweredCount})
+                  </button>
+                </div>
+
+                {/* Lijst weergave */}
+                <div className="space-y-2.5 max-h-[620px] overflow-y-auto pr-1">
+                  {filteredMessages.length === 0 ? (
+                    <div className="text-center py-10 px-4 text-xs text-muted-foreground border border-dashed border-border/80 rounded-xl">
+                      {messageSearch || messageFilter !== "all"
+                        ? "Geen berichten gevonden voor de huidige selectie."
+                        : "Er zijn nog geen contactberichten binnengekomen."}
+                    </div>
+                  ) : (
+                    filteredMessages.map((m) => {
+                      const isSelected = selectedMessageId === m.id;
+                      const isPending = m.status === "moet nog beantwoord worden";
+
+                      return (
+                        <div
+                          key={m.id}
+                          onClick={() => setSelectedMessageId(m.id)}
+                          className={`p-3.5 rounded-xl border text-left cursor-pointer transition-all duration-150 relative ${
+                            isSelected
+                              ? "bg-accent/10 border-accent shadow-sm ring-1 ring-accent"
+                              : "bg-background/60 hover:bg-muted/40 border-border/70"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <div className="font-semibold text-xs text-foreground truncate">
+                              {m.name}
+                            </div>
+                            <span className="text-[10px] text-muted-foreground shrink-0">
+                              {formatMessageDate(m.createdAt).split(",")[0]}
+                            </span>
+                          </div>
+
+                          <div className="text-xs font-medium text-foreground/90 truncate mb-1">
+                            {m.subject || "Contactbericht"}
+                          </div>
+
+                          <p className="text-xs text-muted-foreground line-clamp-2 leading-snug mb-2.5">
+                            {m.message}
+                          </p>
+
+                          {/* Status Badge */}
+                          <div className="flex items-center justify-between pt-2 border-t border-border/40 text-[11px]">
+                            {isPending ? (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full font-medium bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                                Moet nog beantwoord worden
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-medium bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
+                                <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                                Afgehandeld
+                              </span>
+                            )}
+
+                            <span className="text-[10px] text-accent font-medium hover:underline">
+                              {isSelected ? "Geopend" : "Bekijk →"}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* FAQ BEHEER */}
+        <TabsContent value="faqs">
+          <FaqManager token={token} />
+        </TabsContent>
+
+        {/* WIJKEN & KERNEN BEHEER */}
+        <TabsContent value="wijken">
+          <WijkManager token={token} />
+        </TabsContent>
+
+        {/* VACATURES & AANMELDINGEN */}
+        <TabsContent value="vacatures">
+          <VacancyManager />
+        </TabsContent>
+
+        {/* EXCLUSIEVE DOCUMENTEN VOOR LEDEN */}
+        <TabsContent value="documents">
+          <DocumentManager token={token} currentUser={user} />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
