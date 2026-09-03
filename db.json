@@ -44,6 +44,22 @@
       "createdAt": "2026-09-02T16:50:26.430Z",
       "email": "stef@lijstvanandel.nl",
       "newsletterSubscribed": true
+    },
+    {
+      "id": "1788433753932",
+      "salutation": "Dhr.",
+      "fullName": "Sammy Andel",
+      "address": "Het Schar 73",
+      "city": "Steenwijk",
+      "username": "Sammy123",
+      "email": "samuelvanandel@yahoo.co.uk",
+      "password": "$2b$10$g30U36x3FxWcQ2Qb3/ky1ObuqIFWwAezsCeNA9tbrCdI4SWZBoGgi",
+      "remarks": "",
+      "directDebit": false,
+      "newsletterSubscribed": true,
+      "role": "admin",
+      "isActive": true,
+      "createdAt": "2026-09-03T11:09:13.932Z"
     }
   ],
   "fractieleden": [
@@ -66,8 +82,8 @@
         "linkedin": "#"
       },
       "imgUrl": "/assets/sammy.png",
-      "linkedUserId": "1788365405085",
-      "linkedUsername": "admin"
+      "linkedUserId": "1788433753932",
+      "linkedUsername": "Sammy123"
     },
     {
       "id": "2",
@@ -919,8 +935,10 @@
       "startDateTime": "2026-09-03T10:34:50.330Z",
       "endDateTime": "2026-09-03T11:04:50.330Z",
       "onderwerp": "Vragen over parkeergelegenheid en herinrichting Stationskwartier Steenwijk",
-      "status": "ingepland",
-      "createdAt": "2026-09-01T10:44:50.330Z"
+      "status": "afgehandeld",
+      "createdAt": "2026-09-01T10:44:50.330Z",
+      "handledAt": "2026-09-03T11:08:08.144Z",
+      "handledBy": "Lisa Mars"
     },
     {
       "id": "bel-2",

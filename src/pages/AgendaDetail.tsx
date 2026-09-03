@@ -14,15 +14,20 @@ import {
   AlertCircle,
   Compass,
   ExternalLink,
+  Lock,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
+import { extractCity } from "@/lib/utils";
 
 export interface EventDetailItem {
   id: string;
   title: string;
   date: string;
   address?: string;
+  city?: string;
+  fullAddress?: string;
+  isAttending?: boolean;
   startTime?: string;
   endTime?: string;
   shortDescription?: string;
@@ -65,7 +70,7 @@ export default function AgendaDetail() {
       .then((data: EventDetailItem | null) => {
         if (data && data.title) {
           setEvent(data);
-          if (user?.id && data.attendees?.includes(user.id)) {
+          if (data.isAttending || (user?.id && data.attendees?.includes(user.id))) {
             setIsAttending(true);
           }
         } else {
@@ -82,7 +87,7 @@ export default function AgendaDetail() {
   const handleAttend = async () => {
     if (!event || event.isCancelled) return;
     if (!isAuthenticated) {
-      toast.info("Log in om u aan te melden voor dit evenement");
+      toast.info("Log in op het ledenportaal om u aan te melden voor dit evenement");
       navigate("/login");
       return;
     }
@@ -93,8 +98,12 @@ export default function AgendaDetail() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
+        const data = await res.json().catch(() => ({}));
         setIsAttending(true);
-        toast.success("Goed dat u komt! Op uw ledendashboard vindt u alle details. Tot dan!");
+        if (data.fullAddress) {
+          setEvent((prev) => (prev ? { ...prev, address: data.fullAddress, fullAddress: data.fullAddress } : null));
+        }
+        toast.success("Goed dat u komt! Op uw ledendashboard vindt u alle details en het adres. Tot dan!");
       } else {
         const data = await res.json().catch(() => ({}));
         toast.error(data.error || "Aanmelden mislukt");
@@ -263,21 +272,38 @@ export default function AgendaDetail() {
             <div className="flex items-start text-foreground/90 text-sm sm:col-span-2 pt-2 border-t border-border/60">
               <MapPin className="w-5 h-5 mr-3 text-accent shrink-0 mt-0.5" />
               <div className="flex-1">
-                <div className="text-xs text-muted-foreground">Locatie</div>
-                <div className="font-semibold">
-                  {event.address || "Steenwijk"}
-                </div>
-                {event.address && (
-                  <a
-                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                      `${event.address}, Steenwijkerland`
-                    )}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center text-xs text-accent hover:underline mt-1 font-medium"
-                  >
-                    <ExternalLink className="w-3 h-3 mr-1" /> Route plannen via Google Maps
-                  </a>
+                <div className="text-xs text-muted-foreground">Locatie / Adres</div>
+                {isAttending ? (
+                  <div className="mt-0.5">
+                    <div className="font-semibold text-foreground text-base">
+                      {event.fullAddress || event.address}
+                    </div>
+                    <div className="text-xs text-emerald-600 dark:text-emerald-400 font-medium mt-1.5 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Volledig adres zichtbaar omdat u bent aangemeld via het ledenportaal
+                    </div>
+                    {(event.fullAddress || event.address) && (
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                          `${event.fullAddress || event.address}, Steenwijkerland`
+                        )}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center text-xs text-accent hover:underline mt-2 font-medium"
+                      >
+                        <ExternalLink className="w-3 h-3 mr-1" /> Route plannen via Google Maps
+                      </a>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mt-0.5">
+                    <div className="font-semibold text-foreground text-base">
+                      Plaats: {event.city || extractCity(event.address)}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1.5 bg-muted/50 p-2.5 rounded-lg border border-border/60">
+                      <Lock className="w-3.5 h-3.5 text-accent shrink-0" />
+                      <span>Straat en huisnummer worden alleen getoond na aanmelden via het ledenportaal.</span>
+                    </div>
+                  </div>
                 )}
               </div>
             </div>

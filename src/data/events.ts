@@ -11,6 +11,8 @@ export interface EventItem {
   startTime?: string;
   endTime?: string;
   address?: string;
+  city?: string;
+  fullAddress?: string;
   location?: string;
   coords?: [number, number];
   image?: string;
@@ -20,6 +22,7 @@ export interface EventItem {
   isPublished?: boolean;
   isCancelled?: boolean;
   attendees?: string[];
+  isAttending?: boolean;
 }
 
 export const events: EventItem[] = [

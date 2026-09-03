@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Calendar, MapPin, Clock, ArrowRight, BookOpen, Share2 } from "lucide-react";
+import { Calendar, MapPin, Clock, ArrowRight, BookOpen, Share2, Lock, CheckCircle2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { AgendaMap, AgendaEventLocation } from "@/components/AgendaMap";
 import { EventItem } from "@/data/events";
+import { extractCity } from "@/lib/utils";
 
 export default function Agenda() {
   const [events, setEvents] = useState<EventItem[]>([]);
@@ -29,6 +30,7 @@ export default function Agenda() {
   const handleAttend = async (eventId: string, isCancelled: boolean) => {
     if (isCancelled) return;
     if (!isAuthenticated) {
+      toast.info("Log in op het ledenportaal om u aan te melden voor dit evenement");
       navigate("/login");
       return;
     }
@@ -39,6 +41,19 @@ export default function Agenda() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setEvents((prev) =>
+          prev.map((ev) =>
+            ev.id === eventId
+              ? {
+                  ...ev,
+                  isAttending: true,
+                  address: data.fullAddress || ev.address,
+                  fullAddress: data.fullAddress || ev.address,
+                }
+              : ev
+          )
+        );
         toast.success("Goed dat u komt, op uw ledendashboard staat het adres, tot dan!");
       } else {
         const data = await res.json().catch(() => ({}));
@@ -69,6 +84,9 @@ export default function Agenda() {
       startTime: ev.startTime,
       endTime: ev.endTime,
       address: ev.address || "",
+      city: ev.city || extractCity(ev.address),
+      fullAddress: ev.fullAddress,
+      isAttending: Boolean(ev.isAttending),
       lat: ev.lat,
       lng: ev.lng,
       isPublic: ev.isPublic,
@@ -180,18 +198,28 @@ export default function Agenda() {
                       </div>
                     )}
 
-                    {!item.isPublic && !isAuthenticated ? (
-                      <div className="flex items-center text-muted-foreground italic">
-                        <MapPin className="w-4 h-4 mr-3 text-accent shrink-0" /> Locatie zichtbaar voor leden
-                      </div>
-                    ) : (
-                      <div className="flex items-center text-muted-foreground">
-                        <MapPin className="w-4 h-4 mr-3 text-accent shrink-0" />
-                        <span className="text-foreground/90 font-medium">
-                          {isAuthenticated ? item.address : item.address || "Steenwijk"}
-                        </span>
-                      </div>
-                    )}
+                    <div className="flex items-start text-muted-foreground">
+                      <MapPin className="w-4 h-4 mr-3 text-accent shrink-0 mt-0.5" />
+                      {item.isAttending ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-foreground/90 font-semibold">
+                            {item.fullAddress || item.address}
+                          </span>
+                          <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-500/10 px-2.5 py-0.5 rounded-full flex items-center gap-1 border border-emerald-500/20">
+                            <CheckCircle2 className="w-3 h-3" /> Aangemeld via ledenportaal
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-foreground/90 font-medium">
+                            Plaats: {item.city || extractCity(item.address)}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground bg-muted/70 px-2.5 py-0.5 rounded-full border border-border/60 flex items-center gap-1 font-normal">
+                            <Lock className="w-3 h-3 text-accent shrink-0" /> Adres zichtbaar na aanmelden via ledenportaal
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {previewText && (
@@ -205,11 +233,23 @@ export default function Agenda() {
                       className={`inline-flex items-center justify-center px-5 py-2.5 rounded-full font-semibold text-xs transition-all duration-300 ${
                         item.isCancelled
                           ? "bg-muted text-muted-foreground cursor-not-allowed"
+                          : item.isAttending
+                          ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-md"
                           : "bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
                       }`}
                     >
-                      {item.isCancelled ? "Evenement Gecanceld" : "Meld u aan"}
-                      {!item.isCancelled && <ArrowRight className="ml-1.5 w-3.5 h-3.5" />}
+                      {item.isCancelled ? (
+                        "Evenement Gecanceld"
+                      ) : item.isAttending ? (
+                        <>
+                          <CheckCircle2 className="mr-1.5 w-3.5 h-3.5" /> Aanmelding Bevestigd
+                        </>
+                      ) : (
+                        <>
+                          Meld u aan
+                          <ArrowRight className="ml-1.5 w-3.5 h-3.5" />
+                        </>
+                      )}
                     </button>
 
                     <Link

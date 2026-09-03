@@ -807,17 +807,46 @@ async function startServer() {
     res.json({ message: "Categorie verwijderd" });
   });
 
+  // Helper to extract only the place / city (plaats) from an address string
+  function extractCity(address?: string): string {
+    if (!address || !address.trim()) return "Steenwijk";
+    const trimmed = address.trim();
+    if (trimmed.includes(",")) {
+      const parts = trimmed.split(",").map((p) => p.trim()).filter(Boolean);
+      const lastPart = parts[parts.length - 1];
+      const cleanCity = lastPart.replace(/^\s*\d{4}\s?[A-Za-z]{2}\s+/, "").trim();
+      if (cleanCity) return cleanCity;
+    }
+    const postalMatch = trimmed.match(/\b\d{4}\s?[A-Za-z]{2}\s+(.+)$/);
+    if (postalMatch && postalMatch[1]) {
+      return postalMatch[1].trim();
+    }
+    if (!/\d/.test(trimmed)) {
+      return trimmed;
+    }
+    const lastWord = trimmed.split(/\s+/).pop();
+    if (lastWord && isNaN(Number(lastWord))) {
+      return lastWord;
+    }
+    return trimmed;
+  }
+
   // Events/Agenda Routes
   app.get("/api/events", (req: any, res: any) => {
     const db = getDb();
-    // Parse token optionally to see if user is member
+    // Parse token optionally to see if user is member or admin
     let isMember = false;
+    let currentUserId: string | null = null;
+    let isAdmin = false;
+
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith("Bearer ")) {
       try {
         const token = authHeader.split(" ")[1];
-        jwt.verify(token, JWT_SECRET);
+        const decoded: any = jwt.verify(token, JWT_SECRET);
         isMember = true;
+        currentUserId = decoded.id;
+        isAdmin = decoded.role === "admin";
       } catch (e) {}
     }
 
@@ -825,18 +854,39 @@ async function startServer() {
     if (!isMember) {
       events = events.filter((e: any) => e.isPublic);
     }
-    res.json(events);
+
+    // Sanitize address: only show street & house number if registered via portal or admin
+    const sanitizedEvents = events.map((e: any) => {
+      const isAttending = Boolean(currentUserId && e.attendees?.includes(currentUserId));
+      const canSeeFullAddress = Boolean(isAttending || isAdmin);
+      const city = extractCity(e.address);
+
+      return {
+        ...e,
+        city,
+        address: canSeeFullAddress ? e.address : city,
+        fullAddress: canSeeFullAddress ? e.address : undefined,
+        isAttending,
+      };
+    });
+
+    res.json(sanitizedEvents);
   });
 
   app.get("/api/events/:id", (req: any, res: any) => {
     const db = getDb();
     let isMember = false;
+    let currentUserId: string | null = null;
+    let isAdmin = false;
+
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith("Bearer ")) {
       try {
         const token = authHeader.split(" ")[1];
-        jwt.verify(token, JWT_SECRET);
+        const decoded: any = jwt.verify(token, JWT_SECRET);
         isMember = true;
+        currentUserId = decoded.id;
+        isAdmin = decoded.role === "admin";
       } catch (e) {}
     }
 
@@ -849,15 +899,28 @@ async function startServer() {
       return res.status(404).json({ error: "Evenement niet gevonden" });
     }
 
+    const isAttending = Boolean(currentUserId && ev.attendees?.includes(currentUserId));
+    const canSeeFullAddress = Boolean(isAttending || isAdmin);
+    const city = extractCity(ev.address);
+
     if (!ev.isPublic && !isMember) {
       return res.json({
         ...ev,
+        city,
         address: "Locatie zichtbaar voor leden na inloggen",
+        fullAddress: undefined,
         isPrivateForUser: true,
+        isAttending: false,
       });
     }
 
-    res.json(ev);
+    res.json({
+      ...ev,
+      city,
+      address: canSeeFullAddress ? ev.address : city,
+      fullAddress: canSeeFullAddress ? ev.address : undefined,
+      isAttending,
+    });
   });
 
   app.get("/api/admin/events", requireAuth, requireAdmin, (req: any, res: any) => {
@@ -1055,15 +1118,34 @@ async function startServer() {
       ev.attendees.push(req.user.id);
       saveDb(db);
     }
-    res.json({ message: "Succesvol aangemeld" });
+    res.json({
+      message: "Succesvol aangemeld",
+      address: ev.address,
+      fullAddress: ev.address,
+      city: extractCity(ev.address)
+    });
   });
 
   app.get("/api/me/events", requireAuth, (req: any, res: any) => {
     const db = getDb();
     const now = new Date().toISOString().split('T')[0];
     
-    const attending = db.events.filter((e: any) => e.attendees?.includes(req.user.id) && e.date >= now && !e.isCancelled);
-    const cancelled = db.events.filter((e: any) => e.isCancelled && e.date >= now);
+    const attending = db.events
+      .filter((e: any) => e.attendees?.includes(req.user.id) && e.date >= now && !e.isCancelled)
+      .map((e: any) => ({
+        ...e,
+        city: extractCity(e.address),
+        fullAddress: e.address,
+        isAttending: true,
+      }));
+    const cancelled = db.events
+      .filter((e: any) => e.isCancelled && e.date >= now)
+      .map((e: any) => ({
+        ...e,
+        city: extractCity(e.address),
+        fullAddress: e.attendees?.includes(req.user.id) ? e.address : undefined,
+        isAttending: Boolean(e.attendees?.includes(req.user.id)),
+      }));
     
     res.json({ attending, cancelled });
   });

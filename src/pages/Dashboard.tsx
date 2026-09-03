@@ -782,8 +782,14 @@ export default function Dashboard() {
                         <div className="text-xs text-muted-foreground flex items-center gap-1.5 mb-1.5">
                           <Clock className="w-3.5 h-3.5 text-accent"/> {ev.startTime} - {ev.endTime}
                         </div>
-                        <div className="text-xs text-muted-foreground flex items-center gap-1.5 bg-accent/10 p-2 rounded text-accent">
-                          <MapPin className="w-3.5 h-3.5"/> {ev.address}
+                        <div className="text-xs flex items-start gap-1.5 bg-accent/10 p-2.5 rounded-lg text-accent border border-accent/20">
+                          <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0"/>
+                          <div>
+                            <span className="font-semibold text-foreground block">Volledig adres: {ev.fullAddress || ev.address}</span>
+                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium block mt-0.5">
+                              Aangemeld via ledenportaal
+                            </span>
+                          </div>
                         </div>
                       </div>
                     ))

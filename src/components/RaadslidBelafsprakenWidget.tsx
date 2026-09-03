@@ -277,9 +277,9 @@ export function RaadslidBelafsprakenWidget({ token, currentUser }: Props) {
                         : "bg-muted/20 border-border/80 hover:border-border"
                     }`}
                   >
-                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                      {/* Left: Caller details & timing */}
-                      <div className="space-y-2 flex-1">
+                    <div className="space-y-4">
+                      {/* Top: Caller details & timing */}
+                      <div className="space-y-2">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-display text-lg text-foreground font-semibold">
                             {item.name}
@@ -344,46 +344,51 @@ export function RaadslidBelafsprakenWidget({ token, currentUser }: Props) {
                         )}
                       </div>
 
-                      {/* Right: Action Buttons when start time arrived */}
-                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-border/40">
+                      {/* Bottom: Action Buttons vertically stacked inside the appointment box */}
+                      <div className="pt-3 border-t border-border/50">
                         {isStarted ? (
-                          <>
-                            {/* Afgehandeld */}
-                            <Button
-                              onClick={() => handleUpdateStatus(item.id, "afgehandeld", item.name)}
-                              disabled={isUpdating}
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold uppercase tracking-wider py-2 px-3 h-9 shadow-sm"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
-                              Afgehandeld
-                            </Button>
+                          <div className="space-y-2">
+                            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block">
+                              Gespreksstatus bijwerken:
+                            </span>
+                            <div className="flex flex-col gap-2 w-full">
+                              {/* Afgehandeld */}
+                              <Button
+                                onClick={() => handleUpdateStatus(item.id, "afgehandeld", item.name)}
+                                disabled={isUpdating}
+                                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold uppercase tracking-wider py-2.5 px-4 h-10 shadow-sm justify-center flex items-center"
+                              >
+                                <CheckCircle2 className="w-4 h-4 mr-2 shrink-0" />
+                                Afgehandeld
+                              </Button>
 
-                            {/* Nam niet op */}
-                            <Button
-                              variant="outline"
-                              onClick={() => handleUpdateStatus(item.id, "nam niet op", item.name)}
-                              disabled={isUpdating}
-                              className="border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 text-xs font-semibold uppercase tracking-wider py-2 px-3 h-9"
-                            >
-                              <PhoneOff className="w-3.5 h-3.5 mr-1.5" />
-                              Nam niet op
-                            </Button>
+                              {/* Nam niet op */}
+                              <Button
+                                variant="outline"
+                                onClick={() => handleUpdateStatus(item.id, "nam niet op", item.name)}
+                                disabled={isUpdating}
+                                className="w-full border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 text-xs font-semibold uppercase tracking-wider py-2.5 px-4 h-10 justify-center flex items-center"
+                              >
+                                <PhoneOff className="w-4 h-4 mr-2 shrink-0" />
+                                Nam niet op
+                              </Button>
 
-                            {/* Niet afgehandeld */}
-                            <Button
-                              variant="destructive"
-                              onClick={() => handleUpdateStatus(item.id, "niet afgehandeld", item.name)}
-                              disabled={isUpdating}
-                              className="text-xs font-semibold uppercase tracking-wider py-2 px-3 h-9"
-                            >
-                              <XCircle className="w-3.5 h-3.5 mr-1.5" />
-                              Niet afgehandeld
-                            </Button>
-                          </>
+                              {/* Niet afgehandeld */}
+                              <Button
+                                variant="destructive"
+                                onClick={() => handleUpdateStatus(item.id, "niet afgehandeld", item.name)}
+                                disabled={isUpdating}
+                                className="w-full text-xs font-semibold uppercase tracking-wider py-2.5 px-4 h-10 justify-center flex items-center"
+                              >
+                                <XCircle className="w-4 h-4 mr-2 shrink-0" />
+                                Niet afgehandeld
+                              </Button>
+                            </div>
+                          </div>
                         ) : (
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/40 px-3 py-2 rounded-lg border border-border">
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/40 px-3 py-2.5 rounded-lg border border-border">
                             <Clock className="w-3.5 h-3.5 text-accent shrink-0" />
-                            <span>Knoppen actief vanaf {item.startTijd}</span>
+                            <span>Knoppen worden actief zodra de starttijd ({item.startTijd} uur) is ingegaan</span>
                           </div>
                         )}
                       </div>

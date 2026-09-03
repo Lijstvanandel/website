@@ -2,11 +2,11 @@ import React, { useState, useEffect } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { Search, MapPin, Navigation, Calendar, Loader2, X } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { MapPin, Navigation, Calendar, Lock, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { extractCity } from "@/lib/utils";
 
-// Custom Leaflet DivIcon for searched address
+// Custom Leaflet DivIcon for searched / clicked address
 const searchedAddressIcon = L.divIcon({
   className: "custom-searched-marker",
   html: `
@@ -78,6 +78,9 @@ export interface AgendaEventLocation {
   startTime?: string;
   endTime?: string;
   address: string;
+  city?: string;
+  fullAddress?: string;
+  isAttending?: boolean;
   lat?: number;
   lng?: number;
   isPublic?: boolean;
@@ -88,7 +91,6 @@ interface AgendaMapProps {
   events?: AgendaEventLocation[];
   selectedEventId?: string;
   onSelectEvent?: (eventId: string) => void;
-  defaultAddress?: string;
 }
 
 // Steenwijk centrum defaults
@@ -98,17 +100,14 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
   events = [],
   selectedEventId,
   onSelectEvent,
-  defaultAddress = "",
 }) => {
-  const [addressInput, setAddressInput] = useState(defaultAddress);
   const [activeMarker, setActiveMarker] = useState<{
     lat: number;
     lng: number;
     label: string;
   } | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number]>(STEENWIJK_CENTER);
-  const [mapZoom, setMapZoom] = useState<number>(13);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [mapZoom, setMapZoom] = useState<number>(12);
   const [resolvedEvents, setResolvedEvents] = useState<AgendaEventLocation[]>([]);
 
   // Geocode an address string using server endpoint or OSM fallback
@@ -156,41 +155,12 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
     return null;
   };
 
-  // Search user-input address
-  const handleSearchAddress = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!addressInput.trim()) return;
-
-    setLoading(true);
-    const result = await geocodeAddress(addressInput);
-    setLoading(false);
-
-    if (result) {
-      setActiveMarker({
-        lat: result.lat,
-        lng: result.lng,
-        label: result.displayName || addressInput,
-      });
-      setMapCenter([result.lat, result.lng]);
-      setMapZoom(15);
-    } else {
-      // Default to Steenwijk with label if not found
-      setActiveMarker({
-        lat: STEENWIJK_CENTER[0],
-        lng: STEENWIJK_CENTER[1],
-        label: `${addressInput} (Centrum Steenwijkerland)`,
-      });
-      setMapCenter(STEENWIJK_CENTER);
-      setMapZoom(13);
-    }
-  };
-
   // Handle map click to drop marker
   const handleMapClick = async (lat: number, lng: number) => {
     setActiveMarker({
       lat,
       lng,
-      label: `Geprikt adres: ${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+      label: `Geprikt punt: ${lat.toFixed(4)}, ${lng.toFixed(4)}`,
     });
     setMapCenter([lat, lng]);
 
@@ -203,7 +173,6 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
         const revData = await revRes.json();
         if (revData && revData.display_name) {
           const shortAddress = revData.display_name.split(",").slice(0, 3).join(",");
-          setAddressInput(shortAddress);
           setActiveMarker({
             lat,
             lng,
@@ -223,10 +192,7 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
     async function resolveAllEvents() {
       const updated: AgendaEventLocation[] = [];
       for (const ev of events) {
-        if (!ev.address) {
-          updated.push(ev);
-          continue;
-        }
+        const lookupQuery = ev.city || extractCity(ev.address) || "Steenwijk";
 
         // If event already has lat/lng, keep it
         if (ev.lat && ev.lng) {
@@ -234,8 +200,8 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
           continue;
         }
 
-        // Try quick geocode
-        const res = await geocodeAddress(ev.address);
+        // Try geocode of the place or city
+        const res = await geocodeAddress(lookupQuery);
         if (res && isMounted) {
           updated.push({
             ...ev,
@@ -269,23 +235,13 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
       if (ev) {
         if (ev.lat && ev.lng) {
           setMapCenter([ev.lat, ev.lng]);
-          setMapZoom(16);
+          setMapZoom(15);
           setActiveMarker({
             lat: ev.lat,
             lng: ev.lng,
-            label: `${ev.title} — ${ev.address}`,
-          });
-        } else if (ev.address) {
-          geocodeAddress(ev.address).then((res) => {
-            if (res) {
-              setMapCenter([res.lat, res.lng]);
-              setMapZoom(16);
-              setActiveMarker({
-                lat: res.lat,
-                lng: res.lng,
-                label: `${ev.title} — ${ev.address}`,
-              });
-            }
+            label: ev.isAttending
+              ? `${ev.title} — ${ev.fullAddress || ev.address}`
+              : `${ev.title} — Plaats: ${ev.city || extractCity(ev.address)}`,
           });
         }
       }
@@ -300,16 +256,16 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
 
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden shadow-lg mb-12">
-      {/* Top Search & Controls Bar */}
+      {/* Top Header Bar without Search Bar */}
       <div className="p-4 md:p-6 bg-secondary/50 border-b border-border">
-        <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center mb-3">
+        <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
           <div>
             <div className="text-[10px] uppercase tracking-[0.25em] text-accent font-semibold flex items-center gap-1.5 mb-1">
               <MapPin className="w-3.5 h-3.5" /> Interactieve Kaart
             </div>
-            <h3 className="font-display text-2xl text-foreground">Locatie & Adres Zoeken</h3>
-            <p className="text-xs text-muted-foreground">
-              Voer een adres in of klik direct op de kaart om een marker te plaatsen en de locatie te bekijken.
+            <h3 className="font-display text-2xl text-foreground">Evenementen in Steenwijkerland</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Bekijk de locaties van onze bijeenkomsten en raadsactiviteiten op de kaart.
             </p>
           </div>
 
@@ -323,45 +279,9 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
           </Button>
         </div>
 
-        <form onSubmit={handleSearchAddress} className="flex flex-col sm:flex-row gap-2 mt-2">
-          <div className="relative flex-1">
-            <MapPin className="w-4 h-4 text-accent absolute left-3 top-1/2 -translate-y-1/2" />
-            <Input
-              value={addressInput}
-              onChange={(e) => setAddressInput(e.target.value)}
-              placeholder="Voer een adres in (bijv. Markt 1, Steenwijk of De Meenthe)..."
-              className="pl-9 pr-9 bg-background/80 border-border text-sm h-11"
-            />
-            {addressInput && (
-              <button
-                type="button"
-                onClick={() => setAddressInput("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-          <Button
-            type="submit"
-            disabled={loading}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold uppercase tracking-wider text-xs h-11 px-6 whitespace-nowrap"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Zoeken...
-              </>
-            ) : (
-              <>
-                <Search className="w-4 h-4 mr-2" /> Toon op kaart
-              </>
-            )}
-          </Button>
-        </form>
-
         {activeMarker && (
           <div className="mt-3 text-xs flex items-center gap-2 text-accent bg-accent/10 py-1.5 px-3 rounded border border-accent/20">
-            <span className="font-semibold">Geselecteerde marker:</span>
+            <span className="font-semibold">Locatie:</span>
             <span className="truncate text-foreground/90">{activeMarker.label}</span>
           </div>
         )}
@@ -385,7 +305,7 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
 
-          {/* Searched / Clicked Address Marker */}
+          {/* Clicked Address Marker */}
           {activeMarker && (
             <Marker
               position={[activeMarker.lat, activeMarker.lng]}
@@ -394,7 +314,7 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
               <Popup className="custom-leaflet-popup">
                 <div className="p-1 text-xs">
                   <div className="font-semibold text-accent mb-1 flex items-center gap-1">
-                    <MapPin className="w-3.5 h-3.5" /> Gekozen Locatie
+                    <MapPin className="w-3.5 h-3.5" /> Gekozen Punt
                   </div>
                   <div className="text-foreground leading-snug">{activeMarker.label}</div>
                   <div className="text-[10px] text-muted-foreground mt-1">
@@ -408,6 +328,8 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
           {/* Markers for Agenda Events */}
           {resolvedEvents.map((ev) => {
             if (!ev.lat || !ev.lng) return null;
+            const eventCity = ev.city || extractCity(ev.address);
+
             return (
               <Marker
                 key={ev.id}
@@ -420,7 +342,7 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
                 }}
               >
                 <Popup className="custom-leaflet-popup">
-                  <div className="p-1.5 text-xs min-w-[200px]">
+                  <div className="p-1.5 text-xs min-w-[210px]">
                     <div className="font-display text-base text-accent mb-1 leading-tight">{ev.title}</div>
                     {ev.date && (
                       <div className="text-muted-foreground flex items-center gap-1 mb-1">
@@ -428,12 +350,24 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
                         {ev.startTime && ` • ${ev.startTime}`}
                       </div>
                     )}
-                    {ev.address && (
-                      <div className="text-foreground flex items-start gap-1 font-medium mt-1.5 border-t border-border/50 pt-1.5">
-                        <MapPin className="w-3 h-3 text-accent shrink-0 mt-0.5" />
-                        <span>{ev.address}</span>
-                      </div>
-                    )}
+                    <div className="text-foreground flex items-start gap-1 font-medium mt-1.5 border-t border-border/50 pt-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-accent shrink-0 mt-0.5" />
+                      {ev.isAttending ? (
+                        <div>
+                          <span className="font-semibold">{ev.fullAddress || ev.address}</span>
+                          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-normal mt-0.5">
+                            <CheckCircle2 className="w-3 h-3" /> Aangemeld via ledenportaal
+                          </span>
+                        </div>
+                      ) : (
+                        <div>
+                          <span className="font-semibold">Plaats: {eventCity}</span>
+                          <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-normal mt-0.5">
+                            <Lock className="w-3 h-3 text-accent" /> Adres zichtbaar na aanmelden via ledenportaal
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </Popup>
               </Marker>
@@ -446,10 +380,7 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
       <div className="px-6 py-3 bg-secondary/30 border-t border-border flex flex-wrap items-center justify-between gap-4 text-xs text-muted-foreground">
         <div className="flex items-center gap-4">
           <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-accent inline-block" /> Ingevoerd adres / marker
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-[#2d6a4f] inline-block border border-accent" /> Agenda evenement
+            <span className="w-3 h-3 rounded-full bg-[#2d6a4f] inline-block border border-accent" /> Bijeenkomsten & evenementen
           </span>
         </div>
         <div>Gemeente Steenwijkerland • OpenStreetMap</div>
@@ -459,3 +390,4 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
 };
 
 export default AgendaMap;
+
