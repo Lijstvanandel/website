@@ -1056,6 +1056,22 @@
   ],
   "stemgedrag": [
     {
+      "id": "stem-1788472198960-qr9i",
+      "title": "Teksten",
+      "category": "motie",
+      "motionType": "eigen",
+      "vote": "voor",
+      "description": "Digitale autonomie",
+      "date": "2026-09-03",
+      "raadsvergadering": "Raadsvergadering",
+      "resultaat": "Verworpen",
+      "imageUrl": "/uploads/stemgedrag/1788472198951-537152387.jpg",
+      "pdfUrl": "/uploads/stemgedrag/1788472198954-756060503.pdf",
+      "pdfFileName": "2026_RAAD_00041 Gemeentelijke inhoudelijke kaders Samen voor Ryan - RAADSVOORSTEL.pdf",
+      "createdAt": "2026-09-03T21:49:58.960Z",
+      "updatedAt": "2026-09-03T21:49:58.960Z"
+    },
+    {
       "id": "motie-voorrang-lokale-inwoners",
       "title": "Motie: Minimaal 50% voorrang voor lokale woningzoekenden bij nieuwbouw",
       "category": "motie",

@@ -329,23 +329,32 @@ function saveDb(data: any) {
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
+    let subfolder = 'public/uploads';
+    const url = req.originalUrl || req.url || '';
     if (file.fieldname === 'img') {
-      cb(null, 'public/uploads/fractieleden');
+      subfolder = 'public/uploads/fractieleden';
     } else if (file.fieldname === 'video') {
-      cb(null, 'public/uploads/videos');
-    } else if (req.url.includes('/news')) {
-      cb(null, 'public/uploads/news');
-    } else if (req.url.includes('/events')) {
-      cb(null, 'public/uploads/events');
-    } else if (req.url.includes('/wijken') || file.fieldname === 'banner' || file.fieldname === 'foto') {
-      cb(null, 'public/uploads/wijken');
-    } else if (req.url.includes('/stemgedrag') || req.url.includes('/moties')) {
-      cb(null, 'public/uploads/stemgedrag');
-    } else if (req.url.includes('/documents') || file.fieldname === 'document' || file.fieldname === 'pdf') {
-      cb(null, 'public/uploads/documents');
-    } else {
-      cb(null, 'public/uploads');
+      subfolder = 'public/uploads/videos';
+    } else if (url.includes('/news')) {
+      subfolder = 'public/uploads/news';
+    } else if (url.includes('/events')) {
+      subfolder = 'public/uploads/events';
+    } else if (url.includes('/wijken') || file.fieldname === 'banner' || file.fieldname === 'foto') {
+      subfolder = 'public/uploads/wijken';
+    } else if (url.includes('/stemgedrag') || url.includes('/moties')) {
+      subfolder = 'public/uploads/stemgedrag';
+    } else if (url.includes('/documents') || file.fieldname === 'document' || file.fieldname === 'pdf') {
+      subfolder = 'public/uploads/documents';
     }
+    const fullDir = path.join(process.cwd(), subfolder);
+    if (!fs.existsSync(fullDir)) {
+      try {
+        fs.mkdirSync(fullDir, { recursive: true });
+      } catch (err) {
+        console.error('Error creating directory', fullDir, err);
+      }
+    }
+    cb(null, fullDir);
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -358,8 +367,63 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
   app.use(express.json());
-  // Explicitly serve uploaded assets
-  app.use("/uploads", express.static(path.join(process.cwd(), "public/uploads")));
+
+  // Explicitly serve uploaded assets with PDF content-type and inline disposition
+  const uploadsPath = path.join(process.cwd(), "public", "uploads");
+  const staticUploadsOptions = {
+    maxAge: 0,
+    dotfiles: 'allow' as const,
+    setHeaders: (res: any, filePath: string) => {
+      if (filePath.endsWith('.pdf')) {
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'inline');
+      }
+    }
+  };
+
+  // Dedicated routes with cross-folder fallback for uploaded documents/PDFs
+  app.get("/uploads/stemgedrag/:filename", (req, res, next) => {
+    const filePath = path.join(uploadsPath, "stemgedrag", req.params.filename);
+    if (fs.existsSync(filePath)) {
+      if (filePath.endsWith('.pdf')) {
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'inline');
+      }
+      return res.sendFile(filePath);
+    }
+    const fallbackPath = path.join(uploadsPath, "documents", req.params.filename);
+    if (fs.existsSync(fallbackPath)) {
+      if (fallbackPath.endsWith('.pdf')) {
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'inline');
+      }
+      return res.sendFile(fallbackPath);
+    }
+    next();
+  });
+
+  app.get("/uploads/documents/:filename", (req, res, next) => {
+    const filePath = path.join(uploadsPath, "documents", req.params.filename);
+    if (fs.existsSync(filePath)) {
+      if (filePath.endsWith('.pdf')) {
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'inline');
+      }
+      return res.sendFile(filePath);
+    }
+    const fallbackPath = path.join(uploadsPath, "stemgedrag", req.params.filename);
+    if (fs.existsSync(fallbackPath)) {
+      if (fallbackPath.endsWith('.pdf')) {
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'inline');
+      }
+      return res.sendFile(fallbackPath);
+    }
+    next();
+  });
+
+  app.use("/uploads", express.static(uploadsPath, staticUploadsOptions));
+  app.use("/public/uploads", express.static(uploadsPath, staticUploadsOptions));
 
   // Middleware for checking auth & admin
   const requireAuth = (req: any, res: any, next: any) => {
