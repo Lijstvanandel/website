@@ -3,6 +3,7 @@ import { Phone, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BelafspraakDialog } from "@/components/BelafspraakDialog";
 import { FractielidWidget, FractielidItem } from "@/components/FractielidWidget";
+import { StemgedragSection } from "@/components/StemgedragSection";
 
 interface VideoItem {
   id: string;
@@ -100,6 +101,9 @@ const Raadsleden = () => {
           );
         })}
       </div>
+
+      {/* Extra sectie onder de fractieleden: Stemgedrag */}
+      <StemgedragSection />
 
       <BelafspraakDialog
         key={voorgeselecteerd ?? "leeg"}

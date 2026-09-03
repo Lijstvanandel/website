@@ -36,6 +36,7 @@ import {
   Briefcase,
   FileText,
   BookOpen,
+  Vote,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VideoPlayer } from "@/components/VideoPlayer";
@@ -46,6 +47,7 @@ import { WijkManager } from "@/components/WijkManager";
 import { VacancyManager } from "@/components/VacancyManager";
 import { DocumentManager } from "@/components/DocumentManager";
 import { BelafsprakenManager } from "@/components/BelafsprakenManager";
+import { StemgedragManager } from "@/components/StemgedragManager";
 import { WIJKEN_EN_KERNEN } from "@/data/wijken";
 import { NewsItem } from "@/data/news";
 import { hoofdstukken } from "@/data/partijprogramma";
@@ -815,6 +817,9 @@ export default function AdminDashboard() {
           </TabsTrigger>
           <TabsTrigger value="fractie" className="gap-2 text-xs">
             <ShieldCheck className="w-4 h-4" /> Fractieleden
+          </TabsTrigger>
+          <TabsTrigger value="stemgedrag" className="gap-2 text-xs">
+            <Vote className="w-4 h-4 text-accent" /> Stemgedrag
           </TabsTrigger>
           <TabsTrigger value="videos" className="gap-2 text-xs">
             <Video className="w-4 h-4" /> Video's
@@ -2488,6 +2493,11 @@ export default function AdminDashboard() {
         {/* BELAFSPRAKEN OVERZICHT & RAADSLEDEN KOPPELING */}
         <TabsContent value="belafspraken">
           <BelafsprakenManager token={token} headers={headers} />
+        </TabsContent>
+
+        {/* STEMGEDRAG & MOTIES BEHEER */}
+        <TabsContent value="stemgedrag">
+          <StemgedragManager token={token} />
         </TabsContent>
       </Tabs>
     </div>

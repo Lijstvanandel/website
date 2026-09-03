@@ -19,6 +19,7 @@ const UPLOAD_DIRS = [
   "public/uploads/events",
   "public/uploads/wijken",
   "public/uploads/documents",
+  "public/uploads/stemgedrag",
 ];
 UPLOAD_DIRS.forEach((dir) => {
   const fullPath = path.join(process.cwd(), dir);
@@ -261,6 +262,57 @@ function getDb() {
     saveDb(db);
   }
 
+  if (!db.stemgedrag || !Array.isArray(db.stemgedrag) || db.stemgedrag.length === 0) {
+    db.stemgedrag = [
+      {
+        id: "motie-voorrang-lokale-inwoners",
+        title: "Motie: Minimaal 50% voorrang voor lokale woningzoekenden bij nieuwbouw",
+        category: "motie",
+        motionType: "eigen",
+        vote: "voor",
+        date: "2026-05-20",
+        raadsvergadering: "Raadsvergadering 20 mei 2026",
+        resultaat: "Aangenomen",
+        description: "Lijst van Andel heeft deze motie zelf opgesteld en ingediend om bindende afspraken te maken dat minimaal 50% van de nieuwe koop- en huurwoningen in Steenwijkerland met voorrang wordt toegewezen aan inwoners met een aantoonbare economische of maatschappelijke binding met onze gemeente of dorpen. Onze eigen jeugd en gezinnen mogen niet langer verdrongen worden op de woningmarkt.",
+        imageUrl: "/assets/markt-steenwijk.jpg",
+        pdfUrl: "",
+        pdfFileName: "",
+        createdAt: "2026-05-20T19:30:00.000Z"
+      },
+      {
+        id: "motie-behoud-dorpshuizen",
+        title: "Motie: Structurele subsidiebescherming dorpshuizen en buurthuizen",
+        category: "motie",
+        motionType: "mede-indiener",
+        vote: "voor",
+        date: "2026-04-14",
+        raadsvergadering: "Raadsvergadering 14 april 2026",
+        resultaat: "Aangenomen",
+        description: "Als trotse mede-indiener van deze motie staan wij pal voor het behoud van de ontmoetingsplekken in al onze kernen. Het dorpshuis is het kloppend hart van het verenigingsleven. We hebben vóór gestemd omdat bezuinigingen op onze dorpshuizen onacceptabel zijn voor de leefbaarheid en sociale samenhang in het buitengebied.",
+        imageUrl: "/assets/t-wiede.jpg",
+        pdfUrl: "",
+        pdfFileName: "",
+        createdAt: "2026-04-14T20:00:00.000Z"
+      },
+      {
+        id: "motie-verhoging-ozb-tarief",
+        title: "Raadsvoorstel: Extra verhoging van de Onroerendezaakbelasting (OZB)",
+        category: "voorstel",
+        motionType: "regulier",
+        vote: "tegen",
+        date: "2026-03-10",
+        raadsvergadering: "Raadsvergadering 10 maart 2026",
+        resultaat: "Verworpen",
+        description: "Wij hebben resoluut TEGEN dit voorstel gestemd. De woon- en leeflasten voor gezinnen en ondernemers in Steenwijkerland zijn de afgelopen jaren al onevenredig gestegen. De gemeente moet eerst kritisch naar de eigen ambtelijke uitgaven kijken en efficiënter werken voordat de rekening opnieuw bij de hardwerkende inwoner wordt neergelegd.",
+        imageUrl: "/assets/stemmen.jpg",
+        pdfUrl: "",
+        pdfFileName: "",
+        createdAt: "2026-03-10T21:15:00.000Z"
+      }
+    ];
+    saveDb(db);
+  }
+
   return db;
 }
 
@@ -280,6 +332,8 @@ const storage = multer.diskStorage({
       cb(null, 'public/uploads/events');
     } else if (req.url.includes('/wijken') || file.fieldname === 'banner' || file.fieldname === 'foto') {
       cb(null, 'public/uploads/wijken');
+    } else if (req.url.includes('/stemgedrag') || req.url.includes('/moties')) {
+      cb(null, 'public/uploads/stemgedrag');
     } else if (req.url.includes('/documents') || file.fieldname === 'document' || file.fieldname === 'pdf') {
       cb(null, 'public/uploads/documents');
     } else {
@@ -2051,6 +2105,192 @@ async function startServer() {
     saveDb(db);
 
     res.json({ message: "Document succesvol verwijderd" });
+  });
+
+  // ==========================================
+  // STEMGEDRAG ROUTES
+  // ==========================================
+  app.get("/api/stemgedrag", (req, res) => {
+    const db = getDb();
+    let items = db.stemgedrag || [];
+    const { type, vote, search, category } = req.query;
+
+    if (category && typeof category === "string" && category !== "all") {
+      items = items.filter((m: any) => (m.category || "motie") === category);
+    }
+    if (type && typeof type === "string" && type !== "all") {
+      items = items.filter((m: any) => m.motionType === type);
+    }
+    if (vote && typeof vote === "string") {
+      items = items.filter((m: any) => m.vote === vote);
+    }
+    if (search && typeof search === "string" && search.trim()) {
+      const q = search.toLowerCase().trim();
+      items = items.filter((m: any) =>
+        (m.title && m.title.toLowerCase().includes(q)) ||
+        (m.description && m.description.toLowerCase().includes(q)) ||
+        (m.raadsvergadering && m.raadsvergadering.toLowerCase().includes(q)) ||
+        (m.category && m.category.toLowerCase().includes(q))
+      );
+    }
+
+    // Sort by date descending
+    items = [...items].sort((a: any, b: any) => {
+      const dateA = new Date(a.date || a.createdAt || 0).getTime();
+      const dateB = new Date(b.date || b.createdAt || 0).getTime();
+      return dateB - dateA;
+    });
+
+    res.json(items);
+  });
+
+  app.get("/api/stemgedrag/:id", (req, res) => {
+    const db = getDb();
+    const item = (db.stemgedrag || []).find((m: any) => m.id === req.params.id);
+    if (!item) return res.status(404).json({ error: "Item niet gevonden" });
+    res.json(item);
+  });
+
+  app.post("/api/admin/stemgedrag", requireAuth, requireAdmin, upload.fields([{ name: "image", maxCount: 1 }, { name: "pdf", maxCount: 1 }]), (req: any, res: any) => {
+    const db = getDb();
+    const { title, category, motionType, vote, description, date, raadsvergadering, resultaat } = req.body;
+
+    if (!title || !title.trim()) {
+      return res.status(400).json({ error: "Titel of onderwerp is verplicht." });
+    }
+
+    const cleanDesc = (description || "").trim();
+    if (cleanDesc.length > 600) {
+      return res.status(400).json({ error: `Toelichting mag maximaal 600 tekens bevatten (huidige lengte: ${cleanDesc.length}).` });
+    }
+
+    const validCategories = ["motie", "voorstel", "amendement"];
+    const validTypes = ["eigen", "mede-indiener", "regulier"];
+    const validVotes = ["voor", "tegen"];
+
+    const effectiveCategory = validCategories.includes(category) ? category : "motie";
+    const effectiveType = validTypes.includes(motionType) ? motionType : "regulier";
+    const effectiveVote = validVotes.includes(vote) ? vote : "voor";
+
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+    let imageUrl = req.body.imageUrl || "";
+    if (files?.["image"]?.[0]) {
+      imageUrl = `/uploads/stemgedrag/${files["image"][0].filename}`;
+    }
+
+    let pdfUrl = req.body.pdfUrl || "";
+    let pdfFileName = req.body.pdfFileName || "";
+    if (files?.["pdf"]?.[0]) {
+      pdfUrl = `/uploads/stemgedrag/${files["pdf"][0].filename}`;
+      pdfFileName = files["pdf"][0].originalname;
+    }
+
+    const newItem = {
+      id: "stem-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6),
+      title: title.trim(),
+      category: effectiveCategory,
+      motionType: effectiveType,
+      vote: effectiveVote,
+      description: cleanDesc,
+      date: date || new Date().toISOString().split("T")[0],
+      raadsvergadering: (raadsvergadering || "").trim(),
+      resultaat: (resultaat || "").trim(),
+      imageUrl,
+      pdfUrl,
+      pdfFileName,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    if (!db.stemgedrag) db.stemgedrag = [];
+    db.stemgedrag.unshift(newItem);
+    saveDb(db);
+
+    res.status(201).json({
+      message: "Stemgedrag succesvol toegevoegd",
+      item: newItem
+    });
+  });
+
+  app.put("/api/admin/stemgedrag/:id", requireAuth, requireAdmin, upload.fields([{ name: "image", maxCount: 1 }, { name: "pdf", maxCount: 1 }]), (req: any, res: any) => {
+    const db = getDb();
+    if (!db.stemgedrag) db.stemgedrag = [];
+
+    const index = db.stemgedrag.findIndex((m: any) => m.id === req.params.id);
+    if (index === -1) {
+      return res.status(404).json({ error: "Item niet gevonden" });
+    }
+
+    const current = db.stemgedrag[index];
+    const { title, category, motionType, vote, description, date, raadsvergadering, resultaat, removeImage, removePdf } = req.body;
+
+    const cleanDesc = description !== undefined ? description.trim() : current.description;
+    if (cleanDesc && cleanDesc.length > 600) {
+      return res.status(400).json({ error: `Toelichting mag maximaal 600 tekens bevatten (huidige lengte: ${cleanDesc.length}).` });
+    }
+
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+    let imageUrl = current.imageUrl || "";
+    if (removeImage === "true" || removeImage === true) {
+      imageUrl = "";
+    } else if (files?.["image"]?.[0]) {
+      imageUrl = `/uploads/stemgedrag/${files["image"][0].filename}`;
+    } else if (req.body.imageUrl !== undefined) {
+      imageUrl = req.body.imageUrl;
+    }
+
+    let pdfUrl = current.pdfUrl || "";
+    let pdfFileName = current.pdfFileName || "";
+    if (removePdf === "true" || removePdf === true) {
+      pdfUrl = "";
+      pdfFileName = "";
+    } else if (files?.["pdf"]?.[0]) {
+      pdfUrl = `/uploads/stemgedrag/${files["pdf"][0].filename}`;
+      pdfFileName = files["pdf"][0].originalname;
+    } else if (req.body.pdfUrl !== undefined) {
+      pdfUrl = req.body.pdfUrl;
+      pdfFileName = req.body.pdfFileName || "";
+    }
+
+    const validCategories = ["motie", "voorstel", "amendement"];
+    const validTypes = ["eigen", "mede-indiener", "regulier"];
+    const validVotes = ["voor", "tegen"];
+
+    db.stemgedrag[index] = {
+      ...current,
+      title: title !== undefined ? title.trim() : current.title,
+      category: validCategories.includes(category) ? category : (current.category || "motie"),
+      motionType: validTypes.includes(motionType) ? motionType : current.motionType,
+      vote: validVotes.includes(vote) ? vote : current.vote,
+      description: cleanDesc,
+      date: date !== undefined ? date : current.date,
+      raadsvergadering: raadsvergadering !== undefined ? raadsvergadering.trim() : current.raadsvergadering,
+      resultaat: resultaat !== undefined ? resultaat.trim() : current.resultaat,
+      imageUrl,
+      pdfUrl,
+      pdfFileName,
+      updatedAt: new Date().toISOString()
+    };
+
+    saveDb(db);
+
+    res.json({
+      message: "Stemgedrag succesvol bijgewerkt",
+      item: db.stemgedrag[index]
+    });
+  });
+
+  app.delete("/api/admin/stemgedrag/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const item = (db.stemgedrag || []).find((m: any) => m.id === req.params.id);
+    if (!item) {
+      return res.status(404).json({ error: "Motie niet gevonden" });
+    }
+
+    db.stemgedrag = (db.stemgedrag || []).filter((m: any) => m.id !== req.params.id);
+    saveDb(db);
+
+    res.json({ message: "Motie succesvol verwijderd" });
   });
 
   // Explicit 404 handler for unhandled /api requests so they NEVER fall through to Vite / SPA index.html
