@@ -657,7 +657,7 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
                   <div className="flex items-center justify-between gap-2">
                     {currentPdfUrl && !pdfFile ? (
                       <a
-                        href={currentPdfUrl}
+                        href={currentPdfUrl.startsWith("/uploads/") ? `/api/document/view?file=${encodeURIComponent(currentPdfUrl)}` : currentPdfUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-xs text-accent hover:underline flex items-center gap-1"
@@ -876,7 +876,7 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
                         )}
                         {item.pdfUrl && (
                           <a
-                            href={item.pdfUrl}
+                            href={item.pdfUrl.startsWith("/uploads/") ? `/api/document/view?file=${encodeURIComponent(item.pdfUrl)}` : item.pdfUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline font-medium"

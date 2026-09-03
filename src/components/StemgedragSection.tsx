@@ -648,7 +648,7 @@ export const StemgedragSection: React.FC = () => {
                       <div>
                         {item.pdfUrl ? (
                           <a
-                            href={item.pdfUrl}
+                            href={item.pdfUrl.startsWith("/uploads/") ? `/api/document/view?file=${encodeURIComponent(item.pdfUrl)}` : item.pdfUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider bg-accent text-accent-foreground hover:bg-accent/90 shadow-xs transition-all cursor-pointer"

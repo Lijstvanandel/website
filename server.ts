@@ -363,6 +363,20 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage: storage });
 
+function mirrorUploadToDist(subpath: string) {
+  try {
+    const src = path.join(process.cwd(), "public", subpath);
+    const dest = path.join(process.cwd(), "dist", subpath);
+    if (fs.existsSync(src)) {
+      const destDir = path.dirname(dest);
+      if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+      fs.copyFileSync(src, dest);
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -370,6 +384,25 @@ async function startServer() {
 
   // Explicitly serve uploaded assets with PDF content-type and inline disposition
   const uploadsPath = path.join(process.cwd(), "public", "uploads");
+
+  // Sync public uploads into dist uploads on startup
+  try {
+    const pubStem = path.join(uploadsPath, "stemgedrag");
+    const distStem = path.join(process.cwd(), "dist", "uploads", "stemgedrag");
+    if (fs.existsSync(pubStem) && fs.existsSync(path.join(process.cwd(), "dist"))) {
+      if (!fs.existsSync(distStem)) fs.mkdirSync(distStem, { recursive: true });
+      const files = fs.readdirSync(pubStem);
+      for (const f of files) {
+        const srcF = path.join(pubStem, f);
+        const dstF = path.join(distStem, f);
+        if (fs.statSync(srcF).isFile() && !fs.existsSync(dstF)) {
+          fs.copyFileSync(srcF, dstF);
+        }
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
   const staticUploadsOptions = {
     maxAge: 0,
     dotfiles: 'allow' as const,
@@ -422,8 +455,48 @@ async function startServer() {
     next();
   });
 
+  // Guaranteed document streaming endpoint that Nginx static regex will NEVER intercept (bypasses .pdf static regex)
+  app.get("/api/document/view", (req: any, res: any) => {
+    const rawFile = req.query.file || req.query.path || "";
+    if (!rawFile || typeof rawFile !== "string") {
+      return res.status(400).json({ error: "Geen bestandspad opgegeven" });
+    }
+
+    const cleanPath = rawFile.replace(/^\/+/, "").replace(/\.\./g, "");
+    const baseName = path.basename(cleanPath);
+
+    const candidatePaths = [
+      path.join(process.cwd(), "public", cleanPath),
+      path.join(process.cwd(), cleanPath),
+      path.join(process.cwd(), "public", "uploads", "stemgedrag", baseName),
+      path.join(process.cwd(), "public", "uploads", "documents", baseName),
+      path.join(process.cwd(), "public", "uploads", baseName),
+      path.join(process.cwd(), "dist", cleanPath),
+      path.join(process.cwd(), "dist", "uploads", "stemgedrag", baseName),
+      path.join(process.cwd(), "dist", "uploads", "documents", baseName)
+    ];
+
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p) && fs.statSync(p).isFile()) {
+        const ext = path.extname(p).toLowerCase();
+        if (ext === ".pdf") {
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader("Content-Disposition", `inline; filename="${baseName}"`);
+        } else if (ext === ".jpg" || ext === ".jpeg") {
+          res.setHeader("Content-Type", "image/jpeg");
+        } else if (ext === ".png") {
+          res.setHeader("Content-Type", "image/png");
+        }
+        return res.sendFile(p);
+      }
+    }
+
+    return res.status(404).json({ error: `Document '${baseName}' kon niet worden gevonden op de server.` });
+  });
+
   app.use("/uploads", express.static(uploadsPath, staticUploadsOptions));
   app.use("/public/uploads", express.static(uploadsPath, staticUploadsOptions));
+  app.use("/api/uploads", express.static(uploadsPath, staticUploadsOptions));
 
   // Middleware for checking auth & admin
   const requireAuth = (req: any, res: any, next: any) => {
@@ -2247,6 +2320,7 @@ async function startServer() {
     let imageUrl = req.body.imageUrl || "";
     if (files?.["image"]?.[0]) {
       imageUrl = `/uploads/stemgedrag/${files["image"][0].filename}`;
+      mirrorUploadToDist(`uploads/stemgedrag/${files["image"][0].filename}`);
     }
 
     let pdfUrl = req.body.pdfUrl || "";
@@ -2254,6 +2328,7 @@ async function startServer() {
     if (files?.["pdf"]?.[0]) {
       pdfUrl = `/uploads/stemgedrag/${files["pdf"][0].filename}`;
       pdfFileName = files["pdf"][0].originalname;
+      mirrorUploadToDist(`uploads/stemgedrag/${files["pdf"][0].filename}`);
     }
 
     const newItem = {
@@ -2306,6 +2381,7 @@ async function startServer() {
       imageUrl = "";
     } else if (files?.["image"]?.[0]) {
       imageUrl = `/uploads/stemgedrag/${files["image"][0].filename}`;
+      mirrorUploadToDist(`uploads/stemgedrag/${files["image"][0].filename}`);
     } else if (req.body.imageUrl !== undefined) {
       imageUrl = req.body.imageUrl;
     }
@@ -2318,6 +2394,7 @@ async function startServer() {
     } else if (files?.["pdf"]?.[0]) {
       pdfUrl = `/uploads/stemgedrag/${files["pdf"][0].filename}`;
       pdfFileName = files["pdf"][0].originalname;
+      mirrorUploadToDist(`uploads/stemgedrag/${files["pdf"][0].filename}`);
     } else if (req.body.pdfUrl !== undefined) {
       pdfUrl = req.body.pdfUrl;
       pdfFileName = req.body.pdfFileName || "";
@@ -2367,7 +2444,17 @@ async function startServer() {
   // --- ADMIN SYSTEM, CACHE & GITHUB UPDATE ENDPOINTS ---
   async function runCmd(cmd: string, timeout = 120000) {
     try {
-      const res = await execPromise(cmd, { cwd: process.cwd(), timeout, maxBuffer: 10 * 1024 * 1024 });
+      const res = await execPromise(cmd, {
+        cwd: process.cwd(),
+        timeout,
+        maxBuffer: 10 * 1024 * 1024,
+        env: {
+          ...process.env,
+          GIT_CONFIG_COUNT: "1",
+          GIT_CONFIG_KEY_0: "safe.directory",
+          GIT_CONFIG_VALUE_0: "*"
+        }
+      });
       return { stdout: (res.stdout || "").toString().trim(), stderr: (res.stderr || "").toString().trim(), success: true };
     } catch (err: any) {
       return {
@@ -2404,23 +2491,97 @@ async function startServer() {
   app.get("/api/admin/system/status", requireAuth, requireAdmin, async (req: any, res: any) => {
     const isGitRepo = fs.existsSync(path.join(process.cwd(), ".git"));
     let branch = "main";
-    let currentCommit = { hash: "onbekend", message: "Geen Git-repo gedetecteerd", author: "Systeem", date: new Date().toISOString() };
+    let currentCommit = {
+      hash: "onbekend",
+      fullHash: "",
+      message: "Geen Git-repo gedetecteerd",
+      author: "Systeem",
+      date: new Date().toISOString(),
+      branch: "main",
+      commitUrl: ""
+    };
     let hasRemote = false;
+
+    // Check version.json first (created at build time)
+    const versionFiles = [
+      path.join(process.cwd(), "dist", "version.json"),
+      path.join(process.cwd(), "public", "version.json"),
+      path.join(process.cwd(), "version.json")
+    ];
+    for (const vf of versionFiles) {
+      if (fs.existsSync(vf)) {
+        try {
+          const vData = JSON.parse(fs.readFileSync(vf, "utf-8"));
+          if (vData.hash && vData.hash !== "onbekend") {
+            currentCommit = {
+              ...currentCommit,
+              ...vData,
+              commitUrl: vData.fullHash
+                ? `https://github.com/Lijstvanandel/website/commit/${vData.fullHash}`
+                : `https://github.com/Lijstvanandel/website/commit/${vData.hash}`
+            };
+            if (vData.branch) branch = vData.branch;
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
 
     if (isGitRepo) {
       const bRes = await runCmd("git rev-parse --abbrev-ref HEAD");
       if (bRes.success && bRes.stdout) branch = bRes.stdout;
 
-      const logRes = await runCmd('git log -1 --format="%h||%s||%an||%cd"');
+      const logRes = await runCmd('git log -1 --format="%h||%H||%s||%an||%cd"');
       if (logRes.success && logRes.stdout) {
         const parts = logRes.stdout.split("||");
         if (parts.length >= 4) {
           currentCommit = {
             hash: parts[0],
-            message: parts[1],
-            author: parts[2],
-            date: parts[3]
+            fullHash: parts[1] || parts[0],
+            message: parts[2] || "",
+            author: parts[3] || "",
+            date: parts[4] || new Date().toISOString(),
+            branch,
+            commitUrl: `https://github.com/Lijstvanandel/website/commit/${parts[1] || parts[0]}`
           };
+        }
+      } else {
+        // Direct read from .git directory as fallback
+        try {
+          const headPath = path.join(process.cwd(), ".git", "HEAD");
+          if (fs.existsSync(headPath)) {
+            const headContent = fs.readFileSync(headPath, "utf-8").trim();
+            if (headContent.startsWith("ref: ")) {
+              const refRel = headContent.replace("ref: ", "").trim();
+              branch = refRel.split("/").pop() || "main";
+              const refFull = path.join(process.cwd(), ".git", refRel);
+              if (fs.existsSync(refFull)) {
+                const h = fs.readFileSync(refFull, "utf-8").trim();
+                currentCommit = {
+                  hash: h.substring(0, 7),
+                  fullHash: h,
+                  message: "Actieve commit uit git ref",
+                  author: "Git",
+                  date: new Date().toISOString(),
+                  branch,
+                  commitUrl: `https://github.com/Lijstvanandel/website/commit/${h}`
+                };
+              }
+            } else if (headContent.length >= 7) {
+              currentCommit = {
+                hash: headContent.substring(0, 7),
+                fullHash: headContent,
+                message: "Actieve detached commit",
+                author: "Git",
+                date: new Date().toISOString(),
+                branch,
+                commitUrl: `https://github.com/Lijstvanandel/website/commit/${headContent}`
+              };
+            }
+          }
+        } catch (e) {
+          // ignore
         }
       }
 

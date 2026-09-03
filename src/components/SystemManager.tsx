@@ -3,6 +3,8 @@ import {
   Server,
   RefreshCw,
   GitBranch,
+  GitCommit,
+  ExternalLink,
   Trash2,
   CheckCircle2,
   AlertTriangle,
@@ -23,9 +25,11 @@ interface SystemStatus {
   hasRemote: boolean;
   currentCommit: {
     hash: string;
+    fullHash?: string;
     message: string;
     author: string;
     date: string;
+    commitUrl?: string;
   };
   environment: string;
   nodeVersion: string;
@@ -299,6 +303,65 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ token }) => {
           </div>
         )}
 
+        {/* Prominente Actieve Commit Banner */}
+        <div className="mt-6 p-4.5 rounded-xl border border-accent/40 bg-accent/5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start md:items-center gap-3.5">
+            <div className="w-10 h-10 rounded-lg bg-accent/15 border border-accent/30 flex items-center justify-center text-accent shrink-0 mt-0.5 md:mt-0">
+              <GitCommit className="w-5 h-5" />
+            </div>
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Actieve Draaiende Commit:
+                </span>
+                <span className="font-mono text-sm font-bold bg-background text-accent px-2.5 py-0.5 rounded border border-border shadow-2xs">
+                  {status?.currentCommit?.hash && status.currentCommit.hash !== "onbekend"
+                    ? `#${status.currentCommit.hash}`
+                    : "Laden..."}
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  Live op branch {status?.branch || "main"}
+                </span>
+              </div>
+              <p className="text-sm font-medium text-foreground line-clamp-1">
+                {status?.currentCommit?.message || "Geen commit-bericht beschikbaar"}
+              </p>
+              <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                <span>Auteur: <strong className="text-foreground">{status?.currentCommit?.author || "Systeem"}</strong></span>
+                <span>•</span>
+                <span>Datum: {status?.currentCommit?.date ? new Date(status.currentCommit.date).toLocaleString("nl-NL") : "Onbekend"}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {status?.currentCommit?.commitUrl && (
+              <a
+                href={status.currentCommit.commitUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-background hover:bg-muted text-foreground border border-border transition-colors cursor-pointer shadow-2xs"
+              >
+                <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
+                <span>Bekijk commit op GitHub</span>
+              </a>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={fetchStatus}
+              disabled={loadingStatus}
+              className="text-xs gap-1.5 h-9 cursor-pointer"
+              title="Commit status verversen"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loadingStatus ? "animate-spin" : ""}`} />
+              <span>Verversen</span>
+            </Button>
+          </div>
+        </div>
+
         {/* Status Metrics Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
           {/* 1. Git Status Card */}
@@ -329,10 +392,22 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ token }) => {
                 </span>
               </div>
               <div className="flex items-center justify-between text-muted-foreground">
-                <span>Laatste commit:</span>
-                <span className="font-mono font-medium text-accent">
-                  {status?.currentCommit?.hash ? `#${status.currentCommit.hash}` : "—"}
-                </span>
+                <span>Actieve commit:</span>
+                {status?.currentCommit?.commitUrl ? (
+                  <a
+                    href={status.currentCommit.commitUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-mono font-bold text-accent hover:underline flex items-center gap-1"
+                  >
+                    #{status.currentCommit.hash}
+                    <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
+                ) : (
+                  <span className="font-mono font-medium text-accent">
+                    {status?.currentCommit?.hash ? `#${status.currentCommit.hash}` : "—"}
+                  </span>
+                )}
               </div>
               {status?.currentCommit?.message && (
                 <div className="pt-1 text-[11px] text-muted-foreground line-clamp-2 border-t border-border/50">
