@@ -104,6 +104,35 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ token }) => {
     setLogs((prev) => [...prev, line]);
   };
 
+  // Hulpfunctie om JSON veilig uit te lezen en eventuele Nginx 502/504 herstarts op te vangen
+  const safeParseResponse = async (res: Response) => {
+    const contentType = res.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      try {
+        return await res.json();
+      } catch {
+        // fall through naar tekst parsing
+      }
+    }
+    const text = await res.text();
+    // Als de server herstart door PM2, sluit de verbinding en geeft Nginx tijdelijk een 502/504 HTML-pagina
+    if (res.status === 502 || res.status === 504 || text.includes("502 Bad Gateway") || text.includes("504 Gateway") || text.includes("Bad Gateway")) {
+      return {
+        isGatewayRestart: true,
+        success: true,
+        message: "De update is gebouwd en de server is zojuist herstart door PM2!",
+        logs: [
+          `[${new Date().toLocaleTimeString()}] PM2 heeft het serverproces herstart om de nieuwe code direct in te laden.`
+        ]
+      };
+    }
+    const cleanText = text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    return {
+      success: false,
+      error: `Server respons (HTTP ${res.status}): ${cleanText.slice(0, 150)}`
+    };
+  };
+
   // 1. Alleen cache legen
   const handleClearCache = async () => {
     try {
@@ -113,7 +142,7 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ token }) => {
         method: "POST",
         headers,
       });
-      const data = await res.json();
+      const data = await safeParseResponse(res);
       if (res.ok && data.success) {
         setFeedback({ type: "success", message: data.message || "Cache succesvol gewist." });
         appendLog(`[${new Date().toLocaleTimeString()}] Server- en applicatiecache succesvol gewist.`);
@@ -140,7 +169,7 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ token }) => {
         method: "POST",
         headers,
       });
-      const data: CheckUpdatesResult = await res.json();
+      const data: CheckUpdatesResult = await safeParseResponse(res);
       setUpdateResult(data);
 
       if (data.updatesAvailable) {
@@ -149,12 +178,17 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ token }) => {
           message: `Er zijn ${data.behindCount} nieuwe commit(s) gevonden op GitHub! Klik op 'Cache Legen & Direct Updaten' om deze direct te installeren.`,
         });
         appendLog(`[${new Date().toLocaleTimeString()}] ${data.behindCount} nieuwe commit(s) gedetecteerd op origin/${data.branch || "main"}.`);
-      } else {
+      } else if (data.success) {
         setFeedback({
           type: "success",
           message: data.message || "De server is al helemaal up-to-date.",
         });
         appendLog(`[${new Date().toLocaleTimeString()}] Geen nieuwe wijzigingen. Server is up-to-date.`);
+      } else {
+        setFeedback({
+          type: "error",
+          message: data.message || "Kon GitHub niet controleren.",
+        });
       }
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : "Fout bij controleren van GitHub.";
@@ -183,10 +217,22 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ token }) => {
         headers,
         body: JSON.stringify({ force }),
       });
-      const data = await res.json();
+      const data = await safeParseResponse(res);
 
       if (data.logs && Array.isArray(data.logs)) {
         setLogs((prev) => [...prev, ...data.logs]);
+      }
+
+      if (data.isGatewayRestart) {
+        setFeedback({
+          type: "success",
+          message: "De update en her-build zijn voltooid en de server is herstart! Pagina wordt binnen 4 seconden ververst...",
+        });
+        appendLog(`[${new Date().toLocaleTimeString()}] Update succesvol afgerond! Pagina wordt automatisch vernieuwd.`);
+        setTimeout(() => {
+          window.location.reload();
+        }, 4000);
+        return;
       }
 
       if (res.ok && data.success) {
@@ -195,7 +241,10 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ token }) => {
           message: data.message || "Update en her-build succesvol afgerond!",
         });
         setUpdateResult(null);
-        fetchStatus();
+        // Herlaad status na 3 seconden zodat eventuele PM2 herstart voltooid is
+        setTimeout(() => {
+          fetchStatus();
+        }, 3000);
       } else {
         setFeedback({
           type: "error",

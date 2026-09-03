@@ -2729,27 +2729,37 @@ async function startServer() {
       log("Productiebuild succesvol afgerond! Nieuwe bestanden staan klaar in dist/.");
     }
 
-    // Stap 4: PM2 proces herladen indien van toepassing
+    // Stap 4: PM2 procescontrole
     const pm2Check = await runCmd("pm2 -v");
     if (pm2Check.success) {
-      log("Stap 4: PM2 procesmanager gedetecteerd. Server herladen (pm2 reload all)...");
-      const pm2Res = await runCmd("pm2 reload all || pm2 restart all");
-      if (pm2Res.stdout) log(pm2Res.stdout.split("\n").slice(-3).join("\n"));
-      log("PM2 proces is herladen.");
+      log("Stap 4: PM2 procesmanager gedetecteerd. Server herstart veilig nadat dit antwoord is verstuurd.");
     }
 
     lastSystemSyncTime = new Date().toISOString();
     log("Synchronisatie en onderhoudsprocedure succesvol afgerond!");
 
+    // Stuur eerst de volledige JSON-respons met alle logs naar de browser
     res.json({
       success: buildRes.success,
       updated,
       branch,
       logs,
       message: updated
-        ? "Nieuwste wijzigingen zijn succesvol van GitHub opgehaald en gecompileerd!"
+        ? "Nieuwste wijzigingen zijn succesvol van GitHub opgehaald en gecompileerd! De server herstart automatisch over enkele seconden."
         : "Cache is geleegd en de applicatie is up-to-date gecontroleerd."
     });
+
+    // Herstart PM2 pas 1.5 seconde NADAT de HTTP-verbinding netjes is afgerond en naar de browser is verstuurd
+    if (pm2Check.success && buildRes.success) {
+      setTimeout(async () => {
+        try {
+          console.log("[System] Herladen van PM2 proces na voltooide update...");
+          await runCmd("pm2 reload all || pm2 restart all");
+        } catch (e) {
+          console.error("Fout bij uitvoeren van pm2 reload:", e);
+        }
+      }, 1500);
+    }
   });
 
   // Explicit 404 handler for unhandled /api requests so they NEVER fall through to Vite / SPA index.html
