@@ -1,11 +1,18 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
+import os from "os";
+import { exec } from "child_process";
+import util from "util";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import multer from "multer";
 import { createServer as createViteServer } from "vite";
 import { BUURTKAART_43_WIJKEN, syncWijkenWithBuurtkaart, LEGACY_SLUG_MAP } from "./src/data/defaultWijken.js";
+
+const execPromise = util.promisify(exec);
+let lastCacheClearedTime: string | null = null;
+let lastSystemSyncTime: string | null = null;
 
 const JWT_SECRET = process.env.JWT_SECRET || "super-secret-dev-key";
 const DB_FILE = path.join(process.cwd(), "db.json");
@@ -2291,6 +2298,233 @@ async function startServer() {
     saveDb(db);
 
     res.json({ message: "Motie succesvol verwijderd" });
+  });
+
+  // --- ADMIN SYSTEM, CACHE & GITHUB UPDATE ENDPOINTS ---
+  async function runCmd(cmd: string, timeout = 120000) {
+    try {
+      const res = await execPromise(cmd, { cwd: process.cwd(), timeout, maxBuffer: 10 * 1024 * 1024 });
+      return { stdout: (res.stdout || "").toString().trim(), stderr: (res.stderr || "").toString().trim(), success: true };
+    } catch (err: any) {
+      return {
+        stdout: (err.stdout || "").toString().trim(),
+        stderr: (err.stderr || err.message || "").toString().trim(),
+        success: false,
+        error: err
+      };
+    }
+  }
+
+  function clearLocalTempCaches() {
+    const cleared: string[] = [];
+    const tempDirs = [
+      path.join(process.cwd(), "node_modules/.vite-temp"),
+      path.join(process.cwd(), "node_modules/.vite"),
+      path.join(process.cwd(), ".vite-temp")
+    ];
+    for (const dir of tempDirs) {
+      if (fs.existsSync(dir)) {
+        try {
+          fs.rmSync(dir, { recursive: true, force: true });
+          cleared.push(path.basename(dir));
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+    lastCacheClearedTime = new Date().toISOString();
+    return cleared;
+  }
+
+  // 1. Get system & Git status
+  app.get("/api/admin/system/status", requireAuth, requireAdmin, async (req: any, res: any) => {
+    const isGitRepo = fs.existsSync(path.join(process.cwd(), ".git"));
+    let branch = "main";
+    let currentCommit = { hash: "onbekend", message: "Geen Git-repo gedetecteerd", author: "Systeem", date: new Date().toISOString() };
+    let hasRemote = false;
+
+    if (isGitRepo) {
+      const bRes = await runCmd("git rev-parse --abbrev-ref HEAD");
+      if (bRes.success && bRes.stdout) branch = bRes.stdout;
+
+      const logRes = await runCmd('git log -1 --format="%h||%s||%an||%cd"');
+      if (logRes.success && logRes.stdout) {
+        const parts = logRes.stdout.split("||");
+        if (parts.length >= 4) {
+          currentCommit = {
+            hash: parts[0],
+            message: parts[1],
+            author: parts[2],
+            date: parts[3]
+          };
+        }
+      }
+
+      const remoteRes = await runCmd("git remote");
+      hasRemote = Boolean(remoteRes.success && remoteRes.stdout.includes("origin"));
+    }
+
+    const mem = process.memoryUsage();
+    res.json({
+      isGitRepo,
+      branch,
+      hasRemote,
+      currentCommit,
+      environment: process.env.NODE_ENV || "development",
+      nodeVersion: process.version,
+      platform: `${os.type()} ${os.release()} (${os.arch()})`,
+      uptimeSeconds: Math.floor(process.uptime()),
+      memoryUsage: {
+        rss: `${Math.round(mem.rss / 1024 / 1024)} MB`,
+        heapUsed: `${Math.round(mem.heapUsed / 1024 / 1024)} MB`,
+        heapTotal: `${Math.round(mem.heapTotal / 1024 / 1024)} MB`
+      },
+      lastCacheCleared: lastCacheClearedTime,
+      lastSystemSync: lastSystemSyncTime
+    });
+  });
+
+  // 2. Clear cache
+  app.post("/api/admin/system/clear-cache", requireAuth, requireAdmin, (req: any, res: any) => {
+    const cleared = clearLocalTempCaches();
+    res.json({
+      success: true,
+      message: "Server- en bouwcache succesvol gewist.",
+      cleared,
+      timestamp: lastCacheClearedTime
+    });
+  });
+
+  // 3. Check for updates from GitHub
+  app.post("/api/admin/system/check-updates", requireAuth, requireAdmin, async (req: any, res: any) => {
+    const isGitRepo = fs.existsSync(path.join(process.cwd(), ".git"));
+    if (!isGitRepo) {
+      return res.json({
+        success: true,
+        isGitRepo: false,
+        updatesAvailable: false,
+        behindCount: 0,
+        pendingCommits: [],
+        message: "Geen lokale Git repository gevonden in deze sandboxomgeving. Op uw live Ubuntu VPS wordt Git direct uitgelezen."
+      });
+    }
+
+    // git fetch origin
+    const fetchRes = await runCmd("git fetch origin", 25000);
+    const branchRes = await runCmd("git rev-parse --abbrev-ref HEAD");
+    const branch = branchRes.stdout || "main";
+
+    const countRes = await runCmd(`git rev-list --count HEAD..origin/${branch}`);
+    const behindCount = parseInt(countRes.stdout, 10) || 0;
+
+    let pendingCommits: Array<{ hash: string; message: string; author: string; time: string }> = [];
+    if (behindCount > 0) {
+      const commitsRes = await runCmd(`git log HEAD..origin/${branch} --pretty=format:"%h||%s||%an||%cr" -n 10`);
+      if (commitsRes.success && commitsRes.stdout) {
+        pendingCommits = commitsRes.stdout.split("\n").filter(Boolean).map(line => {
+          const [hash, message, author, time] = line.split("||");
+          return { hash: hash || "", message: message || "", author: author || "", time: time || "" };
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      isGitRepo: true,
+      branch,
+      updatesAvailable: behindCount > 0,
+      behindCount,
+      pendingCommits,
+      fetchOutput: fetchRes.stdout || fetchRes.stderr,
+      message: behindCount > 0
+        ? `Er zijn ${behindCount} nieuwe commit(s) gevonden op GitHub!`
+        : "De server is up-to-date met de laatste commit op GitHub."
+    });
+  });
+
+  // 4. Deploy update / Full Sync (Cache leegmaken, git pull, npm run build, pm2 reload)
+  app.post("/api/admin/system/full-sync", requireAuth, requireAdmin, async (req: any, res: any) => {
+    const logs: string[] = [];
+    const log = (msg: string) => {
+      const timestamp = new Date().toLocaleTimeString("nl-NL");
+      logs.push(`[${timestamp}] ${msg}`);
+    };
+
+    const isGitRepo = fs.existsSync(path.join(process.cwd(), ".git"));
+    log("Start automatische synchronisatie en onderhoud...");
+
+    // Stap 1: Cache legen
+    log("Stap 1: Server- en tijdelijke bouwcache opschonen...");
+    clearLocalTempCaches();
+    log("Tijdelijke cachebestanden zijn succesvol verwijderd.");
+
+    // Stap 2: Git status & pull
+    let updated = false;
+    let branch = "main";
+
+    if (isGitRepo) {
+      log("Stap 2: GitHub repository raadplegen (git fetch origin)...");
+      const fetchRes = await runCmd("git fetch origin", 30000);
+      if (fetchRes.stdout) log(fetchRes.stdout);
+
+      const branchRes = await runCmd("git rev-parse --abbrev-ref HEAD");
+      branch = branchRes.stdout || "main";
+      log(`Actieve branch op de server: ${branch}`);
+
+      const countRes = await runCmd(`git rev-list --count HEAD..origin/${branch}`);
+      const behindCount = parseInt(countRes.stdout, 10) || 0;
+
+      if (behindCount > 0 || req.body?.force) {
+        log(`Er zijn ${behindCount} nieuwe wijzigingen gevonden op GitHub. Ophalen via git pull origin ${branch}...`);
+        const pullRes = await runCmd(`git pull origin ${branch}`, 30000);
+        if (pullRes.stdout) log(pullRes.stdout);
+        if (pullRes.stderr) log(pullRes.stderr);
+        updated = true;
+      } else {
+        log("Geen nieuwe wijzigingen op GitHub; lokale branch is al gelijk met origin/" + branch);
+      }
+    } else {
+      log("Stap 2: Geen Git repository gevonden in deze cloud-preview container. Git-pull overgeslagen.");
+    }
+
+    // Stap 3: Build uitvoeren
+    log("Stap 3: Productiebundel compileren (npm run build)...");
+    const buildRes = await runCmd("npm run build", 180000);
+    if (buildRes.stdout) {
+      const filteredStdout = buildRes.stdout.split("\n").slice(-8).join("\n");
+      log(filteredStdout);
+    }
+    if (buildRes.stderr && !buildRes.success) {
+      log(`Foutbericht tijdens build: ${buildRes.stderr}`);
+    }
+
+    if (!buildRes.success) {
+      log("LET OP: De build is niet voltooid met foutcode. Bekijk de logs.");
+    } else {
+      log("Productiebuild succesvol afgerond! Nieuwe bestanden staan klaar in dist/.");
+    }
+
+    // Stap 4: PM2 proces herladen indien van toepassing
+    const pm2Check = await runCmd("pm2 -v");
+    if (pm2Check.success) {
+      log("Stap 4: PM2 procesmanager gedetecteerd. Server herladen (pm2 reload all)...");
+      const pm2Res = await runCmd("pm2 reload all || pm2 restart all");
+      if (pm2Res.stdout) log(pm2Res.stdout.split("\n").slice(-3).join("\n"));
+      log("PM2 proces is herladen.");
+    }
+
+    lastSystemSyncTime = new Date().toISOString();
+    log("Synchronisatie en onderhoudsprocedure succesvol afgerond!");
+
+    res.json({
+      success: buildRes.success,
+      updated,
+      branch,
+      logs,
+      message: updated
+        ? "Nieuwste wijzigingen zijn succesvol van GitHub opgehaald en gecompileerd!"
+        : "Cache is geleegd en de applicatie is up-to-date gecontroleerd."
+    });
   });
 
   // Explicit 404 handler for unhandled /api requests so they NEVER fall through to Vite / SPA index.html

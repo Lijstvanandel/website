@@ -37,6 +37,7 @@ import {
   FileText,
   BookOpen,
   Vote,
+  Server,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VideoPlayer } from "@/components/VideoPlayer";
@@ -48,6 +49,7 @@ import { VacancyManager } from "@/components/VacancyManager";
 import { DocumentManager } from "@/components/DocumentManager";
 import { BelafsprakenManager } from "@/components/BelafsprakenManager";
 import { StemgedragManager } from "@/components/StemgedragManager";
+import { SystemManager } from "@/components/SystemManager";
 import { WIJKEN_EN_KERNEN } from "@/data/wijken";
 import { NewsItem } from "@/data/news";
 import { hoofdstukken } from "@/data/partijprogramma";
@@ -792,14 +794,27 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen pt-32 pb-24 container mx-auto px-6 max-w-6xl">
-      <div className="mb-10">
-        <div className="text-xs uppercase tracking-[0.3em] text-accent font-semibold mb-2">
-          Beheerdersportaal
+      <div className="mb-10 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div>
+          <div className="text-xs uppercase tracking-[0.3em] text-accent font-semibold mb-2">
+            Beheerdersportaal
+          </div>
+          <h1 className="text-4xl md:text-5xl font-display mb-3">Beheerderspaneel</h1>
+          <p className="text-muted-foreground text-sm">
+            Beheer leden, fractieleden, video's, nieuwsberichten, categorieën, agenda-evenementen, stemgedrag en server-updates.
+          </p>
         </div>
-        <h1 className="text-4xl md:text-5xl font-display mb-3">Beheerderspaneel</h1>
-        <p className="text-muted-foreground text-sm">
-          Beheer leden, fractieleden, video's, nieuwsberichten, categorieën, agenda-evenementen en ingekomen berichten.
-        </p>
+        <Button
+          type="button"
+          onClick={() => setActiveTab("system")}
+          variant={activeTab === "system" ? "default" : "outline"}
+          className={`shrink-0 text-xs font-semibold uppercase tracking-wider gap-2 h-10 px-4 cursor-pointer ${
+            activeTab === "system" ? "bg-accent text-accent-foreground" : "border-border hover:border-accent"
+          }`}
+        >
+          <Server className="w-4 h-4 text-accent" />
+          <span>Systeem & Updates</span>
+        </Button>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -847,6 +862,9 @@ export default function AdminDashboard() {
           </TabsTrigger>
           <TabsTrigger value="belafspraken" className="gap-2 text-xs">
             <Phone className="w-4 h-4 text-accent" /> Belafspraken
+          </TabsTrigger>
+          <TabsTrigger value="system" className="gap-2 text-xs text-accent">
+            <Server className="w-4 h-4" /> Systeem & Updates
           </TabsTrigger>
         </TabsList>
 
@@ -2498,6 +2516,11 @@ export default function AdminDashboard() {
         {/* STEMGEDRAG & MOTIES BEHEER */}
         <TabsContent value="stemgedrag">
           <StemgedragManager token={token} />
+        </TabsContent>
+
+        {/* SYSTEEM, CACHE & GITHUB UPDATES */}
+        <TabsContent value="system">
+          <SystemManager token={token} />
         </TabsContent>
       </Tabs>
     </div>
