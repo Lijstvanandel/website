@@ -35,6 +35,7 @@ function getDb() {
   const db = JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
   if (!db.fractieleden) db.fractieleden = [];
   if (!db.videos) db.videos = [];
+  if (!db.belafspraken) db.belafspraken = [];
   if (!db.news || !Array.isArray(db.news) || db.news.length === 0) {
     db.news = [
       {
@@ -205,11 +206,9 @@ function getDb() {
 
   const DEFAULT_WIJKEN = BUURTKAART_43_WIJKEN;
 
-  // Ensure database is populated and synchronized with the official 43 Buurtkaart units
-  if (!db.wijken || !Array.isArray(db.wijken) || db.wijken.length < 43) {
-    db.wijken = syncWijkenWithBuurtkaart(db.wijken || []);
-    saveDb(db);
-  }
+  // Ensure database is populated and synchronized with the official 42 Buurtkaart units (excluding Groot binnenwater)
+  db.wijken = syncWijkenWithBuurtkaart(db.wijken || []);
+  saveDb(db);
 
   if (!db.documents || !Array.isArray(db.documents) || db.documents.length === 0) {
     db.documents = [
@@ -584,6 +583,37 @@ async function startServer() {
     db.fractieleden = db.fractieleden.filter((f: any) => f.id !== req.params.id);
     saveDb(db);
     res.json({ message: "Verwijderd" });
+  });
+
+  // Admin: Link a registered user to a fractielid / burgerraadslid
+  app.post("/api/admin/fractieleden/:id/link-user", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const lid = (db.fractieleden || []).find((f: any) => f.id === req.params.id);
+    if (!lid) return res.status(404).json({ error: "Fractielid niet gevonden" });
+
+    const { userId } = req.body;
+    if (userId) {
+      const targetUser = (db.users || []).find((u: any) => u.id === userId);
+      if (!targetUser) return res.status(404).json({ error: "Gekozen gebruiker niet gevonden" });
+      lid.linkedUserId = targetUser.id;
+      lid.linkedUsername = targetUser.username;
+    } else {
+      lid.linkedUserId = null;
+      lid.linkedUsername = null;
+    }
+
+    // Synchronize existing belafspraken for this fractielid
+    if (db.belafspraken && Array.isArray(db.belafspraken)) {
+      db.belafspraken.forEach((b: any) => {
+        if (b.fractielidId === lid.id) {
+          b.linkedUserId = lid.linkedUserId;
+          b.linkedUsername = lid.linkedUsername;
+        }
+      });
+    }
+
+    saveDb(db);
+    res.json({ success: true, message: "Koppeling succesvol opgeslagen", fractielid: lid });
   });
 
   // Admin Routes - Videos
@@ -1218,6 +1248,254 @@ async function startServer() {
   });
 
   // ==========================================
+  // BELAFSPRAKEN API & AUTOMATISCHE AFHANDELING
+  // ==========================================
+
+  function checkAndUpdateExpiredBelafspraken(db: any): boolean {
+    if (!db.belafspraken || !Array.isArray(db.belafspraken)) {
+      db.belafspraken = [];
+      return false;
+    }
+    const now = Date.now();
+    let changed = false;
+
+    for (const item of db.belafspraken) {
+      if (item.status === "ingepland") {
+        let endMs = 0;
+        if (item.endDateTime) {
+          endMs = new Date(item.endDateTime).getTime();
+        } else if (item.datum && item.eindTijd) {
+          endMs = new Date(`${item.datum}T${item.eindTijd}:00`).getTime();
+        }
+
+        // Als een belafspraak een halfuur (30 min = 1.800.000 ms) na eindtijd niet is afgehandeld:
+        if (endMs > 0 && !isNaN(endMs) && now > (endMs + 30 * 60 * 1000)) {
+          item.status = "niet afgehandeld";
+          item.handledAt = new Date().toISOString();
+          item.handledBy = "Systeem (automatisch >30 min na eindtijd)";
+          changed = true;
+        }
+      }
+    }
+
+    if (changed) {
+      saveDb(db);
+    }
+    return changed;
+  }
+
+  // Public: Get list of raadsleden & burgerraadsleden for booking a call
+  app.get("/api/belafspraken/personen", (req, res) => {
+    const db = getDb();
+    const personen = (db.fractieleden || []).map((f: any) => ({
+      id: f.id,
+      name: f.name,
+      role: f.role,
+      type: f.type || "Raadslid",
+      imgUrl: f.imgUrl || "",
+      linkedUserId: f.linkedUserId || null,
+      linkedUsername: f.linkedUsername || null
+    }));
+    res.json(personen);
+  });
+
+  // Public: Book a new call appointment
+  app.post("/api/belafspraken", (req, res) => {
+    const db = getDb();
+    if (!db.belafspraken) db.belafspraken = [];
+
+    const { email, fractielidId, fractielidNaam, datum, startTijd, eindTijd, onderwerp } = req.body;
+    const name = req.body.name || req.body.naam;
+    const phone = req.body.phone || req.body.telefoon;
+
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ error: "Uw naam is verplicht" });
+    }
+    if (!phone || !String(phone).trim()) {
+      return res.status(400).json({ error: "Telefoonnummer is verplicht" });
+    }
+
+    // Resolve fractielid
+    let chosenFractielid = null;
+    if (fractielidId) {
+      chosenFractielid = (db.fractieleden || []).find((f: any) => f.id === String(fractielidId));
+    }
+    if (!chosenFractielid && fractielidNaam) {
+      const q = String(fractielidNaam).toLowerCase();
+      chosenFractielid = (db.fractieleden || []).find((f: any) => 
+        q.includes(f.name.toLowerCase()) || f.name.toLowerCase().includes(q)
+      );
+    }
+    if (!chosenFractielid && db.fractieleden && db.fractieleden.length > 0) {
+      chosenFractielid = db.fractieleden[0];
+    }
+
+    const resolvedDate = datum || new Date().toISOString().split("T")[0];
+    const resolvedStart = startTijd || "19:00";
+    const resolvedEnd = eindTijd || "19:30";
+
+    // Create ISO timestamps with timezone preservation
+    const startDateTime = new Date(`${resolvedDate}T${resolvedStart}:00`).toISOString();
+    const endDateTime = new Date(`${resolvedDate}T${resolvedEnd}:00`).toISOString();
+
+    const newBelafspraak = {
+      id: "bel-" + Date.now().toString(),
+      name: String(name).trim(),
+      email: email ? String(email).trim() : "",
+      phone: String(phone).trim(),
+      fractielidId: chosenFractielid?.id || "1",
+      fractielidNaam: chosenFractielid ? `${chosenFractielid.name} — ${chosenFractielid.role}` : "Raadslid",
+      linkedUserId: chosenFractielid?.linkedUserId || null,
+      linkedUsername: chosenFractielid?.linkedUsername || null,
+      datum: resolvedDate,
+      startTijd: resolvedStart,
+      eindTijd: resolvedEnd,
+      startDateTime,
+      endDateTime,
+      onderwerp: onderwerp ? String(onderwerp).trim() : "",
+      status: "ingepland", // 'ingepland' | 'afgehandeld' | 'nam niet op' | 'niet afgehandeld'
+      notitie: "",
+      handledAt: null,
+      handledBy: null,
+      createdAt: new Date().toISOString()
+    };
+
+    db.belafspraken.unshift(newBelafspraak);
+    saveDb(db);
+
+    res.status(201).json({
+      success: true,
+      message: "Belafspraak succesvol ingepland! We nemen contact met u op.",
+      data: newBelafspraak
+    });
+  });
+
+  // Authenticated: Get belafspraken for current logged-in user (or all if admin)
+  app.get("/api/belafspraken", requireAuth, (req: any, res: any) => {
+    const db = getDb();
+    checkAndUpdateExpiredBelafspraken(db);
+
+    const currentUser = req.user;
+    const all = db.belafspraken || [];
+
+    if (currentUser.role === "admin") {
+      return res.json(all);
+    }
+
+    // Check if user is linked to any fractielid
+    const linkedFractielid = (db.fractieleden || []).find((f: any) => 
+      f.linkedUserId === currentUser.id || 
+      (f.linkedUsername && f.linkedUsername.toLowerCase() === currentUser.username.toLowerCase())
+    );
+
+    const myAppointments = all.filter((b: any) => {
+      if (b.linkedUserId && b.linkedUserId === currentUser.id) return true;
+      if (b.linkedUsername && b.linkedUsername.toLowerCase() === currentUser.username.toLowerCase()) return true;
+      if (linkedFractielid && b.fractielidId === linkedFractielid.id) return true;
+      return false;
+    });
+
+    res.json(myAppointments);
+  });
+
+  // Authenticated: Update appointment status ('afgehandeld', 'nam niet op', 'niet afgehandeld')
+  app.patch("/api/belafspraken/:id/status", requireAuth, (req: any, res: any) => {
+    const db = getDb();
+    const appt = (db.belafspraken || []).find((b: any) => b.id === req.params.id);
+    if (!appt) return res.status(404).json({ error: "Belafspraak niet gevonden" });
+
+    const { status, notitie } = req.body;
+    const validStatuses = ["ingepland", "afgehandeld", "nam niet op", "niet afgehandeld"];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: "Ongeldige status. Kies uit: afgehandeld, nam niet op, niet afgehandeld of ingepland" });
+    }
+
+    appt.status = status;
+    appt.handledAt = new Date().toISOString();
+    appt.handledBy = req.user.fullName || req.user.username || "Raadslid";
+
+    if (notitie !== undefined) {
+      appt.notitie = String(notitie);
+    }
+
+    saveDb(db);
+    res.json({
+      success: true,
+      message: `Status bijgewerkt naar '${status}'`,
+      data: appt
+    });
+  });
+
+  // Admin: Get all belafspraken with vertical column counts
+  app.get("/api/admin/belafspraken", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    checkAndUpdateExpiredBelafspraken(db);
+
+    const all = (db.belafspraken || []).slice().sort((a: any, b: any) => {
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+    const counts = {
+      total: all.length,
+      ingepland: all.filter((b: any) => b.status === "ingepland").length,
+      afgehandeld: all.filter((b: any) => b.status === "afgehandeld").length,
+      namNietOp: all.filter((b: any) => b.status === "nam niet op").length,
+      nietAfgehandeld: all.filter((b: any) => b.status === "niet afgehandeld").length
+    };
+
+    res.json({
+      appointments: all,
+      counts
+    });
+  });
+
+  // Admin: Update any appointment field
+  app.patch("/api/admin/belafspraken/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const appt = (db.belafspraken || []).find((b: any) => b.id === req.params.id);
+    if (!appt) return res.status(404).json({ error: "Belafspraak niet gevonden" });
+
+    const { status, notitie, fractielidId, datum, startTijd, eindTijd } = req.body;
+
+    if (status !== undefined) {
+      appt.status = status;
+      appt.handledAt = new Date().toISOString();
+      appt.handledBy = req.user.fullName || req.user.username || "Beheerder";
+    }
+    if (notitie !== undefined) appt.notitie = String(notitie);
+    if (fractielidId !== undefined) {
+      const fl = (db.fractieleden || []).find((f: any) => f.id === fractielidId);
+      if (fl) {
+        appt.fractielidId = fl.id;
+        appt.fractielidNaam = `${fl.name} — ${fl.role}`;
+        appt.linkedUserId = fl.linkedUserId || null;
+        appt.linkedUsername = fl.linkedUsername || null;
+      }
+    }
+    if (datum !== undefined) appt.datum = datum;
+    if (startTijd !== undefined) appt.startTijd = startTijd;
+    if (eindTijd !== undefined) appt.eindTijd = eindTijd;
+
+    if (appt.datum && appt.startTijd) {
+      appt.startDateTime = new Date(`${appt.datum}T${appt.startTijd}:00`).toISOString();
+    }
+    if (appt.datum && appt.eindTijd) {
+      appt.endDateTime = new Date(`${appt.datum}T${appt.eindTijd}:00`).toISOString();
+    }
+
+    saveDb(db);
+    res.json({ success: true, message: "Belafspraak bijgewerkt", data: appt });
+  });
+
+  // Admin: Delete appointment
+  app.delete("/api/admin/belafspraken/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    db.belafspraken = (db.belafspraken || []).filter((b: any) => b.id !== req.params.id);
+    saveDb(db);
+    res.json({ success: true, message: "Belafspraak verwijderd" });
+  });
+
+  // ==========================================
   // WIJKEN EN KERNEN API
   // ==========================================
 
@@ -1239,13 +1517,13 @@ async function startServer() {
     res.json(wijk);
   });
 
-  // Admin: Force reset / synchronize with official 43 Buurtkaart units
+  // Admin: Force reset / synchronize with official 42 Buurtkaart units
   app.post("/api/admin/wijken/sync-buurtkaart", requireAuth, requireAdmin, (req: any, res: any) => {
     const db = getDb();
     db.wijken = syncWijkenWithBuurtkaart(db.wijken || []);
     saveDb(db);
     res.json({
-      message: "Wijken en kernen succesvol gesynchroniseerd met de 43 Buurtkaart-gebieden",
+      message: "Wijken en kernen succesvol gesynchroniseerd met de 42 Buurtkaart-gebieden",
       count: db.wijken.length,
       data: db.wijken,
     });
@@ -1654,6 +1932,20 @@ async function startServer() {
     res.json({ message: "Document succesvol verwijderd" });
   });
 
+  // Explicit 404 handler for unhandled /api requests so they NEVER fall through to Vite / SPA index.html
+  app.use("/api", (req, res) => {
+    res.status(404).json({ error: `API route not found: ${req.method} ${req.originalUrl}` });
+  });
+
+  // Global error handler for API requests
+  app.use((err: any, req: any, res: any, next: any) => {
+    console.error("Server error on", req.method, req.originalUrl, err);
+    if (req.originalUrl && req.originalUrl.startsWith("/api")) {
+      return res.status(500).json({ error: err?.message || "Interne serverfout" });
+    }
+    next(err);
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -1664,7 +1956,7 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
+    app.get('*all', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

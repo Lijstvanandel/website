@@ -71,7 +71,7 @@ export function FaqManager({ token }: FaqManagerProps) {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
-        const data = await res.json();
+        const data = await res.json().catch(() => []);
         setFaqs(Array.isArray(data) ? data : []);
       } else {
         toast.error("Kon FAQ's niet ophalen");

@@ -31,6 +31,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SecureDocumentViewer } from "@/components/SecureDocumentViewer";
+import { RaadslidBelafsprakenWidget } from "@/components/RaadslidBelafsprakenWidget";
 import { MemberDocument } from "@/types/document";
 import {
   Dialog,
@@ -155,11 +156,11 @@ export default function Dashboard() {
     if (!token) return;
     let isMounted = true;
     fetch("/api/me/events", { headers: { "Authorization": `Bearer ${token}` } })
-      .then(res => res.json())
+      .then((res) => (res.ok ? res.json().catch(() => ({ attending: [], cancelled: [] })) : { attending: [], cancelled: [] }))
       .then(data => {
         if (!isMounted) return;
-        setAttendingEvents(data.attending || []);
-        setCancelledEvents(data.cancelled || []);
+        setAttendingEvents(data?.attending || []);
+        setCancelledEvents(data?.cancelled || []);
       })
       .catch(console.error);
 
@@ -172,10 +173,10 @@ export default function Dashboard() {
   useEffect(() => {
     let isMounted = true;
     fetch("/api/vacancies")
-      .then(res => res.json())
+      .then((res) => (res.ok ? res.json().catch(() => []) : []))
       .then((positions: PositionItem[]) => {
         if (!isMounted) return;
-        const list = positions || [];
+        const list = Array.isArray(positions) ? positions : [];
         setAllPositions(list);
         if (list.length > 0) {
           // Kies eenmalig 3 willekeurige posities
@@ -457,10 +458,20 @@ export default function Dashboard() {
         {/* Header section */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6 animate-fade-up">
           <div>
-            <div className="flex items-center gap-2.5 mb-1">
+            <div className="flex flex-wrap items-center gap-2.5 mb-1">
               <h1 className="text-3xl sm:text-4xl md:text-5xl font-display text-primary">
                 Welkom, {user.fullName}
               </h1>
+              {user.role === "raadslid" && (
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-accent/20 text-accent border border-accent/40 uppercase tracking-wider">
+                  Raadslid / Fractielid
+                </span>
+              )}
+              {user.role === "admin" && (
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-primary/20 text-primary border border-primary/40 uppercase tracking-wider">
+                  Beheerder
+                </span>
+              )}
             </div>
             <p className="text-muted-foreground text-sm sm:text-base">
               Ledendashboard • {user.city || "Steenwijkerland"} • Lidnummer #{user.id.slice(-5)}
@@ -514,6 +525,11 @@ export default function Dashboard() {
             {/* Main Content (2 Columns) */}
             <div className="md:col-span-2 space-y-8">
               
+              {/* AANKOMENDE BELAFSPRAKEN WIDGET (Zichtbaar voor raadsleden en beheerders) */}
+              {(user.role === "raadslid" || user.role === "admin") && (
+                <RaadslidBelafsprakenWidget token={token} currentUser={user} />
+              )}
+
               {/* NIEUWSBRIEF VOORKEUREN CARD */}
               <section className="bg-card rounded-2xl p-6 sm:p-8 border border-accent/30 shadow-sm relative overflow-hidden">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-border/60">

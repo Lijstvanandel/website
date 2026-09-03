@@ -23,7 +23,7 @@
       "password": "$2b$10$wauS2nMqcHPDp8KkKjdRou2g4jYFdawqW8h0OLJnT4q8wjLUkpZ7K",
       "remarks": "",
       "directDebit": false,
-      "role": "admin",
+      "role": "raadslid",
       "isActive": true,
       "createdAt": "2026-09-02T16:24:22.062Z",
       "email": "lisa@lijstvanandel.nl",
@@ -65,7 +65,9 @@
         "instagram": "#",
         "linkedin": "#"
       },
-      "imgUrl": "/assets/sammy.png"
+      "imgUrl": "/assets/sammy.png",
+      "linkedUserId": "1788365405085",
+      "linkedUsername": "admin"
     },
     {
       "id": "2",
@@ -81,7 +83,53 @@
       ],
       "email": "lisa@lijstvanandel.nl",
       "socials": {},
-      "imgUrl": "/assets/lisa.png"
+      "imgUrl": "/assets/lisa.png",
+      "linkedUserId": "1788366262062",
+      "linkedUsername": "Lisa123"
+    },
+    {
+      "id": "3",
+      "name": "Nathan ten Wolde",
+      "firstName": "nathan",
+      "role": "Burgerraadslid",
+      "type": "Burgerraadslid",
+      "bio": "Als burgerraadslid zet Nathan zich met veel energie in voor een bereikbaar, veilig en ondernemend Steenwijkerland.",
+      "speerpunten": [
+        "Bereikbaarheid",
+        "Veiligheid",
+        "Lokale economie"
+      ],
+      "email": "nathan@lijstvanandel.nl",
+      "socials": {
+        "facebook": "#",
+        "instagram": "#",
+        "linkedin": "#"
+      },
+      "imgUrl": "/assets/nathan.png",
+      "linkedUserId": null,
+      "linkedUsername": null
+    },
+    {
+      "id": "4",
+      "name": "Chris van Andel",
+      "firstName": "chris",
+      "role": "Burgerraadslid",
+      "type": "Burgerraadslid",
+      "bio": "Actief als burgerraadslid voor Steenwijkerland. Houdt nauw contact met inwoners en brengt hun stem direct in bij de raad.",
+      "speerpunten": [
+        "Wijk- en dorpsbelangen",
+        "Cultuur & Erfgoed",
+        "Transparant bestuur"
+      ],
+      "email": "chris@lijstvanandel.nl",
+      "socials": {
+        "facebook": "#",
+        "instagram": "#",
+        "linkedin": "#"
+      },
+      "imgUrl": "/assets/chris.jpg",
+      "linkedUserId": null,
+      "linkedUsername": null
     }
   ],
   "videos": [
@@ -537,19 +585,8 @@
       "updatedAt": "2026-09-03T03:43:16.094Z"
     },
     {
-      "slug": "groot-binnenwater",
-      "naam": "Groot binnenwater",
-      "type": "Kern",
-      "gemeente": "Steenwijkerland",
-      "is_grouped": false,
-      "bannerUrl": "/assets/hero-banner.jpg",
-      "beschrijving": "Het uitgestrekte meren- en plassengebied van Nationaal Park Weerribben-Wieden met Beulaker- en Belterwijde.",
-      "vertegenwoordiger": null,
-      "updatedAt": "2026-09-03T03:43:16.094Z"
-    },
-    {
       "slug": "ijsselham-paasloo-en-de-basse",
-      "naam": "Basse",
+      "naam": "Ijsselham, Paasloo en de Basse",
       "type": "Kern",
       "gemeente": "Steenwijkerland",
       "is_grouped": true,
@@ -637,7 +674,7 @@
     },
     {
       "slug": "nederland-en-baarlo",
-      "naam": "Nederland",
+      "naam": "Nederland en Baarlo",
       "type": "Kern",
       "gemeente": "Steenwijkerland",
       "is_grouped": true,
@@ -703,7 +740,7 @@
     },
     {
       "slug": "steenwijkerwold-en-witte-paarden",
-      "naam": "Steenwijkerwold",
+      "naam": "Steenwijkerwold en Witte paarden",
       "type": "Kern",
       "gemeente": "Steenwijkerland",
       "is_grouped": true,
@@ -843,6 +880,145 @@
       "author": "Fractiebestuur",
       "createdAt": "2026-01-15T11:00:00.000Z",
       "content": "FRACTIESTATUUT LIJST VAN ANDEL\\n\\nARTIKEL 1: GEMEENSCHAPPELIJKE VERANTWOORDELIJKHEID\\n1. De fractie van Lijst van Andel vertegenwoordigt de inwoners van Steenwijkerland op basis van het verkiezingsprogramma en lokale speerpunten.\\n2. Leden en fractieleden handelen te allen tijde integer, transparant en met respect voor elkaar.\\n\\nARTIKEL 2: VERTROUWELIJKHEID & DIGITALE STUKKEN\\n1. Documenten aangemerkt als vertrouwelijk zijn uitsluitend bestemd voor geregistreerde leden en fractieleden.\\n2. Het delen, exporteren of kopiëren van interne beraadstukken zonder schriftelijke instemming van de fractievoorzitter is uitdrukkelijk verboden.\\n\\nARTIKEL 3: BESLUITVORMING & STEMPROCEDURE\\n1. Besluiten binnen de fractie worden bij voorkeur genomen op basis van consensus.\\n2. Bij stemming beslist de gewone meerderheid der uitgebrachte geldige stemmen."
+    }
+  ],
+  "belafspraken": [
+    {
+      "id": "bel-1788432811644",
+      "name": "Jan Jansen",
+      "email": "jan@example.com",
+      "phone": "0612345678",
+      "fractielidId": "2",
+      "fractielidNaam": "Lisa Mars — Raadslid",
+      "linkedUserId": "1788366262062",
+      "linkedUsername": "Lisa123",
+      "datum": "2026-09-10",
+      "startTijd": "19:00",
+      "eindTijd": "19:30",
+      "startDateTime": "2026-09-10T19:00:00.000Z",
+      "endDateTime": "2026-09-10T19:30:00.000Z",
+      "onderwerp": "Vraag over verkeerssituatie in Steenwijk",
+      "status": "ingepland",
+      "notitie": "",
+      "handledAt": null,
+      "handledBy": null,
+      "createdAt": "2026-09-03T10:53:31.644Z"
+    },
+    {
+      "id": "bel-1",
+      "name": "Hendrik Jan Visser",
+      "email": "hj.visser@kpnmail.nl",
+      "phone": "06-23456789",
+      "fractielidId": "2",
+      "fractielidNaam": "Lisa Mars — Raadslid",
+      "linkedUserId": "1788366262062",
+      "linkedUsername": "Lisa123",
+      "datum": "2026-09-03",
+      "startTijd": "10:34",
+      "eindTijd": "11:04",
+      "startDateTime": "2026-09-03T10:34:50.330Z",
+      "endDateTime": "2026-09-03T11:04:50.330Z",
+      "onderwerp": "Vragen over parkeergelegenheid en herinrichting Stationskwartier Steenwijk",
+      "status": "ingepland",
+      "createdAt": "2026-09-01T10:44:50.330Z"
+    },
+    {
+      "id": "bel-2",
+      "name": "Marijke Bouwer",
+      "email": "m.bouwer@outlook.com",
+      "phone": "06-45678901",
+      "fractielidId": "2",
+      "fractielidNaam": "Lisa Mars — Raadslid",
+      "linkedUserId": "1788366262062",
+      "linkedUsername": "Lisa123",
+      "datum": "2026-09-04",
+      "startTijd": "19:00",
+      "eindTijd": "19:30",
+      "startDateTime": "2026-09-04T19:00:00.000Z",
+      "endDateTime": "2026-09-04T19:30:00.000Z",
+      "onderwerp": "Ondersteuning voor mantelzorgers en lokale Wmo-voorzieningen",
+      "status": "ingepland",
+      "createdAt": "2026-09-02T10:44:50.330Z"
+    },
+    {
+      "id": "bel-3",
+      "name": "Berend Timmermans",
+      "email": "berend.timmer@gmail.com",
+      "phone": "06-11223344",
+      "fractielidId": "1",
+      "fractielidNaam": "Sammy van Andel — Fractievoorzitter",
+      "linkedUserId": "1788365405085",
+      "linkedUsername": "admin",
+      "datum": "2026-09-03",
+      "startTijd": "10:34",
+      "eindTijd": "11:04",
+      "startDateTime": "2026-09-03T10:34:50.330Z",
+      "endDateTime": "2026-09-03T11:04:50.330Z",
+      "onderwerp": "Initiatiefvoorstel voor vergroening in Steenwijkerwold",
+      "status": "ingepland",
+      "createdAt": "2026-09-02T10:44:50.330Z"
+    },
+    {
+      "id": "bel-4",
+      "name": "Klaas de Vries",
+      "email": "klaas.devries@ziggo.nl",
+      "phone": "06-55443322",
+      "fractielidId": "1",
+      "fractielidNaam": "Sammy van Andel — Fractievoorzitter",
+      "linkedUserId": "1788365405085",
+      "linkedUsername": "admin",
+      "datum": "2026-09-03",
+      "startTijd": "17:00",
+      "eindTijd": "17:30",
+      "startDateTime": "2026-09-03T09:29:50.330Z",
+      "endDateTime": "2026-09-03T09:59:50.330Z",
+      "onderwerp": "Snelheidswaarschuwingen en drempels op de provinciale weg",
+      "status": "niet afgehandeld",
+      "handledAt": "2026-09-03T10:30:50.330Z",
+      "handledBy": "Systeem (automatisch >30 min na eindtijd)",
+      "createdAt": "2026-09-02T10:44:50.330Z"
+    },
+    {
+      "id": "bel-5",
+      "name": "Sophie van den Berg",
+      "email": "sophie.vandenberg@xs4all.nl",
+      "phone": "06-99887766",
+      "fractielidId": "2",
+      "fractielidNaam": "Lisa Mars — Raadslid",
+      "linkedUserId": "1788366262062",
+      "linkedUsername": "Lisa123",
+      "datum": "2026-09-02",
+      "startTijd": "19:30",
+      "eindTijd": "20:00",
+      "startDateTime": "2026-09-02T19:30:00.000Z",
+      "endDateTime": "2026-09-02T20:00:00.000Z",
+      "onderwerp": "Sportaccommodaties en jeugdsubsidies",
+      "status": "afgehandeld",
+      "handledAt": "2026-09-02T19:55:00.000Z",
+      "handledBy": "Lisa123",
+      "notitie": "Fijn gesprek gehad, verwezen naar commissievergadering van 18 september.",
+      "createdAt": "2026-09-01T10:00:00.000Z"
+    },
+    {
+      "id": "bel-6",
+      "name": "Arjen Schippers",
+      "email": "arjen.s@live.nl",
+      "phone": "06-77889900",
+      "fractielidId": "1",
+      "fractielidNaam": "Sammy van Andel — Fractievoorzitter",
+      "linkedUserId": "1788365405085",
+      "linkedUsername": "admin",
+      "datum": "2026-09-02",
+      "startTijd": "20:00",
+      "eindTijd": "20:30",
+      "startDateTime": "2026-09-02T20:00:00.000Z",
+      "endDateTime": "2026-09-02T20:30:00.000Z",
+      "onderwerp": "Vragen over vergunningverlening zonnepanelen in beschermd stadsgezicht",
+      "status": "nam niet op",
+      "handledAt": "2026-09-02T20:15:00.000Z",
+      "handledBy": "admin",
+      "notitie": "Drie keer gebeld tussen 20:00 en 20:15, voicemail ingesproken met verzoek terug te bellen.",
+      "createdAt": "2026-09-01T12:00:00.000Z"
     }
   ]
 }

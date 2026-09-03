@@ -92,8 +92,8 @@ export const WijkManager: React.FC<WijkManagerProps> = ({ token }) => {
     try {
       const res = await fetch("/api/wijken");
       if (!res.ok) throw new Error("Fout bij ophalen van wijken en kernen");
-      const data = await res.json();
-      setWijken(data);
+      const data = await res.json().catch(() => []);
+      setWijken(Array.isArray(data) ? data : []);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Kon wijken en kernen niet laden";
       toast.error(message);

@@ -63,9 +63,10 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({
       setLoading(true);
       const res = await fetch("/api/categories");
       if (res.ok) {
-        const data: NewsCategory[] = await res.json();
-        setCategories(data);
-        if (onCategoriesChange) onCategoriesChange(data);
+        const data: NewsCategory[] = await res.json().catch(() => []);
+        const validData = Array.isArray(data) ? data : [];
+        setCategories(validData);
+        if (onCategoriesChange) onCategoriesChange(validData);
       }
     } catch (e) {
       console.error("Fout bij ophalen categorieën:", e);

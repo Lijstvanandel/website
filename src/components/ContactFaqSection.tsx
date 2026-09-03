@@ -26,7 +26,7 @@ export function ContactFaqSection({
 
   useEffect(() => {
     fetch("/api/faqs")
-      .then((res) => res.json())
+      .then((res) => (res.ok ? res.json().catch(() => []) : []))
       .then((data: FaqItem[]) => {
         if (Array.isArray(data)) {
           setFaqs(data);

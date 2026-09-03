@@ -44,6 +44,7 @@ import { FaqManager } from "@/components/FaqManager";
 import { WijkManager } from "@/components/WijkManager";
 import { VacancyManager } from "@/components/VacancyManager";
 import { DocumentManager } from "@/components/DocumentManager";
+import { BelafsprakenManager } from "@/components/BelafsprakenManager";
 import { WIJKEN_EN_KERNEN } from "@/data/wijken";
 import { NewsItem } from "@/data/news";
 
@@ -189,42 +190,52 @@ export default function AdminDashboard() {
 
   const fetchUsers = useCallback(() => {
     fetch("/api/admin/users", { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.json())
-      .then((data: UserItem[]) => setUsers(data))
+      .then((r) => (r.ok ? r.json().catch(() => []) : []))
+      .then((data: UserItem[]) => {
+        if (Array.isArray(data)) setUsers(data);
+      })
       .catch(console.error);
   }, [token]);
 
   const fetchFractieleden = useCallback(() => {
     fetch("/api/fractieleden")
-      .then((r) => r.json())
-      .then((data: FractielidItem[]) => setFractieleden(data))
+      .then((r) => (r.ok ? r.json().catch(() => []) : []))
+      .then((data: FractielidItem[]) => {
+        if (Array.isArray(data)) setFractieleden(data);
+      })
       .catch(console.error);
   }, []);
 
   const fetchVideos = useCallback(() => {
     fetch("/api/videos")
-      .then((r) => r.json())
-      .then((data: VideoItem[]) => setVideos(data))
+      .then((r) => (r.ok ? r.json().catch(() => []) : []))
+      .then((data: VideoItem[]) => {
+        if (Array.isArray(data)) setVideos(data);
+      })
       .catch(console.error);
   }, []);
 
   const fetchNews = useCallback(() => {
     fetch("/api/news")
-      .then((r) => r.json())
-      .then((data: NewsItem[]) => setNews(data))
+      .then((r) => (r.ok ? r.json().catch(() => []) : []))
+      .then((data: NewsItem[]) => {
+        if (Array.isArray(data)) setNews(data);
+      })
       .catch(console.error);
   }, []);
 
   const fetchEvents = useCallback(() => {
     fetch("/api/admin/events", { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.json())
-      .then((data: EventItem[]) => setEvents(data))
+      .then((r) => (r.ok ? r.json().catch(() => []) : []))
+      .then((data: EventItem[]) => {
+        if (Array.isArray(data)) setEvents(data);
+      })
       .catch(console.error);
   }, [token]);
 
   const fetchCategories = useCallback(() => {
     fetch("/api/categories")
-      .then((r) => r.json())
+      .then((r) => (r.ok ? r.json().catch(() => []) : []))
       .then((data: NewsCategory[]) => {
         if (Array.isArray(data)) {
           setCategories(data);
@@ -238,7 +249,7 @@ export default function AdminDashboard() {
 
   const fetchMessages = useCallback(() => {
     fetch("/api/admin/contact-messages", { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.json())
+      .then((r) => (r.ok ? r.json().catch(() => []) : []))
       .then((data: ContactMessage[]) => {
         if (Array.isArray(data)) {
           setMessages(data);
@@ -427,7 +438,7 @@ export default function AdminDashboard() {
     toast.success(`Export voltooid: ${subscribers.length} e-mailadressen geëxporteerd naar CSV!`);
   };
 
-  const copyNewsletterEmails = () => {
+  const copyNewsletterEmails = async () => {
     const subscribers = users.filter((u) => u.newsletterSubscribed !== false && u.isActive !== false);
     const emails = subscribers
       .map((u) => (u.email && u.email.trim()) || (u.username?.includes("@") ? u.username : `${u.username}@leden.lijstvanandel.nl`))
@@ -438,8 +449,12 @@ export default function AdminDashboard() {
       return;
     }
 
-    navigator.clipboard.writeText(emails.join(", "));
-    toast.success(`${emails.length} e-mailadressen gekopieerd naar het klembord!`);
+    try {
+      await navigator.clipboard.writeText(emails.join(", "));
+      toast.success(`${emails.length} e-mailadressen gekopieerd naar het klembord!`);
+    } catch {
+      toast.error("Kon e-mailadressen niet naar het klembord kopiëren.");
+    }
   };
 
   const submitFractielid = async (e: React.FormEvent) => {
@@ -777,6 +792,9 @@ export default function AdminDashboard() {
           <TabsTrigger value="documents" className="gap-2 text-xs">
             <FileText className="w-4 h-4 text-accent" /> Exclusieve Documenten
           </TabsTrigger>
+          <TabsTrigger value="belafspraken" className="gap-2 text-xs">
+            <Phone className="w-4 h-4 text-accent" /> Belafspraken
+          </TabsTrigger>
         </TabsList>
 
         {/* LEDENBEHEER */}
@@ -856,12 +874,15 @@ export default function AdminDashboard() {
                               className={`text-xs px-2 py-1 rounded border outline-none cursor-pointer ${
                                 u.role === "admin"
                                   ? "bg-accent/20 text-accent border-accent/20"
+                                  : u.role === "raadslid"
+                                  ? "bg-primary/20 text-primary border-primary/30"
                                   : "bg-secondary text-secondary-foreground border-border"
                               }`}
                               value={u.role}
                               onChange={(e) => changeUserRole(u.id, e.target.value)}
                             >
                               <option value="admin">admin</option>
+                              <option value="raadslid">raadslid</option>
                               <option value="member">member</option>
                             </select>
                           ) : (
@@ -869,6 +890,8 @@ export default function AdminDashboard() {
                               className={`px-2 py-1 rounded text-xs ${
                                 u.role === "admin"
                                   ? "bg-accent/20 text-accent"
+                                  : u.role === "raadslid"
+                                  ? "bg-primary/20 text-primary"
                                   : "bg-secondary text-secondary-foreground"
                               }`}
                             >
@@ -2206,6 +2229,11 @@ export default function AdminDashboard() {
         {/* EXCLUSIEVE DOCUMENTEN VOOR LEDEN */}
         <TabsContent value="documents">
           <DocumentManager token={token} currentUser={user} />
+        </TabsContent>
+
+        {/* BELAFSPRAKEN OVERZICHT & RAADSLEDEN KOPPELING */}
+        <TabsContent value="belafspraken">
+          <BelafsprakenManager token={token} headers={headers} />
         </TabsContent>
       </Tabs>
     </div>

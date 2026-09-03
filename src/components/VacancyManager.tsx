@@ -110,19 +110,21 @@ export function VacancyManager() {
       ]);
 
       if (appRes.ok) {
-        const appData = await appRes.json();
-        setApplications(appData);
+        const appData = await appRes.json().catch(() => []);
+        setApplications(Array.isArray(appData) ? appData : []);
       }
       if (vacRes.ok) {
-        const vacData = await vacRes.json();
-        setCustomVacancies(vacData);
+        const vacData = await vacRes.json().catch(() => []);
+        setCustomVacancies(Array.isArray(vacData) ? vacData : []);
       }
       if (wijkRes.ok) {
-        const wijkData: WijkItem[] = await wijkRes.json();
-        const openWijken = wijkData.filter(
-          (w) => !w.vertegenwoordiger || !w.vertegenwoordiger.voornaam
-        );
-        setWijkenZonderRep(openWijken);
+        const wijkData: WijkItem[] = await wijkRes.json().catch(() => []);
+        if (Array.isArray(wijkData)) {
+          const openWijken = wijkData.filter(
+            (w) => !w.vertegenwoordiger || !w.vertegenwoordiger.voornaam
+          );
+          setWijkenZonderRep(openWijken);
+        }
       }
     } catch (error) {
       console.error(error);

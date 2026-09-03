@@ -102,8 +102,8 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ token, current
         },
       });
       if (res.ok) {
-        const data = await res.json();
-        setDocuments(data);
+        const data = await res.json().catch(() => []);
+        setDocuments(Array.isArray(data) ? data : []);
       } else {
         toast.error("Kon documenten niet laden");
       }

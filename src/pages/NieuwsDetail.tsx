@@ -29,7 +29,7 @@ export default function NieuwsDetail() {
           setNotFound(true);
           return null;
         }
-        return res.json();
+        return res.json().catch(() => null);
       })
       .then((data: NewsItem | null) => {
         if (data && data.title) {

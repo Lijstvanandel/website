@@ -66,13 +66,6 @@ export const SecureDocumentViewer: React.FC<SecureDocumentViewerProps> = ({
   const triggerMask = useCallback((reason: string) => {
     setIsMasked(true);
     setMaskReason(reason);
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText("Inhoud beveiligd tegen kopiëren - Lijst van Andel");
-      }
-    } catch {
-      // ignore clipboard error
-    }
   }, []);
 
   // Unmask handler
@@ -96,6 +89,15 @@ export const SecureDocumentViewer: React.FC<SecureDocumentViewerProps> = ({
       if (document.visibilityState === "hidden") {
         triggerMask("Tabblad verborgen of schermopname actief.");
       }
+    };
+
+    // 3. Intercept any copy attempts cleanly without triggering unfocused clipboard errors
+    const handleCopy = (e: ClipboardEvent) => {
+      e.preventDefault();
+      if (e.clipboardData) {
+        e.clipboardData.setData("text/plain", "Inhoud beveiligd tegen kopiëren - Lijst van Andel");
+      }
+      toast.warning("Kopiëren van vertrouwelijke fractiestukken is niet toegestaan.");
     };
 
     // 3. Keydown protection (PrintScreen, Ctrl+P, Ctrl+S, Ctrl+C, etc.)
@@ -153,12 +155,14 @@ export const SecureDocumentViewer: React.FC<SecureDocumentViewerProps> = ({
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("keydown", handleKeyDown);
     document.addEventListener("mouseleave", handleMouseLeave);
+    document.addEventListener("copy", handleCopy);
 
     return () => {
       window.removeEventListener("blur", handleWindowBlur);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener("mouseleave", handleMouseLeave);
+      document.removeEventListener("copy", handleCopy);
     };
   }, [isOpen, isFullscreen, onClose, triggerMask]);
 

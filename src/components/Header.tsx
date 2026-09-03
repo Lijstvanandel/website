@@ -43,7 +43,7 @@ export const Header = () => {
 
   useEffect(() => {
     fetch("/api/wijken")
-      .then((res) => (res.ok ? res.json() : []))
+      .then((res) => (res.ok ? res.json().catch(() => []) : []))
       .then((data) => {
         if (Array.isArray(data)) {
           const map: Record<string, string> = {};

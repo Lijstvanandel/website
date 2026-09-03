@@ -113,9 +113,10 @@ const WijkDetail = () => {
         if (!res.ok) {
           throw new Error("Wijk of kern niet gevonden");
         }
-        return res.json();
+        return res.json().catch(() => null);
       })
-      .then((data: WijkItem) => {
+      .then((data: WijkItem | null) => {
+        if (!data) throw new Error("Ongeldige wijk gegevens");
         setWijk(data);
         setLoading(false);
       })
@@ -126,7 +127,7 @@ const WijkDetail = () => {
 
     // Fetch videos for this wijk
     fetch(`/api/videos?wijkSlug=${slug}`)
-      .then((res) => (res.ok ? res.json() : []))
+      .then((res) => (res.ok ? res.json().catch(() => []) : []))
       .then(setVideos)
       .catch(() => setVideos([]));
   }, [slug]);

@@ -13,9 +13,9 @@ const WijkenEnKernen = () => {
 
   useEffect(() => {
     fetch("/api/wijken")
-      .then((res) => (res.ok ? res.json() : []))
+      .then((res) => (res.ok ? res.json().catch(() => []) : []))
       .then((data: WijkItem[]) => {
-        setWijken(data);
+        setWijken(Array.isArray(data) ? data : []);
         setLoading(false);
       })
       .catch(() => setLoading(false));

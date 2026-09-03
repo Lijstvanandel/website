@@ -11,13 +11,17 @@ export default function Nieuws() {
 
   useEffect(() => {
     fetch("/api/news")
-      .then((res) => res.json())
-      .then((data: NewsItem[]) => setNews(data))
+      .then((res) => (res.ok ? res.json().catch(() => []) : []))
+      .then((data: NewsItem[]) => {
+        if (Array.isArray(data)) setNews(data);
+      })
       .catch(console.error);
 
     fetch("/api/categories")
-      .then((res) => res.json())
-      .then((data: NewsCategory[]) => setCategories(data))
+      .then((res) => (res.ok ? res.json().catch(() => []) : []))
+      .then((data: NewsCategory[]) => {
+        if (Array.isArray(data)) setCategories(data);
+      })
       .catch(console.error);
   }, []);
 

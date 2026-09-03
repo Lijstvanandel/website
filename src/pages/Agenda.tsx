@@ -17,7 +17,7 @@ export default function Agenda() {
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
     fetch("/api/events", { headers })
-      .then((res) => res.json())
+      .then((res) => (res.ok ? res.json().catch(() => []) : []))
       .then((data) => {
         if (Array.isArray(data)) {
           setEvents(data);
@@ -41,7 +41,7 @@ export default function Agenda() {
       if (res.ok) {
         toast.success("Goed dat u komt, op uw ledendashboard staat het adres, tot dan!");
       } else {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         toast.error(data.error || "Aanmelden mislukt");
       }
     } catch (e) {

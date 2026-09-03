@@ -60,7 +60,7 @@ export default function AgendaDetail() {
           setNotFound(true);
           return null;
         }
-        return res.json();
+        return res.json().catch(() => null);
       })
       .then((data: EventDetailItem | null) => {
         if (data && data.title) {
@@ -96,7 +96,7 @@ export default function AgendaDetail() {
         setIsAttending(true);
         toast.success("Goed dat u komt! Op uw ledendashboard vindt u alle details. Tot dan!");
       } else {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         toast.error(data.error || "Aanmelden mislukt");
       }
     } catch {

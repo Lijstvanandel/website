@@ -24,7 +24,7 @@ export interface DefaultWijkData {
   } | null;
 }
 
-export const BUURTKAART_43_WIJKEN: DefaultWijkData[] = [
+export const BUURTKAART_WIJKEN: DefaultWijkData[] = [
   // =========================================================================
   // 13 Stadswijken van Steenwijk (uit buurt_weergave)
   // =========================================================================
@@ -268,16 +268,6 @@ export const BUURTKAART_43_WIJKEN: DefaultWijkData[] = [
     vertegenwoordiger: null,
   },
   {
-    slug: "groot-binnenwater",
-    naam: "Groot binnenwater",
-    type: "Kern",
-    gemeente: "Steenwijkerland",
-    is_grouped: false,
-    bannerUrl: "/assets/hero-banner.jpg",
-    beschrijving: "Het uitgestrekte meren- en plassengebied van Nationaal Park Weerribben-Wieden met Beulaker- en Belterwijde.",
-    vertegenwoordiger: null,
-  },
-  {
     slug: "ijsselham-paasloo-en-de-basse",
     naam: "Ijsselham, Paasloo en de Basse",
     type: "Kern",
@@ -419,7 +409,7 @@ export const BUURTKAART_43_WIJKEN: DefaultWijkData[] = [
   },
   {
     slug: "steenwijkerwold-en-witte-paarden",
-    naam: "Steenwijkerwold en Witte Paarden",
+    naam: "Steenwijkerwold en Witte paarden",
     type: "Kern",
     gemeente: "Steenwijkerland",
     is_grouped: true,
@@ -490,6 +480,7 @@ export const LEGACY_SLUG_MAP: Record<string, string> = {
   "nederland": "nederland-en-baarlo",
   "baarlo": "nederland-en-baarlo",
   "basse": "ijsselham-paasloo-en-de-basse",
+  "de-basse": "ijsselham-paasloo-en-de-basse",
   "paasloo": "ijsselham-paasloo-en-de-basse",
   "ijsselham": "ijsselham-paasloo-en-de-basse",
   "barsbeek": "barsbeek-heetveld-en-kadoelen",
@@ -511,6 +502,9 @@ export const LEGACY_SLUG_MAP: Record<string, string> = {
   "de-beitel": "oostwijken-de-beitel",
 };
 
+export const BUURTKAART_42_WIJKEN = BUURTKAART_WIJKEN;
+export const BUURTKAART_43_WIJKEN = BUURTKAART_WIJKEN;
+
 export interface StoredWijkRecord extends Partial<DefaultWijkData> {
   slug: string;
   updatedAt?: string;
@@ -521,6 +515,8 @@ export function syncWijkenWithBuurtkaart(existingList: StoredWijkRecord[] = []):
   (existingList || []).forEach((item) => {
     if (item && item.slug) {
       const lower = item.slug.toLowerCase();
+      // Exclude Groot binnenwater (wateroppervlak, geen wijk of kern)
+      if (lower === "groot-binnenwater") return;
       existingMap.set(lower, item);
       const mapped = LEGACY_SLUG_MAP[lower];
       if (mapped && !existingMap.has(mapped)) {
@@ -529,12 +525,24 @@ export function syncWijkenWithBuurtkaart(existingList: StoredWijkRecord[] = []):
     }
   });
 
-  return BUURTKAART_43_WIJKEN.map((defWijk) => {
+  return BUURTKAART_WIJKEN.map((defWijk) => {
     const existing = existingMap.get(defWijk.slug.toLowerCase());
     if (existing) {
+      // Fix historical naming discrepancies from previous seeds
+      let resolvedNaam = existing.naam || defWijk.naam;
+      if (defWijk.slug === "nederland-en-baarlo" && (resolvedNaam === "Nederland" || !resolvedNaam.includes("Baarlo"))) {
+        resolvedNaam = "Nederland en Baarlo";
+      }
+      if (defWijk.slug === "steenwijkerwold-en-witte-paarden" && (resolvedNaam === "Steenwijkerwold" || !resolvedNaam.toLowerCase().includes("witte paarden"))) {
+        resolvedNaam = "Steenwijkerwold en Witte paarden";
+      }
+      if (defWijk.slug === "ijsselham-paasloo-en-de-basse" && (resolvedNaam === "Basse" || resolvedNaam === "de Basse" || !resolvedNaam.includes("Paasloo"))) {
+        resolvedNaam = "Ijsselham, Paasloo en de Basse";
+      }
+
       return {
         ...defWijk,
-        naam: existing.naam || defWijk.naam,
+        naam: resolvedNaam,
         type: existing.type || defWijk.type,
         gemeente: existing.gemeente || defWijk.gemeente,
         bannerUrl: existing.bannerUrl || defWijk.bannerUrl,

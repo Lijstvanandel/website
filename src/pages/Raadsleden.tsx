@@ -5,18 +5,43 @@ import { BelafspraakDialog } from "@/components/BelafspraakDialog";
 import { Link } from "react-router-dom";
 import { VideoPlayer } from "@/components/VideoPlayer";
 
+interface FractielidItem {
+  id: string;
+  name: string;
+  role: string;
+  type: string;
+  bio?: string;
+  speerpunten?: string[];
+  email?: string;
+  facebook?: string;
+  instagram?: string;
+  linkedin?: string;
+  imageUrl?: string;
+}
+
 const Raadsleden = () => {
   const [belOpen, setBelOpen] = useState(false);
   const [voorgeselecteerd, setVoorgeselecteerd] = useState<string | undefined>(undefined);
-  const [leden, setLeden] = useState<any[]>([]);
-  const [videos, setVideos] = useState<any[]>([]);
+  const [leden, setLeden] = useState<FractielidItem[]>([]);
+  const [videos, setVideos] = useState<Record<string, unknown>[]>([]);
 
   useEffect(() => {
-    fetch("/api/fractieleden").then(res => res.json()).then(setLeden);
-    fetch("/api/videos").then(res => res.json()).then(setVideos);
+    fetch("/api/fractieleden")
+      .then((res) => (res.ok ? res.json().catch(() => []) : []))
+      .then((data) => {
+        if (Array.isArray(data)) setLeden(data);
+      })
+      .catch(() => {});
+
+    fetch("/api/videos")
+      .then((res) => (res.ok ? res.json().catch(() => []) : []))
+      .then((data) => {
+        if (Array.isArray(data)) setVideos(data);
+      })
+      .catch(() => {});
   }, []);
 
-  const openMet = (lid: any) => {
+  const openMet = (lid: FractielidItem) => {
     setVoorgeselecteerd(`${lid.name} — ${lid.role}`);
     setBelOpen(true);
   };

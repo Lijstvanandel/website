@@ -194,14 +194,6 @@ export const WIJKEN_EN_KERNEN: WijkOfKern[] = [
     beschrijving: "Het wereldberoemde waterdorp met zijn grachten, bruggetjes en punters, waar leefbaarheid voor inwoners centraal moet staan.",
   },
   {
-    slug: "groot-binnenwater",
-    naam: "Groot binnenwater",
-    type: "Kern",
-    gemeente: "Steenwijkerland",
-    isGrouped: false,
-    beschrijving: "Het uitgestrekte plassengebied van Nationaal Park Weerribben-Wieden, waaronder de Beulakerwijde en Belterwijde.",
-  },
-  {
     slug: "ijsselham-paasloo-en-de-basse",
     naam: "Ijsselham, Paasloo en de Basse",
     type: "Kern",
@@ -315,7 +307,7 @@ export const WIJKEN_EN_KERNEN: WijkOfKern[] = [
   },
   {
     slug: "steenwijkerwold-en-witte-paarden",
-    naam: "Steenwijkerwold en Witte Paarden",
+    naam: "Steenwijkerwold en Witte paarden",
     type: "Kern",
     gemeente: "Steenwijkerland",
     isGrouped: true,
@@ -375,6 +367,7 @@ const SLUG_ALIASES: Record<string, string> = {
   "nederland": "nederland-en-baarlo",
   "baarlo": "nederland-en-baarlo",
   "basse": "ijsselham-paasloo-en-de-basse",
+  "de-basse": "ijsselham-paasloo-en-de-basse",
   "paasloo": "ijsselham-paasloo-en-de-basse",
   "ijsselham": "ijsselham-paasloo-en-de-basse",
   "barsbeek": "barsbeek-heetveld-en-kadoelen",
