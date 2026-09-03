@@ -563,6 +563,13 @@ async function startServer() {
     res.json(db.fractieleden || []);
   });
 
+  app.get("/api/fractieleden/:id", (req, res) => {
+    const db = getDb();
+    const lid = (db.fractieleden || []).find((f: any) => f.id === req.params.id);
+    if (!lid) return res.status(404).json({ error: "Fractielid niet gevonden" });
+    res.json(lid);
+  });
+
   app.post("/api/admin/fractieleden", requireAuth, requireAdmin, upload.single('img'), (req: any, res: any) => {
     const db = getDb();
     const { name, firstName, role, type, bio, speerpunten, email, facebook, instagram, linkedin } = req.body;
@@ -622,17 +629,49 @@ async function startServer() {
     let videos = db.videos || [];
     if (req.query.memberId) videos = videos.filter((v: any) => v.fractieledenIds?.includes(req.query.memberId));
     if (req.query.wijkSlug) videos = videos.filter((v: any) => v.wijkSlug === req.query.wijkSlug);
+    if (req.query.hoofdstukNr) videos = videos.filter((v: any) => Number(v.hoofdstukNr) === Number(req.query.hoofdstukNr));
+    if (req.query.standpuntNr) videos = videos.filter((v: any) => Number(v.standpuntNr) === Number(req.query.standpuntNr));
     res.json(videos);
   });
 
   app.post("/api/admin/videos", requireAuth, requireAdmin, upload.single('video'), (req: any, res: any) => {
     const db = getDb();
-    const { title, category, date, fractieledenIds, wijkSlug } = req.body;
+    const { title, category, date, fractieledenIds, wijkSlug, burgerraadslidTitle, hoofdstukNr, standpuntNr, standpuntTitel } = req.body;
+    let parsedIds: string[] = [];
+    if (fractieledenIds) {
+      try {
+        parsedIds = typeof fractieledenIds === 'string' ? JSON.parse(fractieledenIds) : fractieledenIds;
+      } catch {
+        parsedIds = Array.isArray(fractieledenIds) ? fractieledenIds : [fractieledenIds];
+      }
+    }
+
+    // Controleer of de video aan een burgerraadslid is gekoppeld
+    const linkedMembers = (db.fractieleden || []).filter((f: any) => parsedIds.includes(f.id));
+    const hasBurgerraadslid = linkedMembers.some((f: any) =>
+      f.type?.toLowerCase() === "burgerraadslid" || f.role?.toLowerCase() === "burgerraadslid"
+    );
+
+    const effectiveTitle = (title || burgerraadslidTitle || "").trim();
+    if (hasBurgerraadslid && !effectiveTitle) {
+      return res.status(400).json({
+        error: "Een titel is verplicht wanneer de video aan een burgerraadslid is gekoppeld."
+      });
+    }
+
     const videoUrl = req.file ? `/uploads/videos/${req.file.filename}` : req.body.videoUrl;
     const newVideo = {
       id: Date.now().toString(),
-      title, category, date, videoUrl,
-      fractieledenIds: fractieledenIds ? JSON.parse(fractieledenIds) : [], wijkSlug
+      title: effectiveTitle || "Videobijdrage",
+      burgerraadslidTitle: burgerraadslidTitle?.trim() || effectiveTitle || "",
+      category: category || "Algemeen",
+      date: date || new Date().toISOString().slice(0, 10),
+      videoUrl,
+      fractieledenIds: parsedIds,
+      wijkSlug: wijkSlug || null,
+      hoofdstukNr: hoofdstukNr ? parseInt(hoofdstukNr, 10) : null,
+      standpuntNr: standpuntNr ? parseInt(standpuntNr, 10) : null,
+      standpuntTitel: standpuntTitel ? String(standpuntTitel).trim() : null
     };
     db.videos.push(newVideo);
     saveDb(db);

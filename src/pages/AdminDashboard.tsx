@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { Navigate } from "react-router-dom";
+import { Navigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -35,6 +35,7 @@ import {
   FileSpreadsheet,
   Briefcase,
   FileText,
+  BookOpen,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VideoPlayer } from "@/components/VideoPlayer";
@@ -47,6 +48,7 @@ import { DocumentManager } from "@/components/DocumentManager";
 import { BelafsprakenManager } from "@/components/BelafsprakenManager";
 import { WIJKEN_EN_KERNEN } from "@/data/wijken";
 import { NewsItem } from "@/data/news";
+import { hoofdstukken } from "@/data/partijprogramma";
 
 interface UserItem {
   id: string;
@@ -79,11 +81,15 @@ interface FractielidItem {
 interface VideoItem {
   id: string;
   title: string;
+  burgerraadslidTitle?: string;
   category: string;
   date: string;
   videoUrl?: string;
   wijkSlug?: string;
   fractieledenIds?: string[];
+  hoofdstukNr?: number | null;
+  standpuntNr?: number | null;
+  standpuntTitel?: string | null;
 }
 
 interface EventAttendee {
@@ -156,12 +162,15 @@ export default function AdminDashboard() {
 
   // -- State for new Video --
   const [newVTitle, setNewVTitle] = useState("");
+  const [newVBurgerTitle, setNewVBurgerTitle] = useState("");
   const [newVCategory, setNewVCategory] = useState("");
   const [newVDate, setNewVDate] = useState("");
   const [newVUrl, setNewVUrl] = useState("");
   const [newVFile, setNewVFile] = useState<File | null>(null);
   const [selectedFleden, setSelectedFleden] = useState<string[]>([]);
   const [newVWijk, setNewVWijk] = useState("");
+  const [newVHoofdstuk, setNewVHoofdstuk] = useState<number | "">("");
+  const [newVStandpunt, setNewVStandpunt] = useState<number | "">("");
 
   // -- State for new News --
   const [nTitle, setNTitle] = useState("");
@@ -506,14 +515,42 @@ export default function AdminDashboard() {
 
   const submitVideo = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const selectedBurgerraadsleden = fractieleden.filter(
+      (f) =>
+        selectedFleden.includes(f.id) &&
+        (f.type?.toLowerCase() === "burgerraadslid" || f.role?.toLowerCase().includes("burgerraadslid"))
+    );
+    const hasBurgerraadslid = selectedBurgerraadsleden.length > 0;
+
+    const effectiveTitle = (newVBurgerTitle || newVTitle).trim();
+    if (hasBurgerraadslid && !effectiveTitle) {
+      toast.error("Als de video aan een burgerraadslid is gekoppeld, is een titel verplicht!");
+      return;
+    }
+
     const formData = new FormData();
-    formData.append("title", newVTitle);
+    formData.append("title", effectiveTitle || newVTitle);
+    if (newVBurgerTitle) formData.append("burgerraadslidTitle", newVBurgerTitle);
     formData.append("category", newVCategory);
     formData.append("date", newVDate);
     formData.append("wijkSlug", newVWijk);
     formData.append("fractieledenIds", JSON.stringify(selectedFleden));
     if (newVUrl) formData.append("videoUrl", newVUrl);
     if (newVFile) formData.append("video", newVFile);
+
+    // Optionele koppeling met hoofdstuk & standpunt
+    if (newVHoofdstuk !== "") {
+      formData.append("hoofdstukNr", String(newVHoofdstuk));
+    }
+    if (newVStandpunt !== "") {
+      formData.append("standpuntNr", String(newVStandpunt));
+      const selH = hoofdstukken.find((h) => h.nr === Number(newVHoofdstuk));
+      const selS = selH?.standpunten.find((s) => s.nr === Number(newVStandpunt));
+      if (selS?.titel) {
+        formData.append("standpuntTitel", selS.titel);
+      }
+    }
 
     try {
       const res = await fetch("/api/admin/videos", {
@@ -526,6 +563,17 @@ export default function AdminDashboard() {
         fetchVideos();
         setNewVFile(null);
         setNewVUrl("");
+        setNewVTitle("");
+        setNewVBurgerTitle("");
+        setNewVCategory("");
+        setNewVDate("");
+        setSelectedFleden([]);
+        setNewVWijk("");
+        setNewVHoofdstuk("");
+        setNewVStandpunt("");
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        toast.error(errData.error || "Fout bij opslaan");
       }
     } catch (error) {
       toast.error("Fout bij opslaan");
@@ -1170,18 +1218,168 @@ export default function AdminDashboard() {
                     Gekoppelde Fractieleden
                   </label>
                   <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto border border-border p-2 rounded">
-                    {fractieleden.map((f) => (
-                      <label key={f.id} className="flex items-center gap-2 text-xs cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={selectedFleden.includes(f.id)}
-                          onChange={() => handleFledSelect(f.id)}
-                        />
-                        {f.name}
-                      </label>
-                    ))}
+                    {fractieleden.map((f) => {
+                      const isBurger =
+                        f.type?.toLowerCase() === "burgerraadslid" ||
+                        f.role?.toLowerCase().includes("burgerraadslid");
+                      return (
+                        <label
+                          key={f.id}
+                          className="flex items-center gap-2 text-xs cursor-pointer hover:bg-muted/50 p-1 rounded"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedFleden.includes(f.id)}
+                            onChange={() => handleFledSelect(f.id)}
+                          />
+                          <span className="font-medium">{f.name}</span>
+                          <span
+                            className={`text-[10px] px-1.5 py-0.5 rounded ${
+                              isBurger
+                                ? "bg-accent/20 text-accent font-semibold"
+                                : "text-muted-foreground bg-muted"
+                            }`}
+                          >
+                            {f.role || f.type}
+                          </span>
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
+
+                {/* Banner & titel veld als Burgerraadslid is geselecteerd */}
+                {(() => {
+                  const selectedBurgerraadsleden = fractieleden.filter(
+                    (f) =>
+                      selectedFleden.includes(f.id) &&
+                      (f.type?.toLowerCase() === "burgerraadslid" ||
+                        f.role?.toLowerCase().includes("burgerraadslid"))
+                  );
+                  if (selectedBurgerraadsleden.length === 0) return null;
+                  return (
+                    <div className="p-3 bg-accent/10 border border-accent/40 rounded text-xs space-y-2">
+                      <div className="font-semibold text-accent flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-accent" />
+                        Gekoppeld aan burgerraadslid ({selectedBurgerraadsleden.map((b) => b.name).join(", ")})
+                      </div>
+                      <p className="text-muted-foreground">
+                        Als de video aan een burgerraadslid is gekoppeld, moet er ook een titel worden meegegeven.
+                      </p>
+                      <div>
+                        <label className="text-[11px] font-semibold block mb-1 text-foreground">
+                          Specifieke titel voor Burgerraadslid (optioneel, overschrijft algemene titel):
+                        </label>
+                        <Input
+                          placeholder="Bijv. Tussenkomst Nathan ten Wolde over bereikbaarheid"
+                          value={newVBurgerTitle}
+                          onChange={(e) => setNewVBurgerTitle(e.target.value)}
+                          className="text-xs h-8 bg-background"
+                        />
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Standpunt & Hoofdstuk Koppeling (Optioneel) */}
+                {(() => {
+                  const selHoofdstuk = hoofdstukken.find((h) => h.nr === Number(newVHoofdstuk));
+                  const selStandpunt = selHoofdstuk?.standpunten.find((s) => s.nr === Number(newVStandpunt));
+
+                  return (
+                    <div className="p-3.5 bg-muted/20 border border-border/80 rounded space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                          <BookOpen className="w-3.5 h-3.5 text-accent" />
+                          Koppelen aan Partijprogramma / Standpunt (optioneel)
+                        </label>
+                        {(newVHoofdstuk !== "" || newVStandpunt !== "") && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewVHoofdstuk("");
+                              setNewVStandpunt("");
+                            }}
+                            className="text-[10px] text-muted-foreground hover:text-destructive underline"
+                          >
+                            Koppeling wissen
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Koppel deze video optioneel aan een hoofdstuk en standpunt. De video wordt dan automatisch getoond onder het tabblad <em>'Bijdragen'</em> op de pagina Onze Standpunten.
+                      </p>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="text-[11px] font-medium block mb-1 text-muted-foreground">
+                            1. Hoofdstuk
+                          </label>
+                          <select
+                            value={newVHoofdstuk}
+                            onChange={(e) => {
+                              const val = e.target.value ? Number(e.target.value) : "";
+                              setNewVHoofdstuk(val);
+                              setNewVStandpunt("");
+                            }}
+                            className="w-full text-xs h-9 bg-background border border-border rounded px-2 text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
+                          >
+                            <option value="">-- Geen hoofdstuk (optioneel) --</option>
+                            {hoofdstukken.map((h) => (
+                              <option key={h.nr} value={h.nr}>
+                                Hoofdstuk {h.nr}: {h.titel}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-medium block mb-1 text-muted-foreground">
+                            2. Standpunt
+                          </label>
+                          <select
+                            value={newVStandpunt}
+                            disabled={newVHoofdstuk === ""}
+                            onChange={(e) => {
+                              const val = e.target.value ? Number(e.target.value) : "";
+                              setNewVStandpunt(val);
+                            }}
+                            className="w-full text-xs h-9 bg-background border border-border rounded px-2 text-foreground focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+                          >
+                            <option value="">-- Kies een standpunt --</option>
+                            {selHoofdstuk?.standpunten.map((s) => (
+                              <option key={s.nr} value={s.nr}>
+                                Standpunt {s.nr}: {s.titel}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Tekst van het standpunt tonen zodat de beheerder precies weet waaraan gekoppeld wordt */}
+                      {selStandpunt && (
+                        <div className="p-3 bg-card border border-accent/40 rounded space-y-1.5 animate-fade-in">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded bg-accent/20 text-accent">
+                              Hoofdstuk {selHoofdstuk?.nr} • Standpunt {selStandpunt.nr}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground font-medium">Gekoppeld standpunt</span>
+                          </div>
+                          <div className="font-semibold text-xs text-foreground pt-0.5">
+                            {selStandpunt.titel}
+                          </div>
+                          <div className="text-[11px] text-foreground/90 bg-muted/60 p-2.5 rounded border border-border/60 leading-relaxed">
+                            <span className="font-semibold text-accent block text-[10px] uppercase tracking-wider mb-1">
+                              Tekst van het standpunt:
+                            </span>
+                            "{selStandpunt.standpunt}"
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 <Button type="submit" className="w-full mt-4">
                   <Upload className="w-4 h-4 mr-2" /> Opslaan
                 </Button>
@@ -1196,34 +1394,90 @@ export default function AdminDashboard() {
                     Nog geen video's geüpload.
                   </div>
                 )}
-                {videos.map((v) => (
-                  <div
-                    key={v.id}
-                    className="p-4 border border-border/50 rounded bg-background/50 flex flex-col sm:flex-row gap-4 items-start"
-                  >
-                    <div className="w-full sm:w-44 aspect-video bg-black rounded overflow-hidden shrink-0 border border-border">
-                      <VideoPlayer url={v.videoUrl} title={v.title} className="w-full h-full" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold truncate">{v.title}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {v.category} • {v.date}
-                      </div>
-                      {v.videoUrl && (
-                        <div className="text-[11px] text-accent mt-1 truncate font-mono">
-                          {v.videoUrl}
-                        </div>
-                      )}
-                    </div>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => deleteVideo(v.id)}
+                {videos.map((v) => {
+                  const displayTitle = v.burgerraadslidTitle || v.title;
+                  return (
+                    <div
+                      key={v.id}
+                      className="p-4 border border-border/50 rounded bg-background/50 flex flex-col sm:flex-row gap-4 items-start"
                     >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </div>
-                ))}
+                      <div className="w-full sm:w-44 aspect-video bg-black rounded overflow-hidden shrink-0 border border-border">
+                        <VideoPlayer url={v.videoUrl} title={displayTitle} className="w-full h-full" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-sm leading-snug">{displayTitle}</div>
+                        {v.burgerraadslidTitle && v.burgerraadslidTitle !== v.title && (
+                          <div className="text-[11px] text-muted-foreground italic mt-0.5">
+                            Algemene titel: {v.title}
+                          </div>
+                        )}
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {v.category} • {v.date}
+                          {v.wijkSlug && ` • Wijk: ${v.wijkSlug}`}
+                        </div>
+                        {v.videoUrl && (
+                          <div className="text-[11px] text-accent mt-1 truncate font-mono">
+                            {v.videoUrl}
+                          </div>
+                        )}
+
+                        {/* Gekoppeld standpunt tag */}
+                        {v.hoofdstukNr && v.standpuntNr && (
+                          <div className="flex items-center gap-1.5 mt-2">
+                            <span className="text-[10px] text-muted-foreground font-medium">Standpunt:</span>
+                            <Link
+                              to="/standpunten"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] px-2 py-0.5 rounded bg-primary/20 text-primary-foreground border border-primary/30 font-semibold hover:border-accent inline-flex items-center gap-1 transition-colors"
+                            >
+                              <BookOpen className="w-3 h-3 text-accent" />
+                              <span>
+                                H{v.hoofdstukNr}, S{v.standpuntNr}: {v.standpuntTitel || `Standpunt ${v.standpuntNr}`} ↗
+                              </span>
+                            </Link>
+                          </div>
+                        )}
+
+                        {/* Gekoppelde fractieleden tags met links naar hun videopagina */}
+                        {v.fractieledenIds && v.fractieledenIds.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+                            <span className="text-[10px] text-muted-foreground font-medium">Gekoppeld:</span>
+                            {v.fractieledenIds.map((fid) => {
+                              const flid = fractieleden.find((f) => String(f.id) === String(fid));
+                              if (!flid) return null;
+                              const isBurger =
+                                flid.type?.toLowerCase() === "burgerraadslid" ||
+                                flid.role?.toLowerCase().includes("burgerraadslid");
+                              return (
+                                <Link
+                                  key={fid}
+                                  to={`/fractie/${flid.id}/videos`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors inline-flex items-center gap-1 ${
+                                    isBurger
+                                      ? "bg-accent/20 border-accent/40 text-accent font-semibold hover:bg-accent hover:text-accent-foreground"
+                                      : "bg-secondary text-secondary-foreground border-border hover:border-accent"
+                                  }`}
+                                >
+                                  {flid.name} {isBurger ? "(Burgerraadslid)" : ""} ↗
+                                </Link>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => deleteVideo(v.id)}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>

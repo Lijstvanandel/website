@@ -159,6 +159,18 @@
         "1"
       ],
       "wijkSlug": "oostermeenthe"
+    },
+    {
+      "id": "1002",
+      "title": "Tussenkomst Nathan ten Wolde over lokale bereikbaarheid",
+      "burgerraadslidTitle": "Tussenkomst Nathan ten Wolde over lokale bereikbaarheid",
+      "category": "Commissievergadering",
+      "date": "2024-06-10",
+      "videoUrl": "https://www.w3schools.com/html/mov_bbb.mp4",
+      "fractieledenIds": [
+        "3"
+      ],
+      "wijkSlug": "steenwijk-centrum"
     }
   ],
   "news": [
@@ -208,7 +220,8 @@
       "lng": 6.1186,
       "thumbnailUrl": "/assets/markt-steenwijk.jpg",
       "attendees": [
-        "1788366262062"
+        "1788366262062",
+        "1788433753932"
       ],
       "createdAt": "2026-09-02T21:13:16.955Z"
     }
@@ -973,8 +986,10 @@
       "startDateTime": "2026-09-03T10:34:50.330Z",
       "endDateTime": "2026-09-03T11:04:50.330Z",
       "onderwerp": "Initiatiefvoorstel voor vergroening in Steenwijkerwold",
-      "status": "ingepland",
-      "createdAt": "2026-09-02T10:44:50.330Z"
+      "status": "niet afgehandeld",
+      "createdAt": "2026-09-02T10:44:50.330Z",
+      "handledAt": "2026-09-03T11:43:37.777Z",
+      "handledBy": "Systeem (automatisch >30 min na eindtijd)"
     },
     {
       "id": "bel-4",
