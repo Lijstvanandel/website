@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { FractielidWidget, FractielidItem } from "@/components/FractielidWidget";
 import { BelafspraakDialog } from "@/components/BelafspraakDialog";
 import { VideoPlayer } from "@/components/VideoPlayer";
+import { ShareDialog } from "@/components/ShareDialog";
 import { getVideoThumbnail } from "@/lib/videoUtils";
 
 interface VideoItem {
@@ -25,10 +26,20 @@ const FractielidVideos = () => {
   const [member, setMember] = useState<FractielidItem | null>(null);
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [copied, setCopied] = useState(false);
-  const [copiedVideoId, setCopiedVideoId] = useState<string | null>(null);
   const [belOpen, setBelOpen] = useState(false);
   const [voorgeselecteerd, setVoorgeselecteerd] = useState<string | undefined>(undefined);
+
+  // Social share dialog state
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareData, setShareData] = useState<{
+    title: string;
+    description?: string;
+    url?: string;
+  }>({
+    title: "",
+    description: "",
+    url: "",
+  });
 
   useEffect(() => {
     setLoading(true);
@@ -62,26 +73,60 @@ const FractielidVideos = () => {
       });
   }, [id]);
 
+  // Handle deep-link anchor or ?v=ID parameter scrolling
+  useEffect(() => {
+    if (loading || videos.length === 0) return;
+
+    // Check query params ?v= or ?video=
+    const params = new URLSearchParams(window.location.search);
+    const targetVideoId = params.get("v") || params.get("video");
+
+    let targetElementId = "";
+    if (targetVideoId) {
+      targetElementId = `video-item-${targetVideoId}`;
+    } else if (window.location.hash) {
+      targetElementId = window.location.hash.replace("#", "");
+    }
+
+    if (targetElementId) {
+      const el = document.getElementById(targetElementId);
+      if (el) {
+        setTimeout(() => {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.classList.add("ring-2", "ring-accent");
+          setTimeout(() => {
+            el.classList.remove("ring-2", "ring-accent");
+          }, 3000);
+        }, 150);
+      }
+    }
+  }, [loading, videos]);
+
   const handleOpenBelafspraak = (lid: FractielidItem) => {
     setVoorgeselecteerd(`${lid.name} — ${lid.role}`);
     setBelOpen(true);
   };
 
-  const handleShare = () => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(window.location.href);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
-    }
+  const handleShareMemberPage = () => {
+    const pageUrl = window.location.origin + window.location.pathname;
+    setShareData({
+      title: `Video's & Bijdragen van ${member?.name || "Fractielid"} | Lijst van Andel`,
+      description: `Bekijk alle videobijdragen, raadsdebatten en toelichtingen van ${member?.name || "Lijst van Andel"} in de gemeenteraad van Steenwijkerland.`,
+      url: pageUrl,
+    });
+    setShareDialogOpen(true);
   };
 
   const handleShareVideo = (video: VideoItem) => {
-    const url = `${window.location.origin}${window.location.pathname}#video-item-${video.id}`;
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(url);
-      setCopiedVideoId(video.id);
-      setTimeout(() => setCopiedVideoId(null), 2500);
-    }
+    const videoTitle = video.burgerraadslidTitle || video.title || "Videobijdrage";
+    // We provide ?v=video.id#video-item-video.id so both social crawlers (via ?v=) and the browser jump (via #) work flawlessly!
+    const videoUrl = `${window.location.origin}${window.location.pathname}?v=${video.id}#video-item-${video.id}`;
+    setShareData({
+      title: `${videoTitle} - ${member?.name || "Lijst van Andel"}`,
+      description: video.description || `Bekijk deze videobijdrage van ${member?.name || "Lijst van Andel"} in de gemeenteraad van Steenwijkerland.`,
+      url: videoUrl,
+    });
+    setShareDialogOpen(true);
   };
 
   const isBurgerraadslid =
@@ -132,18 +177,10 @@ const FractielidVideos = () => {
             id="btn-share-fractielid"
             variant="outline"
             size="sm"
-            onClick={handleShare}
+            onClick={handleShareMemberPage}
             className="text-xs uppercase tracking-wider border-border hover:border-accent text-foreground"
           >
-            {copied ? (
-              <>
-                <Check className="w-3.5 h-3.5 mr-1 text-green-500" /> Link gekopieerd!
-              </>
-            ) : (
-              <>
-                <Share2 className="w-3.5 h-3.5 mr-1" /> Deel profiel & video's
-              </>
-            )}
+            <Share2 className="w-3.5 h-3.5 mr-1 text-accent" /> Deel profiel & video's
           </Button>
         </div>
       </div>
@@ -275,18 +312,11 @@ const FractielidVideos = () => {
                         <button
                           type="button"
                           onClick={() => handleShareVideo(v)}
-                          title="Kopieer directe link naar deze video"
-                          className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-accent transition-colors cursor-pointer"
+                          title="Deel deze video op Facebook, X, Telegram of kopieer link"
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent hover:text-accent/80 transition-colors cursor-pointer py-1 px-2 rounded-md hover:bg-accent/10"
                         >
-                          {copiedVideoId === v.id ? (
-                            <span className="text-green-500 flex items-center gap-0.5 font-medium">
-                              <Check className="w-3 h-3" /> Gekopieerd!
-                            </span>
-                          ) : (
-                            <span className="flex items-center gap-1">
-                              <Share2 className="w-3 h-3" /> Deel video
-                            </span>
-                          )}
+                          <Share2 className="w-3.5 h-3.5" />
+                          <span>Deel video</span>
                         </button>
                       </div>
 
@@ -316,6 +346,15 @@ const FractielidVideos = () => {
           </div>
         )}
       </div>
+
+      {/* Social Share Dialog */}
+      <ShareDialog
+        open={shareDialogOpen}
+        onOpenChange={setShareDialogOpen}
+        title={shareData.title}
+        description={shareData.description}
+        url={shareData.url}
+      />
 
       {/* Belafspraak Dialog */}
       <BelafspraakDialog

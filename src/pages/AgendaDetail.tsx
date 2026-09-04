@@ -6,10 +6,6 @@ import {
   Clock,
   MapPin,
   Share2,
-  Facebook,
-  Twitter,
-  MessageCircle,
-  Link2,
   CheckCircle2,
   AlertCircle,
   Compass,
@@ -19,6 +15,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { extractCity } from "@/lib/utils";
+import { ShareDialog } from "@/components/ShareDialog";
 
 export interface EventDetailItem {
   id: string;
@@ -49,6 +46,7 @@ export default function AgendaDetail() {
   const [loading, setLoading] = useState<boolean>(true);
   const [notFound, setNotFound] = useState<boolean>(false);
   const [isAttending, setIsAttending] = useState<boolean>(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState<boolean>(false);
   const { isAuthenticated, token, user } = useAuth();
   const navigate = useNavigate();
 
@@ -114,28 +112,7 @@ export default function AgendaDetail() {
     }
   };
 
-  const currentUrl = window.location.href;
-  const encodedUrl = encodeURIComponent(currentUrl);
-  const encodedTitle = encodeURIComponent(event?.title || "Evenement Lijst van Andel");
-
-  const shareLinks = {
-    facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`,
-    twitter: `https://twitter.com/intent/tweet?url=${encodedUrl}&text=${encodedTitle}`,
-    whatsapp: `https://api.whatsapp.com/send?text=${encodedTitle}%20${encodedUrl}`,
-  };
-
-  const handleShare = async (platform: string) => {
-    if (platform === "copy" || platform === "instagram" || platform === "tiktok") {
-      try {
-        await navigator.clipboard.writeText(currentUrl);
-        toast.success("Link naar evenement gekopieerd naar klembord!");
-      } catch {
-        toast.error("Kon link niet kopiëren");
-      }
-    } else {
-      window.open(shareLinks[platform as keyof typeof shareLinks], "_blank", "width=600,height=400");
-    }
-  };
+  const currentUrl = typeof window !== "undefined" ? window.location.href : "";
 
   if (loading) {
     return (
@@ -214,10 +191,10 @@ export default function AgendaDetail() {
 
           <button
             type="button"
-            onClick={() => handleShare("copy")}
+            onClick={() => setShareDialogOpen(true)}
             className="inline-flex items-center text-xs font-semibold text-accent hover:text-accent/90 transition-colors bg-background/90 backdrop-blur px-4 py-2 rounded-full border border-border shadow-sm"
           >
-            <Link2 className="w-3.5 h-3.5 mr-1.5" /> Deel dit evenement
+            <Share2 className="w-3.5 h-3.5 mr-1.5" /> Deel dit evenement
           </button>
         </div>
 
@@ -374,50 +351,36 @@ export default function AgendaDetail() {
           </div>
 
           {/* Social Share Bar */}
-          <div className="pt-8 border-t border-border flex flex-col md:flex-row items-center justify-between gap-6">
-            <div className="font-display text-lg flex items-center">
-              <Share2 className="w-5 h-5 mr-3 text-accent" /> Deel dit evenement
+          <div className="pt-8 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+              <div className="font-display text-lg flex items-center">
+                <Share2 className="w-5 h-5 mr-2.5 text-accent" /> Deel dit evenement
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Deel via WhatsApp, Facebook, X, Telegram of kopieer de link voor Instagram/TikTok.
+              </p>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div>
               <button
-                onClick={() => handleShare("facebook")}
-                className="p-3 bg-[#1877F2]/10 text-[#1877F2] rounded-full hover:bg-[#1877F2]/20 transition-colors"
-                title="Deel op Facebook"
+                type="button"
+                onClick={() => setShareDialogOpen(true)}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground hover:bg-primary/90 rounded-full text-xs font-semibold shadow-sm transition-all"
               >
-                <Facebook className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => handleShare("twitter")}
-                className="p-3 bg-primary/5 text-primary rounded-full hover:bg-primary/10 transition-colors"
-                title="Deel op X (Twitter)"
-              >
-                <Twitter className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => handleShare("whatsapp")}
-                className="p-3 bg-[#25D366]/10 text-[#25D366] rounded-full hover:bg-[#25D366]/20 transition-colors"
-                title="Deel via WhatsApp"
-              >
-                <MessageCircle className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => handleShare("instagram")}
-                className="p-3 bg-[#E1306C]/10 text-[#E1306C] rounded-full hover:bg-[#E1306C]/20 transition-colors"
-                title="Instagram / TikTok (Kopieer link)"
-              >
-                <span className="font-bold text-sm">IG/TT</span>
-              </button>
-              <button
-                onClick={() => handleShare("copy")}
-                className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-secondary text-foreground hover:bg-secondary/80 border border-border rounded-full text-xs font-semibold transition-colors"
-                title="Kopieer directe link naar dit evenement"
-              >
-                <Link2 className="w-4 h-4 text-accent" /> Link Kopiëren
+                <Share2 className="w-4 h-4 text-accent" /> Deelopties openen
               </button>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Reusable Share Dialog */}
+      <ShareDialog
+        open={shareDialogOpen}
+        onOpenChange={setShareDialogOpen}
+        title={`${event.title} | Agenda Lijst van Andel`}
+        description={event.shortDescription || (event.description ? event.description.replace(/<[^>]*>/g, '').slice(0, 160) : "")}
+        url={currentUrl}
+      />
     </div>
   );
 }

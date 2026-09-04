@@ -9,6 +9,7 @@ import { AuthProvider } from "./context/AuthContext";
 import Home from "./pages/Home";
 import Raadsleden from "./pages/Raadsleden";
 import FractielidVideos from "./pages/FractielidVideos";
+import VideoRedirect from "./pages/VideoRedirect";
 import Bestuur from "./pages/Bestuur";
 import Steunfractie from "./pages/Steunfractie";
 import Standpunten from "./pages/Standpunten";
@@ -41,6 +42,8 @@ const App = () => (
                 <Route path="/fractie" element={<Raadsleden />} />
                 <Route path="/fractie/:id/videos" element={<FractielidVideos />} />
                 <Route path="/raadsleden/:id/videos" element={<FractielidVideos />} />
+                <Route path="/video/:id" element={<VideoRedirect />} />
+                <Route path="/videos/:id" element={<VideoRedirect />} />
                 <Route path="/bestuur" element={<Bestuur />} />
                 <Route path="/steunfractie" element={<Steunfractie />} />
                 <Route path="/raadsleden" element={<Raadsleden />} />

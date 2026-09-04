@@ -6,12 +6,25 @@ import { toast } from "sonner";
 import { AgendaMap, AgendaEventLocation } from "@/components/AgendaMap";
 import { EventItem } from "@/data/events";
 import { extractCity } from "@/lib/utils";
+import { ShareDialog } from "@/components/ShareDialog";
 
 export default function Agenda() {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [selectedEventId, setSelectedEventId] = useState<string | undefined>(undefined);
   const { isAuthenticated, token } = useAuth();
   const navigate = useNavigate();
+
+  // Share Dialog state
+  const [shareDialogOpen, setShareDialogOpen] = useState<boolean>(false);
+  const [shareData, setShareData] = useState<{
+    title: string;
+    description?: string;
+    url?: string;
+  }>({
+    title: "",
+    description: "",
+    url: "",
+  });
 
   useEffect(() => {
     const headers: Record<string, string> = {};
@@ -64,14 +77,15 @@ export default function Agenda() {
     }
   };
 
-  const handleShareEvent = async (eventId: string) => {
-    const url = `${window.location.origin}/agenda/${eventId}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      toast.success("Link naar evenement gekopieerd naar klembord!");
-    } catch {
-      toast.error("Kon link niet kopiëren");
-    }
+  const handleShareEvent = (event: EventItem) => {
+    const url = `${window.location.origin}/agenda/${event.id}`;
+    const cleanDesc = event.shortDescription || (event.description ? event.description.replace(/<[^>]*>/g, '').slice(0, 160) : "");
+    setShareData({
+      title: `${event.title} | Agenda Lijst van Andel`,
+      description: cleanDesc,
+      url,
+    });
+    setShareDialogOpen(true);
   };
 
   // Convert events to map format
@@ -261,9 +275,9 @@ export default function Agenda() {
 
                     <button
                       type="button"
-                      onClick={() => handleShareEvent(item.id)}
+                      onClick={() => handleShareEvent(item)}
                       className="inline-flex items-center justify-center px-4 py-2.5 rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-muted text-xs font-semibold transition-colors"
-                      title="Kopieer link naar dit evenement"
+                      title="Deel dit evenement via WhatsApp, Facebook, X, Telegram of kopieer link"
                     >
                       <Share2 className="w-3.5 h-3.5 mr-1.5 text-accent" /> Deel dit evenement
                     </button>
@@ -287,6 +301,15 @@ export default function Agenda() {
           })}
         </div>
       </div>
+
+      {/* Share Dialog for Agenda */}
+      <ShareDialog
+        open={shareDialogOpen}
+        onOpenChange={setShareDialogOpen}
+        title={shareData.title}
+        description={shareData.description}
+        url={shareData.url}
+      />
     </div>
   );
 }

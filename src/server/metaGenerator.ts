@@ -60,7 +60,10 @@ function extractYouTubeThumb(videoUrl?: string): string | null {
 export function getPageMetadata(urlPath: string, host: string, db: Record<string, any>): PageMetadata {
   const protocol = host.includes("localhost") || host.includes("127.0.0.1") ? "http" : "https";
   const baseUrl = `${protocol}://${host}`;
-  const cleanPath = urlPath.split("?")[0].split("#")[0];
+  const pathParts = urlPath.split("?");
+  const cleanPath = pathParts[0].split("#")[0];
+  const queryString = pathParts[1] ? pathParts[1].split("#")[0] : "";
+  const queryParams = new URLSearchParams(queryString);
   const canonicalUrl = `${baseUrl}${cleanPath === "/" ? "" : cleanPath}`;
 
   // 1. Home
@@ -338,7 +341,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
     };
   }
 
-  // 11. Fractielid video's detail: /fractie/:id/videos of /raadsleden/:id/videos
+  // 11. Fractielid video's detail: /fractie/:id/videos of /raadsleden/:id/videos (optioneel met ?v=ID of ?video=ID)
   const videoMemberMatch = cleanPath.match(/^\/(?:fractie|raadsleden)\/([a-zA-Z0-9_-]+)\/videos$/);
   if (videoMemberMatch) {
     const memberId = videoMemberMatch[1];
@@ -349,7 +352,46 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
         .filter((v: any) => v.fractieledenIds?.map(String).includes(String(member.id)))
         .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-      // Kies de meest relevante thumbnail: van de nieuwste video met thumbnail, of YouTube preview, of pasfoto fractielid
+      // Check of er specifiek een video is opgevraagd via ?v= of ?video=
+      const requestedVideoId = queryParams.get("v") || queryParams.get("video");
+      const targetVideo = requestedVideoId
+        ? memberVideos.find((v: any) => String(v.id) === String(requestedVideoId)) ||
+          (db?.videos || []).find((v: any) => String(v.id) === String(requestedVideoId))
+        : null;
+
+      if (targetVideo) {
+        // Specifieke video opgevraagd
+        const videoTitle = targetVideo.burgerraadslidTitle || targetVideo.title || "Videobijdrage";
+        const cleanDesc = targetVideo.description
+          ? truncate(stripHtml(targetVideo.description), 160)
+          : `Bekijk de videobijdrage "${videoTitle}" van ${member.name} in de gemeenteraad van Steenwijkerland.`;
+        
+        let videoImage = "";
+        if (targetVideo.thumbnailUrl) {
+          videoImage = resolveImageUrl(baseUrl, targetVideo.thumbnailUrl);
+        } else {
+          const ytThumb = extractYouTubeThumb(targetVideo.videoUrl);
+          if (ytThumb) videoImage = ytThumb;
+        }
+        if (!videoImage) {
+          videoImage = resolveImageUrl(baseUrl, member.imgUrl);
+        }
+
+        const title = `${videoTitle} - ${member.name} | Lijst van Andel`;
+        const specificCanonical = `${baseUrl}${cleanPath}?v=${targetVideo.id}`;
+
+        return {
+          title,
+          description: cleanDesc,
+          ogTitle: `${videoTitle} - ${member.name}`,
+          ogDescription: cleanDesc,
+          ogImage: videoImage,
+          ogType: "video.other",
+          canonicalUrl: specificCanonical
+        };
+      }
+
+      // Geen specifieke video parameter opgegeven: neem overzicht of de meest recente video
       let selectedImage = "";
       let videoCustomDesc = "";
       if (memberVideos.length > 0) {
@@ -380,6 +422,55 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
         ogTitle: title,
         ogDescription: desc,
         ogImage: selectedImage,
+        ogType: "video.other",
+        canonicalUrl
+      };
+    }
+  }
+
+  // 11b. Directe videoroute: /video/:id of /videos/:id
+  const directVideoMatch = cleanPath.match(/^\/videos?\/([a-zA-Z0-9_-]+)$/);
+  if (directVideoMatch) {
+    const videoId = directVideoMatch[1];
+    const video = (db?.videos || []).find((v: any) => String(v.id) === String(videoId));
+    if (video) {
+      const videoTitle = video.burgerraadslidTitle || video.title || "Videobijdrage";
+      const cleanDesc = video.description
+        ? truncate(stripHtml(video.description), 160)
+        : `Bekijk de videobijdrage "${videoTitle}" in de gemeenteraad van Steenwijkerland.`;
+
+      let videoImage = "";
+      if (video.thumbnailUrl) {
+        videoImage = resolveImageUrl(baseUrl, video.thumbnailUrl);
+      } else {
+        const ytThumb = extractYouTubeThumb(video.videoUrl);
+        if (ytThumb) videoImage = ytThumb;
+      }
+
+      // Zoek eventueel gekoppeld fractielid voor extra context
+      let speakerName = "Lijst van Andel";
+      if (video.fractieledenIds && video.fractieledenIds.length > 0) {
+        const member = (db?.fractieleden || []).find((m: any) => String(m.id) === String(video.fractieledenIds[0]));
+        if (member) {
+          speakerName = member.name;
+          if (!videoImage) {
+            videoImage = resolveImageUrl(baseUrl, member.imgUrl);
+          }
+        }
+      }
+
+      if (!videoImage) {
+        videoImage = DEFAULT_IMAGE;
+      }
+
+      const title = `${videoTitle} - ${speakerName} | Lijst van Andel`;
+
+      return {
+        title,
+        description: cleanDesc,
+        ogTitle: `${videoTitle} - ${speakerName}`,
+        ogDescription: cleanDesc,
+        ogImage: videoImage,
         ogType: "video.other",
         canonicalUrl
       };
