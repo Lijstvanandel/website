@@ -9,6 +9,7 @@ import jwt from "jsonwebtoken";
 import multer from "multer";
 import { createServer as createViteServer } from "vite";
 import { BUURTKAART_43_WIJKEN, syncWijkenWithBuurtkaart, LEGACY_SLUG_MAP } from "./src/data/defaultWijken.js";
+import { getPageMetadata, injectMetadataIntoHtml } from "./src/server/metaGenerator.js";
 
 const execPromise = util.promisify(exec);
 let lastCacheClearedTime: string | null = null;
@@ -2920,6 +2921,88 @@ async function startServer() {
     }
   });
 
+  // Dynamic Sitemap generator for Google and other search engines
+  app.get("/sitemap.xml", (req, res) => {
+    try {
+      const host = req.get("host") || "lijstvanandel.nl";
+      const protocol = host.includes("localhost") || host.includes("127.0.0.1") ? "http" : "https";
+      const baseUrl = `${protocol}://${host}`;
+      const db = getDb();
+
+      const staticRoutes = [
+        { url: "/", priority: "1.0", changefreq: "daily" },
+        { url: "/standpunten", priority: "0.9", changefreq: "weekly" },
+        { url: "/nieuws", priority: "0.9", changefreq: "daily" },
+        { url: "/wijken-en-kernen", priority: "0.9", changefreq: "weekly" },
+        { url: "/agenda", priority: "0.8", changefreq: "daily" },
+        { url: "/fractie", priority: "0.8", changefreq: "monthly" },
+        { url: "/bestuur", priority: "0.7", changefreq: "monthly" },
+        { url: "/steunfractie", priority: "0.7", changefreq: "monthly" },
+        { url: "/contact", priority: "0.8", changefreq: "monthly" }
+      ];
+
+      const newsRoutes = (db.news || []).map((n: any) => ({
+        url: `/nieuws/${n.id}`,
+        priority: "0.8",
+        changefreq: "weekly",
+        lastmod: n.updatedAt ? n.updatedAt.split("T")[0] : (n.createdAt ? n.createdAt.split("T")[0] : (n.date || new Date().toISOString().split("T")[0]))
+      }));
+
+      const allWijken = db.wijken?.length ? db.wijken : BUURTKAART_43_WIJKEN;
+      const wijkRoutes = allWijken.map((w: any) => ({
+        url: `/wijken-en-kernen/${w.slug}`,
+        priority: "0.8",
+        changefreq: "weekly",
+        lastmod: w.updatedAt ? w.updatedAt.split("T")[0] : new Date().toISOString().split("T")[0]
+      }));
+
+      const eventRoutes = (db.events || []).filter((e: any) => e.isPublic && e.isPublished).map((e: any) => ({
+        url: `/agenda/${e.id}`,
+        priority: "0.7",
+        changefreq: "weekly",
+        lastmod: e.updatedAt ? e.updatedAt.split("T")[0] : (e.createdAt ? e.createdAt.split("T")[0] : new Date().toISOString().split("T")[0])
+      }));
+
+      const allUrls = [...staticRoutes, ...newsRoutes, ...wijkRoutes, ...eventRoutes];
+
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${allUrls.map(u => `  <url>
+    <loc>${baseUrl}${u.url}</loc>
+    ${u.lastmod ? `<lastmod>${u.lastmod}</lastmod>` : ""}
+    <changefreq>${u.changefreq}</changefreq>
+    <priority>${u.priority}</priority>
+  </url>`).join("\n")}
+</urlset>`;
+
+      res.setHeader("Content-Type", "application/xml; charset=utf-8");
+      return res.send(xml);
+    } catch (e: any) {
+      console.error("Fout bij genereren van sitemap:", e);
+      res.status(500).send("Fout bij genereren van sitemap");
+    }
+  });
+
+  // Robots.txt generator
+  app.get("/robots.txt", (req, res) => {
+    const host = req.get("host") || "lijstvanandel.nl";
+    const protocol = host.includes("localhost") || host.includes("127.0.0.1") ? "http" : "https";
+    const baseUrl = `${protocol}://${host}`;
+
+    const txt = `User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /login
+Disallow: /registreren
+Disallow: /api/
+
+Sitemap: ${baseUrl}/sitemap.xml
+`;
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    return res.send(txt);
+  });
+
   // Explicit 404 handler for unhandled /api requests so they NEVER fall through to Vite / SPA index.html
   app.use("/api", (req, res) => {
     res.status(404).json({ error: `API route not found: ${req.method} ${req.originalUrl}` });
@@ -2934,18 +3017,65 @@ async function startServer() {
     next(err);
   });
 
-  // Vite middleware for development
+  // Helper function to serve HTML with server-side injected OpenGraph & SEO tags
+  const renderHtmlWithSeo = (req: express.Request, res: express.Response, rawHtml: string) => {
+    try {
+      const host = req.get("host") || "lijstvanandel.nl";
+      const db = getDb();
+      const meta = getPageMetadata(req.originalUrl || req.url, host, db);
+      const enhancedHtml = injectMetadataIntoHtml(rawHtml, meta);
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      return res.send(enhancedHtml);
+    } catch (err) {
+      console.error("Fout bij renderen van SEO metadata:", err);
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      return res.send(rawHtml);
+    }
+  };
+
+  // Vite middleware for development vs static production serving with SSR meta tags
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true, allowedHosts: true },
-      appType: "spa",
+      appType: "custom",
     });
     app.use(vite.middlewares);
+
+    // Development SSR HTML injection for index.html
+    app.get('*all', async (req, res, next) => {
+      try {
+        const url = req.originalUrl;
+        // Let assets pass through if not handled by vite middleware
+        if (url.startsWith("/api") || url.startsWith("/uploads") || url.startsWith("/assets") || url.includes(".")) {
+          return next();
+        }
+        const templatePath = path.join(process.cwd(), "index.html");
+        let template = fs.readFileSync(templatePath, "utf-8");
+        template = await vite.transformIndexHtml(url, template);
+        return renderHtmlWithSeo(req, res, template);
+      } catch (e) {
+        return next(e);
+      }
+    });
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    const indexHtmlPath = path.join(distPath, 'index.html');
+    let cachedIndexHtml = "";
+    if (fs.existsSync(indexHtmlPath)) {
+      cachedIndexHtml = fs.readFileSync(indexHtmlPath, "utf-8");
+    }
+
+    // Serve static assets first (js, css, images)
+    app.use(express.static(distPath, { index: false }));
+
+    // All page routes get dynamic server-side OpenGraph / SEO injection
     app.get('*all', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      // Reload template if not cached or read fresh
+      let html = cachedIndexHtml;
+      if (!html && fs.existsSync(indexHtmlPath)) {
+        html = fs.readFileSync(indexHtmlPath, "utf-8");
+      }
+      return renderHtmlWithSeo(req, res, html);
     });
   }
 

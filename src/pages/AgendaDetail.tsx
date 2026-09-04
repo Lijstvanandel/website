@@ -70,6 +70,7 @@ export default function AgendaDetail() {
       .then((data: EventDetailItem | null) => {
         if (data && data.title) {
           setEvent(data);
+          document.title = `${data.title} | Agenda Lijst van Andel`;
           if (data.isAttending || (user?.id && data.attendees?.includes(user.id))) {
             setIsAttending(true);
           }

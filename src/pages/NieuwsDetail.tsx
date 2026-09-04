@@ -34,6 +34,7 @@ export default function NieuwsDetail() {
       .then((data: NewsItem | null) => {
         if (data && data.title) {
           setArticle(data);
+          document.title = `${data.title} | Lijst van Andel`;
         } else {
           setNotFound(true);
         }

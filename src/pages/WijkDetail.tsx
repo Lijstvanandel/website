@@ -118,6 +118,7 @@ const WijkDetail = () => {
       .then((data: WijkItem | null) => {
         if (!data) throw new Error("Ongeldige wijk gegevens");
         setWijk(data);
+        document.title = `${data.naam} (${data.type || 'Wijk/Kern'}) | Lijst van Andel`;
         setLoading(false);
       })
       .catch((err) => {
