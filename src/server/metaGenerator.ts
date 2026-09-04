@@ -50,6 +50,13 @@ function resolveImageUrl(baseUrl: string, imgPath?: string): string {
   return `${baseUrl}${cleanPath}`;
 }
 
+function extractYouTubeThumb(videoUrl?: string): string | null {
+  if (!videoUrl || typeof videoUrl !== "string") return null;
+  const ytRegex = /(?:youtube\.com\/(?:[^/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i;
+  const match = videoUrl.trim().match(ytRegex);
+  return match && match[1] ? `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg` : null;
+}
+
 export function getPageMetadata(urlPath: string, host: string, db: Record<string, any>): PageMetadata {
   const protocol = host.includes("localhost") || host.includes("127.0.0.1") ? "http" : "https";
   const baseUrl = `${protocol}://${host}`;
@@ -337,15 +344,42 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
     const memberId = videoMemberMatch[1];
     const member = (db?.fractieleden || []).find((m: any) => m.id === memberId || m.name?.toLowerCase().includes(memberId.toLowerCase()));
     if (member) {
-      const memberImage = resolveImageUrl(baseUrl, member.imgUrl);
-      const title = `Video's & Raadsbijdragen van ${member.name} | Lijst van Andel`;
-      const desc = `Bekijk alle videobijdragen, raadsdebatten en toelichtingen van ${member.name} (${member.role || 'Raadslid'}) in de gemeenteraad van Steenwijkerland.`;
+      // Zoek gekoppelde video's
+      const memberVideos = (db?.videos || [])
+        .filter((v: any) => v.fractieledenIds?.map(String).includes(String(member.id)))
+        .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      // Kies de meest relevante thumbnail: van de nieuwste video met thumbnail, of YouTube preview, of pasfoto fractielid
+      let selectedImage = "";
+      let videoCustomDesc = "";
+      if (memberVideos.length > 0) {
+        const topVideo = memberVideos[0];
+        if (topVideo.thumbnailUrl) {
+          selectedImage = resolveImageUrl(baseUrl, topVideo.thumbnailUrl);
+        } else {
+          const ytThumb = extractYouTubeThumb(topVideo.videoUrl);
+          if (ytThumb) selectedImage = ytThumb;
+        }
+
+        if (topVideo.description) {
+          videoCustomDesc = truncate(stripHtml(topVideo.description), 160);
+        }
+      }
+
+      if (!selectedImage) {
+        selectedImage = resolveImageUrl(baseUrl, member.imgUrl);
+      }
+
+      const isBurger = member.type?.toLowerCase() === "burgerraadslid" || member.role?.toLowerCase().includes("burgerraadslid");
+      const title = `Video's & Bijdragen van ${member.name} (${isBurger ? "Burgerraadslid" : (member.role || "Raadslid")}) | Lijst van Andel`;
+      const desc = videoCustomDesc || `Bekijk alle videobijdragen, raadsdebatten en toelichtingen van ${member.name} in de gemeenteraad van Steenwijkerland.`;
+
       return {
         title,
         description: desc,
         ogTitle: title,
         ogDescription: desc,
-        ogImage: memberImage,
+        ogImage: selectedImage,
         ogType: "video.other",
         canonicalUrl
       };

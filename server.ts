@@ -336,6 +336,8 @@ const storage = multer.diskStorage({
       subfolder = 'public/uploads/fractieleden';
     } else if (file.fieldname === 'video') {
       subfolder = 'public/uploads/videos';
+    } else if (file.fieldname === 'thumbnail' && url.includes('/videos')) {
+      subfolder = 'public/uploads/videos';
     } else if (url.includes('/news')) {
       subfolder = 'public/uploads/news';
     } else if (url.includes('/events')) {
@@ -833,9 +835,9 @@ async function startServer() {
     res.json(videos);
   });
 
-  app.post("/api/admin/videos", requireAuth, requireAdmin, upload.single('video'), (req: any, res: any) => {
+  app.post("/api/admin/videos", requireAuth, requireAdmin, upload.fields([{ name: 'video', maxCount: 1 }, { name: 'thumbnail', maxCount: 1 }]), (req: any, res: any) => {
     const db = getDb();
-    const { title, category, date, fractieledenIds, wijkSlug, burgerraadslidTitle, hoofdstukNr, standpuntNr, standpuntTitel } = req.body;
+    const { title, category, date, fractieledenIds, wijkSlug, burgerraadslidTitle, description, hoofdstukNr, standpuntNr, standpuntTitel } = req.body;
     let parsedIds: string[] = [];
     if (fractieledenIds) {
       try {
@@ -858,14 +860,21 @@ async function startServer() {
       });
     }
 
-    const videoUrl = req.file ? `/uploads/videos/${req.file.filename}` : req.body.videoUrl;
+    const videoFile = req.files?.video?.[0];
+    const thumbFile = req.files?.thumbnail?.[0];
+
+    const videoUrl = videoFile ? `/uploads/videos/${videoFile.filename}` : req.body.videoUrl;
+    const thumbnailUrl = thumbFile ? `/uploads/videos/${thumbFile.filename}` : (req.body.thumbnailUrl || null);
+
     const newVideo = {
       id: Date.now().toString(),
       title: effectiveTitle || "Videobijdrage",
       burgerraadslidTitle: burgerraadslidTitle?.trim() || effectiveTitle || "",
+      description: description ? String(description).trim() : "",
       category: category || "Algemeen",
       date: date || new Date().toISOString().slice(0, 10),
       videoUrl,
+      thumbnailUrl,
       fractieledenIds: parsedIds,
       wijkSlug: wijkSlug || null,
       hoofdstukNr: hoofdstukNr ? parseInt(hoofdstukNr, 10) : null,

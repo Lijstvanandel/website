@@ -88,6 +88,8 @@ interface VideoItem {
   burgerraadslidTitle?: string;
   category: string;
   date: string;
+  description?: string;
+  thumbnailUrl?: string;
   videoUrl?: string;
   wijkSlug?: string;
   fractieledenIds?: string[];
@@ -167,10 +169,12 @@ export default function AdminDashboard() {
   // -- State for new Video --
   const [newVTitle, setNewVTitle] = useState("");
   const [newVBurgerTitle, setNewVBurgerTitle] = useState("");
+  const [newVDescription, setNewVDescription] = useState("");
   const [newVCategory, setNewVCategory] = useState("");
   const [newVDate, setNewVDate] = useState("");
   const [newVUrl, setNewVUrl] = useState("");
   const [newVFile, setNewVFile] = useState<File | null>(null);
+  const [newVThumbnail, setNewVThumbnail] = useState<File | null>(null);
   const [selectedFleden, setSelectedFleden] = useState<string[]>([]);
   const [newVWijk, setNewVWijk] = useState("");
   const [newVHoofdstuk, setNewVHoofdstuk] = useState<number | "">("");
@@ -536,12 +540,14 @@ export default function AdminDashboard() {
     const formData = new FormData();
     formData.append("title", effectiveTitle || newVTitle);
     if (newVBurgerTitle) formData.append("burgerraadslidTitle", newVBurgerTitle);
+    if (newVDescription) formData.append("description", newVDescription);
     formData.append("category", newVCategory);
     formData.append("date", newVDate);
     formData.append("wijkSlug", newVWijk);
     formData.append("fractieledenIds", JSON.stringify(selectedFleden));
     if (newVUrl) formData.append("videoUrl", newVUrl);
     if (newVFile) formData.append("video", newVFile);
+    if (newVThumbnail) formData.append("thumbnail", newVThumbnail);
 
     // Optionele koppeling met hoofdstuk & standpunt
     if (newVHoofdstuk !== "") {
@@ -566,9 +572,11 @@ export default function AdminDashboard() {
         toast.success("Video toegevoegd!");
         fetchVideos();
         setNewVFile(null);
+        setNewVThumbnail(null);
         setNewVUrl("");
         setNewVTitle("");
         setNewVBurgerTitle("");
+        setNewVDescription("");
         setNewVCategory("");
         setNewVDate("");
         setSelectedFleden([]);
@@ -1237,6 +1245,31 @@ export default function AdminDashboard() {
                   />
                 </div>
                 <div>
+                  <label className="text-sm font-medium mb-1 block">
+                    Thumbnail / Voorbeeldweergave (optioneel)
+                  </label>
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setNewVThumbnail(e.target.files?.[0] || null)}
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Upload een omslagafbeelding voor de videospeler en voor social media previews (WhatsApp, Facebook, Twitter). Bij YouTube wordt er automatisch een thumbnail gegenereerd als u dit leeg laat.
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1 block">
+                    Beschrijving van de video (optioneel)
+                  </label>
+                  <textarea
+                    className="w-full min-h-[80px] p-2.5 rounded-md border border-input bg-background text-sm leading-relaxed focus:outline-none focus:ring-1 focus:ring-accent"
+                    placeholder="Korte toelichting over de tussenkomst, het agendapunt of raadsdebat. Wordt meegenomen bij het delen op social media en getoond bij de video."
+                    value={newVDescription}
+                    onChange={(e) => setNewVDescription(e.target.value)}
+                    rows={3}
+                  />
+                </div>
+                <div>
                   <label className="text-sm font-medium mb-2 block">
                     Gekoppelde Fractieleden
                   </label>
@@ -1425,7 +1458,7 @@ export default function AdminDashboard() {
                       className="p-4 border border-border/50 rounded bg-background/50 flex flex-col sm:flex-row gap-4 items-start"
                     >
                       <div className="w-full sm:w-44 aspect-video bg-black rounded overflow-hidden shrink-0 border border-border">
-                        <VideoPlayer url={v.videoUrl} title={displayTitle} className="w-full h-full" />
+                        <VideoPlayer url={v.videoUrl} title={displayTitle} poster={v.thumbnailUrl} className="w-full h-full" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold text-sm leading-snug">{displayTitle}</div>
@@ -1437,7 +1470,13 @@ export default function AdminDashboard() {
                         <div className="text-xs text-muted-foreground mt-1">
                           {v.category} • {v.date}
                           {v.wijkSlug && ` • Wijk: ${v.wijkSlug}`}
+                          {v.thumbnailUrl && " • Met thumbnail"}
                         </div>
+                        {v.description && (
+                          <p className="text-xs text-foreground/85 line-clamp-2 mt-1.5 leading-relaxed bg-muted/40 p-1.5 rounded border border-border/50">
+                            {v.description}
+                          </p>
+                        )}
                         {v.videoUrl && (
                           <div className="text-[11px] text-accent mt-1 truncate font-mono">
                             {v.videoUrl}

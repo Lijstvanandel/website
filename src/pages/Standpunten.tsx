@@ -51,9 +51,11 @@ export interface VideoItem {
   id: string;
   title: string;
   burgerraadslidTitle?: string;
+  description?: string;
   category: string;
   date: string;
   videoUrl?: string;
+  thumbnailUrl?: string;
   fractieledenIds?: string[];
   wijkSlug?: string;
   hoofdstukNr?: number | null;
@@ -209,8 +211,14 @@ const StandpuntCard = ({ hNr, s, dynamicVideos, fractieleden }: StandpuntCardPro
 
                     {/* Speler */}
                     <div className="aspect-video w-full bg-black rounded overflow-hidden border border-border">
-                      <VideoPlayer url={v.videoUrl} title={v.title} className="w-full h-full" />
+                      <VideoPlayer url={v.videoUrl} title={v.title} poster={v.thumbnailUrl} className="w-full h-full" />
                     </div>
+
+                    {v.description && (
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        {v.description}
+                      </p>
+                    )}
 
                     {/* Gekoppelde fractieleden */}
                     {v.fractieledenIds && v.fractieledenIds.length > 0 && (

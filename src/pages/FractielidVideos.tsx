@@ -5,14 +5,17 @@ import { Button } from "@/components/ui/button";
 import { FractielidWidget, FractielidItem } from "@/components/FractielidWidget";
 import { BelafspraakDialog } from "@/components/BelafspraakDialog";
 import { VideoPlayer } from "@/components/VideoPlayer";
+import { getVideoThumbnail } from "@/lib/videoUtils";
 
 interface VideoItem {
   id: string;
   title: string;
   burgerraadslidTitle?: string;
+  description?: string;
   category: string;
   date: string;
   videoUrl?: string;
+  thumbnailUrl?: string;
   wijkSlug?: string;
   fractieledenIds?: string[];
 }
@@ -23,6 +26,7 @@ const FractielidVideos = () => {
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [copiedVideoId, setCopiedVideoId] = useState<string | null>(null);
   const [belOpen, setBelOpen] = useState(false);
   const [voorgeselecteerd, setVoorgeselecteerd] = useState<string | undefined>(undefined);
 
@@ -68,6 +72,15 @@ const FractielidVideos = () => {
       navigator.clipboard.writeText(window.location.href);
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
+    }
+  };
+
+  const handleShareVideo = (video: VideoItem) => {
+    const url = `${window.location.origin}${window.location.pathname}#video-item-${video.id}`;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url);
+      setCopiedVideoId(video.id);
+      setTimeout(() => setCopiedVideoId(null), 2500);
     }
   };
 
@@ -175,7 +188,7 @@ const FractielidVideos = () => {
             </h2>
             <p className="text-xs text-muted-foreground mt-1">
               {isBurgerraadslid
-                ? "Bijdragen en tussenkomsten van dit burgerraadslid, voorzien van onderwerp en titel."
+                ? "Bijdragen en tussenkomsten van dit burgerraadslid, voorzien van onderwerp, titel en beschrijving."
                 : "Alle raadsbijdragen en mediaoptredens gekoppeld aan dit fractielid."}
             </p>
           </div>
@@ -210,6 +223,7 @@ const FractielidVideos = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
             {videos.map((v) => {
               const displayTitle = v.burgerraadslidTitle || v.title || "Videobijdrage";
+              const effectivePoster = getVideoThumbnail(v.videoUrl, v.thumbnailUrl);
 
               return (
                 <article
@@ -219,7 +233,12 @@ const FractielidVideos = () => {
                 >
                   {/* Videospeler bovenaan */}
                   <div className="aspect-video bg-black relative overflow-hidden flex-shrink-0">
-                    <VideoPlayer url={v.videoUrl} title={displayTitle} className="w-full h-full" />
+                    <VideoPlayer
+                      url={v.videoUrl}
+                      title={displayTitle}
+                      poster={effectivePoster || undefined}
+                      className="w-full h-full"
+                    />
                     {v.wijkSlug && (
                       <Link
                         to={`/wijken-en-kernen/${v.wijkSlug}`}
@@ -231,7 +250,7 @@ const FractielidVideos = () => {
                     )}
                   </div>
 
-                  {/* Video Metadata & Titel */}
+                  {/* Video Metadata, Titel & Beschrijving */}
                   <div className="p-5 flex-1 flex flex-col justify-between">
                     <div>
                       {/* Burgerraadslid badge als het lid burgerraadslid is */}
@@ -242,31 +261,54 @@ const FractielidVideos = () => {
                         </div>
                       )}
 
-                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground mb-2">
-                        <span className="uppercase tracking-wider text-accent font-semibold">
-                          {v.category || "Algemeen"}
-                        </span>
-                        <span>•</span>
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3 text-muted-foreground" />
-                          {v.date}
-                        </span>
+                      <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="uppercase tracking-wider text-accent font-semibold">
+                            {v.category || "Algemeen"}
+                          </span>
+                          <span>•</span>
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3 text-muted-foreground" />
+                            {v.date}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleShareVideo(v)}
+                          title="Kopieer directe link naar deze video"
+                          className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-accent transition-colors cursor-pointer"
+                        >
+                          {copiedVideoId === v.id ? (
+                            <span className="text-green-500 flex items-center gap-0.5 font-medium">
+                              <Check className="w-3 h-3" /> Gekopieerd!
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1">
+                              <Share2 className="w-3 h-3" /> Deel video
+                            </span>
+                          )}
+                        </button>
                       </div>
 
                       {/* Prominente titel */}
                       <h3 className="font-display text-xl sm:text-2xl font-semibold leading-snug mb-2 group-hover:text-accent transition-colors">
                         {displayTitle}
                       </h3>
+
+                      {/* Optionele beschrijving */}
+                      {v.description && (
+                        <p className="text-xs text-muted-foreground leading-relaxed mt-2 line-clamp-3">
+                          {v.description}
+                        </p>
+                      )}
                     </div>
 
-                    {isBurgerraadslid && (
-                      <div className="mt-4 pt-3 border-t border-border/60 text-[11px] text-muted-foreground flex items-center justify-between">
-                        <span className="text-foreground/80 font-medium">Spreker: {member.name}</span>
-                        <span className="text-[10px] uppercase tracking-widest text-accent font-semibold">
-                          Burgerraad
-                        </span>
-                      </div>
-                    )}
+                    <div className="mt-4 pt-3 border-t border-border/60 text-[11px] text-muted-foreground flex items-center justify-between">
+                      <span className="text-foreground/80 font-medium">Spreker: {member.name}</span>
+                      <span className="text-[10px] uppercase tracking-widest text-accent font-semibold">
+                        {isBurgerraadslid ? "Burgerraad" : "Gemeenteraad"}
+                      </span>
+                    </div>
                   </div>
                 </article>
               );
