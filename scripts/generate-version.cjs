@@ -52,7 +52,6 @@ try {
     fs.mkdirSync('dist', { recursive: true });
   }
   fs.writeFileSync('dist/version.json', JSON.stringify(commitInfo, null, 2));
-  fs.writeFileSync('public/version.json', JSON.stringify(commitInfo, null, 2));
 } catch (err) {
-  console.warn('Could not write version.json:', err);
+  console.warn('Could not write dist/version.json:', err);
 }

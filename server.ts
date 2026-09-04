@@ -2865,10 +2865,22 @@ async function startServer() {
       log(`Actieve branch op de server: ${branch}`);
 
       log(`Stap 2: Wijzigingen ophalen van GitHub (git pull origin ${branch})...`);
-      // Zorg dat we altijd ophalen
-      const pullRes = await runCmd(`git pull origin ${branch}`, 45000);
+      // Ruim eventuele lokaal gewijzigde build-artefacten (zoals version.json) op zodat git pull nooit blokkeert
+      await runCmd("git checkout -- public/version.json 2>/dev/null || true");
+      await runCmd("git checkout -- version.json 2>/dev/null || true");
+
+      let pullRes = await runCmd(`git pull origin ${branch}`, 45000);
       if (pullRes.stdout) log(pullRes.stdout);
-      if (pullRes.stderr && !pullRes.success) log(`Fout/Waarschuwing: ${pullRes.stderr}`);
+      if (pullRes.stderr && !pullRes.success) {
+        log(`Fout/Waarschuwing: ${pullRes.stderr}`);
+        // Als git pull alsnog klaagt over lokale merge conflict op gegenereerde bestanden, voer veilige checkout/stash uit
+        if (pullRes.stderr.includes("overwritten by merge") || pullRes.stderr.includes("Please commit your changes or stash")) {
+          log("Lokale gegenereerde bestanden gedetecteerd. Veilige reset van lokale buildbestanden...");
+          await runCmd("git stash --include-untracked 2>/dev/null || git checkout -- .");
+          pullRes = await runCmd(`git pull origin ${branch}`, 45000);
+          if (pullRes.stdout) log(pullRes.stdout);
+        }
+      }
 
       if (pullRes.stdout.includes("Already up to date") || pullRes.stdout.includes("Al up-to-date")) {
         log(`Lokale repository is reeds up-to-date met origin/${branch}.`);
