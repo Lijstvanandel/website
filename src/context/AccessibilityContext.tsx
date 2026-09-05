@@ -69,22 +69,43 @@ export const AccessibilityProvider: React.FC<{ children: ReactNode }> = ({ child
     localStorage.setItem(STORAGE_KEY_FONT_SIZE, fontSize.toString());
   }, [fontSize]);
 
-  // Apply contrast mode and colorblind classes to document.documentElement
+  // Apply contrast mode and colorblind classes to document.documentElement and root element
   useEffect(() => {
-    const root = document.documentElement;
+    const docEl = document.documentElement;
+    const rootEl = document.getElementById("root");
     
     // High contrast class
-    root.classList.toggle("contrast-high", contrastMode === "high");
-    root.setAttribute("data-contrast", contrastMode);
+    docEl.classList.toggle("contrast-high", contrastMode === "high");
+    docEl.setAttribute("data-contrast", contrastMode);
     localStorage.setItem(STORAGE_KEY_CONTRAST, contrastMode);
 
     // Colorblind classes
-    root.classList.remove("cb-deuteranopia", "cb-protanopia", "cb-tritanopia", "cb-monochrome");
+    docEl.classList.remove("cb-deuteranopia", "cb-protanopia", "cb-tritanopia", "cb-monochrome");
     if (colorBlindMode !== "none") {
-      root.classList.add(`cb-${colorBlindMode}`);
+      docEl.classList.add(`cb-${colorBlindMode}`);
     }
-    root.setAttribute("data-colorblind", colorBlindMode);
+    docEl.setAttribute("data-colorblind", colorBlindMode);
     localStorage.setItem(STORAGE_KEY_COLORBLIND, colorBlindMode);
+
+    // Build filter string directly applied to #root
+    let filterString = "";
+    if (colorBlindMode === "deuteranopia") {
+      filterString = "url(#lva-deuteranopia)";
+    } else if (colorBlindMode === "protanopia") {
+      filterString = "url(#lva-protanopia)";
+    } else if (colorBlindMode === "tritanopia") {
+      filterString = "url(#lva-tritanopia)";
+    } else if (colorBlindMode === "monochrome") {
+      filterString = "grayscale(100%)";
+    }
+
+    if (contrastMode === "high") {
+      filterString = filterString ? `${filterString} contrast(125%)` : "contrast(115%)";
+    }
+
+    if (rootEl) {
+      rootEl.style.filter = filterString;
+    }
   }, [contrastMode, colorBlindMode]);
 
   const increaseFontSize = () => {
@@ -176,66 +197,6 @@ export const AccessibilityProvider: React.FC<{ children: ReactNode }> = ({ child
         resetAll,
       }}
     >
-      {/* SVG Color Blindness Color Matrix Filters (standards-compliant feColorMatrix) */}
-      <svg
-        className="sr-only"
-        style={{ position: "absolute", width: 0, height: 0, overflow: "hidden", pointerEvents: "none" }}
-        aria-hidden="true"
-      >
-        <defs>
-          {/* Deuteranopia (green blindness / weakness - most common) */}
-          <filter id="lva-deuteranopia" colorInterpolationFilters="sRGB">
-            <feColorMatrix
-              type="matrix"
-              values="
-                0.625, 0.375, 0,     0, 0
-                0.700, 0.300, 0,     0, 0
-                0,     0.300, 0.700, 0, 0
-                0,     0,     0,     1, 0
-              "
-            />
-          </filter>
-
-          {/* Protanopia (red blindness / weakness) */}
-          <filter id="lva-protanopia" colorInterpolationFilters="sRGB">
-            <feColorMatrix
-              type="matrix"
-              values="
-                0.567, 0.433, 0,     0, 0
-                0.558, 0.442, 0,     0, 0
-                0,     0.242, 0.758, 0, 0
-                0,     0,     0,     1, 0
-              "
-            />
-          </filter>
-
-          {/* Tritanopia (blue blindness / weakness) */}
-          <filter id="lva-tritanopia" colorInterpolationFilters="sRGB">
-            <feColorMatrix
-              type="matrix"
-              values="
-                0.950, 0.050, 0,     0, 0
-                0,     0.433, 0.567, 0, 0
-                0,     0.475, 0.525, 0, 0
-                0,     0,     0,     1, 0
-              "
-            />
-          </filter>
-
-          {/* Monochrome (Achromatopsia / high-contrast grayscale) */}
-          <filter id="lva-monochrome" colorInterpolationFilters="sRGB">
-            <feColorMatrix
-              type="matrix"
-              values="
-                0.299, 0.587, 0.114, 0, 0
-                0.299, 0.587, 0.114, 0, 0
-                0.299, 0.587, 0.114, 0, 0
-                0,     0,     0,     1, 0
-              "
-            />
-          </filter>
-        </defs>
-      </svg>
       {children}
     </AccessibilityContext.Provider>
   );

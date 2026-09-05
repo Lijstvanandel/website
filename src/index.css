@@ -224,36 +224,54 @@ html.contrast-high a:focus-visible {
   outline-offset: 3px !important;
 }
 
-/* Kleurenblindheid Filters via SVG feColorMatrix */
-html.cb-deuteranopia body {
-  filter: url('#lva-deuteranopia');
+/* Kleurenblindheid Modi: Aangepaste kleurpaletten & filters */
+
+/* 1. Deuteranopie & Protanopie (Rood-Groen): vervang groentinten door duidelijk contrasterend koningsblauw / kobalt en helder goudgeel */
+html.cb-deuteranopia, html.cb-protanopia {
+  --primary: 213 70% 38% !important;
+  --primary-foreground: 0 0% 100% !important;
+  --accent: 44 95% 52% !important;
+  --accent-foreground: 213 70% 12% !important;
+  --border: 44 80% 45% !important;
+  --ring: 44 95% 52% !important;
+  --twente-red: 213 70% 38% !important;
+  --twente-red-deep: 213 65% 18% !important;
+  --twente-gold: 44 95% 52% !important;
+  --twente-gold-bright: 44 100% 65% !important;
 }
 
-html.cb-protanopia body {
-  filter: url('#lva-protanopia');
+/* 2. Tritanopie (Blauw-Geel): vervang groen door cyaan/teal en goudgeel door duidelijk contrasterend koraaloranje/rood */
+html.cb-tritanopia {
+  --primary: 185 85% 32% !important;
+  --primary-foreground: 0 0% 100% !important;
+  --accent: 12 85% 58% !important;
+  --accent-foreground: 0 0% 100% !important;
+  --border: 12 75% 50% !important;
+  --ring: 12 85% 58% !important;
+  --twente-red: 185 85% 32% !important;
+  --twente-red-deep: 185 80% 16% !important;
+  --twente-gold: 12 85% 58% !important;
+  --twente-gold-bright: 12 95% 68% !important;
 }
 
-html.cb-tritanopia body {
-  filter: url('#lva-tritanopia');
+/* 3. Monochroom: volledige grijswaarden conversie */
+html.cb-monochrome {
+  --primary: 0 0% 25% !important;
+  --primary-foreground: 0 0% 100% !important;
+  --accent: 0 0% 85% !important;
+  --accent-foreground: 0 0% 10% !important;
+  --border: 0 0% 50% !important;
+  --ring: 0 0% 90% !important;
+  --twente-red: 0 0% 25% !important;
+  --twente-red-deep: 0 0% 15% !important;
+  --twente-gold: 0 0% 85% !important;
+  --twente-gold-bright: 0 0% 95% !important;
 }
 
-html.cb-monochrome body {
-  filter: grayscale(100%) contrast(115%);
+html.cb-monochrome #root {
+  filter: grayscale(100%) contrast(115%) !important;
 }
 
-/* Gecombineerd: Hoog contrast EN kleurenblindheid */
-html.contrast-high.cb-deuteranopia body {
-  filter: url('#lva-deuteranopia') contrast(120%);
-}
-
-html.contrast-high.cb-protanopia body {
-  filter: url('#lva-protanopia') contrast(120%);
-}
-
-html.contrast-high.cb-tritanopia body {
-  filter: url('#lva-tritanopia') contrast(120%);
-}
-
-html.contrast-high.cb-monochrome body {
-  filter: grayscale(100%) contrast(130%);
+html.contrast-high.cb-monochrome #root {
+  filter: grayscale(100%) contrast(135%) !important;
 }

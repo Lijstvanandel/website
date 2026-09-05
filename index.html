@@ -28,6 +28,62 @@
 </head>
 
   <body>
+    <!-- Toegankelijkheid SVG Kleurenfilters (WCAG Kleurenblindheid) -->
+    <svg id="lva-svg-colorblind-filters" aria-hidden="true" style="position: absolute; width: 0; height: 0; overflow: hidden; pointer-events: none;">
+      <defs>
+        <!-- Deuteranopie (Rood-Groen: groen-zwakte) -->
+        <filter id="lva-deuteranopia" color-interpolation-filters="sRGB">
+          <feColorMatrix
+            type="matrix"
+            values="
+              0.625, 0.375, 0.000, 0, 0
+              0.700, 0.300, 0.000, 0, 0
+              0.000, 0.300, 0.700, 0, 0
+              0.000, 0.000, 0.000, 1, 0
+            "
+          />
+        </filter>
+
+        <!-- Protanopie (Rood-Groen: rood-zwakte) -->
+        <filter id="lva-protanopia" color-interpolation-filters="sRGB">
+          <feColorMatrix
+            type="matrix"
+            values="
+              0.567, 0.433, 0.000, 0, 0
+              0.558, 0.442, 0.000, 0, 0
+              0.000, 0.242, 0.758, 0, 0
+              0.000, 0.000, 0.000, 1, 0
+            "
+          />
+        </filter>
+
+        <!-- Tritanopie (Blauw-Geel afwijking) -->
+        <filter id="lva-tritanopia" color-interpolation-filters="sRGB">
+          <feColorMatrix
+            type="matrix"
+            values="
+              0.950, 0.050, 0.000, 0, 0
+              0.000, 0.433, 0.567, 0, 0
+              0.000, 0.475, 0.525, 0, 0
+              0.000, 0.000, 0.000, 1, 0
+            "
+          />
+        </filter>
+
+        <!-- Monochroom (Achromatopsie / Grijswaarden) -->
+        <filter id="lva-monochrome" color-interpolation-filters="sRGB">
+          <feColorMatrix
+            type="matrix"
+            values="
+              0.299, 0.587, 0.114, 0, 0
+              0.299, 0.587, 0.114, 0, 0
+              0.299, 0.587, 0.114, 0, 0
+              0.000, 0.000, 0.000, 1, 0
+            "
+          />
+        </filter>
+      </defs>
+    </svg>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
