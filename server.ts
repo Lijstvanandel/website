@@ -459,17 +459,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage: storage });
 
 function mirrorUploadToDist(subpath: string) {
-  try {
-    const src = path.join(process.cwd(), "public", subpath);
-    const dest = path.join(process.cwd(), "dist", subpath);
-    if (fs.existsSync(src)) {
-      const destDir = path.dirname(dest);
-      if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
-      fs.copyFileSync(src, dest);
-    }
-  } catch (e) {
-    // ignore
-  }
+  // Obsolete: we now use a symlink for the entire uploads folder on startup.
 }
 
 async function startServer() {
@@ -499,24 +489,19 @@ async function startServer() {
 
   // Sync public uploads into dist uploads on startup
   try {
-    const syncFolders = ["stemgedrag", "dataproducts", "news", "documents", "events", "fractieleden"];
-    for (const folder of syncFolders) {
-      const pubFolder = path.join(uploadsPath, folder);
-      const distFolder = path.join(process.cwd(), "dist", "uploads", folder);
-      if (fs.existsSync(pubFolder) && fs.existsSync(path.join(process.cwd(), "dist"))) {
-        if (!fs.existsSync(distFolder)) fs.mkdirSync(distFolder, { recursive: true });
-        const files = fs.readdirSync(pubFolder);
-        for (const f of files) {
-          const srcF = path.join(pubFolder, f);
-          const dstF = path.join(distFolder, f);
-          if (fs.statSync(srcF).isFile() && !fs.existsSync(dstF)) {
-            fs.copyFileSync(srcF, dstF);
-          }
+    const distUploads = path.join(process.cwd(), "dist", "uploads");
+    if (fs.existsSync(path.join(process.cwd(), "dist"))) {
+      if (fs.existsSync(distUploads)) {
+        if (!fs.lstatSync(distUploads).isSymbolicLink()) {
+          fs.rmSync(distUploads, { recursive: true, force: true });
+          fs.symlinkSync(uploadsPath, distUploads, "junction");
         }
+      } else {
+        fs.symlinkSync(uploadsPath, distUploads, "junction");
       }
     }
   } catch (e) {
-    // ignore
+    console.error("Failed to create symlink for uploads:", e);
   }
   const staticUploadsOptions = {
     maxAge: 86400000 * 7, // 7 days browser cache
