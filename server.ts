@@ -6,6 +6,7 @@ import os from "os";
 import { exec } from "child_process";
 import util from "util";
 import crypto from "crypto";
+import nodemailer from "nodemailer";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import multer from "multer";
@@ -13,6 +14,53 @@ import Stripe from "stripe";
 import { createServer as createViteServer } from "vite";
 import { BUURTKAART_43_WIJKEN, syncWijkenWithBuurtkaart, LEGACY_SLUG_MAP } from "./src/data/defaultWijken.js";
 import { getPageMetadata, injectMetadataIntoHtml } from "./src/server/metaGenerator.js";
+
+// NodeMailer helper logic
+function getEmailTransporter() {
+  const host = process.env.SMTP_HOST;
+  const port = parseInt(process.env.SMTP_PORT || "587", 10);
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  const secure = process.env.SMTP_SECURE === "true" || port === 465;
+
+  if (!host || !user || !pass) return null;
+
+  return nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    auth: { user, pass },
+  });
+}
+
+async function sendTransactionalEmail(to: string, subject: string, html: string, text?: string): Promise<boolean> {
+  const transporter = getEmailTransporter();
+  const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER || '"Lijst van Andel" <info@lijstvanandel.nl>';
+
+  if (!transporter) {
+    console.log(`[EMAIL DISPATCH - SIMULATION MODE]
+  Geen SMTP-configuratie gevonden in omgevingsvariabelen (SMTP_HOST, SMTP_USER, SMTP_PASS).
+  Naar: ${to}
+  Onderwerp: ${subject}
+  Preview text: ${text || html.replace(/<[^>]+>/g, "").slice(0, 150)}...`);
+    return false;
+  }
+
+  try {
+    const info = await transporter.sendMail({
+      from: fromAddress,
+      to,
+      subject,
+      html,
+      text: text || html.replace(/<[^>]+>/g, ""),
+    });
+    console.log(`[EMAIL DISPATCH - VERZONDEN VIA SMTP] E-mail succesvol verstuurd naar ${to}, Message ID: ${info.messageId}`);
+    return true;
+  } catch (err: any) {
+    console.error(`[EMAIL DISPATCH - FOUT BIJ VERZENDEN VIA SMTP]:`, err.message);
+    return false;
+  }
+}
 
 const execPromise = util.promisify(exec);
 let lastCacheClearedTime: string | null = null;
@@ -853,6 +901,54 @@ async function startServer() {
 
       const resetUrl = `${origin}/reset-wachtwoord?token=${resetToken}`;
       console.log(`[PASSWORD RESET] Wachtwoord herstellink aangemaakt voor ${user.username} (${user.email}): ${resetUrl}`);
+
+      const emailSubject = "Wachtwoord opnieuw instellen - Lijst van Andel";
+      const emailHtml = `
+        <!DOCTYPE html>
+        <html lang="nl">
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; padding: 24px 0; }
+            .container { max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+            .header { text-align: center; margin-bottom: 24px; }
+            .header h1 { color: #005a36; font-size: 24px; margin: 0 0 8px 0; }
+            .btn { display: inline-block; background-color: #005a36; color: #ffffff !important; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px; margin: 20px 0; }
+            .footer { margin-top: 32px; pt-4; border-top: 1px solid #e2e8f0; font-size: 12px; color: #64748b; line-height: 1.5; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Lijst van Andel</h1>
+              <p style="color: #64748b; font-size: 14px; margin: 0;">Ledenportaal Steenwijkerland</p>
+            </div>
+            <p>Beste <strong>${user.name || user.username}</strong>,</p>
+            <p>Er is een aanvraag gedaan om het wachtwoord van uw ledenaccount bij Lijst van Andel opnieuw in te stellen.</p>
+            <p>Klik op de onderstaande knop om een nieuw wachtwoord te kiezen:</p>
+            <div style="text-align: center;">
+              <a href="${resetUrl}" class="btn" target="_blank">Nieuw wachtwoord instellen</a>
+            </div>
+            <p style="font-size: 13px; color: #64748b;">
+              Deze link is <strong>1 uur geldig</strong>. Heeft u deze aanvraag niet zelf gedaan? Dan kunt u deze e-mail veilig negeren; uw huidige wachtwoord blijft ongewijzigd.
+            </p>
+            <p style="font-size: 12px; color: #94a3b8; word-break: break-all;">
+              Werkt de knop niet? Kopieer en plak deze link in uw browser:<br>
+              <a href="${resetUrl}" style="color: #005a36;">${resetUrl}</a>
+            </p>
+            <div class="footer">
+              <p>Met vriendelijke groet,<br><strong>Lijst van Andel Steenwijkerland</strong><br>
+              <a href="https://lijstvanandel.nl" style="color: #005a36;">lijstvanandel.nl</a> &bull; info@lijstvanandel.nl</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+      const emailText = `Beste ${user.name || user.username},\n\nEr is een aanvraag gedaan om het wachtwoord van uw ledenaccount bij Lijst van Andel opnieuw in te stellen.\n\nOpen deze link om een nieuw wachtwoord in te stellen:\n${resetUrl}\n\nDeze link is 1 uur geldig.\n\nMet vriendelijke groet,\nLijst van Andel Steenwijkerland`;
+
+      sendTransactionalEmail(user.email || normalizedEmail, emailSubject, emailHtml, emailText).catch((err) => {
+        console.error("Fout bij achtergrond e-mailverzending:", err);
+      });
 
       return res.status(200).json({
         success: true,

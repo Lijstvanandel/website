@@ -13,6 +13,7 @@ import {
   Check,
   Heart,
   UserPlus,
+  Lock,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { Button } from "@/components/ui/button";
@@ -224,28 +225,18 @@ export const Header = () => {
 
           {/* Right-side Actions & Authentication Controls */}
           <div className="flex items-center gap-1.5 sm:gap-2 lg:gap-2.5 xl:gap-3 shrink-0">
-            {/* 1. Plan belafspraak Button */}
-            <Button
-              onClick={() => setBelOpen(true)}
-              className="hidden sm:inline-flex bg-primary hover:bg-primary/90 text-primary-foreground border border-accent/40 uppercase tracking-wider text-xs font-semibold px-2.5 xl:px-3.5 h-9 sm:h-10 whitespace-nowrap shrink-0 shadow-sm"
-            >
-              <Phone className="w-3.5 h-3.5 mr-1.5" />
-              <span className="hidden xl:inline">Plan belafspraak</span>
-              <span className="xl:hidden">Afspraak</span>
-            </Button>
-
-            {/* 2. Lid worden Button */}
-            <Link to="/registreren" className="hidden md:inline-flex">
+            {/* 1. Lid worden Button */}
+            <Link to="/registreren" className="hidden sm:inline-flex">
               <Button
-                variant="outline"
-                className="border-accent/40 text-accent hover:bg-accent/15 uppercase tracking-wider text-xs font-semibold px-2.5 xl:px-3.5 h-9 sm:h-10 whitespace-nowrap shrink-0 shadow-2xs"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground border border-accent/40 uppercase tracking-wider text-xs font-semibold px-2.5 xl:px-3.5 h-9 sm:h-10 whitespace-nowrap shrink-0 shadow-sm"
               >
                 <UserPlus className="w-3.5 h-3.5 mr-1.5" />
-                <span>Lid worden</span>
+                <span className="hidden xl:inline">Lid worden</span>
+                <span className="xl:hidden">Lid</span>
               </Button>
             </Link>
 
-            {/* 3. Doneren Button */}
+            {/* 2. Doneren Button */}
             <Link to="/doneren" className="inline-flex">
               <Button
                 variant="outline"
@@ -256,7 +247,42 @@ export const Header = () => {
               </Button>
             </Link>
 
-            {/* 2. Tekstgrootte vergroten & verkleinen knoppen (tussen belafspraak en dark/lightmode) */}
+            <div className="hidden sm:block w-[1px] h-6 bg-border mx-0.5" />
+
+            {/* 3. Authentication Buttons (Logged in vs Guest) */}
+            {isAuthenticated ? (
+              <div className="hidden sm:flex items-center gap-1.5 shrink-0">
+                <Link to="/dashboard">
+                  <Button
+                    variant="outline"
+                    className="border-accent/40 text-accent hover:bg-accent/15 uppercase tracking-wider text-xs font-semibold px-2.5 xl:px-3 h-9 sm:h-10 whitespace-nowrap"
+                  >
+                    <User className="w-3.5 h-3.5 mr-1.5" />
+                    <span>Dashboard</span>
+                  </Button>
+                </Link>
+                <Button
+                  variant="ghost"
+                  onClick={logout}
+                  className="uppercase tracking-wider text-xs font-semibold text-muted-foreground hover:text-destructive hover:bg-destructive/10 px-2 h-9 sm:h-10 whitespace-nowrap"
+                  title="Uitloggen"
+                >
+                  <LogOut className="w-4 h-4" />
+                </Button>
+              </div>
+            ) : (
+              <Link to="/login" className="hidden sm:inline-flex shrink-0">
+                <Button
+                  variant="ghost"
+                  className="border border-accent/40 text-foreground hover:text-accent hover:bg-accent/10 uppercase tracking-wider text-xs font-semibold px-3 xl:px-4 h-9 sm:h-10 whitespace-nowrap"
+                >
+                  <Lock className="w-3.5 h-3.5 mr-1.5 text-accent" />
+                  Inloggen
+                </Button>
+              </Link>
+            )}
+
+            {/* 4. Tekstgrootte vergroten & verkleinen knoppen */}
             <div
               className="inline-flex items-center rounded-sm border border-accent/40 bg-background/60 h-9 sm:h-10 p-0.5 shrink-0 shadow-2xs"
               title="Tekstgrootte aanpassen voor de hele website"
@@ -445,39 +471,6 @@ export const Header = () => {
               {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
 
-            {/* 5. Authentication Buttons (Logged in vs Guest) */}
-            {isAuthenticated ? (
-              <div className="hidden sm:flex items-center gap-1.5 lg:gap-2 shrink-0">
-                <Link to="/dashboard">
-                  <Button
-                    variant="outline"
-                    className="border-accent text-accent hover:bg-accent hover:text-accent-foreground uppercase tracking-wider text-xs font-semibold px-3 h-9 sm:h-10 whitespace-nowrap"
-                  >
-                    <User className="w-3.5 h-3.5 mr-1.5" />
-                    <span>Dashboard</span>
-                  </Button>
-                </Link>
-                <Button
-                  variant="ghost"
-                  onClick={logout}
-                  className="uppercase tracking-wider text-xs font-semibold text-foreground/80 hover:text-foreground hover:bg-accent/15 px-2.5 h-9 sm:h-10 whitespace-nowrap"
-                  title="Uitloggen"
-                >
-                  <LogOut className="w-3.5 h-3.5 mr-1" />
-                  <span className="hidden xl:inline">Uitloggen</span>
-                </Button>
-              </div>
-            ) : (
-              <Link to="/login" className="hidden sm:inline-flex shrink-0">
-                <Button
-                  variant="outline"
-                  className="border-accent text-accent hover:bg-accent hover:text-accent-foreground uppercase tracking-wider text-xs font-semibold px-4 h-9 sm:h-10 whitespace-nowrap"
-                >
-                  Inloggen
-                </Button>
-              </Link>
-            )}
-
             {/* Mobile Hamburger Menu Button */}
             <button
               onClick={() => setMobileOpen(!mobileOpen)}
@@ -545,25 +538,13 @@ export const Header = () => {
 
               {/* Mobile Action Buttons */}
               <div className="mt-3 flex flex-col gap-2">
-                <Button
-                  onClick={() => {
-                    setBelOpen(true);
-                    setMobileOpen(false);
-                  }}
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground border border-accent/40 uppercase tracking-wider text-xs font-semibold py-2.5 w-full flex items-center justify-center gap-2"
-                >
-                  <Phone className="w-4 h-4" />
-                  <span>Plan een belafspraak</span>
-                </Button>
-
                 <Link
                   to="/registreren"
                   onClick={() => setMobileOpen(false)}
                   className="w-full"
                 >
                   <Button
-                    variant="outline"
-                    className="w-full border-accent/40 text-accent hover:bg-accent/15 uppercase tracking-wider text-xs font-semibold py-2.5 flex items-center justify-center gap-2"
+                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground border border-accent/40 uppercase tracking-wider text-xs font-semibold py-2.5 flex items-center justify-center gap-2 shadow-sm"
                   >
                     <UserPlus className="w-4 h-4" />
                     <span>Lid worden</span>
@@ -583,6 +564,40 @@ export const Header = () => {
                     <span>Doneren aan de partij</span>
                   </Button>
                 </Link>
+
+                {isAuthenticated ? (
+                  <div className="flex flex-col gap-2">
+                    <Link to="/dashboard" onClick={() => setMobileOpen(false)}>
+                      <Button
+                        variant="outline"
+                        className="w-full border-accent text-accent hover:bg-accent hover:text-accent-foreground uppercase tracking-wider text-xs font-semibold justify-center"
+                      >
+                        <User className="w-4 h-4 mr-2" />
+                        Dashboard
+                      </Button>
+                    </Link>
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        logout();
+                        setMobileOpen(false);
+                      }}
+                      className="w-full uppercase tracking-wider text-xs font-semibold text-foreground/80 hover:text-foreground justify-center px-3"
+                    >
+                      <LogOut className="w-4 h-4 mr-2" />
+                      Uitloggen
+                    </Button>
+                  </div>
+                ) : (
+                  <Link to="/login" onClick={() => setMobileOpen(false)} className="w-full">
+                    <Button
+                      variant="outline"
+                      className="w-full border-accent text-accent hover:bg-accent hover:text-accent-foreground uppercase tracking-wider text-xs font-semibold justify-center"
+                    >
+                      Inloggen
+                    </Button>
+                  </Link>
+                )}
               </div>
 
               {/* Mobile Toegankelijkheid Sectie (Tekstgrootte & Kleurcontrast) */}
@@ -664,41 +679,6 @@ export const Header = () => {
                   </select>
                 </div>
               </div>
-
-              {/* Mobile Auth actions */}
-              {isAuthenticated ? (
-                <div className="pt-2 flex flex-col gap-2">
-                  <Link to="/dashboard" onClick={() => setMobileOpen(false)}>
-                    <Button
-                      variant="outline"
-                      className="w-full border-accent text-accent hover:bg-accent hover:text-accent-foreground uppercase tracking-wider text-xs font-semibold justify-center"
-                    >
-                      <User className="w-4 h-4 mr-2" />
-                      Dashboard
-                    </Button>
-                  </Link>
-                  <Button
-                    variant="ghost"
-                    onClick={() => {
-                      logout();
-                      setMobileOpen(false);
-                    }}
-                    className="w-full uppercase tracking-wider text-xs font-semibold text-foreground/80 hover:text-foreground justify-center px-3"
-                  >
-                    <LogOut className="w-4 h-4 mr-2" />
-                    Uitloggen
-                  </Button>
-                </div>
-              ) : (
-                <Link to="/login" onClick={() => setMobileOpen(false)} className="pt-2">
-                  <Button
-                    variant="outline"
-                    className="w-full border-accent text-accent hover:bg-accent hover:text-accent-foreground uppercase tracking-wider text-xs font-semibold justify-center"
-                  >
-                    Inloggen
-                  </Button>
-                </Link>
-              )}
 
               {/* Mobile Theme Switcher */}
               <button
