@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import {
   Map,
   BarChart3,
@@ -42,6 +42,19 @@ export const InteractiveDataProductEmbed: React.FC<DataProductMeta> = ({
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Guarantee that data products route through /api/dataproduct/view so Nginx proxy will never 404
+  const effectiveSrc = useMemo(() => {
+    if (!src) return "";
+    const clean = src.trim();
+    if (
+      clean.startsWith("/uploads/dataproducts/") ||
+      (clean.startsWith("/uploads/") && (clean.endsWith(".html") || clean.endsWith(".htm")))
+    ) {
+      return `/api/dataproduct/view?file=${encodeURIComponent(clean)}`;
+    }
+    return clean;
+  }, [src]);
 
   // Auto-detect if it's a map or a chart based on name/url
   const isMap =
@@ -145,7 +158,7 @@ export const InteractiveDataProductEmbed: React.FC<DataProductMeta> = ({
             </Button>
 
             <a
-              href={src}
+              href={effectiveSrc}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center justify-center h-7 px-2 text-xs rounded-md border border-border bg-background hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
@@ -172,7 +185,7 @@ export const InteractiveDataProductEmbed: React.FC<DataProductMeta> = ({
                 </div>
               )}
               <iframe
-                src={src}
+                src={effectiveSrc}
                 title={title || "Interactief Dataproduct"}
                 onLoad={() => setIsLoading(false)}
                 className="w-full h-full border-0"
@@ -263,7 +276,7 @@ export const InteractiveDataProductEmbed: React.FC<DataProductMeta> = ({
 
             <div className="flex items-center gap-2">
               <a
-                href={src}
+                href={effectiveSrc}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border hover:bg-secondary text-foreground"
@@ -283,7 +296,7 @@ export const InteractiveDataProductEmbed: React.FC<DataProductMeta> = ({
 
           <div className="flex-1 w-full h-full bg-[#0d1412] relative">
             <iframe
-              src={src}
+              src={effectiveSrc}
               title={title || "Dataproduct Fullscreen"}
               className="w-full h-full border-0"
               sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
@@ -301,6 +314,33 @@ export const InteractiveArticleRenderer: React.FC<InteractiveArticleRendererProp
   className = "",
 }) => {
   const [lightboxImage, setLightboxImage] = useState<{ src: string; alt: string; caption?: string } | null>(null);
+  const articleContainerRef = useRef<HTMLDivElement>(null);
+
+  // Automatically fall back to /api/image/view if any uploaded image fails to load (bypasses Nginx static proxy issues)
+  useEffect(() => {
+    if (!articleContainerRef.current) return;
+    const images = articleContainerRef.current.querySelectorAll("img");
+    const cleanupFns: (() => void)[] = [];
+
+    images.forEach((img) => {
+      const handleImgError = () => {
+        const rawSrc = img.getAttribute("src");
+        if (
+          rawSrc &&
+          (rawSrc.startsWith("/uploads/") || rawSrc.startsWith("uploads/")) &&
+          !rawSrc.startsWith("/api/image/view")
+        ) {
+          img.src = `/api/image/view?file=${encodeURIComponent(rawSrc)}`;
+        }
+      };
+      img.addEventListener("error", handleImgError);
+      cleanupFns.push(() => img.removeEventListener("error", handleImgError));
+    });
+
+    return () => {
+      cleanupFns.forEach((fn) => fn());
+    };
+  }, [content]);
 
   if (!content) return null;
 
@@ -388,7 +428,7 @@ export const InteractiveArticleRenderer: React.FC<InteractiveArticleRendererProp
   };
 
   return (
-    <div className={`interactive-article-renderer ${className}`}>
+    <div ref={articleContainerRef} className={`interactive-article-renderer ${className}`}>
       {parts.map((part, index) => {
         if (part.type === "dataproduct") {
           return (

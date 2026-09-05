@@ -458,8 +458,72 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage: storage });
 
+function syncFileAcrossUploadDirs(relPathOrAbsPath: string) {
+  try {
+    let relPath = relPathOrAbsPath;
+    const pubRoot = path.join(process.cwd(), "public");
+    const distRoot = path.join(process.cwd(), "dist");
+
+    if (path.isAbsolute(relPath)) {
+      if (relPath.startsWith(pubRoot)) {
+        relPath = path.relative(pubRoot, relPath);
+      } else if (relPath.startsWith(distRoot)) {
+        relPath = path.relative(distRoot, relPath);
+      } else {
+        relPath = path.relative(process.cwd(), relPath);
+        if (relPath.startsWith("public" + path.sep)) {
+          relPath = relPath.substring("public".length + 1);
+        } else if (relPath.startsWith("dist" + path.sep)) {
+          relPath = relPath.substring("dist".length + 1);
+        }
+      }
+    } else {
+      if (relPath.startsWith("public" + path.sep)) {
+        relPath = relPath.substring("public".length + 1);
+      } else if (relPath.startsWith("dist" + path.sep)) {
+        relPath = relPath.substring("dist".length + 1);
+      }
+    }
+
+    if (!relPath.startsWith("uploads")) {
+      relPath = path.join("uploads", relPath);
+    }
+
+    const pubDest = path.join(pubRoot, relPath);
+    const distDest = path.join(distRoot, relPath);
+
+    if (fs.existsSync(pubDest)) {
+      const distDir = path.dirname(distDest);
+      if (!fs.existsSync(distDir)) {
+        fs.mkdirSync(distDir, { recursive: true, mode: 0o755 });
+      }
+      fs.copyFileSync(pubDest, distDest);
+      try {
+        fs.chmodSync(pubDest, 0o644);
+        fs.chmodSync(distDest, 0o644);
+      } catch (_e) {
+        // Ignore permission errors in restricted filesystem environments
+      }
+    } else if (fs.existsSync(distDest)) {
+      const pubDir = path.dirname(pubDest);
+      if (!fs.existsSync(pubDir)) {
+        fs.mkdirSync(pubDir, { recursive: true, mode: 0o755 });
+      }
+      fs.copyFileSync(distDest, pubDest);
+      try {
+        fs.chmodSync(distDest, 0o644);
+        fs.chmodSync(pubDest, 0o644);
+      } catch (_e) {
+        // Ignore permission errors in restricted filesystem environments
+      }
+    }
+  } catch (err) {
+    console.error("Error in syncFileAcrossUploadDirs:", err);
+  }
+}
+
 function mirrorUploadToDist(subpath: string) {
-  // Obsolete: we now use a symlink for the entire uploads folder on startup.
+  syncFileAcrossUploadDirs(subpath);
 }
 
 async function startServer() {
@@ -484,35 +548,102 @@ async function startServer() {
     }
   });
 
-  // Explicitly serve uploaded assets with PDF content-type and inline disposition
-  const uploadsPath = path.join(process.cwd(), "public", "uploads");
-
-  // Sync public uploads into dist uploads on startup
-  try {
-    const distUploads = path.join(process.cwd(), "dist", "uploads");
-    if (fs.existsSync(path.join(process.cwd(), "dist"))) {
-      if (fs.existsSync(distUploads)) {
-        if (!fs.lstatSync(distUploads).isSymbolicLink()) {
-          fs.rmSync(distUploads, { recursive: true, force: true });
-          fs.symlinkSync(uploadsPath, distUploads, "junction");
+  // Global upload sync middleware: whenever an upload response finishes, mirror files to dist and enforce 644/755 permissions
+  app.use((req: any, res: any, next: any) => {
+    res.on("finish", () => {
+      try {
+        if (req.file && req.file.path) {
+          syncFileAcrossUploadDirs(req.file.path);
         }
-      } else {
-        fs.symlinkSync(uploadsPath, distUploads, "junction");
+        if (req.files) {
+          if (Array.isArray(req.files)) {
+            for (const f of req.files) {
+              if (f.path) syncFileAcrossUploadDirs(f.path);
+            }
+          } else if (typeof req.files === "object") {
+            for (const key of Object.keys(req.files)) {
+              const fileList = req.files[key];
+              if (Array.isArray(fileList)) {
+                for (const f of fileList) {
+                  if (f.path) syncFileAcrossUploadDirs(f.path);
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Auto upload sync error:", err);
+      }
+    });
+    next();
+  });
+
+  // Explicitly serve uploaded assets from BOTH public/uploads AND dist/uploads
+  const uploadsPath = path.join(process.cwd(), "public", "uploads");
+  const distUploadsPath = path.join(process.cwd(), "dist", "uploads");
+
+  // Comprehensive recursive sync of all upload folders on server startup
+  try {
+    const syncRecursive = (srcDir: string, destDir: string) => {
+      if (!fs.existsSync(srcDir)) return;
+      if (!fs.existsSync(destDir)) {
+        fs.mkdirSync(destDir, { recursive: true, mode: 0o755 });
+      }
+      try {
+        fs.chmodSync(destDir, 0o755);
+      } catch (_e) {
+        // Ignore permission errors in restricted filesystem environments
+      }
+
+      const items = fs.readdirSync(srcDir, { withFileTypes: true });
+      for (const item of items) {
+        const srcItem = path.join(srcDir, item.name);
+        const destItem = path.join(destDir, item.name);
+
+        if (item.isDirectory()) {
+          syncRecursive(srcItem, destItem);
+        } else if (item.isFile()) {
+          if (!fs.existsSync(destItem)) {
+            try {
+              fs.copyFileSync(srcItem, destItem);
+            } catch (_e) {
+              // Ignore file copy errors
+            }
+          }
+          try {
+            fs.chmodSync(srcItem, 0o644);
+            if (fs.existsSync(destItem)) {
+              fs.chmodSync(destItem, 0o644);
+            }
+          } catch (_e) {
+            // Ignore permission errors in restricted filesystem environments
+          }
+        }
+      }
+    };
+
+    if (fs.existsSync(uploadsPath)) {
+      syncRecursive(uploadsPath, distUploadsPath);
+      if (fs.existsSync(distUploadsPath)) {
+        syncRecursive(distUploadsPath, uploadsPath);
       }
     }
   } catch (e) {
-    console.error("Failed to create symlink for uploads:", e);
+    console.error("Startup upload sync error:", e);
   }
+
   const staticUploadsOptions = {
     maxAge: 86400000 * 7, // 7 days browser cache
     dotfiles: 'allow' as const,
     setHeaders: (res: any, filePath: string) => {
+      res.setHeader("Access-Control-Allow-Origin", "*");
       if (filePath.endsWith('.pdf')) {
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', 'inline');
       } else if (filePath.endsWith('.html') || filePath.endsWith('.htm')) {
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('X-Frame-Options', 'SAMEORIGIN');
       } else if (/\.(jpg|jpeg|png|webp|svg|gif)$/i.test(filePath)) {
         res.setHeader('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400');
       }
@@ -641,6 +772,8 @@ async function startServer() {
       if (fs.existsSync(p) && fs.statSync(p).isFile()) {
         res.setHeader("Content-Type", "text/html; charset=utf-8");
         res.setHeader("X-Content-Type-Options", "nosniff");
+        res.setHeader("X-Frame-Options", "SAMEORIGIN");
+        res.setHeader("Access-Control-Allow-Origin", "*");
         return res.sendFile(p);
       }
     }
@@ -648,9 +781,97 @@ async function startServer() {
     return res.status(404).json({ error: `Dataproduct '${baseName}' kon niet worden gevonden op de server.` });
   });
 
+  // Guaranteed endpoint for viewing images (bypasses Nginx static proxy issues)
+  app.get("/api/image/view", (req: any, res: any) => {
+    const rawFile = req.query.file || req.query.path || "";
+    if (!rawFile || typeof rawFile !== "string") {
+      return res.status(400).json({ error: "Geen bestandspad opgegeven" });
+    }
+
+    const cleanPath = rawFile.replace(/^\/+/, "").replace(/\.\./g, "");
+    const baseName = path.basename(cleanPath);
+    const subdirs = ["news", "fractieleden", "stemgedrag", "wijken", "events", "videos", "documents", "dataproducts"];
+
+    const candidatePaths = [
+      path.join(process.cwd(), "public", cleanPath),
+      path.join(process.cwd(), "dist", cleanPath),
+      path.join(process.cwd(), "public", "uploads", baseName),
+      path.join(process.cwd(), "dist", "uploads", baseName)
+    ];
+
+    for (const sub of subdirs) {
+      candidatePaths.push(path.join(process.cwd(), "public", "uploads", sub, baseName));
+      candidatePaths.push(path.join(process.cwd(), "dist", "uploads", sub, baseName));
+    }
+
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p) && fs.statSync(p).isFile()) {
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.setHeader("Cache-Control", "public, max-age=604800, stale-while-revalidate=86400");
+        const ext = path.extname(p).toLowerCase();
+        if (ext === ".png") res.setHeader("Content-Type", "image/png");
+        else if (ext === ".jpg" || ext === ".jpeg") res.setHeader("Content-Type", "image/jpeg");
+        else if (ext === ".webp") res.setHeader("Content-Type", "image/webp");
+        else if (ext === ".svg") res.setHeader("Content-Type", "image/svg+xml");
+        else if (ext === ".gif") res.setHeader("Content-Type", "image/gif");
+        return res.sendFile(p);
+      }
+    }
+
+    return res.status(404).json({ error: `Afbeelding '${baseName}' kon niet worden gevonden op de server.` });
+  });
+
+  // Serve static uploads from BOTH public/uploads AND dist/uploads
   app.use("/uploads", express.static(uploadsPath, staticUploadsOptions));
+  app.use("/uploads", express.static(distUploadsPath, staticUploadsOptions));
   app.use("/public/uploads", express.static(uploadsPath, staticUploadsOptions));
+  app.use("/public/uploads", express.static(distUploadsPath, staticUploadsOptions));
   app.use("/api/uploads", express.static(uploadsPath, staticUploadsOptions));
+  app.use("/api/uploads", express.static(distUploadsPath, staticUploadsOptions));
+
+  // Fallback handler for /uploads when direct static match didn't find the file
+  app.use("/uploads", (req: any, res: any) => {
+    const rawPath = req.path || "";
+    const cleanPath = rawPath.replace(/^\/+/, "").replace(/\.\./g, "");
+    const baseName = path.basename(cleanPath);
+    const subdirs = ["news", "dataproducts", "fractieleden", "stemgedrag", "documents", "videos", "events", "wijken"];
+
+    const candidatePaths = [
+      path.join(uploadsPath, cleanPath),
+      path.join(distUploadsPath, cleanPath),
+      path.join(uploadsPath, baseName),
+      path.join(distUploadsPath, baseName)
+    ];
+
+    for (const sub of subdirs) {
+      candidatePaths.push(path.join(uploadsPath, sub, baseName));
+      candidatePaths.push(path.join(distUploadsPath, sub, baseName));
+    }
+
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p) && fs.statSync(p).isFile()) {
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        if (p.endsWith(".pdf")) {
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader("Content-Disposition", "inline");
+        } else if (p.endsWith(".html") || p.endsWith(".htm")) {
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.setHeader("X-Content-Type-Options", "nosniff");
+          res.setHeader("X-Frame-Options", "SAMEORIGIN");
+        } else if (/\.(jpg|jpeg|png|webp|svg|gif)$/i.test(p)) {
+          res.setHeader("Cache-Control", "public, max-age=604800, stale-while-revalidate=86400");
+          const ext = path.extname(p).toLowerCase();
+          if (ext === ".png") res.setHeader("Content-Type", "image/png");
+          else if (ext === ".jpg" || ext === ".jpeg") res.setHeader("Content-Type", "image/jpeg");
+          else if (ext === ".webp") res.setHeader("Content-Type", "image/webp");
+          else if (ext === ".svg") res.setHeader("Content-Type", "image/svg+xml");
+        }
+        return res.sendFile(p);
+      }
+    }
+
+    return res.status(404).json({ error: `Upload '${baseName}' niet gevonden op server.` });
+  });
 
   // Middleware for checking auth & admin
   const requireAuth = (req: any, res: any, next: any) => {
