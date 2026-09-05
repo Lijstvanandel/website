@@ -13,12 +13,14 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { NewsItem } from "@/data/news";
+import { ShareDialog } from "@/components/ShareDialog";
 
 export default function NieuwsDetail() {
   const { id } = useParams<{ id: string }>();
   const [article, setArticle] = useState<NewsItem | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [notFound, setNotFound] = useState<boolean>(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState<boolean>(false);
 
   useEffect(() => {
     setLoading(true);
@@ -153,9 +155,20 @@ export default function NieuwsDetail() {
             )}
 
             {formattedDate && (
-              <div className="flex items-center text-sm text-muted-foreground font-medium ml-auto">
-                <Calendar className="w-4 h-4 mr-2" />
-                {formattedDate}
+              <div className="flex items-center text-sm text-muted-foreground font-medium ml-auto gap-4">
+                <div className="flex items-center">
+                  <Calendar className="w-4 h-4 mr-2" />
+                  {formattedDate}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShareDialogOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 bg-muted hover:bg-accent/15 hover:text-accent rounded-full text-xs font-semibold text-muted-foreground transition-all border border-border/70 shadow-2xs"
+                  title="Deel dit nieuwsbericht"
+                >
+                  <Share2 className="w-3.5 h-3.5 text-accent" />
+                  <span>Delen</span>
+                </button>
               </div>
             )}
           </div>
@@ -188,46 +201,58 @@ export default function NieuwsDetail() {
             <div className="font-display text-lg flex items-center">
               <Share2 className="w-5 h-5 mr-3 text-accent" /> Deel dit bericht
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2.5">
               <button
-                onClick={() => handleShare("facebook")}
-                className="p-3 bg-[#1877F2]/10 text-[#1877F2] rounded-full hover:bg-[#1877F2]/20 transition-colors"
-                title="Facebook"
+                type="button"
+                onClick={() => setShareDialogOpen(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-accent-foreground font-semibold rounded-full text-xs hover:bg-accent/90 transition-all shadow-xs"
               >
-                <Facebook className="w-5 h-5" />
+                <Share2 className="w-3.5 h-3.5" /> Deel via sociale media
               </button>
               <button
-                onClick={() => handleShare("twitter")}
-                className="p-3 bg-primary/5 text-primary rounded-full hover:bg-primary/10 transition-colors"
-                title="X (Twitter)"
-              >
-                <Twitter className="w-5 h-5" />
-              </button>
-              <button
+                type="button"
                 onClick={() => handleShare("whatsapp")}
-                className="p-3 bg-[#25D366]/10 text-[#25D366] rounded-full hover:bg-[#25D366]/20 transition-colors"
-                title="WhatsApp"
+                className="p-2.5 bg-[#25D366]/10 text-[#25D366] rounded-full hover:bg-[#25D366]/20 transition-colors border border-[#25D366]/20"
+                title="Deel via WhatsApp"
               >
-                <MessageCircle className="w-5 h-5" />
+                <MessageCircle className="w-4 h-4" />
               </button>
               <button
-                onClick={() => handleShare("instagram")}
-                className="p-3 bg-[#E1306C]/10 text-[#E1306C] rounded-full hover:bg-[#E1306C]/20 transition-colors"
-                title="Instagram / TikTok (Kopieer link)"
+                type="button"
+                onClick={() => handleShare("facebook")}
+                className="p-2.5 bg-[#1877F2]/10 text-[#1877F2] rounded-full hover:bg-[#1877F2]/20 transition-colors border border-[#1877F2]/20"
+                title="Deel via Facebook"
               >
-                <span className="font-bold text-sm">IG/TT</span>
+                <Facebook className="w-4 h-4" />
               </button>
               <button
+                type="button"
+                onClick={() => handleShare("twitter")}
+                className="p-2.5 bg-foreground/10 text-foreground rounded-full hover:bg-foreground/20 transition-colors border border-border"
+                title="Deel via X (Twitter)"
+              >
+                <Twitter className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
                 onClick={() => handleShare("copy")}
-                className="p-3 bg-muted text-muted-foreground rounded-full hover:bg-muted/80 transition-colors"
-                title="Kopieer link"
+                className="p-2.5 bg-muted text-muted-foreground rounded-full hover:bg-muted/80 transition-colors border border-border"
+                title="Kopieer directe link"
               >
-                <Link2 className="w-5 h-5" />
+                <Link2 className="w-4 h-4" />
               </button>
             </div>
           </div>
         </div>
       </div>
+
+      <ShareDialog
+        open={shareDialogOpen}
+        onOpenChange={setShareDialogOpen}
+        title={article.title}
+        description={article.description || article.excerpt}
+        url={window.location.href}
+      />
     </div>
   );
 }

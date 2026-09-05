@@ -125,8 +125,10 @@ export default function Dashboard() {
           },
         });
         if (res.ok) {
-          const data = await res.json();
-          setMemberDocuments(data);
+          const data = await res.json().catch(() => []);
+          setMemberDocuments(Array.isArray(data) ? data : []);
+        } else if (res.status === 401 || res.status === 403) {
+          console.warn("Niet geautoriseerd voor ledendocumenten.");
         }
       } catch (err) {
         console.error("Fout bij ophalen van ledendocumenten:", err);

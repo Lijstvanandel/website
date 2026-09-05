@@ -1,13 +1,16 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, Newspaper, MapPin, Tag } from "lucide-react";
+import { ArrowRight, Newspaper, MapPin, Tag, Share2 } from "lucide-react";
 import { NewsItem } from "@/data/news";
 import { NewsCategory } from "@/components/CategoryManager";
+import { ShareDialog } from "@/components/ShareDialog";
 
 export default function Nieuws() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [categories, setCategories] = useState<NewsCategory[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [shareArticle, setShareArticle] = useState<NewsItem | null>(null);
+  const [shareDialogOpen, setShareDialogOpen] = useState<boolean>(false);
 
   useEffect(() => {
     fetch("/api/news")
@@ -142,14 +145,38 @@ export default function Nieuws() {
                   {item.description || item.excerpt}
                 </p>
 
-                <div className="inline-flex items-center text-sm font-semibold text-primary group-hover:text-accent transition-colors mt-auto pt-4 border-t border-border/60">
-                  Lees meer <ArrowRight className="ml-2 w-4 h-4 transition-transform group-hover:translate-x-1" />
+                <div className="flex items-center justify-between mt-auto pt-4 border-t border-border/60">
+                  <span className="inline-flex items-center text-sm font-semibold text-primary group-hover:text-accent transition-colors">
+                    Lees meer <ArrowRight className="ml-2 w-4 h-4 transition-transform group-hover:translate-x-1" />
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShareArticle(item);
+                      setShareDialogOpen(true);
+                    }}
+                    className="p-1.5 rounded-full text-muted-foreground hover:text-accent hover:bg-accent/15 transition-all"
+                    title="Deel dit nieuwsbericht"
+                    aria-label="Deel dit nieuwsbericht"
+                  >
+                    <Share2 className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             </Link>
           ))}
         </div>
       </div>
+
+      <ShareDialog
+        open={shareDialogOpen}
+        onOpenChange={setShareDialogOpen}
+        title={shareArticle?.title || "Lijst van Andel Nieuws"}
+        description={shareArticle?.description || shareArticle?.excerpt}
+        url={shareArticle ? `${window.location.origin}/nieuws/${shareArticle.id}` : undefined}
+      />
     </div>
   );
 }
