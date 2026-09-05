@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "./components/Layout";
 import { ThemeProvider } from "./hooks/use-theme";
 import { AuthProvider } from "./context/AuthContext";
+import { AccessibilityProvider } from "./context/AccessibilityContext";
 import Home from "./pages/Home";
 import Raadsleden from "./pages/Raadsleden";
 import FractielidVideos from "./pages/FractielidVideos";
@@ -31,42 +32,44 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider>
-      <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <Routes>
-              <Route element={<Layout />}>
-                <Route path="/" element={<Home />} />
-                <Route path="/fractie" element={<Raadsleden />} />
-                <Route path="/fractie/:id/videos" element={<FractielidVideos />} />
-                <Route path="/raadsleden/:id/videos" element={<FractielidVideos />} />
-                <Route path="/video/:id" element={<VideoRedirect />} />
-                <Route path="/videos/:id" element={<VideoRedirect />} />
-                <Route path="/bestuur" element={<Bestuur />} />
-                <Route path="/steunfractie" element={<Steunfractie />} />
-                <Route path="/raadsleden" element={<Raadsleden />} />
-                <Route path="/standpunten" element={<Standpunten />} />
-                <Route path="/agenda" element={<Agenda />} />
-                <Route path="/agenda/:id" element={<AgendaDetail />} />
-                <Route path="/nieuws" element={<Nieuws />} />
-                <Route path="/nieuws/:id" element={<NieuwsDetail />} />
-                <Route path="/wijken-en-kernen" element={<WijkenEnKernen />} />
-                <Route path="/wijken-en-kernen/:slug" element={<WijkDetail />} />
-                <Route path="/wijken-en/kernen" element={<WijkenEnKernen />} />
-                <Route path="/wijken-en/kernen/:slug" element={<WijkDetail />} />
-                <Route path="/contact" element={<Contact />} />
-                <Route path="/login" element={<Login />} />
-                <Route path="/registreren" element={<Register />} />
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/admin" element={<AdminDashboard />} />
-              </Route>
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
-        </TooltipProvider>
-      </AuthProvider>
+      <AccessibilityProvider>
+        <AuthProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <Routes>
+                <Route element={<Layout />}>
+                  <Route path="/" element={<Home />} />
+                  <Route path="/fractie" element={<Raadsleden />} />
+                  <Route path="/fractie/:id/videos" element={<FractielidVideos />} />
+                  <Route path="/raadsleden/:id/videos" element={<FractielidVideos />} />
+                  <Route path="/video/:id" element={<VideoRedirect />} />
+                  <Route path="/videos/:id" element={<VideoRedirect />} />
+                  <Route path="/bestuur" element={<Bestuur />} />
+                  <Route path="/steunfractie" element={<Steunfractie />} />
+                  <Route path="/raadsleden" element={<Raadsleden />} />
+                  <Route path="/standpunten" element={<Standpunten />} />
+                  <Route path="/agenda" element={<Agenda />} />
+                  <Route path="/agenda/:id" element={<AgendaDetail />} />
+                  <Route path="/nieuws" element={<Nieuws />} />
+                  <Route path="/nieuws/:id" element={<NieuwsDetail />} />
+                  <Route path="/wijken-en-kernen" element={<WijkenEnKernen />} />
+                  <Route path="/wijken-en-kernen/:slug" element={<WijkDetail />} />
+                  <Route path="/wijken-en/kernen" element={<WijkenEnKernen />} />
+                  <Route path="/wijken-en/kernen/:slug" element={<WijkDetail />} />
+                  <Route path="/contact" element={<Contact />} />
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/registreren" element={<Register />} />
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/admin" element={<AdminDashboard />} />
+                </Route>
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </BrowserRouter>
+          </TooltipProvider>
+        </AuthProvider>
+      </AccessibilityProvider>
     </ThemeProvider>
   </QueryClientProvider>
 );

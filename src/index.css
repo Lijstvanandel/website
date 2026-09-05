@@ -156,3 +156,104 @@
     border: none !important;
   }
 }
+
+/* =========================================================
+   ACCESSIBILITY: Hoog Contrast & Kleurenblindheid Modi
+   ========================================================= */
+
+/* Hoog Contrast (Dark Theme) */
+html.contrast-high:not(.light) {
+  --background: 0 0% 0% !important;
+  --foreground: 45 100% 98% !important;
+  --card: 0 0% 3% !important;
+  --card-foreground: 45 100% 98% !important;
+  --popover: 0 0% 2% !important;
+  --popover-foreground: 45 100% 98% !important;
+  --primary: 150 80% 45% !important;
+  --primary-foreground: 0 0% 0% !important;
+  --secondary: 0 0% 12% !important;
+  --secondary-foreground: 45 100% 98% !important;
+  --muted: 0 0% 16% !important;
+  --muted-foreground: 45 60% 92% !important;
+  --accent: 45 100% 55% !important;
+  --accent-foreground: 0 0% 0% !important;
+  --border: 45 90% 55% !important;
+  --ring: 45 100% 60% !important;
+}
+
+/* Hoog Contrast (Light Theme) */
+html.contrast-high.light {
+  --background: 0 0% 100% !important;
+  --foreground: 0 0% 0% !important;
+  --card: 0 0% 100% !important;
+  --card-foreground: 0 0% 0% !important;
+  --popover: 0 0% 100% !important;
+  --popover-foreground: 0 0% 0% !important;
+  --primary: 150 90% 22% !important;
+  --primary-foreground: 0 0% 100% !important;
+  --secondary: 0 0% 92% !important;
+  --secondary-foreground: 0 0% 0% !important;
+  --muted: 0 0% 88% !important;
+  --muted-foreground: 0 0% 15% !important;
+  --accent: 38 100% 30% !important;
+  --accent-foreground: 0 0% 100% !important;
+  --border: 0 0% 0% !important;
+  --ring: 38 100% 35% !important;
+}
+
+/* Hoog Contrast algemene styling versterking */
+html.contrast-high {
+  font-weight: 500;
+}
+
+html.contrast-high body {
+  filter: contrast(115%);
+}
+
+html.contrast-high button:not(:disabled),
+html.contrast-high a,
+html.contrast-high input,
+html.contrast-high select,
+html.contrast-high textarea {
+  border-width: 1.5px !important;
+}
+
+html.contrast-high button:focus-visible,
+html.contrast-high a:focus-visible {
+  outline: 3px solid #ffcc00 !important;
+  outline-offset: 3px !important;
+}
+
+/* Kleurenblindheid Filters via SVG feColorMatrix */
+html.cb-deuteranopia body {
+  filter: url('#lva-deuteranopia');
+}
+
+html.cb-protanopia body {
+  filter: url('#lva-protanopia');
+}
+
+html.cb-tritanopia body {
+  filter: url('#lva-tritanopia');
+}
+
+html.cb-monochrome body {
+  filter: grayscale(100%) contrast(115%);
+}
+
+/* Gecombineerd: Hoog contrast EN kleurenblindheid */
+html.contrast-high.cb-deuteranopia body {
+  filter: url('#lva-deuteranopia') contrast(120%);
+}
+
+html.contrast-high.cb-protanopia body {
+  filter: url('#lva-protanopia') contrast(120%);
+}
+
+html.contrast-high.cb-tritanopia body {
+  filter: url('#lva-tritanopia') contrast(120%);
+}
+
+html.contrast-high.cb-monochrome body {
+  filter: grayscale(100%) contrast(130%);
+}

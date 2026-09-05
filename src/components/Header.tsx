@@ -1,11 +1,24 @@
 import { useState, useEffect, useMemo } from "react";
 import { NavLink, Link, useLocation } from "react-router-dom";
-import { Menu, X, Phone, Sun, Moon, ChevronDown, User, LogOut } from "lucide-react";
+import {
+  Menu,
+  X,
+  Phone,
+  Sun,
+  Moon,
+  ChevronDown,
+  User,
+  LogOut,
+  Contrast,
+  Check,
+} from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { BelafspraakDialog } from "./BelafspraakDialog";
 import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/context/AuthContext";
+import { ColorBlindMode } from "@/context/AccessibilityContext";
+import { useAccessibility } from "@/hooks/use-accessibility";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,12 +42,33 @@ const partijItems = [
   { to: "/steunfractie", label: "Steunfractie" },
 ];
 
+const colorBlindOptions: { id: ColorBlindMode; label: string; desc: string }[] = [
+  { id: "none", label: "Standaard (Geen filter)", desc: "Normale partijkleuren" },
+  { id: "deuteranopia", label: "Deuteranopie", desc: "Rood-groen (groen-zwakte, meest voorkomend)" },
+  { id: "protanopia", label: "Protanopie", desc: "Rood-groen (rood-zwakte)" },
+  { id: "tritanopia", label: "Tritanopie", desc: "Blauw-geel afwijking" },
+  { id: "monochrome", label: "Monochroom", desc: "Zwart-wit / hoog contrast grijswaarden" },
+];
+
 export const Header = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [partijMobileOpen, setPartijMobileOpen] = useState(false);
   const [belOpen, setBelOpen] = useState(false);
   const { theme, toggle } = useTheme();
   const { isAuthenticated, logout } = useAuth();
+  const {
+    fontSize,
+    increaseFontSize,
+    decreaseFontSize,
+    resetFontSize,
+    setFontSize,
+    contrastMode,
+    toggleHighContrast,
+    colorBlindMode,
+    setColorBlindMode,
+    setContrastMode,
+  } = useAccessibility();
+
   const location = useLocation();
   const partijActive = partijItems.some((i) => location.pathname === i.to);
 
@@ -98,7 +132,7 @@ export const Header = () => {
     <>
       <header className="sticky top-0 z-40 backdrop-blur-md bg-background/90 border-b border-accent/20 w-full transition-colors">
         {/* Full-width responsive container giving maximum room to nav and buttons */}
-        <div className="w-full max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 flex items-center justify-between h-24 lg:h-28 gap-3 sm:gap-6">
+        <div className="w-full max-w-[1720px] mx-auto px-3 sm:px-6 lg:px-8 xl:px-12 flex items-center justify-between h-24 lg:h-28 gap-2 sm:gap-4 lg:gap-6">
           
           {/* Logo & Brand Name with animated wijk/kern subtitle */}
           <Link to="/" className="flex items-center gap-3 sm:gap-4 group shrink-0 select-none">
@@ -119,7 +153,7 @@ export const Header = () => {
                     animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
                     exit={{ opacity: 0, y: -7, filter: "blur(2px)" }}
                     transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-                    className="text-[10px] sm:text-[11px] uppercase tracking-[0.22em] font-semibold text-accent whitespace-nowrap truncate max-w-[160px] sm:max-w-[240px] md:max-w-[320px]"
+                    className="text-[10px] sm:text-[11px] uppercase tracking-[0.22em] font-semibold text-accent whitespace-nowrap truncate max-w-[150px] sm:max-w-[220px] md:max-w-[320px]"
                     title={currentSubtitle}
                   >
                     {currentSubtitle}
@@ -129,7 +163,7 @@ export const Header = () => {
             </div>
           </Link>
 
-          {/* Desktop Navigation with whitespace-nowrap to prevent squished text */}
+          {/* Desktop Navigation */}
           <nav className="hidden lg:flex items-center gap-0.5 xl:gap-1.5 2xl:gap-2 shrink">
             {/* Partij Dropdown */}
             <DropdownMenu>
@@ -187,27 +221,207 @@ export const Header = () => {
           </nav>
 
           {/* Right-side Actions & Authentication Controls */}
-          <div className="flex items-center gap-2 lg:gap-2.5 xl:gap-3 shrink-0">
-            {/* Theme Toggle */}
-            <button
-              onClick={toggle}
-              aria-label="Wissel thema"
-              className="w-9 h-9 sm:w-10 sm:h-10 inline-flex items-center justify-center rounded-sm border border-accent/40 text-accent hover:bg-accent hover:text-accent-foreground transition-colors shrink-0"
-            >
-              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </button>
-
-            {/* Belafspraak Button */}
+          <div className="flex items-center gap-1.5 sm:gap-2 lg:gap-2.5 xl:gap-3 shrink-0">
+            {/* 1. Plan belafspraak Button */}
             <Button
               onClick={() => setBelOpen(true)}
-              className="hidden sm:inline-flex bg-primary hover:bg-primary/90 text-primary-foreground border border-accent/40 uppercase tracking-wider text-xs font-semibold px-3.5 xl:px-4 h-9 sm:h-10 whitespace-nowrap shrink-0 shadow-sm"
+              className="hidden sm:inline-flex bg-primary hover:bg-primary/90 text-primary-foreground border border-accent/40 uppercase tracking-wider text-xs font-semibold px-3 xl:px-4 h-9 sm:h-10 whitespace-nowrap shrink-0 shadow-sm"
             >
               <Phone className="w-3.5 h-3.5 mr-1.5" />
               <span className="hidden xl:inline">Plan belafspraak</span>
               <span className="xl:hidden">Belafspraak</span>
             </Button>
 
-            {/* Authentication Buttons (Logged in vs Guest) */}
+            {/* 2. Tekstgrootte vergroten & verkleinen knoppen (tussen belafspraak en dark/lightmode) */}
+            <div
+              className="inline-flex items-center rounded-sm border border-accent/40 bg-background/60 h-9 sm:h-10 p-0.5 shrink-0 shadow-2xs"
+              title="Tekstgrootte aanpassen voor de hele website"
+            >
+              <button
+                type="button"
+                onClick={decreaseFontSize}
+                disabled={fontSize <= 85}
+                className="h-full px-1.5 sm:px-2 flex items-center justify-center text-accent hover:bg-accent hover:text-accent-foreground disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-accent rounded-xs transition-colors font-bold text-xs"
+                title="Tekstgrootte verkleinen (A-)"
+                aria-label="Tekstgrootte verkleinen"
+              >
+                <span className="font-display text-xs tracking-tight">A-</span>
+              </button>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className={`h-full px-1.5 sm:px-2 flex items-center gap-0.5 text-[11px] font-semibold transition-colors rounded-xs hover:bg-accent/15 border-x border-accent/20 ${
+                      fontSize !== 100 ? "text-accent font-bold" : "text-foreground/80"
+                    }`}
+                    title={`Huidige tekstgrootte: ${fontSize}%. Klik voor opties.`}
+                    aria-label={`Huidige tekstgrootte: ${fontSize}%. Klik voor overzicht.`}
+                  >
+                    <span>{fontSize}%</span>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="center" className="w-56 bg-background border-accent/30 shadow-xl p-2 z-50">
+                  <div className="px-2 py-1.5 border-b border-border/60 mb-1.5">
+                    <div className="text-xs font-semibold text-foreground flex items-center justify-between">
+                      <span>Tekstgrootte</span>
+                      {fontSize !== 100 && (
+                        <button
+                          onClick={resetFontSize}
+                          className="text-[10px] text-accent hover:underline uppercase tracking-wider font-semibold"
+                        >
+                          Herstel
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      Geldt direct voor de volledige website.
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    {[
+                      { size: 85, label: "Compact (85%)" },
+                      { size: 100, label: "Standaard (100%)" },
+                      { size: 115, label: "Groot (115%)" },
+                      { size: 130, label: "Extra groot (130%)" },
+                      { size: 145, label: "Maximaal (145%)" },
+                    ].map((item) => (
+                      <button
+                        key={item.size}
+                        type="button"
+                        onClick={() => setFontSize(item.size)}
+                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded text-xs transition-colors ${
+                          fontSize === item.size
+                            ? "bg-accent/20 text-accent font-semibold"
+                            : "hover:bg-accent/10 text-foreground"
+                        }`}
+                      >
+                        <span>{item.label}</span>
+                        {fontSize === item.size && <Check className="w-3.5 h-3.5 text-accent" />}
+                      </button>
+                    ))}
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <button
+                type="button"
+                onClick={increaseFontSize}
+                disabled={fontSize >= 145}
+                className="h-full px-1.5 sm:px-2 flex items-center justify-center text-accent hover:bg-accent hover:text-accent-foreground disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-accent rounded-xs transition-colors font-bold text-xs"
+                title="Tekstgrootte vergroten (A+)"
+                aria-label="Tekstgrootte vergroten"
+              >
+                <span className="font-display text-base leading-none tracking-tight">A+</span>
+              </button>
+            </div>
+
+            {/* 3. Kleurcontrast voor kleurenblindheid knop (tussen belafspraak en dark/lightmode) */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Kleurcontrast en kleurenblindheid instellingen"
+                  title="Kleurcontrast voor kleurenblindheid (WCAG)"
+                  className={`w-9 h-9 sm:w-10 sm:h-10 inline-flex items-center justify-center rounded-sm border transition-all shrink-0 relative ${
+                    contrastMode === "high" || colorBlindMode !== "none"
+                      ? "border-accent bg-accent text-accent-foreground shadow-sm ring-1 ring-accent"
+                      : "border-accent/40 text-accent hover:bg-accent hover:text-accent-foreground"
+                  }`}
+                >
+                  <Contrast className="w-4 h-4" />
+                  {(contrastMode === "high" || colorBlindMode !== "none") && (
+                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-accent-foreground border-2 border-background rounded-full" />
+                  )}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-72 bg-background border-accent/30 shadow-2xl p-2.5 z-50">
+                <div className="px-2 py-1.5 border-b border-border/60 mb-2">
+                  <div className="font-display text-sm text-foreground flex items-center justify-between">
+                    <span>Contrast & Kleurenblindheid</span>
+                    {(contrastMode === "high" || colorBlindMode !== "none") && (
+                      <button
+                        onClick={() => {
+                          setContrastMode("normal");
+                          setColorBlindMode("none");
+                        }}
+                        className="text-[10px] text-accent hover:underline font-semibold uppercase tracking-wider"
+                      >
+                        Herstel
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+                    Optimaliseer kleurcontrasten en kleurenfilters voor de gehele website.
+                  </p>
+                </div>
+
+                {/* Hoog contrast toggle */}
+                <div className="mb-2.5">
+                  <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground px-2 mb-1">
+                    Kleurcontrast
+                  </div>
+                  <button
+                    type="button"
+                    onClick={toggleHighContrast}
+                    className={`w-full flex items-center justify-between px-2.5 py-2 rounded text-xs font-medium transition-colors border ${
+                      contrastMode === "high"
+                        ? "bg-accent/20 border-accent/40 text-accent font-semibold"
+                        : "border-transparent hover:bg-accent/10 text-foreground"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Contrast className="w-3.5 h-3.5 text-accent" />
+                      <span>Hoog Contrast (WCAG AAA)</span>
+                    </div>
+                    {contrastMode === "high" && <Check className="w-3.5 h-3.5 text-accent" />}
+                  </button>
+                </div>
+
+                {/* Kleurenblindheid opties */}
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground px-2 mb-1">
+                    Kleurenblindheid weergave
+                  </div>
+                  <div className="space-y-1">
+                    {colorBlindOptions.map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setColorBlindMode(opt.id)}
+                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded text-xs transition-colors ${
+                          colorBlindMode === opt.id
+                            ? "bg-accent/20 text-accent font-semibold"
+                            : "hover:bg-accent/10 text-foreground"
+                        }`}
+                      >
+                        <div className="flex flex-col text-left">
+                          <span className="font-medium">{opt.label}</span>
+                          <span className="text-[10px] text-muted-foreground leading-tight">
+                            {opt.desc}
+                          </span>
+                        </div>
+                        {colorBlindMode === opt.id && (
+                          <Check className="w-3.5 h-3.5 text-accent shrink-0 ml-2" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* 4. Theme Toggle (dark/lightmode) */}
+            <button
+              onClick={toggle}
+              aria-label="Wissel thema"
+              title={theme === "dark" ? "Schakel naar licht thema" : "Schakel naar donker thema"}
+              className="w-9 h-9 sm:w-10 sm:h-10 inline-flex items-center justify-center rounded-sm border border-accent/40 text-accent hover:bg-accent hover:text-accent-foreground transition-colors shrink-0"
+            >
+              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
+
+            {/* 5. Authentication Buttons (Logged in vs Guest) */}
             {isAuthenticated ? (
               <div className="hidden sm:flex items-center gap-1.5 lg:gap-2 shrink-0">
                 <Link to="/dashboard">
@@ -317,6 +531,86 @@ export const Header = () => {
                 <span>Plan een belafspraak</span>
               </Button>
 
+              {/* Mobile Toegankelijkheid Sectie (Tekstgrootte & Kleurcontrast) */}
+              <div className="mt-3 p-3 bg-muted/30 border border-accent/20 rounded-md space-y-3">
+                <div className="text-[11px] uppercase tracking-wider font-semibold text-accent flex items-center justify-between">
+                  <span>Toegankelijkheid & Weergave</span>
+                  {(fontSize !== 100 || contrastMode === "high" || colorBlindMode !== "none") && (
+                    <button
+                      onClick={() => {
+                        resetFontSize();
+                        setContrastMode("normal");
+                        setColorBlindMode("none");
+                      }}
+                      className="text-[10px] text-muted-foreground hover:text-accent underline uppercase tracking-wider"
+                    >
+                      Herstel alles
+                    </button>
+                  )}
+                </div>
+
+                {/* Tekstgrootte regelaar */}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-foreground font-medium">Tekstgrootte:</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={decreaseFontSize}
+                      disabled={fontSize <= 85}
+                      className="px-2.5 py-1 rounded bg-background border border-border text-xs font-bold text-accent disabled:opacity-40"
+                      title="Tekst verkleinen"
+                    >
+                      A-
+                    </button>
+                    <button
+                      onClick={resetFontSize}
+                      className="px-2 py-1 text-xs font-semibold text-foreground/80 hover:text-accent"
+                      title="Herstel naar 100%"
+                    >
+                      {fontSize}%
+                    </button>
+                    <button
+                      onClick={increaseFontSize}
+                      disabled={fontSize >= 145}
+                      className="px-2.5 py-1 rounded bg-background border border-border text-xs font-bold text-accent disabled:opacity-40"
+                      title="Tekst vergroten"
+                    >
+                      A+
+                    </button>
+                  </div>
+                </div>
+
+                {/* Hoog contrast toggle */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-foreground font-medium">Hoog contrast:</span>
+                  <button
+                    onClick={toggleHighContrast}
+                    className={`px-3 py-1 text-xs font-semibold rounded border transition-colors ${
+                      contrastMode === "high"
+                        ? "bg-accent text-accent-foreground border-accent"
+                        : "bg-background text-muted-foreground border-border hover:text-foreground"
+                    }`}
+                  >
+                    {contrastMode === "high" ? "Aan (WCAG AAA)" : "Uit"}
+                  </button>
+                </div>
+
+                {/* Kleurenblindheid dropdown */}
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-xs text-foreground font-medium">Kleurenblindheid filter:</span>
+                  <select
+                    value={colorBlindMode}
+                    onChange={(e) => setColorBlindMode(e.target.value as ColorBlindMode)}
+                    className="w-full text-xs px-2.5 py-1.5 rounded bg-background border border-border text-foreground outline-none focus:border-accent"
+                  >
+                    <option value="none">Standaard (Geen filter)</option>
+                    <option value="deuteranopia">Deuteranopie (Rood-Groen)</option>
+                    <option value="protanopia">Protanopie (Rood-zwakte)</option>
+                    <option value="tritanopia">Tritanopie (Blauw-Geel)</option>
+                    <option value="monochrome">Monochroom (Zwart-wit)</option>
+                  </select>
+                </div>
+              </div>
+
               {/* Mobile Auth actions */}
               {isAuthenticated ? (
                 <div className="pt-2 flex flex-col gap-2">
@@ -355,7 +649,7 @@ export const Header = () => {
               {/* Mobile Theme Switcher */}
               <button
                 onClick={toggle}
-                className="mt-3 px-3 py-2.5 flex items-center justify-center gap-2 text-xs uppercase tracking-wider font-semibold border border-accent/40 text-accent rounded-sm hover:bg-accent/10 transition-colors"
+                className="mt-2 px-3 py-2.5 flex items-center justify-center gap-2 text-xs uppercase tracking-wider font-semibold border border-accent/40 text-accent rounded-sm hover:bg-accent/10 transition-colors"
               >
                 {theme === "dark" ? (
                   <>
