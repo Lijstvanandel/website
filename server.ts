@@ -771,8 +771,8 @@ async function startServer() {
               username: newUser.username,
               type: "membership_registration",
             },
-            success_url: `${origin}/register?payment_success=true&session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${origin}/register?payment_cancelled=true`,
+            success_url: `${origin}/registreren?payment_success=true&session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${origin}/registreren?payment_cancelled=true`,
           });
 
           checkoutUrl = session.url;
@@ -783,13 +783,13 @@ async function startServer() {
           // Fallback to simulated test session
           sessionId = `sim_session_${newUser.id}_${Date.now()}`;
           newUser.stripeSessionId = sessionId;
-          checkoutUrl = `/register?payment_success=true&session_id=${sessionId}&simulated=true`;
+          checkoutUrl = `/registreren?payment_success=true&session_id=${sessionId}&simulated=true`;
         }
       } else {
         // Stripe secret key is not yet set in .env on server
         sessionId = `sim_session_${newUser.id}_${Date.now()}`;
         newUser.stripeSessionId = sessionId;
-        checkoutUrl = `/register?payment_success=true&session_id=${sessionId}&simulated=true`;
+        checkoutUrl = `/registreren?payment_success=true&session_id=${sessionId}&simulated=true`;
       }
     }
 
