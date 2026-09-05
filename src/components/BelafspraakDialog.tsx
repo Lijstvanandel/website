@@ -122,16 +122,22 @@ export const BelafspraakDialog = ({ open, onOpenChange, defaultRaadslid }: Belaf
     }
 
     // Default to first person or "any"
-    if (!form.persoonId && personen.length > 0) {
-      setForm(prev => ({ ...prev, persoonId: personen[0].id }));
-    }
+    setForm(prev => {
+      if (!prev.persoonId && personen.length > 0) {
+        return { ...prev, persoonId: personen[0].id };
+      }
+      return prev;
+    });
   }, [defaultRaadslid, personen]);
 
   // Set default date if empty
   useEffect(() => {
-    if (!form.datum && availableDates.length > 0) {
-      setForm(prev => ({ ...prev, datum: availableDates[0].dateStr }));
-    }
+    setForm(prev => {
+      if (!prev.datum && availableDates.length > 0) {
+        return { ...prev, datum: availableDates[0].dateStr };
+      }
+      return prev;
+    });
   }, [availableDates]);
 
   const selectedPerson = personen.find(p => p.id === form.persoonId) || personen[0];
@@ -196,47 +202,47 @@ export const BelafspraakDialog = ({ open, onOpenChange, defaultRaadslid }: Belaf
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) reset(); }}>
-      <DialogContent className="max-w-lg bg-card border-accent/30 p-6 sm:p-7 max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[calc(100vw-1.5rem)] sm:w-full max-w-lg bg-card border-accent/30 p-4 sm:p-6 md:p-7 max-h-[85vh] sm:max-h-[90vh] overflow-y-auto rounded-xl shadow-2xl">
         {submitted ? (
-          <div className="py-6 text-center space-y-4">
-            <div className="w-16 h-16 mx-auto rounded-full bg-accent/20 border border-accent flex items-center justify-center">
-              <CheckCircle2 className="w-10 h-10 text-accent" />
+          <div className="py-4 sm:py-6 text-center space-y-4">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 mx-auto rounded-full bg-accent/20 border border-accent flex items-center justify-center">
+              <CheckCircle2 className="w-8 h-8 sm:w-10 sm:h-10 text-accent" />
             </div>
-            <h3 className="font-display text-3xl text-gradient-gold">Bedankt, {form.name.split(" ")[0]}!</h3>
-            <p className="text-muted-foreground text-sm leading-relaxed max-w-md mx-auto">
+            <h3 className="font-display text-2xl sm:text-3xl text-gradient-gold">Bedankt, {form.name.split(" ")[0]}!</h3>
+            <p className="text-muted-foreground text-xs sm:text-sm leading-relaxed max-w-md mx-auto">
               Uw belafspraak met <span className="text-accent font-semibold">{selectedPerson?.name} ({selectedPerson?.role})</span> op{" "}
               <span className="text-foreground font-semibold">{selectedDateLabel} tussen {form.tijdslot}</span> is succesvol ingepland.
             </p>
-            <div className="bg-muted/40 p-4 rounded-sm border border-border/50 text-xs text-left space-y-1.5 text-muted-foreground">
+            <div className="bg-muted/40 p-3.5 sm:p-4 rounded-sm border border-border/50 text-xs text-left space-y-1.5 text-muted-foreground break-words">
               <div className="flex items-center gap-2 font-medium text-foreground">
-                <Phone className="w-3.5 h-3.5 text-accent" /> We bellen u op: <span className="text-accent font-mono">{form.phone}</span>
+                <Phone className="w-3.5 h-3.5 text-accent shrink-0" /> We bellen u op: <span className="text-accent font-mono break-all">{form.phone}</span>
               </div>
               {form.email && (
                 <div className="flex items-center gap-2">
-                  <span className="w-3.5 h-3.5 text-center">•</span> Bevestiging wordt verzonden naar: {form.email}
+                  <span className="w-3.5 h-3.5 text-center shrink-0">•</span> Bevestiging naar: <span className="break-all">{form.email}</span>
                 </div>
               )}
               {form.onderwerp && (
-                <div className="pt-1 border-t border-border/40 italic">
+                <div className="pt-1 border-t border-border/40 italic break-words">
                   &ldquo;{form.onderwerp}&rdquo;
                 </div>
               )}
             </div>
-            <Button onClick={reset} className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold uppercase tracking-wider text-xs px-6 py-2.5 mt-2">
+            <Button onClick={reset} className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground font-semibold uppercase tracking-wider text-xs px-6 py-2.5 mt-2">
               Sluiten
             </Button>
           </div>
         ) : (
           <>
-            <DialogHeader className="space-y-1.5">
+            <DialogHeader className="space-y-1.5 text-left">
               <div className="flex items-center gap-2 text-accent">
-                <Phone className="w-4 h-4" />
+                <Phone className="w-4 h-4 shrink-0" />
                 <span className="text-[11px] uppercase tracking-widest font-semibold">Persoonlijk gesprek</span>
               </div>
-              <DialogTitle className="font-display text-3xl">Plan een belafspraak</DialogTitle>
-              <DialogDescription className="text-xs text-muted-foreground flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-accent shrink-0" />
-                <span>Woensdag, donderdag of vrijdag tussen 19:00 en 21:00 — max. 30 minuten per gesprek.</span>
+              <DialogTitle className="font-display text-2xl sm:text-3xl leading-tight">Plan een belafspraak</DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground flex items-start sm:items-center gap-1.5 leading-relaxed">
+                <Clock className="w-3.5 h-3.5 text-accent shrink-0 mt-0.5 sm:mt-0" />
+                <span>Woensdag, donderdag of vrijdag tussen 19:00 en 21:00 — max. 30 min.</span>
               </DialogDescription>
             </DialogHeader>
 
@@ -244,7 +250,7 @@ export const BelafspraakDialog = ({ open, onOpenChange, defaultRaadslid }: Belaf
               {/* Met wie wilt u spreken? */}
               <div>
                 <Label htmlFor="persoonId" className="text-xs uppercase tracking-wider font-semibold text-foreground/90 flex items-center gap-1.5 mb-1.5">
-                  <UserCheck className="w-3.5 h-3.5 text-accent" />
+                  <UserCheck className="w-3.5 h-3.5 text-accent shrink-0" />
                   Met wie wilt u spreken? *
                 </Label>
                 <Select
@@ -252,10 +258,10 @@ export const BelafspraakDialog = ({ open, onOpenChange, defaultRaadslid }: Belaf
                   onValueChange={(v) => setForm({ ...form, persoonId: v })}
                   disabled={loadingPersonen}
                 >
-                  <SelectTrigger id="persoonId" className="bg-background border-border">
+                  <SelectTrigger id="persoonId" className="w-full min-w-0 bg-background border-border text-left [&>span]:truncate">
                     <SelectValue placeholder="Kies een raadslid of burgerraadslid" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-w-[calc(100vw-3rem)] sm:max-w-md">
                     {personen.map(p => (
                       <SelectItem key={p.id} value={p.id}>
                         {p.name} — {p.role} ({p.type})
@@ -272,16 +278,16 @@ export const BelafspraakDialog = ({ open, onOpenChange, defaultRaadslid }: Belaf
 
               {/* Datum en tijdslot */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
+                <div className="min-w-0">
                   <Label htmlFor="datum" className="text-xs uppercase tracking-wider font-semibold text-foreground/90 flex items-center gap-1.5 mb-1.5">
-                    <CalendarIcon className="w-3.5 h-3.5 text-accent" />
+                    <CalendarIcon className="w-3.5 h-3.5 text-accent shrink-0" />
                     Voorkeursdatum *
                   </Label>
                   <Select
                     value={form.datum}
                     onValueChange={(v) => setForm({ ...form, datum: v })}
                   >
-                    <SelectTrigger id="datum" className="bg-background border-border">
+                    <SelectTrigger id="datum" className="w-full min-w-0 bg-background border-border text-left [&>span]:truncate">
                       <SelectValue placeholder="Kies datum" />
                     </SelectTrigger>
                     <SelectContent>
@@ -294,16 +300,16 @@ export const BelafspraakDialog = ({ open, onOpenChange, defaultRaadslid }: Belaf
                   </Select>
                 </div>
 
-                <div>
+                <div className="min-w-0">
                   <Label htmlFor="tijdslot" className="text-xs uppercase tracking-wider font-semibold text-foreground/90 flex items-center gap-1.5 mb-1.5">
-                    <Clock className="w-3.5 h-3.5 text-accent" />
+                    <Clock className="w-3.5 h-3.5 text-accent shrink-0" />
                     Tijdslot *
                   </Label>
                   <Select
                     value={form.tijdslot}
                     onValueChange={(v) => setForm({ ...form, tijdslot: v })}
                   >
-                    <SelectTrigger id="tijdslot" className="bg-background border-border">
+                    <SelectTrigger id="tijdslot" className="w-full min-w-0 bg-background border-border text-left [&>span]:truncate">
                       <SelectValue placeholder="Kies tijdslot" />
                     </SelectTrigger>
                     <SelectContent>
@@ -319,7 +325,7 @@ export const BelafspraakDialog = ({ open, onOpenChange, defaultRaadslid }: Belaf
 
               {/* Contactgegevens burger */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
+                <div className="min-w-0">
                   <Label htmlFor="bname" className="text-xs uppercase tracking-wider font-semibold text-foreground/90 mb-1.5 block">
                     Uw naam *
                   </Label>
@@ -330,10 +336,10 @@ export const BelafspraakDialog = ({ open, onOpenChange, defaultRaadslid }: Belaf
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
                     maxLength={100}
                     required
-                    className="bg-background border-border"
+                    className="w-full min-w-0 bg-background border-border"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <Label htmlFor="bphone" className="text-xs uppercase tracking-wider font-semibold text-foreground/90 mb-1.5 block">
                     Telefoonnummer *
                   </Label>
@@ -345,12 +351,12 @@ export const BelafspraakDialog = ({ open, onOpenChange, defaultRaadslid }: Belaf
                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
                     maxLength={25}
                     required
-                    className="bg-background border-border"
+                    className="w-full min-w-0 bg-background border-border"
                   />
                 </div>
               </div>
 
-              <div>
+              <div className="min-w-0">
                 <Label htmlFor="bemail" className="text-xs uppercase tracking-wider font-semibold text-foreground/90 mb-1.5 block">
                   E-mailadres (voor bevestiging)
                 </Label>
@@ -361,11 +367,11 @@ export const BelafspraakDialog = ({ open, onOpenChange, defaultRaadslid }: Belaf
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                   maxLength={255}
-                  className="bg-background border-border"
+                  className="w-full min-w-0 bg-background border-border"
                 />
               </div>
 
-              <div>
+              <div className="min-w-0">
                 <Label htmlFor="onderwerp" className="text-xs uppercase tracking-wider font-semibold text-foreground/90 mb-1.5 block">
                   Onderwerp of korte toelichting (optioneel)
                 </Label>
@@ -376,7 +382,7 @@ export const BelafspraakDialog = ({ open, onOpenChange, defaultRaadslid }: Belaf
                   maxLength={500}
                   rows={2}
                   placeholder="Waarover wilt u van gedachten wisselen? Bijv. verkeersveiligheid, woningbouw, wmo..."
-                  className="bg-background border-border text-sm"
+                  className="w-full min-w-0 bg-background border-border text-sm resize-none"
                 />
               </div>
 
@@ -384,23 +390,23 @@ export const BelafspraakDialog = ({ open, onOpenChange, defaultRaadslid }: Belaf
                 <Button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold uppercase tracking-wider text-xs py-3 h-auto shadow-md"
+                  className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold uppercase tracking-wider text-xs py-3 h-auto shadow-md whitespace-normal"
                 >
                   {loading ? (
-                    <span className="flex items-center gap-2">
-                      <Clock className="w-4 h-4 animate-spin" />
-                      Bezig met inplannen...
+                    <span className="flex items-center justify-center gap-2">
+                      <Clock className="w-4 h-4 animate-spin shrink-0" />
+                      <span>Bezig met inplannen...</span>
                     </span>
                   ) : (
-                    <span className="flex items-center gap-2">
-                      <Phone className="w-4 h-4" />
-                      Belafspraak definitief inplannen
+                    <span className="flex items-center justify-center gap-2">
+                      <Phone className="w-4 h-4 shrink-0" />
+                      <span>Belafspraak definitief inplannen</span>
                     </span>
                   )}
                 </Button>
               </div>
 
-              <p className="text-[11px] text-muted-foreground text-center">
+              <p className="text-[11px] text-muted-foreground text-center leading-relaxed">
                 Geen kosten verbonden. Uw gegevens worden uitsluitend gebruikt voor deze belafspraak.
               </p>
             </form>

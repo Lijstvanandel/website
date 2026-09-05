@@ -225,16 +225,18 @@ export const Header = () => {
 
           {/* Right-side Actions & Authentication Controls */}
           <div className="flex items-center gap-1.5 sm:gap-2 lg:gap-2.5 xl:gap-3 shrink-0">
-            {/* 1. Lid worden Button */}
-            <Link to="/registreren" className="hidden sm:inline-flex">
-              <Button
-                className="bg-primary hover:bg-primary/90 text-primary-foreground border border-accent/40 uppercase tracking-wider text-xs font-semibold px-2.5 xl:px-3.5 h-9 sm:h-10 whitespace-nowrap shrink-0 shadow-sm"
-              >
-                <UserPlus className="w-3.5 h-3.5 mr-1.5" />
-                <span className="hidden xl:inline">Lid worden</span>
-                <span className="xl:hidden">Lid</span>
-              </Button>
-            </Link>
+            {/* 1. Lid worden Button (alleen als bezoeker nog niet is ingelogd) */}
+            {!isAuthenticated && (
+              <Link to="/registreren" className="hidden sm:inline-flex">
+                <Button
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground border border-accent/40 uppercase tracking-wider text-xs font-semibold px-2.5 xl:px-3.5 h-9 sm:h-10 whitespace-nowrap shrink-0 shadow-sm"
+                >
+                  <UserPlus className="w-3.5 h-3.5 mr-1.5" />
+                  <span className="hidden xl:inline">Lid worden</span>
+                  <span className="xl:hidden">Lid</span>
+                </Button>
+              </Link>
+            )}
 
             {/* 2. Doneren Button */}
             <Link to="/doneren" className="inline-flex">
@@ -282,9 +284,9 @@ export const Header = () => {
               </Link>
             )}
 
-            {/* 4. Tekstgrootte vergroten & verkleinen knoppen */}
+            {/* 4. Tekstgrootte vergroten & verkleinen knoppen (verborgen op mobiel; al aanwezig in mobiele dropdown) */}
             <div
-              className="inline-flex items-center rounded-sm border border-accent/40 bg-background/60 h-9 sm:h-10 p-0.5 shrink-0 shadow-2xs"
+              className="hidden lg:inline-flex items-center rounded-sm border border-accent/40 bg-background/60 h-9 sm:h-10 p-0.5 shrink-0 shadow-2xs"
               title="Tekstgrootte aanpassen voor de hele website"
             >
               <button
@@ -366,100 +368,102 @@ export const Header = () => {
               </button>
             </div>
 
-            {/* 3. Kleurcontrast voor kleurenblindheid knop (tussen belafspraak en dark/lightmode) */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  aria-label="Kleurcontrast en kleurenblindheid instellingen"
-                  title="Kleurcontrast voor kleurenblindheid (WCAG)"
-                  className={`w-9 h-9 sm:w-10 sm:h-10 inline-flex items-center justify-center rounded-sm border transition-all shrink-0 relative ${
-                    contrastMode === "high" || colorBlindMode !== "none"
-                      ? "border-accent bg-accent text-accent-foreground shadow-sm ring-1 ring-accent"
-                      : "border-accent/40 text-accent hover:bg-accent hover:text-accent-foreground"
-                  }`}
-                >
-                  <Contrast className="w-4 h-4" />
-                  {(contrastMode === "high" || colorBlindMode !== "none") && (
-                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-accent-foreground border-2 border-background rounded-full" />
-                  )}
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-72 bg-background border-accent/30 shadow-2xl p-2.5 z-50">
-                <div className="px-2 py-1.5 border-b border-border/60 mb-2">
-                  <div className="font-display text-sm text-foreground flex items-center justify-between">
-                    <span>Contrast & Kleurenblindheid</span>
-                    {(contrastMode === "high" || colorBlindMode !== "none") && (
-                      <button
-                        onClick={() => {
-                          setContrastMode("normal");
-                          setColorBlindMode("none");
-                        }}
-                        className="text-[10px] text-accent hover:underline font-semibold uppercase tracking-wider"
-                      >
-                        Herstel
-                      </button>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
-                    Optimaliseer kleurcontrasten en kleurenfilters voor de gehele website.
-                  </p>
-                </div>
-
-                {/* Hoog contrast toggle */}
-                <div className="mb-2.5">
-                  <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground px-2 mb-1">
-                    Kleurcontrast
-                  </div>
+            {/* 3. Kleurcontrast voor kleurenblindheid knop (alleen desktop, op mobiel in menu-drawer) */}
+            <div className="hidden lg:inline-flex shrink-0">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
                   <button
                     type="button"
-                    onClick={toggleHighContrast}
-                    className={`w-full flex items-center justify-between px-2.5 py-2 rounded text-xs font-medium transition-colors border ${
-                      contrastMode === "high"
-                        ? "bg-accent/20 border-accent/40 text-accent font-semibold"
-                        : "border-transparent hover:bg-accent/10 text-foreground"
+                    aria-label="Kleurcontrast en kleurenblindheid instellingen"
+                    title="Kleurcontrast voor kleurenblindheid (WCAG)"
+                    className={`w-9 h-9 sm:w-10 sm:h-10 inline-flex items-center justify-center rounded-sm border transition-all shrink-0 relative ${
+                      contrastMode === "high" || colorBlindMode !== "none"
+                        ? "border-accent bg-accent text-accent-foreground shadow-sm ring-1 ring-accent"
+                        : "border-accent/40 text-accent hover:bg-accent hover:text-accent-foreground"
                     }`}
                   >
-                    <div className="flex items-center gap-2">
-                      <Contrast className="w-3.5 h-3.5 text-accent" />
-                      <span>Hoog Contrast (WCAG AAA)</span>
-                    </div>
-                    {contrastMode === "high" && <Check className="w-3.5 h-3.5 text-accent" />}
+                    <Contrast className="w-4 h-4" />
+                    {(contrastMode === "high" || colorBlindMode !== "none") && (
+                      <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-accent-foreground border-2 border-background rounded-full" />
+                    )}
                   </button>
-                </div>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-72 bg-background border-accent/30 shadow-2xl p-2.5 z-50">
+                  <div className="px-2 py-1.5 border-b border-border/60 mb-2">
+                    <div className="font-display text-sm text-foreground flex items-center justify-between">
+                      <span>Contrast & Kleurenblindheid</span>
+                      {(contrastMode === "high" || colorBlindMode !== "none") && (
+                        <button
+                          onClick={() => {
+                            setContrastMode("normal");
+                            setColorBlindMode("none");
+                          }}
+                          className="text-[10px] text-accent hover:underline font-semibold uppercase tracking-wider"
+                        >
+                          Herstel
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+                      Optimaliseer kleurcontrasten en kleurenfilters voor de gehele website.
+                    </p>
+                  </div>
 
-                {/* Kleurenblindheid opties */}
-                <div>
-                  <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground px-2 mb-1">
-                    Kleurenblindheid weergave
+                  {/* Hoog contrast toggle */}
+                  <div className="mb-2.5">
+                    <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground px-2 mb-1">
+                      Kleurcontrast
+                    </div>
+                    <button
+                      type="button"
+                      onClick={toggleHighContrast}
+                      className={`w-full flex items-center justify-between px-2.5 py-2 rounded text-xs font-medium transition-colors border ${
+                        contrastMode === "high"
+                          ? "bg-accent/20 border-accent/40 text-accent font-semibold"
+                          : "border-transparent hover:bg-accent/10 text-foreground"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Contrast className="w-3.5 h-3.5 text-accent" />
+                        <span>Hoog Contrast (WCAG AAA)</span>
+                      </div>
+                      {contrastMode === "high" && <Check className="w-3.5 h-3.5 text-accent" />}
+                    </button>
                   </div>
-                  <div className="space-y-1">
-                    {colorBlindOptions.map((opt) => (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => setColorBlindMode(opt.id)}
-                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded text-xs transition-colors ${
-                          colorBlindMode === opt.id
-                            ? "bg-accent/20 text-accent font-semibold"
-                            : "hover:bg-accent/10 text-foreground"
-                        }`}
-                      >
-                        <div className="flex flex-col text-left">
-                          <span className="font-medium">{opt.label}</span>
-                          <span className="text-[10px] text-muted-foreground leading-tight">
-                            {opt.desc}
-                          </span>
-                        </div>
-                        {colorBlindMode === opt.id && (
-                          <Check className="w-3.5 h-3.5 text-accent shrink-0 ml-2" />
-                        )}
-                      </button>
-                    ))}
+
+                  {/* Kleurenblindheid opties */}
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground px-2 mb-1">
+                      Kleurenblindheid weergave
+                    </div>
+                    <div className="space-y-1">
+                      {colorBlindOptions.map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => setColorBlindMode(opt.id)}
+                          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded text-xs transition-colors ${
+                            colorBlindMode === opt.id
+                              ? "bg-accent/20 text-accent font-semibold"
+                              : "hover:bg-accent/10 text-foreground"
+                          }`}
+                        >
+                          <div className="flex flex-col text-left">
+                            <span className="font-medium">{opt.label}</span>
+                            <span className="text-[10px] text-muted-foreground leading-tight">
+                              {opt.desc}
+                            </span>
+                          </div>
+                          {colorBlindMode === opt.id && (
+                            <Check className="w-3.5 h-3.5 text-accent shrink-0 ml-2" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
 
             {/* 4. Theme Toggle (dark/lightmode) */}
             <button
@@ -538,18 +542,20 @@ export const Header = () => {
 
               {/* Mobile Action Buttons */}
               <div className="mt-3 flex flex-col gap-2">
-                <Link
-                  to="/registreren"
-                  onClick={() => setMobileOpen(false)}
-                  className="w-full"
-                >
-                  <Button
-                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground border border-accent/40 uppercase tracking-wider text-xs font-semibold py-2.5 flex items-center justify-center gap-2 shadow-sm"
+                {!isAuthenticated && (
+                  <Link
+                    to="/registreren"
+                    onClick={() => setMobileOpen(false)}
+                    className="w-full"
                   >
-                    <UserPlus className="w-4 h-4" />
-                    <span>Lid worden</span>
-                  </Button>
-                </Link>
+                    <Button
+                      className="w-full bg-primary hover:bg-primary/90 text-primary-foreground border border-accent/40 uppercase tracking-wider text-xs font-semibold py-2.5 flex items-center justify-center gap-2 shadow-sm"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      <span>Lid worden</span>
+                    </Button>
+                  </Link>
+                )}
 
                 <Link
                   to="/doneren"
