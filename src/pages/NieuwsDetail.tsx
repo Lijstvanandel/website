@@ -16,6 +16,7 @@ import {
 import { toast } from "sonner";
 import { NewsItem } from "@/data/news";
 import { ShareDialog } from "@/components/ShareDialog";
+import { InteractiveArticleRenderer } from "@/components/InteractiveArticleRenderer";
 
 export default function NieuwsDetail() {
   const { id } = useParams<{ id: string }>();
@@ -398,12 +399,9 @@ export default function NieuwsDetail() {
               </p>
             )}
 
-            {/* Render formatted HTML content or fallback to text */}
+            {/* Render formatted HTML content with interactive dataproducts & hover-activated maps */}
             {article.content?.includes("<") ? (
-              <div
-                className="prose prose-lg dark:prose-invert max-w-none text-foreground/90 leading-relaxed [&_h2]:font-display [&_h2]:text-2xl [&_h2]:mb-3 [&_h2]:mt-8 [&_h2]:text-foreground [&_h3]:font-display [&_h3]:text-xl [&_h3]:text-accent [&_h3]:mt-6 [&_h3]:mb-2 [&_a]:text-accent [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-accent [&_blockquote]:pl-4 [&_blockquote]:italic [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mb-4"
-                dangerouslySetInnerHTML={{ __html: article.content }}
-              />
+              <InteractiveArticleRenderer content={article.content} />
             ) : (
               <div className="whitespace-pre-wrap text-foreground/90 leading-relaxed text-base md:text-lg">
                 {article.content}

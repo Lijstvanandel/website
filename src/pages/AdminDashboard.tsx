@@ -1743,9 +1743,9 @@ export default function AdminDashboard() {
                 {/* Inhoud met .html invoegen en opmaak wijzigen */}
                 <div>
                   <label className="text-sm font-medium mb-1 block flex items-center justify-between">
-                    <span>Inhoud & Opmaak *</span>
+                    <span>Inhoud & Opmaak (Afbeeldingen, Dataproducten & Kaarten) *</span>
                     <span className="text-xs text-accent font-normal">
-                      HTML-bestanden en opmaak ondersteund
+                      .html kaarten, Python grafieken & afbeeldingen ondersteund
                     </span>
                   </label>
                   <NewsContentEditor

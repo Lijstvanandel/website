@@ -339,7 +339,9 @@ const storage = multer.diskStorage({
       subfolder = 'public/uploads/videos';
     } else if (file.fieldname === 'thumbnail' && url.includes('/videos')) {
       subfolder = 'public/uploads/videos';
-    } else if (url.includes('/news')) {
+    } else if (url.includes('/dataproduct') || file.fieldname === 'dataproduct' || file.originalname.toLowerCase().endsWith('.html') || file.originalname.toLowerCase().endsWith('.htm')) {
+      subfolder = 'public/uploads/dataproducts';
+    } else if (url.includes('/news') || url.includes('/upload-image') || file.fieldname === 'image') {
       subfolder = 'public/uploads/news';
     } else if (url.includes('/events')) {
       subfolder = 'public/uploads/events';
@@ -424,11 +426,32 @@ async function startServer() {
       if (filePath.endsWith('.pdf')) {
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', 'inline');
+      } else if (filePath.endsWith('.html') || filePath.endsWith('.htm')) {
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
       } else if (/\.(jpg|jpeg|png|webp|svg|gif)$/i.test(filePath)) {
         res.setHeader('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400');
       }
     }
   };
+
+  // Dedicated route for interactive .html dataproducts (Folium maps, Plotly graphs, etc.)
+  app.get("/uploads/dataproducts/:filename", (req, res, next) => {
+    const safeFilename = path.basename(req.params.filename);
+    const candidatePaths = [
+      path.join(uploadsPath, "dataproducts", safeFilename),
+      path.join(process.cwd(), "dist", "uploads", "dataproducts", safeFilename),
+      path.join(uploadsPath, safeFilename)
+    ];
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p) && fs.statSync(p).isFile()) {
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.setHeader("X-Content-Type-Options", "nosniff");
+        return res.sendFile(p);
+      }
+    }
+    next();
+  });
 
   // Dedicated routes with cross-folder fallback for uploaded documents/PDFs
   app.get("/uploads/stemgedrag/:filename", (req, res, next) => {
@@ -1025,6 +1048,40 @@ async function startServer() {
     db.news = db.news.filter((n: any) => n.id !== req.params.id);
     saveDb(db);
     res.json({ message: "Nieuws verwijderd" });
+  });
+
+  // Admin: Upload news article image (for insertion in article content)
+  app.post("/api/admin/news/upload-image", requireAuth, requireAdmin, upload.single("image"), (req: any, res: any) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "Geen afbeeldingsbestand ontvangen" });
+    }
+    mirrorUploadToDist(path.join("uploads", "news", req.file.filename));
+    const url = `/uploads/news/${req.file.filename}`;
+    res.json({
+      success: true,
+      url,
+      filename: req.file.originalname,
+      size: req.file.size
+    });
+  });
+
+  // Admin: Upload interactive .html dataproduct (Python Folium maps, Plotly charts, Altair, etc.)
+  app.post("/api/admin/news/upload-dataproduct", requireAuth, requireAdmin, upload.single("file"), (req: any, res: any) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "Geen .html bestand ontvangen" });
+    }
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    if (ext !== ".html" && ext !== ".htm") {
+      return res.status(400).json({ error: "Alleen .html of .htm bestanden zijn toegestaan voor interactieve dataproducten" });
+    }
+    mirrorUploadToDist(path.join("uploads", "dataproducts", req.file.filename));
+    const url = `/uploads/dataproducts/${req.file.filename}`;
+    res.json({
+      success: true,
+      url,
+      filename: req.file.originalname,
+      size: req.file.size
+    });
   });
 
   // Category Management Routes
