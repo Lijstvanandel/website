@@ -383,7 +383,6 @@ export default function Register() {
                       <SelectContent>
                         <SelectItem value="Dhr.">Dhr.</SelectItem>
                         <SelectItem value="Mevr.">Mevr.</SelectItem>
-                        <SelectItem value="Anders">Anders</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />

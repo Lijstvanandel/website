@@ -11,6 +11,8 @@ import {
   LogOut,
   Contrast,
   Check,
+  Heart,
+  UserPlus,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { Button } from "@/components/ui/button";
@@ -225,12 +227,34 @@ export const Header = () => {
             {/* 1. Plan belafspraak Button */}
             <Button
               onClick={() => setBelOpen(true)}
-              className="hidden sm:inline-flex bg-primary hover:bg-primary/90 text-primary-foreground border border-accent/40 uppercase tracking-wider text-xs font-semibold px-3 xl:px-4 h-9 sm:h-10 whitespace-nowrap shrink-0 shadow-sm"
+              className="hidden sm:inline-flex bg-primary hover:bg-primary/90 text-primary-foreground border border-accent/40 uppercase tracking-wider text-xs font-semibold px-2.5 xl:px-3.5 h-9 sm:h-10 whitespace-nowrap shrink-0 shadow-sm"
             >
               <Phone className="w-3.5 h-3.5 mr-1.5" />
               <span className="hidden xl:inline">Plan belafspraak</span>
-              <span className="xl:hidden">Belafspraak</span>
+              <span className="xl:hidden">Afspraak</span>
             </Button>
+
+            {/* 2. Lid worden Button */}
+            <Link to="/registreren" className="hidden md:inline-flex">
+              <Button
+                variant="outline"
+                className="border-accent/40 text-accent hover:bg-accent/15 uppercase tracking-wider text-xs font-semibold px-2.5 xl:px-3.5 h-9 sm:h-10 whitespace-nowrap shrink-0 shadow-2xs"
+              >
+                <UserPlus className="w-3.5 h-3.5 mr-1.5" />
+                <span>Lid worden</span>
+              </Button>
+            </Link>
+
+            {/* 3. Doneren Button */}
+            <Link to="/doneren" className="inline-flex">
+              <Button
+                variant="outline"
+                className="border-rose-400/50 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 uppercase tracking-wider text-xs font-semibold px-2.5 xl:px-3.5 h-9 sm:h-10 whitespace-nowrap shrink-0 shadow-2xs"
+              >
+                <Heart className="w-3.5 h-3.5 mr-1.5 fill-rose-600 text-rose-600" />
+                <span>Doneren</span>
+              </Button>
+            </Link>
 
             {/* 2. Tekstgrootte vergroten & verkleinen knoppen (tussen belafspraak en dark/lightmode) */}
             <div
@@ -519,17 +543,47 @@ export const Header = () => {
                 </NavLink>
               ))}
 
-              {/* Mobile Plan Belafspraak */}
-              <Button
-                onClick={() => {
-                  setBelOpen(true);
-                  setMobileOpen(false);
-                }}
-                className="mt-3 bg-primary hover:bg-primary/90 text-primary-foreground border border-accent/40 uppercase tracking-wider text-xs font-semibold py-2.5 w-full flex items-center justify-center gap-2"
-              >
-                <Phone className="w-4 h-4" />
-                <span>Plan een belafspraak</span>
-              </Button>
+              {/* Mobile Action Buttons */}
+              <div className="mt-3 flex flex-col gap-2">
+                <Button
+                  onClick={() => {
+                    setBelOpen(true);
+                    setMobileOpen(false);
+                  }}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground border border-accent/40 uppercase tracking-wider text-xs font-semibold py-2.5 w-full flex items-center justify-center gap-2"
+                >
+                  <Phone className="w-4 h-4" />
+                  <span>Plan een belafspraak</span>
+                </Button>
+
+                <Link
+                  to="/registreren"
+                  onClick={() => setMobileOpen(false)}
+                  className="w-full"
+                >
+                  <Button
+                    variant="outline"
+                    className="w-full border-accent/40 text-accent hover:bg-accent/15 uppercase tracking-wider text-xs font-semibold py-2.5 flex items-center justify-center gap-2"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    <span>Lid worden</span>
+                  </Button>
+                </Link>
+
+                <Link
+                  to="/doneren"
+                  onClick={() => setMobileOpen(false)}
+                  className="w-full"
+                >
+                  <Button
+                    variant="outline"
+                    className="w-full border-rose-400/50 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 uppercase tracking-wider text-xs font-semibold py-2.5 flex items-center justify-center gap-2"
+                  >
+                    <Heart className="w-4 h-4 fill-rose-600 text-rose-600" />
+                    <span>Doneren aan de partij</span>
+                  </Button>
+                </Link>
+              </div>
 
               {/* Mobile Toegankelijkheid Sectie (Tekstgrootte & Kleurcontrast) */}
               <div className="mt-3 p-3 bg-muted/30 border border-accent/20 rounded-md space-y-3">

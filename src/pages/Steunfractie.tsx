@@ -13,18 +13,18 @@ interface Steunlid {
 
 const steunfractie: Steunlid[] = [
   {
-    id: "nico-noort",
-    naam: "Nico Noort",
-    voornaam: "Nico",
+    id: "nico",
+    naam: "?",
+    voornaam: "?",
     rol: "Steunfractielid",
     img: silhouette,
     bio: "Lid van de steunfractie van Lijst van Andel. Ondersteunt de fractie inhoudelijk en helpt bij onderzoek, dossiers en contact met inwoners.",
     socials: { instagram: "#", facebook: "#", linkedin: "#" },
   },
   {
-    id: "antonius-nicola",
-    naam: "Antonius Nicola",
-    voornaam: "Antonius",
+    id: "antonius",
+    naam: "?",
+    voornaam: "?",
     rol: "Steunfractielid",
     img: silhouette,
     bio: "Lid van de steunfractie van Lijst van Andel. Ondersteunt de fractie inhoudelijk en helpt bij onderzoek, dossiers en contact met inwoners.",

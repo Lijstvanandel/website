@@ -24,6 +24,8 @@ import WijkDetail from "./pages/WijkDetail";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import Doneren from "./pages/Doneren";
+import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard";
 import AdminDashboard from "./pages/AdminDashboard";
 
@@ -59,6 +61,10 @@ const App = () => (
                   <Route path="/wijken-en/kernen" element={<WijkenEnKernen />} />
                   <Route path="/wijken-en/kernen/:slug" element={<WijkDetail />} />
                   <Route path="/contact" element={<Contact />} />
+                  <Route path="/doneren" element={<Doneren />} />
+                  <Route path="/doneren/*" element={<Doneren />} />
+                  <Route path="/doneer" element={<Doneren />} />
+                  <Route path="/reset-wachtwoord" element={<ResetPassword />} />
                   <Route path="/login" element={<Login />} />
                   <Route path="/registreren" element={<Register />} />
                   <Route path="/dashboard" element={<Dashboard />} />

@@ -14,8 +14,8 @@ interface Bestuurslid {
 const bestuur: Bestuurslid[] = [
   {
     id: "voorzitter",
-    naam: "Peggy Noort",
-    voornaam: "peggy",
+    naam: "?",
+    voornaam: "?",
     rol: "Voorzitter",
     img: placeholder,
     bio: "Voorzitter van het bestuur van Lijst van Andel. Bewaakt koers, samenhang en verbinding tussen bestuur en fractie.",
@@ -32,8 +32,8 @@ const bestuur: Bestuurslid[] = [
   },
   {
     id: "penningmeester",
-    naam: "Wanda Nicolai",
-    voornaam: "Wanda",
+    naam: "?",
+    voornaam: "?",
     rol: "Penningmeester",
     img: placeholder,
     bio: "Bestuurslid van Lijst van Andel. Met een nuchtere blik en oog voor detail draagt hij bij aan een gezonde partijorganisatie.",

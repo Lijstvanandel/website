@@ -814,11 +814,24 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
     }
   }
 
-  // 12. Login / Register / Dashboard / Admin (Noindex for private / auth pages)
-  if (cleanPath === "/login" || cleanPath === "/registreren" || cleanPath === "/dashboard" || cleanPath === "/admin") {
+  // 12. Doneren & Giftenreglement
+  if (cleanPath === "/doneren" || cleanPath === "/doneer" || cleanPath.startsWith("/doneren/")) {
     return {
-      title: "Ledenportaal & Beheer | Lijst van Andel",
-      description: "Inloggen voor leden en fractieleden van politieke partij Lijst van Andel.",
+      title: "Doneren aan Lijst van Andel | Steun de Lokale Politiek",
+      description: "Steun Lijst van Andel met een vrijwillige gift. Wij zijn een onafhankelijke lokale partij in Steenwijkerland. Transparantie conform ons Giftenreglement.",
+      ogTitle: "Doneren aan Lijst van Andel Steenwijkerland",
+      ogDescription: "Help ons op te komen voor de belangen van alle inwoners in Steenwijkerland met een online donatie.",
+      ogImage: DEFAULT_IMAGE,
+      ogType: "website",
+      canonicalUrl: `${baseUrl}/doneren`
+    };
+  }
+
+  // 13. Login / Register / Reset Password / Dashboard / Admin (Noindex for private / auth pages)
+  if (cleanPath === "/login" || cleanPath === "/registreren" || cleanPath === "/reset-wachtwoord" || cleanPath === "/dashboard" || cleanPath === "/admin") {
+    return {
+      title: cleanPath === "/reset-wachtwoord" ? "Wachtwoord herstellen | Lijst van Andel" : "Ledenportaal & Beheer | Lijst van Andel",
+      description: "Inloggen en accountbeheer voor leden en fractieleden van politieke partij Lijst van Andel.",
       ogTitle: "Ledenportaal | Lijst van Andel",
       ogDescription: "Toegang tot het interne ledenportaal en fractiedossiers.",
       ogImage: DEFAULT_IMAGE,

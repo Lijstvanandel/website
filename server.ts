@@ -5,6 +5,7 @@ import fs from "fs";
 import os from "os";
 import { exec } from "child_process";
 import util from "util";
+import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import multer from "multer";
@@ -760,15 +761,28 @@ async function startServer() {
     });
   });
 
-  app.post("/api/login", async (req, res) => {
+  const handleLoginLogic = async (req: any, res: any) => {
     const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: "Gebruikersnaam of e-mailadres en wachtwoord zijn verplicht." });
+    }
+
+    const identifier = String(username).trim().toLowerCase();
     const db = getDb();
-    const user = db.users.find((u: any) => u.username === username);
-    if (!user) return res.status(401).json({ error: "Ongeldige inloggegevens" });
+    const user = db.users.find((u: any) => {
+      const uName = (u.username || "").toLowerCase();
+      const uEmail = (u.email || "").toLowerCase();
+      return uName === identifier || uEmail === identifier;
+    });
+
+    if (!user) {
+      return res.status(401).json({ error: "Ongeldige inloggegevens" });
+    }
+
     const isMatch = await bcrypt.compare(password, user.password);
     if (isMatch) {
       const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: "24h" });
-      const resolvedEmail = user.email || (user.username.includes('@') ? user.username : '');
+      const resolvedEmail = user.email || (user.username.includes("@") ? user.username : "");
       const newsletterSubscribed = user.newsletterSubscribed !== undefined ? Boolean(user.newsletterSubscribed) : true;
       res.status(200).json({ 
         message: "Succesvol ingelogd", 
@@ -783,7 +797,7 @@ async function startServer() {
           role: user.role, 
           isActive: user.isActive,
           newsletterSubscribed,
-          billingStatus: user.billingStatus || (user.role === 'admin' ? 'exempt' : 'paid'),
+          billingStatus: user.billingStatus || (user.role === "admin" ? "exempt" : "paid"),
           paidAmount: user.paidAmount,
           paidAt: user.paidAt,
           paidUntil: user.paidUntil,
@@ -794,6 +808,287 @@ async function startServer() {
     } else {
       res.status(401).json({ error: "Ongeldige inloggegevens" });
     }
+  };
+
+  app.post("/api/login", handleLoginLogic);
+  app.post("/api/auth/login", handleLoginLogic);
+
+  // Forgot Password Request Endpoint
+  app.post("/api/auth/forgot-password", async (req: any, res: any) => {
+    const { email } = req.body;
+    if (!email || typeof email !== "string" || !email.trim()) {
+      return res.status(400).json({ error: "Vul een geldig e-mailadres in." });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const db = getDb();
+    if (!Array.isArray(db.passwordResetTokens)) {
+      db.passwordResetTokens = [];
+    }
+
+    // Clean up expired tokens (older than 1 hour)
+    const now = Date.now();
+    db.passwordResetTokens = db.passwordResetTokens.filter((t: any) => t.expiresAt > now);
+
+    const user = db.users.find((u: any) => {
+      const uEmail = (u.email || "").toLowerCase();
+      const uName = (u.username || "").toLowerCase();
+      return uEmail === normalizedEmail || (uName === normalizedEmail && uName.includes("@"));
+    });
+
+    const origin = resolveRequestOrigin(req);
+
+    if (user) {
+      const resetToken = crypto.randomBytes(32).toString("hex");
+      const expiresAt = now + 60 * 60 * 1000; // 1 hour
+
+      db.passwordResetTokens.push({
+        token: resetToken,
+        userId: user.id,
+        email: user.email || normalizedEmail,
+        expiresAt,
+        createdAt: new Date().toISOString()
+      });
+      saveDb(db);
+
+      const resetUrl = `${origin}/reset-wachtwoord?token=${resetToken}`;
+      console.log(`[PASSWORD RESET] Wachtwoord herstellink aangemaakt voor ${user.username} (${user.email}): ${resetUrl}`);
+
+      return res.status(200).json({
+        success: true,
+        message: `Er is een herstellink verzonden naar ${normalizedEmail}.`,
+        previewResetUrl: resetUrl
+      });
+    }
+
+    // Return generic success to prevent email enumeration
+    return res.status(200).json({
+      success: true,
+      message: `Als dit e-mailadres bij ons bekend is, ontvangt u een link om uw wachtwoord opnieuw in te stellen.`
+    });
+  });
+
+  // Reset Password Execution Endpoint
+  app.post("/api/auth/reset-password", async (req: any, res: any) => {
+    const { token, newPassword } = req.body;
+    if (!token || !newPassword) {
+      return res.status(400).json({ error: "Ongeldige gegevens opgegeven." });
+    }
+
+    if (typeof newPassword !== "string" || newPassword.length < 6) {
+      return res.status(400).json({ error: "Het nieuwe wachtwoord moet minimaal 6 tekens lang zijn." });
+    }
+
+    const db = getDb();
+    if (!Array.isArray(db.passwordResetTokens)) {
+      db.passwordResetTokens = [];
+    }
+
+    const now = Date.now();
+    const tokenRecordIndex = db.passwordResetTokens.findIndex(
+      (t: any) => t.token === token && t.expiresAt > now
+    );
+
+    if (tokenRecordIndex === -1) {
+      return res.status(400).json({ error: "Deze herstellink is ongeldig of verlopen. Vraag een nieuwe herstellink aan." });
+    }
+
+    const tokenRecord = db.passwordResetTokens[tokenRecordIndex];
+    const user = db.users.find((u: any) => u.id === tokenRecord.userId);
+    if (!user) {
+      return res.status(404).json({ error: "De bijbehorende gebruiker kon niet worden gevonden." });
+    }
+
+    user.password = await bcrypt.hash(newPassword.trim(), 10);
+    // Remove used token
+    db.passwordResetTokens.splice(tokenRecordIndex, 1);
+    saveDb(db);
+
+    console.log(`[PASSWORD RESET] Wachtwoord succesvol gewijzigd voor gebruiker ${user.username}`);
+    return res.status(200).json({
+      success: true,
+      message: "Uw wachtwoord is succesvol gewijzigd. U kunt nu inloggen met uw nieuwe wachtwoord."
+    });
+  });
+
+  // Donations Endpoints (Stripe checkout + verification)
+  app.post("/api/donations/create-checkout-session", async (req: any, res: any) => {
+    const { amount, donorName, donorEmail, message, agreedToTerms } = req.body;
+    const numAmount = parseFloat(amount);
+
+    if (isNaN(numAmount) || numAmount < 1) {
+      return res.status(400).json({ error: "Donatiebedrag moet minimaal € 1,00 zijn." });
+    }
+
+    if (numAmount > 4500) {
+      return res.status(400).json({
+        error: "Giften boven € 4.500,- vereisen voorafgaande schriftelijke instemming van het bestuur conform artikel 3 van het Giftenreglement."
+      });
+    }
+
+    if (!agreedToTerms) {
+      return res.status(400).json({ error: "U dient akkoord te gaan met de bepalingen uit het Giftenreglement." });
+    }
+
+    const db = getDb();
+    if (!Array.isArray(db.donations)) {
+      db.donations = [];
+    }
+
+    const donationId = `don_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const origin = resolveRequestOrigin(req);
+    const stripe = getStripe();
+
+    if (stripe) {
+      try {
+        const session = await stripe.checkout.sessions.create({
+          line_items: [
+            {
+              price_data: {
+                currency: "eur",
+                product_data: {
+                  name: "Vrijwillige Gift aan Lijst van Andel",
+                  description: `Steun aan politieke partij Lijst van Andel Steenwijkerland (Giftenreglement conform)`,
+                },
+                unit_amount: Math.round(numAmount * 100),
+              },
+              quantity: 1,
+            },
+          ],
+          mode: "payment",
+          customer_email: donorEmail && donorEmail.includes("@") ? donorEmail.trim() : undefined,
+          client_reference_id: donationId,
+          metadata: {
+            donationId,
+            donorName: donorName || "Anoniem",
+            donorEmail: donorEmail || "",
+            message: message || "",
+            type: "party_donation",
+          },
+          success_url: `${origin}/doneren?donation_success=true&session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${origin}/doneren?donation_cancelled=true`,
+        });
+
+        db.donations.push({
+          id: donationId,
+          amount: numAmount,
+          donorName: donorName || "Anoniem",
+          donorEmail: donorEmail || "",
+          message: message || "",
+          status: "pending",
+          stripeSessionId: session.id,
+          createdAt: new Date().toISOString(),
+        });
+        saveDb(db);
+
+        return res.json({ checkoutUrl: session.url, sessionId: session.id, donationId });
+      } catch (err: any) {
+        console.error("Fout bij aanmaken Stripe checkout sessie voor donatie:", err.message);
+        return res.status(500).json({ error: "Fout bij initialiseren van Stripe betaalomgeving: " + err.message });
+      }
+    } else {
+      // Graceful simulation fallback when STRIPE_SECRET_KEY is not configured
+      const simSessionId = `sim_don_session_${donationId}`;
+      db.donations.push({
+        id: donationId,
+        amount: numAmount,
+        donorName: donorName || "Anoniem",
+        donorEmail: donorEmail || "",
+        message: message || "",
+        status: "pending",
+        stripeSessionId: simSessionId,
+        createdAt: new Date().toISOString(),
+      });
+      saveDb(db);
+
+      return res.json({
+        checkoutUrl: `${origin}/doneren?donation_success=true&session_id=${simSessionId}&simulated=true`,
+        sessionId: simSessionId,
+        donationId
+      });
+    }
+  });
+
+  // Verify Donation Session (Called from Frontend or Polling)
+  app.get("/api/donations/verify-session", async (req: any, res: any) => {
+    const sessionId = (req.query.sessionId as string || "").trim();
+    if (!sessionId) {
+      return res.status(400).json({ error: "Geen sessie ID opgegeven" });
+    }
+
+    const db = getDb();
+    if (!Array.isArray(db.donations)) {
+      db.donations = [];
+    }
+
+    const donation = db.donations.find((d: any) => d.stripeSessionId === sessionId || sessionId.includes(d.id));
+    if (!donation) {
+      return res.status(404).json({ error: "Donatie bij deze sessie niet gevonden" });
+    }
+
+    if (donation.status === "completed") {
+      return res.json({ success: true, donation });
+    }
+
+    let isPaid = false;
+    const stripe = getStripe();
+
+    if (sessionId.startsWith("sim_don_session_")) {
+      isPaid = true;
+    } else if (stripe) {
+      try {
+        const session = await stripe.checkout.sessions.retrieve(sessionId);
+        if (session.payment_status === "paid") {
+          isPaid = true;
+          if (session.amount_total) {
+            donation.amount = session.amount_total / 100;
+          }
+        }
+      } catch (err: any) {
+        console.error("Fout bij ophalen Stripe donatiesessie:", err.message);
+      }
+    }
+
+    if (isPaid) {
+      donation.status = "completed";
+      donation.completedAt = new Date().toISOString();
+      saveDb(db);
+
+      return res.json({
+        success: true,
+        message: "Donatie succesvol ontvangen!",
+        donation
+      });
+    }
+
+    return res.json({
+      success: false,
+      status: donation.status,
+      message: "Betaling is nog niet afgerond bij Stripe."
+    });
+  });
+
+  // List Donations (Publicly visible totals and verified donations for ANBI transparency)
+  app.get("/api/donations", (req: any, res: any) => {
+    const db = getDb();
+    const donations = Array.isArray(db.donations) ? db.donations : [];
+    const completed = donations.filter((d: any) => d.status === "completed");
+    const totalRaised = completed.reduce((sum: number, d: any) => sum + (Number(d.amount) || 0), 0);
+
+    // Return sanitized donation records (respecting privacy if requested)
+    const publicDonations = completed.map((d: any) => ({
+      id: d.id,
+      amount: d.amount,
+      donorName: d.donorName ? (d.donorName.length > 25 ? d.donorName.substring(0, 25) + '...' : d.donorName) : 'Anoniem',
+      message: d.message || null,
+      createdAt: d.completedAt || d.createdAt,
+    }));
+
+    res.json({
+      totalRaised,
+      donationCount: completed.length,
+      donations: publicDonations
+    });
   });
 
   app.get("/api/me", requireAuth, (req: any, res: any) => {

@@ -4,7 +4,18 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { CheckCircle2, Users, Bell, Vote, Calendar, ArrowRight, Sparkles } from "lucide-react";
+import {
+  CheckCircle2,
+  Users,
+  Bell,
+  Vote,
+  Calendar,
+  ArrowRight,
+  Sparkles,
+  KeyRound,
+  Mail,
+  Loader2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -15,10 +26,17 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useAuth } from "@/context/AuthContext";
 
 const loginSchema = z.object({
-  username: z.string().min(1, "Gebruikersnaam is verplicht"),
+  username: z.string().min(1, "Gebruikersnaam of e-mailadres is verplicht"),
   password: z.string().min(1, "Wachtwoord is verplicht"),
 });
 
@@ -50,6 +68,13 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const redirectUrl = searchParams.get("redirect");
 
+  // Forgot password state
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [isSendingForgot, setIsSendingForgot] = useState(false);
+  const [forgotSent, setForgotSent] = useState(false);
+  const [previewResetUrl, setPreviewResetUrl] = useState<string | null>(null);
+
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
@@ -77,7 +102,7 @@ export default function Login() {
 
       login(result.user, result.token);
       toast.success("Succesvol ingelogd", {
-        description: `Welkom terug, ${result.user.username}!`,
+        description: `Welkom terug, ${result.user.name || result.user.username}!`,
       });
       navigate(redirectUrl || "/dashboard");
     } catch (err) {
@@ -89,6 +114,41 @@ export default function Login() {
       setIsLoading(false);
     }
   }
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmail.trim()) {
+      toast.error("Vul uw e-mailadres in");
+      return;
+    }
+
+    setIsSendingForgot(true);
+    try {
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: forgotEmail.trim() }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Kon herstellink niet verzenden");
+      }
+
+      setForgotSent(true);
+      if (data.previewResetUrl) {
+        setPreviewResetUrl(data.previewResetUrl);
+      }
+      toast.success("Herstellink verzonden!", {
+        description: data.message,
+      });
+    } catch (err: unknown) {
+      const error = err as Error;
+      toast.error(error.message || "Er is een fout opgetreden");
+    } finally {
+      setIsSendingForgot(false);
+    }
+  };
 
   return (
     <div className="container max-w-5xl mx-auto py-12 md:py-20 px-4">
@@ -104,7 +164,7 @@ export default function Login() {
         <div className="lg:col-span-6 bg-card p-6 sm:p-8 rounded-xl shadow-lg border border-accent/20">
           <h2 className="text-xl font-display mb-1 text-foreground">Account inloggen</h2>
           <p className="text-xs text-foreground/70 mb-4">
-            Vul uw gebruikersnaam en wachtwoord in om verder te gaan.
+            Vul uw gebruikersnaam of e-mailadres en wachtwoord in om verder te gaan.
           </p>
 
           {redirectUrl && (
@@ -121,9 +181,9 @@ export default function Login() {
                 name="username"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Gebruikersnaam</FormLabel>
+                    <FormLabel>Gebruikersnaam of e-mailadres</FormLabel>
                     <FormControl>
-                      <Input placeholder="Uw gebruikersnaam" {...field} />
+                      <Input placeholder="Gebruikersnaam of e-mailadres" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -134,7 +194,16 @@ export default function Login() {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Wachtwoord</FormLabel>
+                    <div className="flex items-center justify-between">
+                      <FormLabel>Wachtwoord</FormLabel>
+                      <button
+                        type="button"
+                        onClick={() => setForgotOpen(true)}
+                        className="text-xs text-accent hover:underline focus:outline-none font-medium"
+                      >
+                        Wachtwoord vergeten?
+                      </button>
+                    </div>
                     <FormControl>
                       <Input type="password" placeholder="Uw wachtwoord" {...field} />
                     </FormControl>
@@ -214,6 +283,91 @@ export default function Login() {
           </div>
         </div>
       </div>
+
+      {/* DIALOG: WACHTWOORD VERGETEN */}
+      <Dialog
+        open={forgotOpen}
+        onOpenChange={(open) => {
+          setForgotOpen(open);
+          if (!open) {
+            setTimeout(() => {
+              setForgotSent(false);
+              setForgotEmail("");
+              setPreviewResetUrl(null);
+            }, 300);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md p-6">
+          <DialogHeader>
+            <div className="w-12 h-12 rounded-2xl bg-accent/10 text-accent flex items-center justify-center mb-2 ring-8 ring-accent/5">
+              <KeyRound className="w-6 h-6" />
+            </div>
+            <DialogTitle className="text-xl font-display font-bold text-foreground">
+              Wachtwoord vergeten
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground pt-1">
+              Voer het e-mailadres van uw ledenaccount in. Wij sturen u direct een veilige herstellink om een nieuw wachtwoord in te stellen.
+            </DialogDescription>
+          </DialogHeader>
+
+          {forgotSent ? (
+            <div className="space-y-4 py-3">
+              <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-xs text-emerald-900 dark:text-emerald-200 flex items-start gap-3">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                <div className="space-y-1 leading-relaxed">
+                  <div className="font-semibold text-emerald-800 dark:text-emerald-300">E-mail verstuurd</div>
+                  <p>
+                    Als het e-mailadres <strong>{forgotEmail}</strong> bij ons bekend is, heeft u een e-mail ontvangen met instructies en een link om uw wachtwoord opnieuw in te stellen.
+                  </p>
+                </div>
+              </div>
+
+              {previewResetUrl && (
+                <div className="p-3 bg-secondary/50 rounded-lg border border-border text-xs space-y-1.5">
+                  <span className="font-semibold text-foreground block">Testlink voor deze sessie:</span>
+                  <a href={previewResetUrl} className="text-accent hover:underline break-all block text-[11px]">
+                    {previewResetUrl}
+                  </a>
+                </div>
+              )}
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setForgotOpen(false)}
+                className="w-full text-xs h-10 mt-2"
+              >
+                Sluiten en terug naar inloggen
+              </Button>
+            </div>
+          ) : (
+            <form onSubmit={handleForgotPassword} className="space-y-4 py-2">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold uppercase tracking-wider block text-foreground">
+                  E-mailadres
+                </label>
+                <div className="relative">
+                  <Input
+                    type="email"
+                    placeholder="uw-naam@voorbeeld.nl"
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    required
+                    className="pl-9"
+                    autoFocus
+                  />
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                </div>
+              </div>
+
+              <Button type="submit" disabled={isSendingForgot} className="w-full h-11 text-sm font-semibold">
+                {isSendingForgot ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Versturen...</> : "Verstuur herstellink"}
+              </Button>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
