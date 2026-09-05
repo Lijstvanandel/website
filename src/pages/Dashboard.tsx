@@ -25,6 +25,9 @@ import {
   Lock,
   Eye,
   ShieldAlert,
+  Trash2,
+  AlertTriangle,
+  CalendarX,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -108,6 +111,14 @@ export default function Dashboard() {
   const [profilePassword, setProfilePassword] = useState("");
   const [profileRemarks, setProfileRemarks] = useState(user?.remarks || "");
   const [profileDirectDebit, setProfileDirectDebit] = useState(user?.directDebit || false);
+
+  // Account Verwijderen State
+  const [isDeleteAccountOpen, setIsDeleteAccountOpen] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+
+  // Afmelden voor Evenement State
+  const [unattendEvent, setUnattendEvent] = useState<EventItem | null>(null);
+  const [isUnattending, setIsUnattending] = useState(false);
 
   // Exclusieve Ledendocumenten State
   const [memberDocuments, setMemberDocuments] = useState<MemberDocument[]>([]);
@@ -313,6 +324,59 @@ export default function Dashboard() {
       toast.error(error.message || "Er is een fout opgetreden bij het bijwerken van uw gegevens");
     } finally {
       setIsSavingProfile(false);
+    }
+  };
+
+  // Handle Account Deletion
+  const handleDeleteAccount = async () => {
+    if (!token) return;
+    setIsDeletingAccount(true);
+    try {
+      const res = await fetch("/api/me/account", {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || "Kon account niet verwijderen");
+      }
+      toast.success(data.message || "Uw account is definitief verwijderd.");
+      setIsDeleteAccountOpen(false);
+      setIsEditProfileOpen(false);
+      logout();
+    } catch (err: unknown) {
+      const error = err as Error;
+      toast.error(error.message || "Er is een fout opgetreden bij het verwijderen van uw account");
+    } finally {
+      setIsDeletingAccount(false);
+    }
+  };
+
+  // Handle Event Un-attend / Afmelden
+  const handleConfirmUnattend = async () => {
+    if (!token || !unattendEvent) return;
+    setIsUnattending(true);
+    try {
+      const res = await fetch(`/api/events/${unattendEvent.id}/attend`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || "Kon niet afmelden voor dit evenement");
+      }
+      setAttendingEvents((prev) => prev.filter((e) => e.id !== unattendEvent.id));
+      toast.success(`U bent succesvol afgemeld voor "${unattendEvent.title}".`);
+      setUnattendEvent(null);
+    } catch (err: unknown) {
+      const error = err as Error;
+      toast.error(error.message || "Er is een fout opgetreden bij het afmelden");
+    } finally {
+      setIsUnattending(false);
     }
   };
 
@@ -793,6 +857,19 @@ export default function Dashboard() {
                             </span>
                           </div>
                         </div>
+                        <div className="pt-2 border-t border-border/60 flex items-center justify-between gap-2">
+                          <span className="text-[11px] text-muted-foreground">Kunt u toch niet komen?</span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setUnattendEvent(ev)}
+                            className="text-xs text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30 h-7.5 px-2.5 flex items-center gap-1.5"
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                            <span>Afmelden</span>
+                          </Button>
+                        </div>
                       </div>
                     ))
                   )}
@@ -1077,6 +1154,31 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {/* Account Verwijderen Optie */}
+            <div className="pt-3 border-t border-border/70">
+              <div className="p-3.5 rounded-xl border border-destructive/30 bg-destructive/5 space-y-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <span className="text-xs font-semibold text-destructive flex items-center gap-1.5">
+                      <Trash2 className="w-3.5 h-3.5" /> Account Verwijderen
+                    </span>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Wilt u uw account definitief opheffen? Al uw gegevens en agenda-aanmeldingen worden gewist.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsDeleteAccountOpen(true)}
+                    className="text-xs text-destructive hover:text-destructive-foreground hover:bg-destructive border-destructive/40 shrink-0 h-8 px-3"
+                  >
+                    Account verwijderen
+                  </Button>
+                </div>
+              </div>
+            </div>
+
             <div className="flex justify-end gap-2.5 pt-4 border-t border-border">
               <Button
                 type="button"
@@ -1337,6 +1439,131 @@ export default function Dashboard() {
         onClose={() => setViewingDocument(null)}
         user={user}
       />
+
+      {/* ============================================================ */}
+      {/* DIALOG: ACCOUNT DEFINITIEF VERWIJDEREN BEVESTIGING */}
+      {/* ============================================================ */}
+      <Dialog open={isDeleteAccountOpen} onOpenChange={setIsDeleteAccountOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-display flex items-center gap-2 text-destructive">
+              <AlertTriangle className="w-5 h-5 text-destructive shrink-0" />
+              <span>Account definitief verwijderen?</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground pt-1">
+              Weet u zeker dat u uw account bij Lijst van Andel wilt opzeggen en verwijderen?
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-xl text-xs text-destructive space-y-1">
+              <p className="font-semibold flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 shrink-0" /> Let op: deze actie kan niet ongedaan worden gemaakt.
+              </p>
+              <p className="text-[11px] text-foreground/80 leading-relaxed">
+                Al uw persoonsgegevens, ingestelde voorkeuren en aanmeldingen voor bijeenkomsten worden permanent gewist uit onze ledendatabase.
+              </p>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              U wordt na het verwijderen onmiddellijk uitgelogd en heeft niet langer toegang tot het besloten ledenportaal en exclusieve documenten.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-2.5 pt-3 border-t border-border">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsDeleteAccountOpen(false)}
+              className="text-xs h-9"
+              disabled={isDeletingAccount}
+            >
+              Annuleren
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleDeleteAccount}
+              disabled={isDeletingAccount}
+              className="text-xs h-9 flex items-center gap-1.5"
+            >
+              {isDeletingAccount ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Verwijderen...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Ja, account verwijderen
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ============================================================ */}
+      {/* DIALOG: AFMEDELEN VOOR EVENEMENT BEVESTIGING */}
+      {/* ============================================================ */}
+      <Dialog open={Boolean(unattendEvent)} onOpenChange={(open) => !open && setUnattendEvent(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-display flex items-center gap-2">
+              <CalendarX className="w-5 h-5 text-accent shrink-0" />
+              <span>Afmelden voor bijeenkomst</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground pt-1">
+              Wilt u zich afmelden voor <strong>{unattendEvent?.title}</strong>?
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2.5 py-2 text-xs text-foreground/90">
+            {unattendEvent && (
+              <div className="p-3 bg-secondary/50 rounded-lg border border-border space-y-1">
+                <div className="font-semibold text-foreground">{unattendEvent.title}</div>
+                <div className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                  <Calendar className="w-3 h-3 text-accent" /> {unattendEvent.date} ({unattendEvent.startTime} - {unattendEvent.endTime})
+                </div>
+              </div>
+            )}
+            <p className="text-muted-foreground text-xs">
+              Uw aanmelding wordt ingetrokken en het evenement wordt verwijderd uit &lsquo;Mijn Agenda&rsquo;. U kunt zich later altijd opnieuw aanmelden via de openbare agenda.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-2.5 pt-3 border-t border-border">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setUnattendEvent(null)}
+              className="text-xs h-9"
+              disabled={isUnattending}
+            >
+              Annuleren
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleConfirmUnattend}
+              disabled={isUnattending}
+              className="text-xs h-9 flex items-center gap-1.5"
+            >
+              {isUnattending ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Afmelden...
+                </>
+              ) : (
+                <>
+                  <XCircle className="w-3.5 h-3.5" />
+                  Bevestig afmelding
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

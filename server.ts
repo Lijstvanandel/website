@@ -1,4 +1,5 @@
 import express from "express";
+import compression from "compression";
 import path from "path";
 import fs from "fs";
 import os from "os";
@@ -383,6 +384,16 @@ function mirrorUploadToDist(subpath: string) {
 async function startServer() {
   const app = express();
   const PORT = 3000;
+
+  // Gzip/Brotli compression middleware for Core Web Vitals & fast LCP
+  app.use(compression({
+    threshold: 1024,
+    filter: (req, res) => {
+      if (req.headers['x-no-compression']) return false;
+      return compression.filter(req, res);
+    }
+  }));
+
   app.use(express.json());
 
   // Explicitly serve uploaded assets with PDF content-type and inline disposition
@@ -407,12 +418,14 @@ async function startServer() {
     // ignore
   }
   const staticUploadsOptions = {
-    maxAge: 0,
+    maxAge: 86400000 * 7, // 7 days browser cache
     dotfiles: 'allow' as const,
     setHeaders: (res: any, filePath: string) => {
       if (filePath.endsWith('.pdf')) {
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', 'inline');
+      } else if (/\.(jpg|jpeg|png|webp|svg|gif)$/i.test(filePath)) {
+        res.setHeader('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400');
       }
     }
   };
@@ -667,6 +680,37 @@ async function startServer() {
       message: "Uw gegevens zijn succesvol bijgewerkt!",
       user: safeUser,
       token
+    });
+  });
+
+  // Member Self-Deletion of Account
+  app.delete("/api/me/account", requireAuth, (req: any, res: any) => {
+    const db = getDb();
+    const user = db.users.find((u: any) => u.id === req.user.id);
+    if (!user) return res.status(404).json({ error: "Gebruiker niet gevonden" });
+
+    // Protect primary root admin account
+    if (user.username === "admin") {
+      return res.status(403).json({ error: "Het hoofdbeheerdersaccount 'admin' kan niet worden verwijderd." });
+    }
+
+    // Remove from db.users
+    db.users = db.users.filter((u: any) => u.id !== req.user.id);
+
+    // Remove user ID from all event attendees
+    if (Array.isArray(db.events)) {
+      db.events.forEach((ev: any) => {
+        if (Array.isArray(ev.attendees)) {
+          ev.attendees = ev.attendees.filter((uid: string) => String(uid) !== String(req.user.id));
+        }
+      });
+    }
+
+    saveDb(db);
+
+    res.json({
+      success: true,
+      message: "Uw account is definitief verwijderd. Al uw gegevens zijn gewist."
     });
   });
 
@@ -1104,7 +1148,9 @@ async function startServer() {
         isMember = true;
         currentUserId = decoded.id;
         isAdmin = decoded.role === "admin";
-      } catch (e) {}
+      } catch (e) {
+        // Token verification failed or expired, treat as guest
+      }
     }
 
     let events = db.events.filter((e: any) => e.isPublished);
@@ -1144,7 +1190,9 @@ async function startServer() {
         isMember = true;
         currentUserId = decoded.id;
         isAdmin = decoded.role === "admin";
-      } catch (e) {}
+      } catch (e) {
+        // Token verification failed or expired, treat as guest
+      }
     }
 
     const ev = db.events.find((e: any) => e.id === req.params.id);
@@ -1380,6 +1428,39 @@ async function startServer() {
       address: ev.address,
       fullAddress: ev.address,
       city: extractCity(ev.address)
+    });
+  });
+
+  // Member Un-attend / Afmelden for event
+  app.delete("/api/events/:id/attend", requireAuth, (req: any, res: any) => {
+    const db = getDb();
+    const ev = db.events.find((e: any) => e.id === req.params.id);
+    if (!ev) return res.status(404).json({ error: "Evenement niet gevonden" });
+
+    if (Array.isArray(ev.attendees)) {
+      ev.attendees = ev.attendees.filter((uid: string) => String(uid) !== String(req.user.id));
+      saveDb(db);
+    }
+    res.json({
+      success: true,
+      message: "U bent succesvol afgemeld voor dit evenement.",
+      isAttending: false
+    });
+  });
+
+  app.post("/api/events/:id/unattend", requireAuth, (req: any, res: any) => {
+    const db = getDb();
+    const ev = db.events.find((e: any) => e.id === req.params.id);
+    if (!ev) return res.status(404).json({ error: "Evenement niet gevonden" });
+
+    if (Array.isArray(ev.attendees)) {
+      ev.attendees = ev.attendees.filter((uid: string) => String(uid) !== String(req.user.id));
+      saveDb(db);
+    }
+    res.json({
+      success: true,
+      message: "U bent succesvol afgemeld voor dit evenement.",
+      isAttending: false
     });
   });
 
@@ -3027,6 +3108,9 @@ Disallow: /dashboard
 Disallow: /login
 Disallow: /registreren
 Disallow: /api/
+Disallow: /*?*filter=
+Disallow: /*?*sort=
+Disallow: /*?*tab=
 
 Sitemap: ${baseUrl}/sitemap.xml
 `;
@@ -3096,8 +3180,18 @@ Sitemap: ${baseUrl}/sitemap.xml
       cachedIndexHtml = fs.readFileSync(indexHtmlPath, "utf-8");
     }
 
-    // Serve static assets first (js, css, images)
-    app.use(express.static(distPath, { index: false }));
+    // Serve static assets first (js, css, images) with aggressive caching for fast Core Web Vitals
+    app.use(express.static(distPath, {
+      index: false,
+      maxAge: '30d',
+      setHeaders: (res, filePath) => {
+        if (filePath.includes('/assets/')) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        } else if (/\.(jpg|jpeg|png|webp|svg|ico|woff2?)$/i.test(filePath)) {
+          res.setHeader('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400');
+        }
+      }
+    }));
 
     // All page routes get dynamic server-side OpenGraph / SEO injection
     app.get('*all', (req, res) => {

@@ -6,6 +6,7 @@ import heroBanner from "@/assets/steenwijk-aerial.jpg";
 import sammyImg from "@/assets/sammy.png";
 import lisaImg from "@/assets/lisa.png";
 import { BelafspraakDialog } from "@/components/BelafspraakDialog";
+import { HeroBuurtkaart } from "@/components/HeroBuurtkaart";
 import { news } from "@/data/news";
 import { format, parseISO } from "date-fns";
 import { nl } from "date-fns/locale";
@@ -28,64 +29,60 @@ const Home = () => {
 
   return (
     <>
-      {/* HERO */}
-      <section className="relative min-h-[90vh] flex items-center overflow-hidden">
+      {/* HERO — Verticaal compact met minimale afstand tot de navbar */}
+      <section className="relative overflow-hidden pt-2 sm:pt-3 lg:pt-4 pb-0 bg-background">
         <img
           src={heroBanner}
           alt="Luchtfoto van Steenwijk bij zonsondergang"
           width={1920}
           height={1080}
-          className="absolute inset-0 w-full h-full object-cover"
+          className="absolute inset-0 w-full h-full object-cover pointer-events-none"
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-twente-black via-twente-black/80 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-twente-black via-twente-black/85 to-transparent pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent pointer-events-none" />
 
-        <div className="container relative z-10 py-24">
-          <div className="grid lg:grid-cols-[1fr_1.4fr] gap-10 items-center">
-            <div className="max-w-3xl space-y-6 animate-fade-up">
-              <div className="inline-flex items-center gap-2 px-3 py-1 border border-accent/40 bg-twente-black/60 backdrop-blur">
+        <div className="container relative z-10 py-1 sm:py-2">
+          <div className="grid lg:grid-cols-[1.1fr_1.3fr] xl:grid-cols-[1fr_1.2fr] gap-6 lg:gap-8 xl:gap-12 items-center">
+            <div className="max-w-3xl space-y-3.5 sm:space-y-4 md:space-y-5 animate-fade-up">
+              {/* Compacte badge direct onder de navbar */}
+              <div className="inline-flex items-center gap-2 px-3 py-1 border border-accent/40 bg-twente-black/70 backdrop-blur rounded-xs">
                 <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-                <span className="text-xs uppercase tracking-[0.3em] text-accent">
+                <span className="text-xs uppercase tracking-[0.25em] text-accent font-medium">
                   In de Gemeenteraad — Steenwijkerland
                 </span>
               </div>
-              <h1 className="font-display text-6xl md:text-8xl lg:text-9xl leading-[0.9] tracking-tight">
+              <h1 className="font-display text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl leading-[0.93] tracking-tight">
                 <span className="block">Meer inspraak</span>
                 <span className="block text-gradient-gold">Meer vrijheid</span>
                 <span className="block text-primary">Lijst van Andel</span>
               </h1>
-              <p className="text-lg md:text-xl text-foreground/85 max-w-xl leading-relaxed">
+              <p className="text-sm sm:text-base md:text-lg text-foreground/85 max-w-xl leading-relaxed">
                 Met twee raadszetels zetten Sammy van Andel en Lisa Mars zich in voor een gemeente waar lokale binding
                 telt, natuur beschermd wordt en bestuur dichtbij staat.
               </p>
-              <div className="flex flex-wrap gap-3 pt-4">
-                <Button asChild size="lg" className="bg-primary hover:bg-primary/90 uppercase tracking-wider font-semibold">
+              <div className="flex flex-wrap gap-2.5 sm:gap-3 pt-1 sm:pt-2">
+                <Button asChild size="default" className="sm:h-11 sm:px-6 bg-primary hover:bg-primary/90 uppercase tracking-wider font-semibold text-xs sm:text-sm">
                   <Link to="/standpunten">
-                    Onze standpunten <ArrowRight className="w-4 h-4" />
+                    Onze standpunten <ArrowRight className="w-4 h-4 ml-1.5" />
                   </Link>
                 </Button>
-                <Button asChild size="lg" variant="outline" className="border-accent text-accent hover:bg-accent hover:text-accent-foreground uppercase tracking-wider font-semibold">
+                <Button asChild size="default" variant="outline" className="sm:h-11 sm:px-6 border-accent text-accent hover:bg-accent hover:text-accent-foreground uppercase tracking-wider font-semibold text-xs sm:text-sm">
                   <Link to="/fractie">
-                    <Users className="w-4 h-4" /> Ontmoet de fractie
+                    <Users className="w-4 h-4 mr-1.5" /> Ontmoet de fractie
                   </Link>
                 </Button>
               </div>
             </div>
 
-            {/* Interactieve transparante buurtkaart */}
-            <div className="hidden lg:block relative h-[1100px] xl:h-[1300px] -mr-12 xl:-mr-24 animate-fade-up">
-              <iframe
-                src="/maps/buurtkaart-hero.html"
-                title="Interactieve buurtkaart Steenwijkerland"
-                className="w-full h-full block"
-                style={{ background: "transparent" }}
-                loading="lazy"
-              />
+            {/* Buurtkaart: Statisch voor SEO, dynamisch interactief bij hoveren */}
+            <div className="hidden lg:block relative h-[460px] lg:h-[500px] xl:h-[550px] animate-fade-up">
+              <HeroBuurtkaart />
             </div>
           </div>
         </div>
 
-        <div className="absolute bottom-0 left-0 right-0 z-10 border-t border-accent/20 bg-twente-black/80 backdrop-blur">
+        {/* Compacte stats bar */}
+        <div className="relative z-10 mt-5 sm:mt-6 lg:mt-8 border-t border-accent/20 bg-twente-black/85 backdrop-blur">
           <div className="container grid grid-cols-2 md:grid-cols-4 gap-px">
             {[
               { v: "2", l: "Raadszetels" },
@@ -93,9 +90,9 @@ const Home = () => {
               { v: "10", l: "Speerpunten" },
               { v: "∞", l: "Lokale trots" },
             ].map((s) => (
-              <div key={s.l} className="px-4 py-5 text-center bg-twente-black/40">
-                <div className="font-display text-3xl md:text-4xl text-gradient-gold">{s.v}</div>
-                <div className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground mt-1">{s.l}</div>
+              <div key={s.l} className="px-3 py-2.5 sm:py-3 text-center bg-twente-black/40">
+                <div className="font-display text-2xl sm:text-3xl text-gradient-gold">{s.v}</div>
+                <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.22em] text-muted-foreground mt-0.5">{s.l}</div>
               </div>
             ))}
           </div>

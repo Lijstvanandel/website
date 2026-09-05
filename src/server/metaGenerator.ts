@@ -78,21 +78,63 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
       canonicalUrl,
       structuredData: {
         "@context": "https://schema.org",
-        "@type": "PoliticalParty",
-        "name": "Lijst van Andel",
-        "url": baseUrl,
-        "logo": DEFAULT_IMAGE,
-        "description": DEFAULT_DESC,
-        "address": {
-          "@type": "PostalAddress",
-          "addressLocality": "Steenwijk",
-          "addressRegion": "Overijssel",
-          "postalCode": "8331",
-          "addressCountry": "NL"
-        },
-        "sameAs": [
-          "https://www.facebook.com/lijstvanandel",
-          "https://www.instagram.com/lijstvanandel"
+        "@graph": [
+          {
+            "@type": "PoliticalParty",
+            "@id": `${baseUrl}/#party`,
+            "name": "Lijst van Andel",
+            "alternateName": ["LvA", "Lijst van Andel Steenwijkerland"],
+            "url": baseUrl,
+            "logo": DEFAULT_IMAGE,
+            "image": DEFAULT_IMAGE,
+            "description": "Onafhankelijke lokale politieke partij met twee zetels in de gemeenteraad van Steenwijkerland, opkomend voor lokale inwoners, betaalbare starterswoningen en leefbare kernen.",
+            "address": {
+              "@type": "PostalAddress",
+              "streetAddress": "Vendelweg 1",
+              "addressLocality": "Steenwijk",
+              "addressRegion": "Overijssel",
+              "postalCode": "8331 XE",
+              "addressCountry": "NL"
+            },
+            "areaServed": {
+              "@type": "AdministrativeArea",
+              "name": "Steenwijkerland",
+              "sameAs": "https://nl.wikipedia.org/wiki/Steenwijkerland"
+            },
+            "contactPoint": {
+              "@type": "ContactPoint",
+              "contactType": "fractiesecretariaat",
+              "email": "fractie@lijstvanandel.nl",
+              "availableLanguage": ["Dutch", "Nederlands"]
+            },
+            "member": [
+              {
+                "@type": "Person",
+                "name": "Sammy van Andel",
+                "jobTitle": "Fractievoorzitter en Gemeenteraadslid"
+              },
+              {
+                "@type": "Person",
+                "name": "Lisa Mars",
+                "jobTitle": "Gemeenteraadslid"
+              }
+            ],
+            "sameAs": [
+              "https://www.facebook.com/lijstvanandel",
+              "https://www.instagram.com/lijstvanandel"
+            ]
+          },
+          {
+            "@type": "WebSite",
+            "@id": `${baseUrl}/#website`,
+            "url": baseUrl,
+            "name": "Lijst van Andel Steenwijkerland",
+            "description": DEFAULT_DESC,
+            "publisher": {
+              "@id": `${baseUrl}/#party`
+            },
+            "inLanguage": "nl-NL"
+          }
         ]
       }
     };
@@ -122,29 +164,57 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
         modifiedTime: article.updatedAt || article.createdAt || article.date,
         structuredData: {
           "@context": "https://schema.org",
-          "@type": "NewsArticle",
-          "headline": article.title,
-          "description": cleanDesc,
-          "image": [articleImage],
-          "datePublished": article.createdAt || article.date,
-          "dateModified": article.updatedAt || article.createdAt || article.date,
-          "author": {
-            "@type": "Organization",
-            "name": article.author || "Lijst van Andel",
-            "url": baseUrl
-          },
-          "publisher": {
-            "@type": "PoliticalParty",
-            "name": "Lijst van Andel",
-            "logo": {
-              "@type": "ImageObject",
-              "url": DEFAULT_IMAGE
+          "@graph": [
+            {
+              "@type": "NewsArticle",
+              "headline": article.title,
+              "description": cleanDesc,
+              "image": [articleImage],
+              "datePublished": article.createdAt || article.date,
+              "dateModified": article.updatedAt || article.createdAt || article.date,
+              "inLanguage": "nl-NL",
+              "author": {
+                "@type": "Organization",
+                "name": article.author || "Lijst van Andel",
+                "url": baseUrl
+              },
+              "publisher": {
+                "@type": "PoliticalParty",
+                "name": "Lijst van Andel",
+                "logo": {
+                  "@type": "ImageObject",
+                  "url": DEFAULT_IMAGE
+                }
+              },
+              "mainEntityOfPage": {
+                "@type": "WebPage",
+                "@id": canonicalUrl
+              }
+            },
+            {
+              "@type": "BreadcrumbList",
+              "itemListElement": [
+                {
+                  "@type": "ListItem",
+                  "position": 1,
+                  "name": "Home",
+                  "item": baseUrl
+                },
+                {
+                  "@type": "ListItem",
+                  "position": 2,
+                  "name": "Nieuws",
+                  "item": `${baseUrl}/nieuws`
+                },
+                {
+                  "@type": "ListItem",
+                  "position": 3,
+                  "name": article.title,
+                  "item": canonicalUrl
+                }
+              ]
             }
-          },
-          "mainEntityOfPage": {
-            "@type": "WebPage",
-            "@id": canonicalUrl
-          }
+          ]
         }
       };
     }
@@ -188,16 +258,48 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
         canonicalUrl,
         structuredData: {
           "@context": "https://schema.org",
-          "@type": "Place",
-          "name": wijk.naam,
-          "description": cleanDesc,
-          "image": wijkImage,
-          "address": {
-            "@type": "PostalAddress",
-            "addressLocality": wijk.gemeente || "Steenwijkerland",
-            "addressRegion": "Overijssel",
-            "addressCountry": "NL"
-          }
+          "@graph": [
+            {
+              "@type": "Place",
+              "name": wijk.naam,
+              "description": cleanDesc,
+              "image": wijkImage,
+              "address": {
+                "@type": "PostalAddress",
+                "addressLocality": wijk.gemeente || "Steenwijkerland",
+                "addressRegion": "Overijssel",
+                "addressCountry": "NL"
+              },
+              "containedInPlace": {
+                "@type": "AdministrativeArea",
+                "name": "Gemeente Steenwijkerland",
+                "sameAs": "https://nl.wikipedia.org/wiki/Steenwijkerland"
+              }
+            },
+            {
+              "@type": "BreadcrumbList",
+              "itemListElement": [
+                {
+                  "@type": "ListItem",
+                  "position": 1,
+                  "name": "Home",
+                  "item": baseUrl
+                },
+                {
+                  "@type": "ListItem",
+                  "position": 2,
+                  "name": "Wijken en Kernen",
+                  "item": `${baseUrl}/wijken-en-kernen`
+                },
+                {
+                  "@type": "ListItem",
+                  "position": 3,
+                  "name": wijk.naam,
+                  "item": canonicalUrl
+                }
+              ]
+            }
+          ]
         }
       };
     }
@@ -212,7 +314,25 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
       ogDescription: "Lokale speerpunten en dossiers voor alle 42 kernen en wijken in onze gemeente.",
       ogImage: DEFAULT_IMAGE,
       ogType: "website",
-      canonicalUrl
+      canonicalUrl,
+      structuredData: {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Home",
+            "item": baseUrl
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Wijken en Kernen",
+            "item": canonicalUrl
+          }
+        ]
+      }
     };
   }
 
@@ -237,29 +357,64 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
         canonicalUrl,
         structuredData: {
           "@context": "https://schema.org",
-          "@type": "Event",
-          "name": event.title,
-          "description": cleanDesc,
-          "startDate": event.date ? `${event.date}T${event.startTime || "19:30"}:00` : undefined,
-          "endDate": event.date && event.endTime ? `${event.date}T${event.endTime}:00` : undefined,
-          "eventStatus": event.isCancelled ? "https://schema.org/EventCancelled" : "https://schema.org/EventScheduled",
-          "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
-          "location": {
-            "@type": "Place",
-            "name": event.address || "Steenwijk",
-            "address": {
-              "@type": "PostalAddress",
-              "streetAddress": event.address || "",
-              "addressLocality": "Steenwijkerland",
-              "addressCountry": "NL"
+          "@graph": [
+            {
+              "@type": "Event",
+              "name": event.title,
+              "description": cleanDesc,
+              "startDate": event.date ? `${event.date}T${event.startTime || "19:30"}:00` : undefined,
+              "endDate": event.date && event.endTime ? `${event.date}T${event.endTime}:00` : undefined,
+              "eventStatus": event.isCancelled ? "https://schema.org/EventCancelled" : "https://schema.org/EventScheduled",
+              "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
+              "isAccessibleForFree": true,
+              "offers": {
+                "@type": "Offer",
+                "price": "0",
+                "priceCurrency": "EUR",
+                "availability": "https://schema.org/InStock",
+                "url": canonicalUrl
+              },
+              "location": {
+                "@type": "Place",
+                "name": event.address || "Steenwijk",
+                "address": {
+                  "@type": "PostalAddress",
+                  "streetAddress": event.address || "",
+                  "addressLocality": "Steenwijkerland",
+                  "addressCountry": "NL"
+                }
+              },
+              "image": [eventImage],
+              "organizer": {
+                "@type": "PoliticalParty",
+                "name": "Lijst van Andel",
+                "url": baseUrl
+              }
+            },
+            {
+              "@type": "BreadcrumbList",
+              "itemListElement": [
+                {
+                  "@type": "ListItem",
+                  "position": 1,
+                  "name": "Home",
+                  "item": baseUrl
+                },
+                {
+                  "@type": "ListItem",
+                  "position": 2,
+                  "name": "Agenda",
+                  "item": `${baseUrl}/agenda`
+                },
+                {
+                  "@type": "ListItem",
+                  "position": 3,
+                  "name": event.title,
+                  "item": canonicalUrl
+                }
+              ]
             }
-          },
-          "image": [eventImage],
-          "organizer": {
-            "@type": "Organization",
-            "name": "Lijst van Andel",
-            "url": baseUrl
-          }
+          ]
         }
       };
     }
@@ -274,7 +429,25 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
       ogDescription: "Data en locaties van openbare fractievergaderingen, inloopavonden en thema-bijeenkomsten.",
       ogImage: DEFAULT_IMAGE,
       ogType: "website",
-      canonicalUrl
+      canonicalUrl,
+      structuredData: {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Home",
+            "item": baseUrl
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Agenda",
+            "item": canonicalUrl
+          }
+        ]
+      }
     };
   }
 
@@ -287,7 +460,63 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
       ogDescription: "Direct aanspreekbare volksvertegenwoordigers met een nuchtere blik en hart voor de inwoners.",
       ogImage: DEFAULT_IMAGE,
       ogType: "website",
-      canonicalUrl
+      canonicalUrl,
+      structuredData: {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "ItemList",
+            "name": "Fractie Lijst van Andel - Gemeenteraad Steenwijkerland",
+            "itemListElement": [
+              {
+                "@type": "Person",
+                "name": "Sammy van Andel",
+                "jobTitle": "Fractievoorzitter en Gemeenteraadslid",
+                "worksFor": {
+                  "@type": "GovernmentOrganization",
+                  "name": "Gemeenteraad Steenwijkerland"
+                },
+                "memberOf": {
+                  "@type": "PoliticalParty",
+                  "name": "Lijst van Andel"
+                },
+                "description": "Fractievoorzitter van Lijst van Andel in Steenwijkerland. Strijdt voor lokale woningzoekenden, behoud van de dorpen en een nuchter, transparant gemeentebestuur."
+              },
+              {
+                "@type": "Person",
+                "name": "Lisa Mars",
+                "jobTitle": "Gemeenteraadslid",
+                "worksFor": {
+                  "@type": "GovernmentOrganization",
+                  "name": "Gemeenteraad Steenwijkerland"
+                },
+                "memberOf": {
+                  "@type": "PoliticalParty",
+                  "name": "Lijst van Andel"
+                },
+                "description": "Gemeenteraadslid voor Lijst van Andel in Steenwijkerland, met focus op sociaal beleid, leefbaarheid en jeugd."
+              }
+            ]
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "Home",
+                "item": baseUrl
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "Fractie",
+                "item": canonicalUrl
+              }
+            ]
+          }
+        ]
+      }
     };
   }
 
@@ -315,16 +544,83 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
     };
   }
 
-  // 9. Standpunten & Programma
+  // 9. Standpunten & Programma met FAQPage Schema voor Google Rich Snippets
   if (cleanPath === "/standpunten") {
     return {
-      title: "Standpunten & Verkiezingsprogramma | Lijst van Andel",
-      description: "Lees onze standpunten over betaalbare woningbouw voor eigen inwoners, leefbare dorpen, lokale lasten en behoud van natuur in Steenwijkerland.",
+      title: "Standpunten & Verkiezingsprogramma | Lijst van Andel Steenwijkerland",
+      description: "Bekijk de standpunten van Lijst van Andel: voorrang voor eigen inwoners bij woningtoewijzing, behoud van voorzieningen in de dorpen, lage lokale lasten en bescherming van de Weerribben-Wieden.",
       ogTitle: "Onze Standpunten | Lijst van Andel Steenwijkerland",
       ogDescription: "Duidelijke taal en gezond verstand: ontdek de visie van Lijst van Andel op Steenwijkerland.",
       ogImage: DEFAULT_IMAGE,
       ogType: "website",
-      canonicalUrl
+      canonicalUrl,
+      structuredData: {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "FAQPage",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "Wat is het standpunt van Lijst van Andel over woningbouw in Steenwijkerland?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Lijst van Andel pleit voor maximale voorrang voor eigen lokale inwoners en starters op de woningmarkt in Steenwijkerland. Nieuwbouw moet aansluiten op de lokale behoefte met betaalbare koop- en huurwoningen, zonder dat jongeren worden weggepest naar andere gemeenten."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Wat wil Lijst van Andel voor de dorpen en kernen in Steenwijkerland?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Lijst van Andel staat voor behoud van leefbaarheid en voorzieningen in alle 42 kernen en wijken: dorpshuizen, basisscholen, sportclubs en bereikbaarheid met openbaar vervoer en veilige fietspaden moeten gegarandeerd blijven."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Hoe denkt Lijst van Andel over de bescherming van de Weerribben-Wieden?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Nationaal Park Weerribben-Wieden is het unieke visitekaartje van onze gemeente. Wij zetten in op krachtige natuurbescherming in harmonieuze balans met leefbaarheid, agrarische familiebedrijven en respectvolle recreatie."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Wat is de koers rond lokale lasten, OZB en gemeentelijke belastingen?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Lijst van Andel streeft naar lage lokale lasten voor inwoners en lokale ondernemers. De gemeente moet eerst kritisch naar haar eigen uitgaven en overhead kijken voordat belastingen zoals de OZB worden verhoogd."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Hoe kunnen inwoners van Steenwijkerland direct contact opnemen met raadsleden?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Via de website van Lijst van Andel kunnen inwoners direct een persoonlijke belafspraak van 30 minuten inplannen met fractievoorzitter Sammy van Andel of raadslid Lisa Mars op woensdag, donderdag of vrijdag tussen 19:00 en 21:00 uur."
+                }
+              }
+            ]
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "Home",
+                "item": baseUrl
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "Standpunten",
+                "item": canonicalUrl
+              }
+            ]
+          }
+        ]
+      }
     };
   }
 
@@ -337,7 +633,48 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
       ogDescription: "Direct bereikbaar voor inwoners via contactformulier, telefoon of een persoonlijke belafspraak.",
       ogImage: DEFAULT_IMAGE,
       ogType: "website",
-      canonicalUrl
+      canonicalUrl,
+      structuredData: {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "ContactPage",
+            "name": "Contact met Lijst van Andel",
+            "description": "Neem contact op met de raadsfractie van Lijst van Andel in Steenwijkerland.",
+            "url": canonicalUrl,
+            "mainEntity": {
+              "@type": "PoliticalParty",
+              "name": "Lijst van Andel",
+              "address": {
+                "@type": "PostalAddress",
+                "streetAddress": "Vendelweg 1",
+                "addressLocality": "Steenwijk",
+                "addressRegion": "Overijssel",
+                "postalCode": "8331 XE",
+                "addressCountry": "NL"
+              },
+              "email": "fractie@lijstvanandel.nl"
+            }
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "Home",
+                "item": baseUrl
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "Contact",
+                "item": canonicalUrl
+              }
+            ]
+          }
+        ]
+      }
     };
   }
 
