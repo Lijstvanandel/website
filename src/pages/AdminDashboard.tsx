@@ -39,6 +39,9 @@ import {
   Vote,
   Server,
   User,
+  CreditCard,
+  Coins,
+  Receipt,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VideoPlayer } from "@/components/VideoPlayer";
@@ -65,6 +68,12 @@ interface UserItem {
   role: string;
   isActive: boolean;
   newsletterSubscribed?: boolean;
+  billingStatus?: "paid" | "pending" | "exempt" | "failed" | "cancelled";
+  paidAmount?: number;
+  paidAt?: string;
+  paidUntil?: string;
+  stripeCustomerId?: string;
+  billingNotes?: string;
   createdAt?: string;
 }
 
@@ -208,6 +217,105 @@ export default function AdminDashboard() {
   const effectiveToken = token || (typeof window !== "undefined" ? localStorage.getItem("auth_token") : "") || "";
   const headers = { Authorization: `Bearer ${effectiveToken}` };
 
+  // Membership & Stripe settings state
+  const [membershipData, setMembershipData] = useState<{
+    settings: {
+      enabled: boolean;
+      amount: number;
+      currency: string;
+      interval: string;
+      productName: string;
+      description: string;
+      requirePaymentAtRegistration: boolean;
+    };
+    stripe: {
+      isConfigured: boolean;
+      hasWebhookSecret: boolean;
+      maskedSecretKey: string;
+      publishableKey: string;
+      webhookUrl: string;
+    };
+    stats: {
+      totalMembers: number;
+      paidMembers: number;
+      pendingMembers: number;
+      exemptMembers: number;
+      totalRevenue: number;
+      expectedAnnualRevenue: number;
+    };
+  } | null>(null);
+
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsAmount, setSettingsAmount] = useState("12.00");
+  const [settingsEnabled, setSettingsEnabled] = useState(true);
+  const [settingsRequirePayment, setSettingsRequirePayment] = useState(true);
+  const [settingsProductName, setSettingsProductName] = useState("Lidmaatschap Lijst van Andel (1 jaar)");
+  const [settingsDescription, setSettingsDescription] = useState("Jaarlijkse contributie voor partijleden");
+
+  const fetchMembershipSettings = useCallback(() => {
+    fetch("/api/admin/membership/settings", { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data) {
+          setMembershipData(data);
+          if (data.settings) {
+            setSettingsAmount(String(data.settings.amount ?? 12.00));
+            setSettingsEnabled(data.settings.enabled !== false);
+            setSettingsRequirePayment(data.settings.requirePaymentAtRegistration !== false);
+            setSettingsProductName(data.settings.productName || "Lidmaatschap Lijst van Andel (1 jaar)");
+            setSettingsDescription(data.settings.description || "Jaarlijkse contributie voor partijleden");
+          }
+        }
+      })
+      .catch(console.error);
+  }, [token]);
+
+  const handleSaveMembershipSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingSettings(true);
+    try {
+      const res = await fetch("/api/admin/membership/settings", {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enabled: settingsEnabled,
+          amount: parseFloat(settingsAmount) || 12.00,
+          requirePaymentAtRegistration: settingsRequirePayment,
+          productName: settingsProductName,
+          description: settingsDescription,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Kon instellingen niet opslaan");
+      toast.success("Contributie-instellingen succesvol opgeslagen!");
+      fetchMembershipSettings();
+    } catch (err: unknown) {
+      const error = err as Error;
+      toast.error(error.message || "Fout bij opslaan van instellingen");
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const changeUserBillingStatus = async (id: string, newBillingStatus: string) => {
+    try {
+      const res = await fetch(`/api/admin/users/${id}/billing`, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ billingStatus: newBillingStatus }),
+      });
+      if (res.ok) {
+        toast.success("Facturatiestatus bijgewerkt");
+        fetchUsers();
+        fetchMembershipSettings();
+      } else {
+        toast.error("Kon facturatiestatus niet bijwerken");
+      }
+    } catch {
+      toast.error("Fout bij bijwerken facturatiestatus");
+    }
+  };
+
   const fetchUsers = useCallback(() => {
     fetch("/api/admin/users", { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => (r.ok ? r.json().catch(() => []) : []))
@@ -285,6 +393,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (user?.role === "admin") {
       fetchUsers();
+      fetchMembershipSettings();
       fetchFractieleden();
       fetchVideos();
       fetchNews();
@@ -292,7 +401,7 @@ export default function AdminDashboard() {
       fetchCategories();
       fetchMessages();
     }
-  }, [user, fetchUsers, fetchFractieleden, fetchVideos, fetchNews, fetchEvents, fetchCategories, fetchMessages]);
+  }, [user, fetchUsers, fetchMembershipSettings, fetchFractieleden, fetchVideos, fetchNews, fetchEvents, fetchCategories, fetchMessages]);
 
   useEffect(() => {
     if (selectedMessageId) {
@@ -840,6 +949,9 @@ export default function AdminDashboard() {
           <TabsTrigger value="users" className="gap-2 text-xs">
             <Users className="w-4 h-4" /> Ledenbeheer
           </TabsTrigger>
+          <TabsTrigger value="billing" className="gap-2 text-xs">
+            <CreditCard className="w-4 h-4 text-emerald-600" /> Contributie & Stripe
+          </TabsTrigger>
           <TabsTrigger value="messages" className="gap-2 text-xs relative">
             <Inbox className="w-4 h-4" /> Berichten
             {messages.filter((m) => m.status === "moet nog beantwoord worden").length > 0 && (
@@ -898,7 +1010,15 @@ export default function AdminDashboard() {
                   </span>
                   <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 font-semibold flex items-center gap-1">
                     <Mail className="w-3 h-3" />
-                    {users.filter((u) => u.newsletterSubscribed !== false && u.isActive !== false).length} aangemeld voor nieuwsbrief
+                    {users.filter((u) => u.newsletterSubscribed !== false && u.isActive !== false).length} nieuwsbrief
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 font-semibold flex items-center gap-1">
+                    <CreditCard className="w-3 h-3" />
+                    {users.filter((u) => u.billingStatus === "paid").length} voldaan (€{users.filter((u) => u.billingStatus === "paid").reduce((sum, u) => sum + (u.paidAmount || 12), 0).toFixed(0)})
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 font-semibold flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    {users.filter((u) => !u.billingStatus || u.billingStatus === "pending").length} openstaand
                   </span>
                 </div>
               </div>
@@ -937,6 +1057,7 @@ export default function AdminDashboard() {
                     <th className="px-4 py-3">E-mailadres</th>
                     <th className="px-4 py-3">Woonplaats</th>
                     <th className="px-4 py-3">Rol</th>
+                    <th className="px-4 py-3">Contributie</th>
                     <th className="px-4 py-3">Nieuwsbrief</th>
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3 text-right">Acties</th>
@@ -989,6 +1110,30 @@ export default function AdminDashboard() {
                           )}
                         </td>
                         <td className="px-4 py-3">
+                          <select
+                            className={`text-xs px-2 py-1 rounded border outline-none cursor-pointer font-medium ${
+                              u.billingStatus === "paid"
+                                ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                                : u.billingStatus === "exempt"
+                                ? "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30"
+                                : "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                            }`}
+                            value={u.billingStatus || "pending"}
+                            onChange={(e) => changeUserBillingStatus(u.id, e.target.value)}
+                            title="Klik om de facturatiestatus voor dit lid handmatig aan te passen"
+                          >
+                            <option value="paid">✓ Voldaan (€12,-)</option>
+                            <option value="pending">⏳ Openstaand</option>
+                            <option value="exempt">🛡️ Vrijgesteld</option>
+                            <option value="failed">✕ Mislukt</option>
+                          </select>
+                          {u.paidAt && (
+                            <div className="text-[10px] text-muted-foreground mt-0.5">
+                              {new Date(u.paidAt).toLocaleDateString("nl-NL")}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
                           <button
                             type="button"
                             onClick={() => toggleUserNewsletter(u.id, isSubscribed)}
@@ -1034,6 +1179,249 @@ export default function AdminDashboard() {
                   })}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* CONTRIBUTIE & STRIPE BEHEER */}
+        <TabsContent value="billing">
+          <div className="space-y-8">
+            {/* KPI STATS CARDS */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-card p-5 rounded-xl border border-border shadow-sm">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1 flex items-center justify-between">
+                  <span>Totale Opbrengst</span>
+                  <Coins className="w-4 h-4 text-emerald-600" />
+                </div>
+                <div className="text-2xl font-bold font-display text-foreground">
+                  €{(membershipData?.stats?.totalRevenue ?? 0).toFixed(2)}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Ontvangen via Stripe & handmatige contributies
+                </div>
+              </div>
+
+              <div className="bg-card p-5 rounded-xl border border-border shadow-sm">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1 flex items-center justify-between">
+                  <span>Betaalde Leden</span>
+                  <CheckCircle className="w-4 h-4 text-emerald-600" />
+                </div>
+                <div className="text-2xl font-bold font-display text-emerald-600">
+                  {membershipData?.stats?.paidMembers ?? users.filter(u => u.billingStatus === "paid").length} / {users.length}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  {users.length > 0 
+                    ? `${Math.round(((membershipData?.stats?.paidMembers ?? users.filter(u => u.billingStatus === "paid").length) / users.length) * 100)}% voldaan`
+                    : "0%"}
+                </div>
+              </div>
+
+              <div className="bg-card p-5 rounded-xl border border-border shadow-sm">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1 flex items-center justify-between">
+                  <span>Openstaande Contributie</span>
+                  <AlertCircle className="w-4 h-4 text-amber-600" />
+                </div>
+                <div className="text-2xl font-bold font-display text-amber-600">
+                  {membershipData?.stats?.pendingMembers ?? users.filter(u => !u.billingStatus || u.billingStatus === "pending").length}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Leden met status openstaand
+                </div>
+              </div>
+
+              <div className="bg-card p-5 rounded-xl border border-border shadow-sm">
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1 flex items-center justify-between">
+                  <span>Verwachte Jaaropbrengst</span>
+                  <Receipt className="w-4 h-4 text-primary" />
+                </div>
+                <div className="text-2xl font-bold font-display text-foreground">
+                  €{(membershipData?.stats?.expectedAnnualRevenue ?? (users.length * parseFloat(settingsAmount || "12"))).toFixed(2)}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Op basis van huidig ledenaantal
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* SETTINGS FORM (2 cols) */}
+              <div className="lg:col-span-2 bg-card rounded-xl border border-border p-6 shadow-sm">
+                <div className="flex items-center gap-3 pb-4 mb-6 border-b border-border">
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                    <CreditCard className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-display text-foreground">Contributie Instellingen</h2>
+                    <p className="text-xs text-muted-foreground">
+                      Beheer het jaarlijkse contributiebedrag en de registratie-flow voor nieuwe leden.
+                    </p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleSaveMembershipSettings} className="space-y-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs font-semibold uppercase text-muted-foreground block mb-1.5">
+                        Contributiebedrag (€ per jaar)
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.50"
+                        min="0"
+                        value={settingsAmount}
+                        onChange={(e) => setSettingsAmount(e.target.value)}
+                        placeholder="12.00"
+                        required
+                        className="font-semibold text-base"
+                      />
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        Standaard €12,00 per jaar voor partijleden.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold uppercase text-muted-foreground block mb-1.5">
+                        Productnaam op afrekenpagina
+                      </label>
+                      <Input
+                        type="text"
+                        value={settingsProductName}
+                        onChange={(e) => setSettingsProductName(e.target.value)}
+                        placeholder="Lidmaatschap Lijst van Andel (1 jaar)"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold uppercase text-muted-foreground block mb-1.5">
+                      Omschrijving voor de koper
+                    </label>
+                    <Input
+                      type="text"
+                      value={settingsDescription}
+                      onChange={(e) => setSettingsDescription(e.target.value)}
+                      placeholder="Jaarlijkse contributie voor partijleden"
+                    />
+                  </div>
+
+                  <div className="space-y-3 pt-2">
+                    <label className="flex items-center gap-3 p-3.5 rounded-lg border border-border bg-muted/20 cursor-pointer hover:bg-muted/40 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={settingsRequirePayment}
+                        onChange={(e) => setSettingsRequirePayment(e.target.checked)}
+                        className="rounded border-border w-4 h-4 text-primary focus:ring-primary"
+                      />
+                      <div className="text-xs">
+                        <span className="font-semibold text-foreground block">
+                          Direct doorsturen naar Stripe na registratie
+                        </span>
+                        <span className="text-muted-foreground">
+                          Nieuwe leden worden na het invullen van het registratieformulier direct doorgestuurd naar de Stripe checkout.
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className="flex items-center gap-3 p-3.5 rounded-lg border border-border bg-muted/20 cursor-pointer hover:bg-muted/40 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={settingsEnabled}
+                        onChange={(e) => setSettingsEnabled(e.target.checked)}
+                        className="rounded border-border w-4 h-4 text-primary focus:ring-primary"
+                      />
+                      <div className="text-xs">
+                        <span className="font-semibold text-foreground block">
+                          Contributie-integratie actief
+                        </span>
+                        <span className="text-muted-foreground">
+                          Indien uitgeschakeld wordt de Stripe checkout overgeslagen bij registratie.
+                        </span>
+                      </div>
+                    </label>
+                  </div>
+
+                  <div className="pt-2">
+                    <Button
+                      type="submit"
+                      disabled={savingSettings}
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+                    >
+                      {savingSettings ? "Bezig met opslaan..." : "Contributie-instellingen Opslaan"}
+                    </Button>
+                  </div>
+                </form>
+              </div>
+
+              {/* STRIPE STATUS & WEBHOOK CARD (1 col) */}
+              <div className="space-y-6">
+                <div className="bg-card rounded-xl border border-border p-6 shadow-sm space-y-4">
+                  <h3 className="text-base font-bold font-display text-foreground flex items-center gap-2">
+                    <CreditCard className="w-4 h-4 text-primary" />
+                    Stripe Integratiestatus
+                  </h3>
+
+                  <div className="space-y-3 text-xs">
+                    <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/40 border border-border">
+                      <span className="text-muted-foreground">API Status:</span>
+                      {membershipData?.stripe?.isConfigured ? (
+                        <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400">
+                          <Check className="w-3.5 h-3.5" /> Geconfigureerd
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 font-semibold text-amber-600 dark:text-amber-400">
+                          <AlertCircle className="w-3.5 h-3.5" /> Test/Simulatie modus
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/40 border border-border">
+                      <span className="text-muted-foreground">Webhook Geheim:</span>
+                      {membershipData?.stripe?.hasWebhookSecret ? (
+                        <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400">
+                          <Check className="w-3.5 h-3.5" /> Actief
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 font-semibold text-muted-foreground">
+                          Optioneel / Test
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5 pt-2">
+                      <div className="text-muted-foreground font-medium">Stripe Webhook URL:</div>
+                      <div className="p-2 rounded bg-muted font-mono text-[11px] break-all border border-border select-all">
+                        {membershipData?.stripe?.webhookUrl || `${typeof window !== "undefined" ? window.location.origin : ""}/api/stripe/webhook`}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">
+                        Vul deze URL in het Stripe Dashboard in bij <em>Developers &gt; Webhooks</em> en selecteer het evenement <code>checkout.session.completed</code>.
+                      </p>
+                    </div>
+
+                    <div className="space-y-1.5 pt-2">
+                      <div className="text-muted-foreground font-medium">Omgeving (.env):</div>
+                      <div className="p-2 rounded bg-secondary text-secondary-foreground font-mono text-[10px] space-y-0.5">
+                        <div>STRIPE_SECRET_KEY=sk_...</div>
+                        <div>STRIPE_WEBHOOK_SECRET=whsec_...</div>
+                        <div>VITE_STRIPE_PUBLISHABLE_KEY=pk_...</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* SNEL ACTIES KAART */}
+                <div className="bg-card rounded-xl border border-border p-6 shadow-sm space-y-3">
+                  <h3 className="text-sm font-bold font-display text-foreground">Facturatie Samenvatting</h3>
+                  <div className="text-xs text-muted-foreground space-y-2">
+                    <p>
+                      In het tabblad <strong>Ledenbeheer</strong> kunt u per lid de facturatiestatus handmatig aanpassen (bijvoorbeeld als iemand contant of per bank heeft voldaan).
+                    </p>
+                    <p>
+                      Wanneer leden via Stripe afrekenen wordt hun status automatisch bijgewerkt naar <em>Voldaan</em> voor 1 jaar.
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </TabsContent>

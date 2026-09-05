@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
+import { CheckCircle2, AlertCircle, CreditCard, ShieldCheck, Loader2 } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -40,11 +42,83 @@ const registerSchema = z.object({
 
 type RegisterFormValues = z.infer<typeof registerSchema>;
 
+interface MembershipConfig {
+  enabled: boolean;
+  amount: number;
+  currency: string;
+  interval: string;
+  productName: string;
+  description: string;
+  requirePaymentAtRegistration: boolean;
+  isStripeConfigured: boolean;
+}
+
 export default function Register() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { login } = useAuth();
+
   const [isLoading, setIsLoading] = useState(false);
+  const [membershipConfig, setMembershipConfig] = useState<MembershipConfig | null>(null);
+
+  // Verification states when returning from Stripe Checkout
+  const isPaymentSuccess = searchParams.get("payment_success") === "true";
+  const isPaymentCancelled = searchParams.get("payment_cancelled") === "true";
+  const sessionId = searchParams.get("session_id");
+
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verificationSuccess, setVerificationSuccess] = useState(false);
+  const [verificationError, setVerificationError] = useState<string | null>(null);
+
   const redirectUrl = searchParams.get("redirect");
+
+  // Load membership configuration
+  useEffect(() => {
+    fetch("/api/membership/config")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) setMembershipConfig(data);
+      })
+      .catch(() => {
+        // Fallback default
+        setMembershipConfig({
+          enabled: true,
+          amount: 12.0,
+          currency: "eur",
+          interval: "year",
+          productName: "Lidmaatschap Lijst van Andel (1 jaar)",
+          description: "Jaarlijkse contributie voor partijleden",
+          requirePaymentAtRegistration: true,
+          isStripeConfigured: false,
+        });
+      });
+  }, []);
+
+  // Handle return from Stripe Checkout
+  useEffect(() => {
+    if (isPaymentSuccess && sessionId) {
+      setIsVerifying(true);
+      fetch(`/api/checkout/verify-session?sessionId=${encodeURIComponent(sessionId)}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.user && data.token) {
+            setVerificationSuccess(true);
+            login(data.user, data.token);
+            toast.success("Welkom als lid!", {
+              description: "Uw contributie is succesvol ontvangen en uw account is geactiveerd.",
+            });
+          } else {
+            setVerificationError(data.error || "Kon de betaling niet verifiëren.");
+          }
+        })
+        .catch((err) => {
+          setVerificationError(err.message || "Netwerkfout bij verifiëren van de sessie.");
+        })
+        .finally(() => {
+          setIsVerifying(false);
+        });
+    }
+  }, [isPaymentSuccess, sessionId, login]);
 
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
@@ -79,6 +153,18 @@ export default function Register() {
         throw new Error(result.error || "Registratie mislukt");
       }
 
+      if (result.checkoutUrl) {
+        toast.info("Account aangemaakt! U wordt doorgestuurd naar de veilige betaalomgeving...", {
+          duration: 4000,
+        });
+        if (result.checkoutUrl.startsWith("http")) {
+          window.location.href = result.checkoutUrl;
+        } else {
+          navigate(result.checkoutUrl);
+        }
+        return;
+      }
+
       toast.success("Registratie succesvol!", {
         description: "U kunt nu inloggen met uw nieuwe account.",
       });
@@ -93,14 +179,131 @@ export default function Register() {
     }
   }
 
+  // View when returning from Stripe verification
+  if (isPaymentSuccess) {
+    return (
+      <div className="container max-w-xl mx-auto py-16 px-4">
+        <div className="bg-card p-8 rounded-xl shadow-lg border border-border text-center">
+          {isVerifying ? (
+            <div className="py-12 space-y-4">
+              <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto" />
+              <h2 className="text-2xl font-bold font-display">Betaling verifiëren...</h2>
+              <p className="text-muted-foreground text-sm">
+                Een ogenblik geduld alstublieft, we bevestigen uw lidmaatschapsbetaling via Stripe.
+              </p>
+            </div>
+          ) : verificationSuccess ? (
+            <div className="py-8 space-y-6">
+              <div className="w-16 h-16 bg-emerald-500/10 text-emerald-600 rounded-full flex items-center justify-center mx-auto ring-8 ring-emerald-500/5">
+                <CheckCircle2 className="w-10 h-10" />
+              </div>
+              <div>
+                <h2 className="text-3xl font-display font-bold text-foreground">Hartelijk welkom als lid!</h2>
+                <p className="text-muted-foreground mt-2 max-w-md mx-auto">
+                  Uw lidmaatschapscontributie van €
+                  {membershipConfig ? membershipConfig.amount.toFixed(2) : "12.00"} voor Lijst van Andel is succesvol voldaan.
+                </p>
+              </div>
+
+              <div className="bg-secondary/60 p-4 rounded-lg text-sm text-left border border-border/80 space-y-2">
+                <div className="flex items-center gap-2 font-medium text-foreground">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  Factuurstatus: Voldaan (1 jaar actief)
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  U heeft nu volledige toegang tot het ledenportaal, fractiestukken en partij-activiteiten.
+                </p>
+              </div>
+
+              <div className="pt-2 flex flex-col sm:flex-row gap-3 justify-center">
+                <Button
+                  onClick={() => navigate("/dashboard")}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-6"
+                >
+                  Naar mijn ledenportaal
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => navigate("/")}
+                >
+                  Naar startpagina
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="py-8 space-y-5">
+              <div className="w-16 h-16 bg-destructive/10 text-destructive rounded-full flex items-center justify-center mx-auto">
+                <AlertCircle className="w-10 h-10" />
+              </div>
+              <h2 className="text-2xl font-bold font-display">Verificatie mislukt</h2>
+              <p className="text-muted-foreground text-sm">
+                {verificationError || "We konden uw betaling niet automatisch bevestigen."}
+              </p>
+              <div className="pt-4 flex justify-center gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => navigate("/login")}
+                >
+                  Inloggen op account
+                </Button>
+                <Button
+                  onClick={() => window.location.reload()}
+                >
+                  Opnieuw proberen
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const duesAmount = membershipConfig ? membershipConfig.amount : 12.0;
+
   return (
     <div className="container max-w-2xl mx-auto py-16 px-4">
       <div className="text-center mb-10">
         <h1 className="text-4xl font-display mb-2">Word lid</h1>
-        <p className="text-foreground/80">Registreer u bij Lijst van Andel</p>
+        <p className="text-foreground/80">Registreer u bij Lijst van Andel en steun onze lokale beweging</p>
       </div>
 
-      <div className="bg-card p-6 md:p-8 rounded-lg shadow-lg border border-accent/20">
+      {isPaymentCancelled && (
+        <div className="mb-6 p-4 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-semibold">Betaling geannuleerd</p>
+            <p className="text-xs opacity-90 mt-0.5">
+              De betaling via Stripe is afgebroken. U kunt zich alsnog registreren of inloggen in uw ledenportaal om de contributie te voldoen.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Membership Dues Highlight Banner */}
+      <div className="mb-8 rounded-xl bg-gradient-to-br from-primary/10 via-accent/5 to-transparent border border-primary/20 p-5 shadow-sm">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-lg bg-primary/20 text-primary flex items-center justify-center shrink-0">
+              <CreditCard className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-sm font-semibold text-foreground">
+                Lidmaatschapscontributie: €{duesAmount.toFixed(2)} per jaar
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Veilig afrekenen via Stripe (iDEAL, Bancontact, Visa/Mastercard)
+              </div>
+            </div>
+          </div>
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-medium">
+            <ShieldCheck className="w-3.5 h-3.5" />
+            Direct lidmaatschap
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-card p-6 md:p-8 rounded-xl shadow-lg border border-border">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <div className="grid md:grid-cols-2 gap-6">
@@ -152,7 +355,7 @@ export default function Register() {
                     <Input type="email" placeholder="uw.naam@voorbeeld.nl" {...field} />
                   </FormControl>
                   <FormDescription>
-                    Hierop ontvangt u uw ledencorrespondentie en (optioneel) de nieuwsbrief.
+                    Hierop ontvangt u de betaalbevestiging, factuur en ledencorrespondentie.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -181,7 +384,7 @@ export default function Register() {
                   <FormItem>
                     <FormLabel>Woonplaats</FormLabel>
                     <FormControl>
-                      <Input placeholder="Bijv. Steenwijk, Oldemarkt..." {...field} />
+                      <Input placeholder="Bijv. Steenwijk, Giethoorn..." {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -211,7 +414,7 @@ export default function Register() {
                   <FormItem>
                     <FormLabel>Wachtwoord</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="Kies een wachtwoord" {...field} />
+                      <Input type="password" placeholder="Kies een veilig wachtwoord" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -226,7 +429,7 @@ export default function Register() {
                 <FormItem>
                   <FormLabel>Opmerkingen (optioneel)</FormLabel>
                   <FormControl>
-                    <Textarea placeholder="Heeft u nog opmerkingen of specifieke interessegebieden?" {...field} />
+                    <Textarea placeholder="Heeft u nog opmerkingen of interessegebieden?" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -238,7 +441,7 @@ export default function Register() {
               control={form.control}
               name="newsletterSubscribed"
               render={({ field }) => (
-                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border border-accent/20 p-4 bg-accent/5">
+                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-lg border border-border p-4 bg-muted/30">
                   <FormControl>
                     <Checkbox
                       checked={field.value}
@@ -246,11 +449,11 @@ export default function Register() {
                     />
                   </FormControl>
                   <div className="space-y-1 leading-none">
-                    <FormLabel className="cursor-pointer font-medium">
+                    <FormLabel className="cursor-pointer font-medium text-foreground">
                       Ontvang de periodieke Lijst van Andel Nieuwsbrief
                     </FormLabel>
                     <FormDescription>
-                      Blijf op de hoogte van actuele standpunten, fractieverslagen en evenementen in Steenwijkerland. U kunt dit later altijd aan- of uitzetten in uw dashboard.
+                      Blijf op de hoogte van actuele standpunten, fractieverslagen en bijeenkomsten in Steenwijkerland.
                     </FormDescription>
                   </div>
                 </FormItem>
@@ -261,7 +464,7 @@ export default function Register() {
               control={form.control}
               name="directDebit"
               render={({ field }) => (
-                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border border-accent/20 p-4">
+                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-lg border border-border p-4">
                   <FormControl>
                     <Checkbox
                       checked={field.value}
@@ -269,11 +472,11 @@ export default function Register() {
                     />
                   </FormControl>
                   <div className="space-y-1 leading-none">
-                    <FormLabel className="cursor-pointer font-medium">
-                      Automatische incasso (contributie)
+                    <FormLabel className="cursor-pointer font-medium text-foreground">
+                      Jaarlijkse verlenging via Stripe
                     </FormLabel>
                     <FormDescription>
-                      Ik geef toestemming voor automatische incasso. (Voor nu is registratie gratis, de betaalmodule wordt later gekoppeld.)
+                      U rekent nu €{duesAmount.toFixed(2)} af voor het eerste jaar lidmaatschap.
                     </FormDescription>
                   </div>
                 </FormItem>
@@ -282,17 +485,27 @@ export default function Register() {
 
             <Button
               type="submit"
-              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3"
+              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3 flex items-center justify-center gap-2"
               disabled={isLoading}
             >
-              {isLoading ? "Bezig met registreren..." : "Registreer als lid"}
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Bezig met account aanmaken...
+                </>
+              ) : (
+                <>
+                  <CreditCard className="w-4 h-4" />
+                  Registreren & Contributie afrekenen (€{duesAmount.toFixed(2)})
+                </>
+              )}
             </Button>
 
-            <div className="mt-4 text-center text-xs text-foreground/70">
+            <div className="mt-4 text-center text-xs text-muted-foreground">
               Al lid van Lijst van Andel?{" "}
               <Link
                 to={redirectUrl ? `/login?redirect=${encodeURIComponent(redirectUrl)}` : "/login"}
-                className="text-accent hover:underline font-semibold"
+                className="text-primary hover:underline font-semibold"
               >
                 Log hier in
               </Link>

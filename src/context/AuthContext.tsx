@@ -15,6 +15,12 @@ export interface User {
   directDebit?: boolean;
   newsletterSubscribed?: boolean;
   createdAt?: string;
+  billingStatus?: "paid" | "pending" | "exempt" | "failed" | "cancelled";
+  paidAmount?: number;
+  paidAt?: string;
+  paidUntil?: string;
+  stripeCustomerId?: string;
+  stripeSessionId?: string;
 }
 
 interface AuthContextType {

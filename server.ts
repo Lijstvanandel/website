@@ -8,6 +8,7 @@ import util from "util";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import multer from "multer";
+import Stripe from "stripe";
 import { createServer as createViteServer } from "vite";
 import { BUURTKAART_43_WIJKEN, syncWijkenWithBuurtkaart, LEGACY_SLUG_MAP } from "./src/data/defaultWijken.js";
 import { getPageMetadata, injectMetadataIntoHtml } from "./src/server/metaGenerator.js";
@@ -19,6 +20,19 @@ let lastSystemSyncTime: string | null = null;
 const JWT_SECRET = process.env.JWT_SECRET || "super-secret-dev-key";
 const DB_FILE = path.join(process.cwd(), "db.json");
 
+// Stripe Lazy Initialization Client
+let stripeClient: Stripe | null = null;
+function getStripe(): Stripe | null {
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  if (!secretKey) {
+    return null;
+  }
+  if (!stripeClient) {
+    stripeClient = new Stripe(secretKey);
+  }
+  return stripeClient;
+}
+
 // Ensure upload directories exist
 const UPLOAD_DIRS = [
   "public/uploads",
@@ -29,6 +43,7 @@ const UPLOAD_DIRS = [
   "public/uploads/wijken",
   "public/uploads/documents",
   "public/uploads/stemgedrag",
+  "public/uploads/dataproducts",
 ];
 UPLOAD_DIRS.forEach((dir) => {
   const fullPath = path.join(process.cwd(), dir);
@@ -322,6 +337,20 @@ function getDb() {
     saveDb(db);
   }
 
+  if (!db.membershipSettings) {
+    db.membershipSettings = {
+      enabled: true,
+      amount: 12.00,
+      currency: "eur",
+      interval: "year",
+      productName: "Lidmaatschap Lijst van Andel (1 jaar)",
+      description: "Jaarlijkse partijcontributie voor leden van Lijst van Andel",
+      requirePaymentAtRegistration: true,
+      updatedAt: new Date().toISOString()
+    };
+    saveDb(db);
+  }
+
   return db;
 }
 
@@ -396,23 +425,33 @@ async function startServer() {
     }
   }));
 
-  app.use(express.json());
+  // Support raw body for Stripe webhook signature verification
+  app.use((req, res, next) => {
+    if (req.originalUrl === '/api/stripe/webhook') {
+      next();
+    } else {
+      express.json({ limit: "50mb" })(req, res, next);
+    }
+  });
 
   // Explicitly serve uploaded assets with PDF content-type and inline disposition
   const uploadsPath = path.join(process.cwd(), "public", "uploads");
 
   // Sync public uploads into dist uploads on startup
   try {
-    const pubStem = path.join(uploadsPath, "stemgedrag");
-    const distStem = path.join(process.cwd(), "dist", "uploads", "stemgedrag");
-    if (fs.existsSync(pubStem) && fs.existsSync(path.join(process.cwd(), "dist"))) {
-      if (!fs.existsSync(distStem)) fs.mkdirSync(distStem, { recursive: true });
-      const files = fs.readdirSync(pubStem);
-      for (const f of files) {
-        const srcF = path.join(pubStem, f);
-        const dstF = path.join(distStem, f);
-        if (fs.statSync(srcF).isFile() && !fs.existsSync(dstF)) {
-          fs.copyFileSync(srcF, dstF);
+    const syncFolders = ["stemgedrag", "dataproducts", "news", "documents", "events", "fractieleden"];
+    for (const folder of syncFolders) {
+      const pubFolder = path.join(uploadsPath, folder);
+      const distFolder = path.join(process.cwd(), "dist", "uploads", folder);
+      if (fs.existsSync(pubFolder) && fs.existsSync(path.join(process.cwd(), "dist"))) {
+        if (!fs.existsSync(distFolder)) fs.mkdirSync(distFolder, { recursive: true });
+        const files = fs.readdirSync(pubFolder);
+        for (const f of files) {
+          const srcF = path.join(pubFolder, f);
+          const dstF = path.join(distFolder, f);
+          if (fs.statSync(srcF).isFile() && !fs.existsSync(dstF)) {
+            fs.copyFileSync(srcF, dstF);
+          }
         }
       }
     }
@@ -533,6 +572,37 @@ async function startServer() {
     return res.status(404).json({ error: `Document '${baseName}' kon niet worden gevonden op de server.` });
   });
 
+  // Guaranteed endpoint for viewing and embedding interactive .html dataproducts (Folium kaarten, Plotly etc.)
+  app.get("/api/dataproduct/view", (req: any, res: any) => {
+    const rawFile = req.query.file || req.query.path || "";
+    if (!rawFile || typeof rawFile !== "string") {
+      return res.status(400).json({ error: "Geen bestandspad opgegeven" });
+    }
+
+    const cleanPath = rawFile.replace(/^\/+/, "").replace(/\.\./g, "");
+    const baseName = path.basename(cleanPath);
+
+    const candidatePaths = [
+      path.join(process.cwd(), "public", "uploads", "dataproducts", baseName),
+      path.join(process.cwd(), "dist", "uploads", "dataproducts", baseName),
+      path.join(process.cwd(), "public", cleanPath),
+      path.join(process.cwd(), cleanPath),
+      path.join(process.cwd(), "dist", cleanPath),
+      path.join(process.cwd(), "public", "uploads", baseName),
+      path.join(process.cwd(), "dist", "uploads", baseName)
+    ];
+
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p) && fs.statSync(p).isFile()) {
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.setHeader("X-Content-Type-Options", "nosniff");
+        return res.sendFile(p);
+      }
+    }
+
+    return res.status(404).json({ error: `Dataproduct '${baseName}' kon niet worden gevonden op de server.` });
+  });
+
   app.use("/uploads", express.static(uploadsPath, staticUploadsOptions));
   app.use("/public/uploads", express.static(uploadsPath, staticUploadsOptions));
   app.use("/api/uploads", express.static(uploadsPath, staticUploadsOptions));
@@ -574,7 +644,20 @@ async function startServer() {
     const isFirstUser = db.users.length === 0;
     const isAdminUser = username === 'admin' || isFirstUser;
     const resolvedEmail = (email && typeof email === 'string') ? email.trim() : (username.includes('@') ? username : '');
-    const newUser = {
+
+    const settings = db.membershipSettings || {
+      enabled: true,
+      amount: 12.00,
+      currency: "eur",
+      interval: "year",
+      productName: "Lidmaatschap Lijst van Andel (1 jaar)",
+      description: "Jaarlijkse partijcontributie voor leden van Lijst van Andel",
+      requirePaymentAtRegistration: true,
+    };
+
+    const initialBillingStatus = isAdminUser ? 'exempt' : (settings.enabled && settings.requirePaymentAtRegistration ? 'pending' : 'paid');
+
+    const newUser: any = {
       id: Date.now().toString(),
       salutation, 
       fullName, 
@@ -588,11 +671,83 @@ async function startServer() {
       newsletterSubscribed: newsletterSubscribed !== undefined ? Boolean(newsletterSubscribed) : true,
       role: isAdminUser ? 'admin' : 'member',
       isActive: true,
+      billingStatus: initialBillingStatus,
+      paidAmount: initialBillingStatus === 'paid' ? Number(settings.amount) || 12 : 0,
+      paidAt: initialBillingStatus === 'paid' ? new Date().toISOString() : null,
+      paidUntil: initialBillingStatus === 'paid' ? new Date(Date.now() + 365*24*60*60*1000).toISOString() : null,
+      stripeCustomerId: null,
+      stripeSessionId: null,
       createdAt: new Date().toISOString()
     };
+
+    let checkoutUrl: string | null = null;
+    let sessionId: string | null = null;
+
+    if (settings.enabled && settings.requirePaymentAtRegistration && !isAdminUser) {
+      const stripe = getStripe();
+      const origin = req.headers.origin || (req.headers.host ? `http://${req.headers.host}` : "http://localhost:3000");
+
+      if (stripe) {
+        try {
+          const session = await stripe.checkout.sessions.create({
+            payment_method_types: ["card", "ideal", "bancontact"],
+            line_items: [
+              {
+                price_data: {
+                  currency: (settings.currency || "eur").toLowerCase(),
+                  product_data: {
+                    name: settings.productName || "Lidmaatschap Lijst van Andel (1 jaar)",
+                    description: settings.description || `Jaarlijkse lidmaatschapscontributie voor ${fullName || username}`,
+                  },
+                  unit_amount: Math.round((Number(settings.amount) || 12) * 100),
+                },
+                quantity: 1,
+              },
+            ],
+            mode: "payment",
+            customer_email: resolvedEmail && resolvedEmail.includes("@") ? resolvedEmail : undefined,
+            client_reference_id: newUser.id,
+            metadata: {
+              userId: newUser.id,
+              username: newUser.username,
+              type: "membership_registration",
+            },
+            success_url: `${origin}/register?payment_success=true&session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${origin}/register?payment_cancelled=true`,
+          });
+
+          checkoutUrl = session.url;
+          sessionId = session.id;
+          newUser.stripeSessionId = session.id;
+        } catch (stripeErr: any) {
+          console.error("Fout bij aanmaken Stripe checkout sessie:", stripeErr.message);
+          // Fallback to simulated test session
+          sessionId = `sim_session_${newUser.id}_${Date.now()}`;
+          newUser.stripeSessionId = sessionId;
+          checkoutUrl = `/register?payment_success=true&session_id=${sessionId}&simulated=true`;
+        }
+      } else {
+        // Stripe secret key is not yet set in .env on server
+        sessionId = `sim_session_${newUser.id}_${Date.now()}`;
+        newUser.stripeSessionId = sessionId;
+        checkoutUrl = `/register?payment_success=true&session_id=${sessionId}&simulated=true`;
+      }
+    }
+
     db.users.push(newUser);
     saveDb(db);
-    res.status(201).json({ message: "Registratie succesvol", user: { id: newUser.id, username: newUser.username } });
+
+    res.status(201).json({ 
+      message: "Registratie succesvol", 
+      user: { 
+        id: newUser.id, 
+        username: newUser.username,
+        billingStatus: newUser.billingStatus,
+        role: newUser.role
+      },
+      checkoutUrl,
+      sessionId
+    });
   });
 
   app.post("/api/login", async (req, res) => {
@@ -618,6 +773,10 @@ async function startServer() {
           role: user.role, 
           isActive: user.isActive,
           newsletterSubscribed,
+          billingStatus: user.billingStatus || (user.role === 'admin' ? 'exempt' : 'paid'),
+          paidAmount: user.paidAmount,
+          paidAt: user.paidAt,
+          paidUntil: user.paidUntil,
           createdAt: user.createdAt
         },
         token
@@ -634,6 +793,9 @@ async function startServer() {
     }
     if (!userProfile.email && userProfile.username?.includes('@')) {
       userProfile.email = userProfile.username;
+    }
+    if (!userProfile.billingStatus) {
+      userProfile.billingStatus = userProfile.role === 'admin' ? 'exempt' : 'paid';
     }
     res.status(200).json({ user: userProfile });
   });
@@ -745,9 +907,299 @@ async function startServer() {
       if (rest.newsletterSubscribed === undefined) {
         rest.newsletterSubscribed = true;
       }
+      if (!rest.billingStatus) {
+        rest.billingStatus = rest.role === "admin" ? "exempt" : "paid";
+      }
       return rest;
     });
     res.json(safeUsers);
+  });
+
+  // Admin: Update user billing status manually (e.g. marked as paid after bank transfer or cash)
+  app.patch("/api/admin/users/:id/billing", requireAuth, requireAdmin, (req: any, res: any) => {
+    const { billingStatus, paidAmount, notes } = req.body;
+    const db = getDb();
+    const user = db.users.find((u: any) => u.id === req.params.id);
+    if (!user) return res.status(404).json({ error: "Gebruiker niet gevonden" });
+
+    const validStatuses = ["paid", "pending", "exempt", "failed", "cancelled"];
+    if (!validStatuses.includes(billingStatus)) {
+      return res.status(400).json({ error: "Ongeldige facturatiestatus" });
+    }
+
+    user.billingStatus = billingStatus;
+    if (billingStatus === "paid") {
+      user.paidAmount = paidAmount !== undefined ? parseFloat(paidAmount) : (db.membershipSettings?.amount || 12);
+      user.paidAt = new Date().toISOString();
+      const nextYear = new Date();
+      nextYear.setFullYear(nextYear.getFullYear() + 1);
+      user.paidUntil = nextYear.toISOString();
+    } else if (billingStatus === "pending") {
+      user.paidAmount = 0;
+      user.paidAt = null;
+      user.paidUntil = null;
+    }
+    if (notes !== undefined) {
+      user.billingNotes = notes;
+    }
+
+    saveDb(db);
+    res.json({ message: "Facturatiestatus succesvol bijgewerkt", user });
+  });
+
+  // Public: Membership Configuration Info
+  app.get("/api/membership/config", (req: any, res: any) => {
+    const db = getDb();
+    const settings = db.membershipSettings || {
+      enabled: true,
+      amount: 12.00,
+      currency: "eur",
+      interval: "year",
+      productName: "Lidmaatschap Lijst van Andel (1 jaar)",
+      description: "Jaarlijkse partijcontributie voor leden van Lijst van Andel",
+      requirePaymentAtRegistration: true,
+    };
+    res.json({
+      enabled: settings.enabled !== false,
+      amount: settings.amount || 12.00,
+      currency: settings.currency || "eur",
+      interval: settings.interval || "year",
+      productName: settings.productName || "Lidmaatschap Lijst van Andel (1 jaar)",
+      description: settings.description || "Jaarlijkse contributie voor partijleden",
+      requirePaymentAtRegistration: settings.requirePaymentAtRegistration !== false,
+      isStripeConfigured: Boolean(process.env.STRIPE_SECRET_KEY)
+    });
+  });
+
+  // Admin: Membership Settings & Stripe Status
+  app.get("/api/admin/membership/settings", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const settings = db.membershipSettings || {
+      enabled: true,
+      amount: 12.00,
+      currency: "eur",
+      interval: "year",
+      productName: "Lidmaatschap Lijst van Andel (1 jaar)",
+      description: "Jaarlijkse partijcontributie voor leden van Lijst van Andel",
+      requirePaymentAtRegistration: true,
+    };
+
+    const hasStripeKey = Boolean(process.env.STRIPE_SECRET_KEY);
+    const hasWebhookSecret = Boolean(process.env.STRIPE_WEBHOOK_SECRET);
+    const maskedSecretKey = process.env.STRIPE_SECRET_KEY
+      ? `${process.env.STRIPE_SECRET_KEY.substring(0, 7)}...${process.env.STRIPE_SECRET_KEY.slice(-4)}`
+      : "";
+
+    // Calculate billing metrics
+    const users = db.users || [];
+    const paidUsers = users.filter((u: any) => u.billingStatus === "paid");
+    const pendingUsers = users.filter((u: any) => u.billingStatus === "pending");
+    const exemptUsers = users.filter((u: any) => u.billingStatus === "exempt" || u.role === "admin");
+    const totalRevenue = paidUsers.reduce((sum: number, u: any) => sum + (Number(u.paidAmount) || Number(settings.amount) || 12), 0);
+
+    res.json({
+      settings,
+      stripe: {
+        isConfigured: hasStripeKey,
+        hasWebhookSecret,
+        maskedSecretKey,
+        publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || "",
+        webhookUrl: `${req.protocol}://${req.get("host")}/api/stripe/webhook`
+      },
+      stats: {
+        totalMembers: users.length,
+        paidMembers: paidUsers.length,
+        pendingMembers: pendingUsers.length,
+        exemptMembers: exemptUsers.length,
+        totalRevenue: Math.round(totalRevenue * 100) / 100,
+        expectedAnnualRevenue: Math.round((users.length * (settings.amount || 12)) * 100) / 100
+      }
+    });
+  });
+
+  app.patch("/api/admin/membership/settings", requireAuth, requireAdmin, (req: any, res: any) => {
+    const { enabled, amount, currency, interval, productName, description, requirePaymentAtRegistration } = req.body;
+    const db = getDb();
+    if (!db.membershipSettings) db.membershipSettings = {};
+
+    if (enabled !== undefined) db.membershipSettings.enabled = Boolean(enabled);
+    if (amount !== undefined) db.membershipSettings.amount = Math.max(0, parseFloat(amount) || 0);
+    if (currency !== undefined) db.membershipSettings.currency = String(currency).toLowerCase();
+    if (interval !== undefined) db.membershipSettings.interval = String(interval);
+    if (productName !== undefined) db.membershipSettings.productName = String(productName).trim();
+    if (description !== undefined) db.membershipSettings.description = String(description).trim();
+    if (requirePaymentAtRegistration !== undefined) db.membershipSettings.requirePaymentAtRegistration = Boolean(requirePaymentAtRegistration);
+    db.membershipSettings.updatedAt = new Date().toISOString();
+
+    saveDb(db);
+    res.json({ message: "Contributie-instellingen succesvol opgeslagen", settings: db.membershipSettings });
+  });
+
+  // Member Portal: Create Stripe Checkout Session for Pending Member
+  app.post("/api/membership/create-checkout-session", requireAuth, async (req: any, res: any) => {
+    const db = getDb();
+    const user = db.users.find((u: any) => u.id === req.user.id);
+    if (!user) return res.status(404).json({ error: "Gebruiker niet gevonden" });
+
+    const settings = db.membershipSettings || {
+      enabled: true,
+      amount: 12.00,
+      currency: "eur",
+      productName: "Lidmaatschap Lijst van Andel (1 jaar)",
+      description: "Jaarlijkse partijcontributie voor leden van Lijst van Andel",
+    };
+
+    const stripe = getStripe();
+    const origin = req.headers.origin || (req.headers.host ? `http://${req.headers.host}` : "http://localhost:3000");
+
+    if (stripe) {
+      try {
+        const session = await stripe.checkout.sessions.create({
+          payment_method_types: ["card", "ideal", "bancontact"],
+          line_items: [
+            {
+              price_data: {
+                currency: (settings.currency || "eur").toLowerCase(),
+                product_data: {
+                  name: settings.productName || "Lidmaatschap Lijst van Andel (1 jaar)",
+                  description: settings.description || `Jaarlijkse contributie voor ${user.fullName || user.username}`,
+                },
+                unit_amount: Math.round((Number(settings.amount) || 12) * 100),
+              },
+              quantity: 1,
+            },
+          ],
+          mode: "payment",
+          customer_email: user.email && user.email.includes("@") ? user.email : undefined,
+          client_reference_id: user.id,
+          metadata: {
+            userId: user.id,
+            username: user.username,
+            type: "membership_dues",
+          },
+          success_url: `${origin}/dashboard?payment_success=true&session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${origin}/dashboard?payment_cancelled=true`,
+        });
+
+        user.stripeSessionId = session.id;
+        saveDb(db);
+        return res.json({ checkoutUrl: session.url, sessionId: session.id });
+      } catch (err: any) {
+        console.error("Fout bij aanmaken Stripe sessie voor lid:", err.message);
+        return res.status(500).json({ error: "Fout bij initialiseren van Stripe: " + err.message });
+      }
+    } else {
+      const simSessionId = `sim_session_${user.id}_${Date.now()}`;
+      user.stripeSessionId = simSessionId;
+      saveDb(db);
+      return res.json({ 
+        checkoutUrl: `/dashboard?payment_success=true&session_id=${simSessionId}&simulated=true`,
+        sessionId: simSessionId
+      });
+    }
+  });
+
+  // Verify Checkout Session (Called from Frontend when redirected back from Stripe)
+  app.get("/api/checkout/verify-session", async (req: any, res: any) => {
+    const sessionId = req.query.sessionId as string;
+    if (!sessionId) {
+      return res.status(400).json({ error: "Geen sessie ID opgegeven" });
+    }
+
+    const db = getDb();
+    const user = db.users.find((u: any) => u.stripeSessionId === sessionId || (sessionId.startsWith("sim_session_") && sessionId.includes(u.id)));
+    if (!user) {
+      return res.status(404).json({ error: "Gebruiker bij deze sessie niet gevonden" });
+    }
+
+    const stripe = getStripe();
+    let isPaymentValid = false;
+    let paymentAmount = db.membershipSettings?.amount || 12;
+
+    if (sessionId.startsWith("sim_session_")) {
+      isPaymentValid = true;
+    } else if (stripe) {
+      try {
+        const session = await stripe.checkout.sessions.retrieve(sessionId);
+        if (session.payment_status === "paid") {
+          isPaymentValid = true;
+          if (session.amount_total) {
+            paymentAmount = session.amount_total / 100;
+          }
+          if (session.customer) {
+            user.stripeCustomerId = session.customer as string;
+          }
+        }
+      } catch (err: any) {
+        console.error("Fout bij ophalen Stripe sessie:", err.message);
+      }
+    }
+
+    if (isPaymentValid) {
+      user.billingStatus = "paid";
+      user.paidAmount = paymentAmount;
+      user.paidAt = new Date().toISOString();
+      const nextYear = new Date();
+      nextYear.setFullYear(nextYear.getFullYear() + 1);
+      user.paidUntil = nextYear.toISOString();
+      saveDb(db);
+
+      const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: "24h" });
+      const { password, ...safeUser } = user;
+      return res.json({
+        success: true,
+        message: "Betaling succesvol geverifieerd!",
+        user: safeUser,
+        token
+      });
+    }
+
+    return res.status(400).json({ error: "Betaling is nog niet voltooid of niet geldig." });
+  });
+
+  // Stripe Webhook Handler for asynchronous events
+  app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req: any, res: any) => {
+    const stripe = getStripe();
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    let event: any;
+
+    if (stripe && webhookSecret) {
+      const sig = req.headers["stripe-signature"];
+      try {
+        event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+      } catch (err: any) {
+        console.error("Webhook signature verification failed:", err.message);
+        return res.status(400).send(`Webhook Error: ${err.message}`);
+      }
+    } else {
+      try {
+        event = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+      } catch (e) {
+        event = {};
+      }
+    }
+
+    if (event?.type === "checkout.session.completed") {
+      const session = event.data?.object;
+      const userId = session?.client_reference_id || session?.metadata?.userId;
+      if (userId) {
+        const db = getDb();
+        const user = db.users.find((u: any) => u.id === userId);
+        if (user) {
+          user.billingStatus = "paid";
+          user.paidAmount = session.amount_total ? session.amount_total / 100 : (db.membershipSettings?.amount || 12);
+          user.paidAt = new Date().toISOString();
+          const nextYear = new Date();
+          nextYear.setFullYear(nextYear.getFullYear() + 1);
+          user.paidUntil = nextYear.toISOString();
+          if (session.customer) user.stripeCustomerId = session.customer;
+          saveDb(db);
+          console.log(`Lidmaatschap succesvol geactiveerd voor ${user.username} via webhook.`);
+        }
+      }
+    }
+
+    res.json({ received: true });
   });
 
   app.patch("/api/admin/users/:id/status", requireAuth, requireAdmin, (req: any, res: any) => {

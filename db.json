@@ -1216,5 +1216,15 @@
       "pdfFileName": "",
       "createdAt": "2025-09-16T19:40:00.000Z"
     }
-  ]
+  ],
+  "membershipSettings": {
+    "enabled": true,
+    "amount": 12,
+    "currency": "eur",
+    "interval": "year",
+    "productName": "Lidmaatschap Lijst van Andel (1 jaar)",
+    "description": "Jaarlijkse partijcontributie voor leden van Lijst van Andel",
+    "requirePaymentAtRegistration": true,
+    "updatedAt": "2026-09-05T14:02:39.343Z"
+  }
 }

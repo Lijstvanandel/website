@@ -28,6 +28,7 @@ import {
   Trash2,
   AlertTriangle,
   CalendarX,
+  CreditCard,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -262,6 +263,40 @@ export default function Dashboard() {
       }
     }
   }, [allPositions, searchParams, setSearchParams]);
+
+  // Stripe checkout dues payment & session return verification
+  const [isPayingDues, setIsPayingDues] = useState(false);
+
+  useEffect(() => {
+    const paymentSuccess = searchParams.get("payment_success");
+    const sessionId = searchParams.get("session_id");
+
+    if (paymentSuccess === "true" && sessionId) {
+      fetch(`/api/checkout/verify-session?sessionId=${encodeURIComponent(sessionId)}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.user) {
+            updateUser(data.user, data.token);
+            toast.success("Contributie succesvol ontvangen!", {
+              description: "Uw lidmaatschapsstatus is bijgewerkt en staat nu op 'Voldaan'.",
+            });
+            const newParams = new URLSearchParams(searchParams);
+            newParams.delete("payment_success");
+            newParams.delete("session_id");
+            newParams.delete("simulated");
+            setSearchParams(newParams, { replace: true });
+          }
+        })
+        .catch(console.error);
+    } else if (searchParams.get("payment_cancelled") === "true") {
+      toast.info("De betaling via Stripe is geannuleerd.", {
+        description: "U kunt de contributie op elk gewenst moment alsnog voldoen via uw dashboard.",
+      });
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete("payment_cancelled");
+      setSearchParams(newParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams, updateUser]);
 
   if (!user) {
     return <Navigate to="/login" />;
@@ -499,6 +534,37 @@ export default function Dashboard() {
     }
   };
 
+  // Stripe checkout payment handler
+
+  const handlePayDues = async () => {
+    if (!token) return;
+    setIsPayingDues(true);
+    try {
+      const res = await fetch("/api/membership/create-checkout-session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Kon betaalsessie niet starten");
+
+      if (data.checkoutUrl) {
+        if (data.checkoutUrl.startsWith("http")) {
+          window.location.href = data.checkoutUrl;
+        } else {
+          window.location.href = window.location.origin + data.checkoutUrl;
+        }
+      }
+    } catch (err: unknown) {
+      const error = err as Error;
+      toast.error(error.message || "Fout bij starten van Stripe betaling");
+    } finally {
+      setIsPayingDues(false);
+    }
+  };
+
   const currentEmail = user.email || (user.username.includes("@") ? user.username : `${user.username.toLowerCase()}@leden.lijstvanandel.nl`);
 
   // Filtered positions for full overview modal
@@ -595,6 +661,112 @@ export default function Dashboard() {
               {(user.role === "raadslid" || user.role === "admin") && (
                 <RaadslidBelafsprakenWidget token={token} currentUser={user} />
               )}
+
+              {/* LIDMAATSCHAP & CONTRIBUTIE CARD */}
+              <section className="bg-card rounded-2xl p-6 sm:p-8 border border-border shadow-sm relative overflow-hidden">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-border/60">
+                  <div className="flex items-start gap-3.5">
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0 mt-0.5">
+                      <CreditCard className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl sm:text-2xl font-display text-foreground flex items-center gap-2.5">
+                        <span>Lidmaatschap & Contributie</span>
+                      </h2>
+                      <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+                        Uw jaarlijkse partijcontributie voor Lijst van Andel ter ondersteuning van lokale politiek.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Facturatiestatus Badge */}
+                  <div className="shrink-0">
+                    {user.billingStatus === "paid" ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Contributie Voldaan
+                      </span>
+                    ) : user.billingStatus === "exempt" ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                        <ShieldCheck className="w-3.5 h-3.5" /> Vrijgesteld
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                        <AlertTriangle className="w-3.5 h-3.5" /> Contributie Openstaand
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="py-6 space-y-4">
+                  {user.billingStatus === "paid" ? (
+                    <div className="space-y-3">
+                      <div className="p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                          <div className="font-semibold text-sm text-foreground flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            Actief jaarlidmaatschap ({user.paidAmount ? `€${user.paidAmount.toFixed(2)}` : "€12,00"})
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {user.paidAt ? `Betaald op: ${new Date(user.paidAt).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" })}` : "Betaling via Stripe geregistreerd"}
+                            {user.paidUntil && ` • Geldig tot: ${new Date(user.paidUntil).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" })}`}
+                          </div>
+                        </div>
+                        <span className="text-xs font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 px-3 py-1 rounded-md self-start sm:self-center">
+                          Volledig toegang
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Hartelijk dank voor uw steun. Uw contributie wordt direct ingezet voor fractiewerk en lokale burgerinitiatieven in Steenwijkerland.
+                      </p>
+                    </div>
+                  ) : user.billingStatus === "exempt" ? (
+                    <div className="p-4 rounded-xl bg-blue-500/5 border border-blue-500/20">
+                      <div className="font-semibold text-sm text-foreground flex items-center gap-2">
+                        <ShieldCheck className="w-4 h-4 text-blue-600" />
+                        Vrijgesteld van contributie
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Als bestuurs- of fractielid van Lijst van Andel bent u vrijgesteld van de jaarlijkse ledencontributie.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div>
+                          <div className="font-semibold text-sm text-foreground flex items-center gap-2">
+                            <CreditCard className="w-4 h-4 text-amber-600" />
+                            Jaarlijkse contributie: €12,00 per jaar
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1 max-w-md">
+                            Uw lidmaatschap is geregistreerd, maar de contributie is nog niet voldaan. U kunt deze veilig en snel voldoen via Stripe (o.a. iDEAL, Bancontact en creditcard).
+                          </p>
+                        </div>
+                        <Button
+                          onClick={handlePayDues}
+                          disabled={isPayingDues}
+                          className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-5 shrink-0 flex items-center gap-2"
+                        >
+                          {isPayingDues ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Laden...
+                            </>
+                          ) : (
+                            <>
+                              <CreditCard className="w-4 h-4" />
+                              Nu betalen (€12,00)
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <ShieldCheck className="w-3.5 h-3.5 text-primary" />
+                        Beveiligde SSL-transactie afgehandeld door Stripe Payments.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </section>
 
               {/* NIEUWSBRIEF VOORKEUREN CARD */}
               <section className="bg-card rounded-2xl p-6 sm:p-8 border border-accent/30 shadow-sm relative overflow-hidden">
