@@ -1,4 +1,5 @@
 import React, { useState, useRef } from "react";
+import { useAuth } from "@/context/AuthContext";
 import {
   Bold,
   Italic,
@@ -47,6 +48,7 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
   onChange,
   required = false,
 }) => {
+  const { token: authContextToken } = useAuth();
   const [activeView, setActiveView] = useState<"visual" | "code" | "preview">("visual");
   const [htmlFileName, setHtmlFileName] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -186,7 +188,7 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
       formData.append("image", imageFile);
 
       try {
-        const token = localStorage.getItem("token") || "";
+        const token = authContextToken || localStorage.getItem("auth_token") || localStorage.getItem("token") || "";
         const res = await fetch("/api/admin/news/upload-image", {
           method: "POST",
           headers: {
@@ -272,7 +274,7 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
       formData.append("file", dpFile);
 
       try {
-        const token = localStorage.getItem("token") || "";
+        const token = authContextToken || localStorage.getItem("auth_token") || localStorage.getItem("token") || "";
         const res = await fetch("/api/admin/news/upload-dataproduct", {
           method: "POST",
           headers: {

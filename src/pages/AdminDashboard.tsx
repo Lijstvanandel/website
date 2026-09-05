@@ -205,7 +205,8 @@ export default function AdminDashboard() {
   const [eThumb, setEThumb] = useState<File | null>(null);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
 
-  const headers = { Authorization: `Bearer ${token}` };
+  const effectiveToken = token || (typeof window !== "undefined" ? localStorage.getItem("auth_token") : "") || "";
+  const headers = { Authorization: `Bearer ${effectiveToken}` };
 
   const fetchUsers = useCallback(() => {
     fetch("/api/admin/users", { headers: { Authorization: `Bearer ${token}` } })

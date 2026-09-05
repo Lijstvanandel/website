@@ -63,7 +63,7 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
   const pdfInputRef = useRef<HTMLInputElement>(null);
 
   const authHeaders = {
-    Authorization: `Bearer ${token || localStorage.getItem("token") || ""}`,
+    Authorization: `Bearer ${token || localStorage.getItem("auth_token") || localStorage.getItem("token") || ""}`,
   };
 
   useEffect(() => {
