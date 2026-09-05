@@ -1,9 +1,16 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, Newspaper, MapPin, Tag, Share2 } from "lucide-react";
+import { ArrowRight, Newspaper, MapPin, Tag, Share2, Clock } from "lucide-react";
 import { NewsItem } from "@/data/news";
 import { NewsCategory } from "@/components/CategoryManager";
 import { ShareDialog } from "@/components/ShareDialog";
+
+function getReadingTime(item: NewsItem): number {
+  const text = `${item.title || ""} ${item.description || item.excerpt || ""} ${item.content || ""}`;
+  const clean = text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  const words = clean ? clean.split(/\s+/).length : 0;
+  return Math.max(1, Math.ceil(words / 200));
+}
 
 export default function Nieuws() {
   const [news, setNews] = useState<NewsItem[]>([]);
@@ -129,23 +136,61 @@ export default function Nieuws() {
               </div>
 
               <div className="p-6 flex flex-col flex-1">
-                <div className="text-xs text-muted-foreground mb-2 font-medium">
-                  {item.createdAt
-                    ? new Date(item.createdAt).toLocaleDateString("nl-NL", {
-                        day: "numeric",
-                        month: "long",
-                        year: "numeric",
-                      })
-                    : ""}
+                <div className="flex items-center justify-between text-xs text-muted-foreground mb-2 font-medium">
+                  <span>
+                    {item.createdAt
+                      ? new Date(item.createdAt).toLocaleDateString("nl-NL", {
+                          day: "numeric",
+                          month: "long",
+                          year: "numeric",
+                        })
+                      : ""}
+                  </span>
+                  <span className="flex items-center gap-1 text-[11px]">
+                    <Clock className="w-3 h-3 text-accent" />
+                    {getReadingTime(item)} min
+                  </span>
                 </div>
                 <h3 className="text-xl font-display mb-3 leading-snug group-hover:text-accent transition-colors">
                   {item.title}
                 </h3>
-                <p className="text-muted-foreground text-sm line-clamp-3 mb-6 flex-1 leading-relaxed">
+                <p className="text-muted-foreground text-sm line-clamp-3 mb-4 flex-1 leading-relaxed">
                   {item.description || item.excerpt}
                 </p>
 
-                <div className="flex items-center justify-between mt-auto pt-4 border-t border-border/60">
+                {/* Optioneel: Auteur / (Burger)raadslid snippet */}
+                {(item.authorName || (item.author && item.author !== "Redactie" && item.author !== "Lijst van Andel")) && (
+                  <div className="pt-2 border-t border-border/60 flex items-center justify-between gap-3 text-xs mb-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-7 h-7 rounded-full overflow-hidden bg-muted shrink-0 border border-accent/30">
+                        {item.authorAvatar ? (
+                          <img
+                            src={item.authorAvatar}
+                            alt={item.authorName || item.author}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = "/assets/silhouette.png";
+                            }}
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-accent/20 text-accent font-semibold text-[10px]">
+                            {(item.authorName || item.author || "A").charAt(0)}
+                          </div>
+                        )}
+                      </div>
+                      <span className="font-medium text-foreground truncate">
+                        {item.authorName || item.author}
+                      </span>
+                    </div>
+                    {item.authorRole && (
+                      <span className="text-[11px] text-muted-foreground shrink-0 truncate max-w-[120px]">
+                        {item.authorRole}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between mt-auto pt-3 border-t border-border/60">
                   <span className="inline-flex items-center text-sm font-semibold text-primary group-hover:text-accent transition-colors">
                     Lees meer <ArrowRight className="ml-2 w-4 h-4 transition-transform group-hover:translate-x-1" />
                   </span>

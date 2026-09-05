@@ -916,7 +916,7 @@ async function startServer() {
 
   app.post("/api/admin/news", requireAuth, requireAdmin, upload.fields([{ name: 'thumbnail', maxCount: 1 }, { name: 'header', maxCount: 1 }]), (req: any, res: any) => {
     const db = getDb();
-    const { title, category, description, content, wijkSlug, wijkNaam } = req.body;
+    const { title, category, description, content, wijkSlug, wijkNaam, authorId, authorName, authorRole, authorAvatar } = req.body;
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     const thumbnailUrl = files?.['thumbnail']?.[0] ? `/uploads/news/${files['thumbnail'][0].filename}` : '';
     const headerUrl = files?.['header']?.[0] ? `/uploads/news/${files['header'][0].filename}` : '';
@@ -929,6 +929,11 @@ async function startServer() {
       content: content || "",
       wijkSlug: wijkSlug || "",
       wijkNaam: wijkNaam || "",
+      author: authorName || req.body.author || "",
+      authorId: authorId || "",
+      authorName: authorName || "",
+      authorRole: authorRole || "",
+      authorAvatar: authorAvatar || "",
       thumbnailUrl,
       headerUrl,
       createdAt: new Date().toISOString()
@@ -943,7 +948,7 @@ async function startServer() {
     const index = db.news.findIndex((n: any) => n.id === req.params.id);
     if (index === -1) return res.status(404).json({ error: "Nieuws niet gevonden" });
 
-    const { title, category, description, content, wijkSlug, wijkNaam } = req.body;
+    const { title, category, description, content, wijkSlug, wijkNaam, authorId, authorName, authorRole, authorAvatar } = req.body;
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     const current = db.news[index];
 
@@ -958,6 +963,11 @@ async function startServer() {
       content: content !== undefined ? content : current.content,
       wijkSlug: wijkSlug !== undefined ? wijkSlug : current.wijkSlug,
       wijkNaam: wijkNaam !== undefined ? wijkNaam : current.wijkNaam,
+      author: authorName !== undefined ? authorName : current.author,
+      authorId: authorId !== undefined ? authorId : current.authorId,
+      authorName: authorName !== undefined ? authorName : current.authorName,
+      authorRole: authorRole !== undefined ? authorRole : current.authorRole,
+      authorAvatar: authorAvatar !== undefined ? authorAvatar : current.authorAvatar,
       thumbnailUrl,
       headerUrl,
       updatedAt: new Date().toISOString()

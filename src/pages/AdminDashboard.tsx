@@ -38,6 +38,7 @@ import {
   BookOpen,
   Vote,
   Server,
+  User,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VideoPlayer } from "@/components/VideoPlayer";
@@ -184,6 +185,7 @@ export default function AdminDashboard() {
   const [nTitle, setNTitle] = useState("");
   const [nCategory, setNCategory] = useState("");
   const [nWijkSlug, setNWijkSlug] = useState("");
+  const [nAuthorId, setNAuthorId] = useState("");
   const [nDesc, setNDesc] = useState("");
   const [nContent, setNContent] = useState("");
   const [nThumb, setNThumb] = useState<File | null>(null);
@@ -605,6 +607,7 @@ export default function AdminDashboard() {
     setNTitle(item.title);
     setNCategory(item.category || "Algemeen");
     setNWijkSlug(item.wijkSlug || "");
+    setNAuthorId(item.authorId || "");
     setNDesc(item.description || item.excerpt || "");
     setNContent(item.content || "");
     setNThumb(null);
@@ -617,6 +620,7 @@ export default function AdminDashboard() {
     setNTitle("");
     setNCategory("");
     setNWijkSlug("");
+    setNAuthorId("");
     setNDesc("");
     setNContent("");
     setNThumb(null);
@@ -635,12 +639,17 @@ export default function AdminDashboard() {
     }
 
     const selectedWijkObj = WIJKEN_EN_KERNEN.find((w) => w.slug === nWijkSlug);
+    const selectedAuthor = fractieleden.find((f) => String(f.id) === String(nAuthorId));
 
     const formData = new FormData();
     formData.append("title", nTitle);
     formData.append("category", nCategory || "Algemeen");
     formData.append("wijkSlug", nWijkSlug);
     formData.append("wijkNaam", selectedWijkObj ? selectedWijkObj.naam : "");
+    formData.append("authorId", nAuthorId);
+    formData.append("authorName", selectedAuthor ? selectedAuthor.name : "");
+    formData.append("authorRole", selectedAuthor ? (selectedAuthor.role || selectedAuthor.type || "") : "");
+    formData.append("authorAvatar", selectedAuthor ? (selectedAuthor.imageUrl || selectedAuthor.imgUrl || "") : "");
     formData.append("description", nDesc);
     formData.append("content", nContent);
     if (nThumb) formData.append("thumbnail", nThumb);
@@ -1665,6 +1674,59 @@ export default function AdminDashboard() {
                   </p>
                 </div>
 
+                {/* Optioneel: Auteur / (Burger)raadslid selecteren */}
+                <div>
+                  <label className="text-sm font-medium mb-1 block flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5 text-accent" /> Auteur / (Burger)raadslid (optioneel)
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">Koppel een fractielid</span>
+                  </label>
+                  <select
+                    className="w-full h-10 px-3 py-2 rounded-md border border-input bg-background text-sm"
+                    value={nAuthorId}
+                    onChange={(e) => setNAuthorId(e.target.value)}
+                  >
+                    <option value="">Geen specifieke auteur (Lijst van Andel)</option>
+                    <optgroup label="(Burger)raadsleden & Fractieleden">
+                      {fractieleden.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.name} ({f.role || f.type || "Fractielid"})
+                        </option>
+                      ))}
+                    </optgroup>
+                  </select>
+                  {nAuthorId && (
+                    <div className="mt-2 p-2.5 rounded-lg bg-secondary/50 border border-border/60 flex items-center gap-2.5 text-xs">
+                      {(() => {
+                        const sel = fractieleden.find((f) => String(f.id) === String(nAuthorId));
+                        if (!sel) return null;
+                        const avatar = sel.imageUrl || sel.imgUrl;
+                        return (
+                          <>
+                            <div className="w-7 h-7 rounded-full overflow-hidden bg-muted border border-accent/40 shrink-0">
+                              {avatar ? (
+                                <img src={avatar} alt={sel.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-[10px] font-bold text-accent">
+                                  {sel.name.charAt(0)}
+                                </div>
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <span className="font-semibold text-foreground block truncate">{sel.name}</span>
+                              <span className="text-muted-foreground text-[11px] block truncate">{sel.role || sel.type || "Fractielid"}</span>
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  )}
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Kies welk (burger)raadslid als auteur gekoppeld wordt. Deze verschijnt met profielfoto bij het nieuwsbericht.
+                  </p>
+                </div>
+
                 <div>
                   <label className="text-sm font-medium mb-1 block">
                     Korte Beschrijving (intro / excerpt) *
@@ -1780,6 +1842,11 @@ export default function AdminDashboard() {
                         {n.wijkNaam && (
                           <span className="text-[10px] px-2 py-0.5 rounded-full bg-secondary text-foreground font-medium flex items-center gap-1">
                             <MapPin className="w-2.5 h-2.5 text-accent" /> {n.wijkNaam}
+                          </span>
+                        )}
+                        {n.authorName && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent/10 text-accent font-medium flex items-center gap-1 border border-accent/20">
+                            <User className="w-2.5 h-2.5" /> {n.authorName}
                           </span>
                         )}
                         <span className="text-[11px] text-muted-foreground">

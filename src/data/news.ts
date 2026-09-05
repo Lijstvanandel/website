@@ -10,6 +10,10 @@ export interface NewsItem {
   date?: string;
   createdAt?: string;
   author?: string;
+  authorId?: string;
+  authorName?: string;
+  authorRole?: string;
+  authorAvatar?: string;
   image?: string;
   thumbnailUrl?: string;
   headerUrl?: string;

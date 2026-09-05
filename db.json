@@ -182,10 +182,14 @@
       "content": "<p>Tijdens de uitzending van Kopwijzer op RTV SLOS ging Sammy van Andel uitgebreid in op de lokale prioriteiten van Lijst van Andel.</p><p>Onderwerpen die voorbijkwamen waren onder meer voorrang voor eigen inwoners op de woningmarkt, het behoud van de Weerribben-Wieden en een bestuurscultuur die dichter bij de inwoner staat. Sammy benadrukte het belang van een lokale, onafhankelijke stem in de raad — vrij van Haagse invloeden.</p>",
       "date": "2026-04-18",
       "createdAt": "2026-04-18T10:00:00.000Z",
-      "author": "Redactie",
+      "author": "Sammy van Andel",
       "thumbnailUrl": "/assets/news-kopwijzer.jpg",
       "headerUrl": "/assets/news-kopwijzer.jpg",
-      "category": "Media"
+      "category": "Media",
+      "authorId": "1",
+      "authorName": "Sammy van Andel",
+      "authorRole": "Fractievoorzitter",
+      "authorAvatar": "/assets/sammy.png"
     },
     {
       "id": "nieuwe-impulsen-binnenstad",
@@ -195,12 +199,16 @@
       "content": "<p>In de komende raadsvergadering dient Lijst van Andel een motie in die het college oproept met een concreet plan te komen om leegstand in het centrum van Steenwijk te bestrijden.</p><p>Volgens de fractie verdient de binnenstad een impuls die past bij de identiteit van de gemeente: ruimte voor lokale ondernemers, sfeer op de Markt en een aantrekkelijk verblijfsklimaat voor inwoners én bezoekers.</p>",
       "date": "2026-05-02",
       "createdAt": "2026-05-02T14:30:00.000Z",
-      "author": "Lijst van Andel",
+      "author": "Lisa Mars",
       "thumbnailUrl": "/assets/markt-steenwijk.jpg",
       "headerUrl": "/assets/markt-steenwijk.jpg",
       "category": "Politiek",
       "wijkSlug": "steenwijk-centrum",
-      "wijkNaam": "Steenwijk Centrum / Binnenstad"
+      "wijkNaam": "Steenwijk Centrum / Binnenstad",
+      "authorId": "2",
+      "authorName": "Lisa Mars",
+      "authorRole": "Raadslid",
+      "authorAvatar": "/assets/lisa.png"
     }
   ],
   "events": [
@@ -968,8 +976,10 @@
       "startDateTime": "2026-09-04T19:00:00.000Z",
       "endDateTime": "2026-09-04T19:30:00.000Z",
       "onderwerp": "Ondersteuning voor mantelzorgers en lokale Wmo-voorzieningen",
-      "status": "ingepland",
-      "createdAt": "2026-09-02T10:44:50.330Z"
+      "status": "niet afgehandeld",
+      "createdAt": "2026-09-02T10:44:50.330Z",
+      "handledAt": "2026-09-05T10:34:48.255Z",
+      "handledBy": "Systeem (automatisch >30 min na eindtijd)"
     },
     {
       "id": "bel-3",

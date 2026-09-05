@@ -168,7 +168,7 @@ export default function AgendaDetail() {
   const heroImage = event.thumbnailUrl || event.image || "/assets/markt-steenwijk.jpg";
 
   return (
-    <div className="pt-24 pb-24 bg-background min-h-screen">
+    <div className="pb-24 bg-background min-h-screen">
       {/* Background Hero Header */}
       <div className="relative w-full h-[50vh] md:h-[60vh] bg-muted overflow-hidden">
         <img
