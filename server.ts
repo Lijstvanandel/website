@@ -33,6 +33,17 @@ function getStripe(): Stripe | null {
   return stripeClient;
 }
 
+function resolveRequestOrigin(req: any): string {
+  const forwardedProto = req.headers["x-forwarded-proto"];
+  const proto = (typeof forwardedProto === "string" ? forwardedProto.split(",")[0].trim() : null) || (req.secure ? "https" : "http");
+  const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost:3000";
+  let origin = req.headers.origin || `${proto}://${host}`;
+  if (origin.includes("run.app") && origin.startsWith("http://")) {
+    origin = origin.replace("http://", "https://");
+  }
+  return origin;
+}
+
 // Ensure upload directories exist
 const UPLOAD_DIRS = [
   "public/uploads",
@@ -685,12 +696,11 @@ async function startServer() {
 
     if (settings.enabled && settings.requirePaymentAtRegistration && !isAdminUser) {
       const stripe = getStripe();
-      const origin = req.headers.origin || (req.headers.host ? `http://${req.headers.host}` : "http://localhost:3000");
+      const origin = resolveRequestOrigin(req);
 
       if (stripe) {
         try {
           const session = await stripe.checkout.sessions.create({
-            payment_method_types: ["card", "ideal", "bancontact"],
             line_items: [
               {
                 price_data: {
@@ -1050,12 +1060,11 @@ async function startServer() {
     };
 
     const stripe = getStripe();
-    const origin = req.headers.origin || (req.headers.host ? `http://${req.headers.host}` : "http://localhost:3000");
+    const origin = resolveRequestOrigin(req);
 
     if (stripe) {
       try {
         const session = await stripe.checkout.sessions.create({
-          payment_method_types: ["card", "ideal", "bancontact"],
           line_items: [
             {
               price_data: {

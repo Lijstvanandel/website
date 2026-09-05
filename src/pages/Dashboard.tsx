@@ -29,6 +29,7 @@ import {
   AlertTriangle,
   CalendarX,
   CreditCard,
+  ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -266,6 +267,35 @@ export default function Dashboard() {
 
   // Stripe checkout dues payment & session return verification
   const [isPayingDues, setIsPayingDues] = useState(false);
+  const [stripePaymentModal, setStripePaymentModal] = useState<{
+    open: boolean;
+    checkoutUrl: string;
+    sessionId: string;
+  } | null>(null);
+  const [isCheckingPaymentStatus, setIsCheckingPaymentStatus] = useState(false);
+
+  // Auto-polling verification while Stripe checkout modal is open
+  useEffect(() => {
+    if (!stripePaymentModal?.open || !stripePaymentModal.sessionId) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/checkout/verify-session?sessionId=${encodeURIComponent(stripePaymentModal.sessionId)}`);
+        const data = await res.json();
+        if (data.success && data.user) {
+          updateUser(data.user, data.token);
+          setStripePaymentModal(null);
+          toast.success("Contributie succesvol ontvangen!", {
+            description: "Uw lidmaatschapsstatus is bijgewerkt en staat nu op 'Voldaan'.",
+          });
+        }
+      } catch {
+        // Polling in background
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [stripePaymentModal, updateUser]);
 
   useEffect(() => {
     const paymentSuccess = searchParams.get("payment_success");
@@ -551,10 +581,22 @@ export default function Dashboard() {
       if (!res.ok) throw new Error(data.error || "Kon betaalsessie niet starten");
 
       if (data.checkoutUrl) {
-        if (data.checkoutUrl.startsWith("http")) {
+        // Detect if app is running in an iframe (e.g. inside Google AI Studio preview)
+        const isInIframe = typeof window !== "undefined" && window.self !== window.top;
+
+        // Open our modal dialog so the user has a 100% reliable link and auto-verification
+        setStripePaymentModal({
+          open: true,
+          checkoutUrl: data.checkoutUrl,
+          sessionId: data.sessionId,
+        });
+
+        // Always try to open Stripe in a new window/tab to prevent iframe blocking
+        const openedTab = window.open(data.checkoutUrl, "_blank", "noopener,noreferrer");
+
+        // If not in iframe and window.open was blocked by popup blocker, navigate top-level window
+        if (!isInIframe && !openedTab) {
           window.location.href = data.checkoutUrl;
-        } else {
-          window.location.href = window.location.origin + data.checkoutUrl;
         }
       }
     } catch (err: unknown) {
@@ -562,6 +604,31 @@ export default function Dashboard() {
       toast.error(error.message || "Fout bij starten van Stripe betaling");
     } finally {
       setIsPayingDues(false);
+    }
+  };
+
+  const handleManualCheckPayment = async () => {
+    if (!stripePaymentModal?.sessionId) return;
+    setIsCheckingPaymentStatus(true);
+    try {
+      const res = await fetch(`/api/checkout/verify-session?sessionId=${encodeURIComponent(stripePaymentModal.sessionId)}`);
+      const data = await res.json();
+      if (data.success && data.user) {
+        updateUser(data.user, data.token);
+        setStripePaymentModal(null);
+        toast.success("Contributie succesvol geverifieerd!", {
+          description: "Uw lidmaatschapsstatus is bijgewerkt en staat nu op 'Voldaan'.",
+        });
+      } else {
+        toast.info("Betaling nog niet afgerond", {
+          description: "Stripe meldt dat de betaling nog niet is voltooid. Heeft u de betaling in het Stripe-tabblad al afgerond?",
+        });
+      }
+    } catch (err: unknown) {
+      const error = err as Error;
+      toast.error(error.message || "Kon betaling niet verifiëren");
+    } finally {
+      setIsCheckingPaymentStatus(false);
     }
   };
 
@@ -1733,6 +1800,94 @@ export default function Dashboard() {
                 </>
               )}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ============================================================ */}
+      {/* DIALOG: STRIPE VEILIGE BETALING (IFRAME-PROOF & POPUP LINK) */}
+      {/* ============================================================ */}
+      <Dialog
+        open={Boolean(stripePaymentModal?.open)}
+        onOpenChange={(open) => {
+          if (!open) setStripePaymentModal(null);
+        }}
+      >
+        <DialogContent className="max-w-md p-6">
+          <DialogHeader>
+            <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-2 ring-8 ring-primary/5">
+              <CreditCard className="w-6 h-6" />
+            </div>
+            <DialogTitle className="text-xl font-display font-bold text-foreground">
+              Veilige Stripe Betaalomgeving
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground pt-1">
+              Jaarlijkse lidmaatschapscontributie Lijst van Andel
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="bg-amber-500/10 border border-amber-500/25 rounded-xl p-3.5 text-xs text-amber-900 dark:text-amber-200 space-y-1.5">
+              <div className="font-semibold flex items-center gap-1.5 text-amber-800 dark:text-amber-300">
+                <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                Waarom in een apart tabblad?
+              </div>
+              <p className="leading-relaxed">
+                Stripe beveiligt betaalgegevens volgens de strengste banknormen. Om u te beschermen tegen fraude en clickjacking mag een Stripe-afrekenpagina <strong>nooit</strong> in een ingesloten venster of iframe draaien (waardoor het scherm anders blijft laden en draaien).
+              </p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-secondary/50 border border-border text-xs space-y-2">
+              <div className="flex justify-between items-center text-muted-foreground">
+                <span>Omschrijving:</span>
+                <span className="font-medium text-foreground">Lidmaatschap (1 jaar)</span>
+              </div>
+              <div className="flex justify-between items-center pt-1 border-t border-border/60">
+                <span className="font-medium text-foreground">Totaalbedrag:</span>
+                <span className="text-lg font-bold font-display text-primary">€12,00</span>
+              </div>
+              <div className="text-[11px] text-muted-foreground pt-1 border-t border-border/60 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                Ondersteunt o.a. iDEAL, Bancontact, Creditcard en Apple/Google Pay
+              </div>
+            </div>
+
+            {stripePaymentModal?.checkoutUrl && (
+              <a
+                href={stripePaymentModal.checkoutUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-sm shadow transition-colors"
+              >
+                <span>Naar officiële Stripe betaalpagina</span>
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            )}
+
+            <div className="flex flex-col gap-2 pt-1">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={handleManualCheckPayment}
+                disabled={isCheckingPaymentStatus}
+                className="w-full text-xs h-10 flex items-center justify-center gap-2"
+              >
+                {isCheckingPaymentStatus ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Status controleren...
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    Ik heb betaald / Status nu controleren
+                  </>
+                )}
+              </Button>
+              <p className="text-[11px] text-center text-muted-foreground">
+                Zodra u de betaling bij Stripe afrondt, detecteert het systeem dit automatisch.
+              </p>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

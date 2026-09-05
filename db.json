@@ -11,7 +11,8 @@
       "role": "admin",
       "isActive": true,
       "email": "info@lijstvanandel.nl",
-      "newsletterSubscribed": true
+      "newsletterSubscribed": true,
+      "stripeSessionId": "cs_test_a1cUq8vRSO8pTDIGXuo5Dx8zOUNubPYc160HSSlJTHxHql8we6XfV34F2S"
     },
     {
       "id": "1788366262062",
@@ -60,6 +61,28 @@
       "role": "admin",
       "isActive": true,
       "createdAt": "2026-09-03T11:09:13.932Z"
+    },
+    {
+      "id": "1788617115761",
+      "salutation": "Dhr.",
+      "fullName": "Peter van Leeuwen",
+      "address": "Kruisstraat 73",
+      "city": "Oldemarkt",
+      "username": "Peter123",
+      "email": "Peeter@gmail.com",
+      "password": "$2b$10$sKYYlj9x5PzwoIOn/rEfhO5dbL.r/MbtYK4SiOpmlEKMfLikqVrne",
+      "remarks": "",
+      "directDebit": true,
+      "newsletterSubscribed": true,
+      "role": "member",
+      "isActive": true,
+      "billingStatus": "pending",
+      "paidAmount": 0,
+      "paidAt": null,
+      "paidUntil": null,
+      "stripeCustomerId": null,
+      "stripeSessionId": "cs_test_a1rZSmtmBddQrBLscuj9FPrayhXLs9EHRg7c7qeOeZiJ1jm1Vmi2YSlqwU",
+      "createdAt": "2026-09-05T14:05:15.761Z"
     }
   ],
   "fractieleden": [

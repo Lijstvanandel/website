@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { CheckCircle2, AlertCircle, CreditCard, ShieldCheck, Loader2 } from "lucide-react";
+import { CheckCircle2, AlertCircle, CreditCard, ShieldCheck, Loader2, ExternalLink } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import {
@@ -60,6 +60,7 @@ export default function Register() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [membershipConfig, setMembershipConfig] = useState<MembershipConfig | null>(null);
+  const [registeredPaymentInfo, setRegisteredPaymentInfo] = useState<{ checkoutUrl: string; sessionId?: string } | null>(null);
 
   // Verification states when returning from Stripe Checkout
   const isPaymentSuccess = searchParams.get("payment_success") === "true";
@@ -154,13 +155,20 @@ export default function Register() {
       }
 
       if (result.checkoutUrl) {
-        toast.info("Account aangemaakt! U wordt doorgestuurd naar de veilige betaalomgeving...", {
-          duration: 4000,
+        setRegisteredPaymentInfo({
+          checkoutUrl: result.checkoutUrl,
+          sessionId: result.sessionId,
         });
-        if (result.checkoutUrl.startsWith("http")) {
-          window.location.href = result.checkoutUrl;
-        } else {
-          navigate(result.checkoutUrl);
+
+        const isInIframe = typeof window !== "undefined" && window.self !== window.top;
+        const opened = window.open(result.checkoutUrl, "_blank", "noopener,noreferrer");
+
+        if (!isInIframe && !opened) {
+          if (result.checkoutUrl.startsWith("http")) {
+            window.location.href = result.checkoutUrl;
+          } else {
+            navigate(result.checkoutUrl);
+          }
         }
         return;
       }
@@ -177,6 +185,59 @@ export default function Register() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  // View when user registered and is prompted to complete Stripe Checkout
+  if (registeredPaymentInfo) {
+    return (
+      <div className="container max-w-xl mx-auto py-16 px-4">
+        <div className="bg-card p-8 rounded-xl shadow-lg border border-border text-center space-y-6">
+          <div className="w-16 h-16 bg-primary/10 text-primary rounded-2xl flex items-center justify-center mx-auto ring-8 ring-primary/5">
+            <CreditCard className="w-8 h-8" />
+          </div>
+
+          <div>
+            <h2 className="text-2xl font-display font-bold text-foreground">
+              Account gereed &mdash; Rond uw contributie af
+            </h2>
+            <p className="text-muted-foreground text-sm mt-2 max-w-md mx-auto">
+              Uw account is succesvol aangemaakt! Voldoe de jaarlijkse lidmaatschapscontributie van €
+              {membershipConfig ? membershipConfig.amount.toFixed(2) : "12,00"} om uw lidmaatschap direct te activeren.
+            </p>
+          </div>
+
+          <div className="bg-amber-500/10 border border-amber-500/25 rounded-xl p-4 text-xs text-left text-amber-900 dark:text-amber-200 space-y-1">
+            <div className="font-semibold flex items-center gap-1.5 text-amber-800 dark:text-amber-300">
+              <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              Veilig afrekenen via Stripe (nieuw venster)
+            </div>
+            <p className="leading-relaxed">
+              Om clickjacking en phishing te voorkomen, staat Stripe geen betaling toe binnen ingesloten voorvertoningen of iframes. Daarom opent Stripe veilig in een nieuw tabblad.
+            </p>
+          </div>
+
+          <div className="space-y-3 pt-2">
+            <a
+              href={registeredPaymentInfo.checkoutUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full flex items-center justify-center gap-2 py-3.5 px-6 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-sm shadow transition-colors"
+            >
+              <span>Naar officiële Stripe betaalpagina</span>
+              <ExternalLink className="w-4 h-4" />
+            </a>
+
+            <Button
+              variant="outline"
+              onClick={() => navigate("/login")}
+              className="w-full text-xs h-10"
+            >
+              Naar inlogpagina (u kunt later altijd betalen via het dashboard)
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // View when returning from Stripe verification
