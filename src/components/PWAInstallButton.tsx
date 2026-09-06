@@ -48,7 +48,7 @@ export function PWAInstallButton({ variant = "button", className = "" }: PWAInst
           title="Installeer Lijst van Andel als PWA App op uw apparaat"
         >
           <Smartphone className="w-3.5 h-3.5 text-primary" />
-          <span className="hidden sm:inline">App installeren</span>
+          <span className="hidden sm:inline">App</span>
           <span className="sm:hidden">App</span>
         </Button>
 

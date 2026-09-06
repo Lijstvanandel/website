@@ -134,107 +134,110 @@ export const Header = () => {
 
   return (
     <>
-      <header className="sticky top-0 z-40 backdrop-blur-md bg-background/90 border-b border-accent/20 w-full transition-colors">
-        {/* Full-width responsive container giving maximum room to nav and buttons */}
-        <div className="w-full max-w-[1720px] mx-auto px-3 sm:px-6 lg:px-8 xl:px-12 flex items-center justify-between h-24 lg:h-28 gap-2 sm:gap-4 lg:gap-6">
+      <header className="sticky top-0 z-40 backdrop-blur-md bg-background/95 border-b border-accent/20 w-full transition-colors">
+        {/* Full-width responsive container giving optimal space without overflowing */}
+        <div className="w-full max-w-[1720px] mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 flex items-center justify-between h-16 sm:h-20 lg:h-22 gap-2 sm:gap-3 lg:gap-4">
           
-          {/* Logo & Brand Name with animated wijk/kern subtitle */}
-          <Link to="/" className="flex items-center gap-3 sm:gap-4 group shrink-0 select-none">
-            <img
-              src={logo}
-              alt="Lijst van Andel logo"
-              className="w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 rounded-full object-cover transition-transform duration-300 group-hover:scale-105 shrink-0 shadow-sm"
-            />
-            <div className="leading-none shrink-0">
-              <div className="font-display text-lg sm:text-2xl tracking-wide text-foreground">
-                Lijst van Andel
-              </div>
-              <div className="h-5 overflow-hidden flex items-center mt-1">
-                <AnimatePresence mode="wait" initial={false}>
-                  <motion.div
-                    key={currentSubtitle}
-                    initial={{ opacity: 0, y: 7, filter: "blur(2px)" }}
-                    animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                    exit={{ opacity: 0, y: -7, filter: "blur(2px)" }}
-                    transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-                    className="text-[10px] sm:text-[11px] uppercase tracking-[0.22em] font-semibold text-accent whitespace-nowrap truncate max-w-[150px] sm:max-w-[220px] md:max-w-[320px]"
-                    title={currentSubtitle}
-                  >
-                    {currentSubtitle}
-                  </motion.div>
-                </AnimatePresence>
-              </div>
-            </div>
-          </Link>
-
-          {/* Desktop Navigation */}
-          <nav className="hidden lg:flex items-center gap-0.5 xl:gap-1.5 2xl:gap-2 shrink">
-            {/* Partij Dropdown */}
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                className={`px-3 xl:px-4 py-2 text-xs xl:text-sm uppercase tracking-wider font-medium transition-colors relative inline-flex items-center gap-1 outline-none whitespace-nowrap ${
-                  partijActive ? "text-accent" : "text-foreground/85 hover:text-accent"
-                }`}
-              >
-                <span>Partij</span>
-                <ChevronDown className="w-3.5 h-3.5 opacity-80" />
-                {partijActive && (
-                  <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-6 h-0.5 bg-accent" />
-                )}
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="min-w-[170px] bg-background border-accent/30 shadow-lg z-50">
-                {partijItems.map((item) => (
-                  <DropdownMenuItem key={item.to} asChild>
-                    <NavLink
-                      to={item.to}
-                      className={({ isActive }) =>
-                        `w-full px-3 py-2 text-xs xl:text-sm uppercase tracking-wider font-medium cursor-pointer whitespace-nowrap ${
-                          isActive ? "text-accent font-semibold" : "text-foreground/90 hover:text-accent"
-                        }`
-                      }
+          {/* Left Side: Logo & Brand Name + Desktop Navigation */}
+          <div className="flex items-center gap-2.5 sm:gap-4 lg:gap-4 xl:gap-6 min-w-0 shrink">
+            {/* Logo & Brand Name with animated wijk/kern subtitle */}
+            <Link to="/" className="flex items-center gap-2 sm:gap-2.5 group shrink-0 select-none">
+              <img
+                src={logo}
+                alt="Lijst van Andel logo"
+                className="w-10 h-10 sm:w-12 sm:h-12 lg:w-14 lg:h-14 xl:w-16 xl:h-16 rounded-full object-cover transition-transform duration-300 group-hover:scale-105 shrink-0 shadow-sm ring-1 ring-accent/30"
+              />
+              <div className="leading-tight shrink-0">
+                <div className="font-display text-base sm:text-lg lg:text-xl xl:text-2xl tracking-wide text-foreground">
+                  Lijst van Andel
+                </div>
+                <div className="h-4 sm:h-4.5 overflow-hidden flex items-center">
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.div
+                      key={currentSubtitle}
+                      initial={{ opacity: 0, y: 7, filter: "blur(2px)" }}
+                      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                      exit={{ opacity: 0, y: -7, filter: "blur(2px)" }}
+                      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+                      className="text-[9px] sm:text-[10px] xl:text-[11px] uppercase tracking-[0.18em] font-semibold text-accent whitespace-nowrap truncate max-w-[120px] sm:max-w-[160px] xl:max-w-[240px]"
+                      title={currentSubtitle}
                     >
-                      {item.label}
-                    </NavLink>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                      {currentSubtitle}
+                    </motion.div>
+                  </AnimatePresence>
+                </div>
+              </div>
+            </Link>
 
-            {/* Standard Nav Items */}
-            {navItems.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === "/"}
-                className={({ isActive }) =>
-                  `px-3 xl:px-4 py-2 text-xs xl:text-sm uppercase tracking-wider font-medium transition-colors relative whitespace-nowrap ${
-                    isActive ? "text-accent font-semibold" : "text-foreground/85 hover:text-accent"
-                  }`
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    <span>{item.label}</span>
-                    {isActive && (
-                      <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-6 h-0.5 bg-accent" />
-                    )}
-                  </>
-                )}
-              </NavLink>
-            ))}
-          </nav>
+            {/* Desktop Navigation starting cleanly on the left */}
+            <nav className="hidden lg:flex items-center gap-0.5 xl:gap-1 2xl:gap-2 shrink">
+              {/* Mensen Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  className={`px-2 xl:px-3 py-1.5 text-xs xl:text-sm uppercase tracking-wider font-medium transition-colors relative inline-flex items-center gap-1 outline-none whitespace-nowrap ${
+                    partijActive ? "text-accent" : "text-foreground/85 hover:text-accent"
+                  }`}
+                >
+                  <span>Mensen</span>
+                  <ChevronDown className="w-3.5 h-3.5 opacity-80" />
+                  {partijActive && (
+                    <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-5 h-0.5 bg-accent" />
+                  )}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="min-w-[170px] bg-background border-accent/30 shadow-lg z-50">
+                  {partijItems.map((item) => (
+                    <DropdownMenuItem key={item.to} asChild>
+                      <NavLink
+                        to={item.to}
+                        className={({ isActive }) =>
+                          `w-full px-3 py-2 text-xs xl:text-sm uppercase tracking-wider font-medium cursor-pointer whitespace-nowrap ${
+                            isActive ? "text-accent font-semibold" : "text-foreground/90 hover:text-accent"
+                          }`
+                        }
+                      >
+                        {item.label}
+                      </NavLink>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Standard Nav Items */}
+              {navItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.to === "/"}
+                  className={({ isActive }) =>
+                    `px-2 xl:px-3 py-1.5 text-xs xl:text-sm uppercase tracking-wider font-medium transition-colors relative whitespace-nowrap ${
+                      isActive ? "text-accent font-semibold" : "text-foreground/85 hover:text-accent"
+                    }`
+                  }
+                >
+                  {({ isActive }) => (
+                    <>
+                      <span>{item.label}</span>
+                      {isActive && (
+                        <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-5 h-0.5 bg-accent" />
+                      )}
+                    </>
+                  )}
+                </NavLink>
+              ))}
+            </nav>
+          </div>
 
           {/* Right-side Actions & Authentication Controls */}
-          <div className="flex items-center gap-1.5 sm:gap-2 lg:gap-2.5 xl:gap-3 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-1.5 lg:gap-1.5 xl:gap-2 shrink-0">
             {/* 1. Lid worden Button (alleen als bezoeker nog niet is ingelogd) */}
             {!isAuthenticated && (
               <Link to="/registreren" className="hidden sm:inline-flex">
                 <Button
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground border border-accent/40 uppercase tracking-wider text-xs font-semibold px-2.5 xl:px-3.5 h-9 sm:h-10 whitespace-nowrap shrink-0 shadow-sm"
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground border border-accent/40 uppercase tracking-wider text-xs font-semibold px-2.5 xl:px-3 h-8 sm:h-9 whitespace-nowrap shrink-0 shadow-sm"
                 >
-                  <UserPlus className="w-3.5 h-3.5 mr-1.5" />
-                  <span className="hidden xl:inline">Lid worden</span>
-                  <span className="xl:hidden">Lid</span>
+                  <UserPlus className="w-3.5 h-3.5 mr-1" />
+                  <span className="hidden 2xl:inline">Lid worden</span>
+                  <span className="2xl:hidden">Lid</span>
                 </Button>
               </Link>
             )}
@@ -243,34 +246,32 @@ export const Header = () => {
             <Link to="/doneren" className="inline-flex">
               <Button
                 variant="outline"
-                className="border-rose-400/50 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 uppercase tracking-wider text-xs font-semibold px-2.5 xl:px-3.5 h-9 sm:h-10 whitespace-nowrap shrink-0 shadow-2xs"
+                className="border-rose-400/50 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 uppercase tracking-wider text-xs font-semibold px-2 sm:px-2.5 xl:px-3 h-8 sm:h-9 whitespace-nowrap shrink-0 shadow-2xs"
               >
-                <Heart className="w-3.5 h-3.5 mr-1.5 fill-rose-600 text-rose-600" />
-                <span>Doneren</span>
+                <Heart className="w-3.5 h-3.5 sm:mr-1 fill-rose-600 text-rose-600" />
+                <span className="hidden sm:inline">Doneren</span>
               </Button>
             </Link>
 
             {/* PWA Install Button */}
             <PWAInstallButton variant="header" />
 
-            <div className="hidden sm:block w-[1px] h-6 bg-border mx-0.5" />
-
             {/* 3. Authentication Buttons (Logged in vs Guest) */}
             {isAuthenticated ? (
-              <div className="hidden sm:flex items-center gap-1.5 shrink-0">
+              <div className="hidden sm:flex items-center gap-1 shrink-0">
                 <Link to="/dashboard">
                   <Button
                     variant="outline"
-                    className="border-accent/40 text-accent hover:bg-accent/15 uppercase tracking-wider text-xs font-semibold px-2.5 xl:px-3 h-9 sm:h-10 whitespace-nowrap"
+                    className="border-accent/40 text-accent hover:bg-accent/15 uppercase tracking-wider text-xs font-semibold px-2 xl:px-3 h-8 sm:h-9 whitespace-nowrap"
                   >
-                    <User className="w-3.5 h-3.5 mr-1.5" />
+                    <User className="w-3.5 h-3.5 mr-1" />
                     <span>Dashboard</span>
                   </Button>
                 </Link>
                 <Button
                   variant="ghost"
                   onClick={logout}
-                  className="uppercase tracking-wider text-xs font-semibold text-muted-foreground hover:text-destructive hover:bg-destructive/10 px-2 h-9 sm:h-10 whitespace-nowrap"
+                  className="uppercase tracking-wider text-xs font-semibold text-muted-foreground hover:text-destructive hover:bg-destructive/10 px-1.5 h-8 sm:h-9 whitespace-nowrap"
                   title="Uitloggen"
                 >
                   <LogOut className="w-4 h-4" />
@@ -280,24 +281,26 @@ export const Header = () => {
               <Link to="/login" className="hidden sm:inline-flex shrink-0">
                 <Button
                   variant="ghost"
-                  className="border border-accent/40 text-foreground hover:text-accent hover:bg-accent/10 uppercase tracking-wider text-xs font-semibold px-3 xl:px-4 h-9 sm:h-10 whitespace-nowrap"
+                  className="border border-accent/40 text-foreground hover:text-accent hover:bg-accent/10 uppercase tracking-wider text-xs font-semibold px-2.5 xl:px-3.5 h-8 sm:h-9 whitespace-nowrap"
                 >
-                  <Lock className="w-3.5 h-3.5 mr-1.5 text-accent" />
+                  <Lock className="w-3.5 h-3.5 mr-1 text-accent" />
                   Inloggen
                 </Button>
               </Link>
             )}
 
-            {/* 4. Tekstgrootte vergroten & verkleinen knoppen (verborgen op mobiel; al aanwezig in mobiele dropdown) */}
+            <div className="hidden xl:block w-[1px] h-5 bg-border mx-0.5" />
+
+            {/* 4. Tekstgrootte vergroten & verkleinen knoppen (zichtbaar op xl+) */}
             <div
-              className="hidden lg:inline-flex items-center rounded-sm border border-accent/40 bg-background/60 h-9 sm:h-10 p-0.5 shrink-0 shadow-2xs"
+              className="hidden xl:inline-flex items-center rounded-sm border border-accent/40 bg-background/60 h-8 sm:h-9 p-0.5 shrink-0 shadow-2xs"
               title="Tekstgrootte aanpassen voor de hele website"
             >
               <button
                 type="button"
                 onClick={decreaseFontSize}
                 disabled={fontSize <= 85}
-                className="h-full px-1.5 sm:px-2 flex items-center justify-center text-accent hover:bg-accent hover:text-accent-foreground disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-accent rounded-xs transition-colors font-bold text-xs"
+                className="h-full px-1.5 flex items-center justify-center text-accent hover:bg-accent hover:text-accent-foreground disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-accent rounded-xs transition-colors font-bold text-xs"
                 title="Tekstgrootte verkleinen (A-)"
                 aria-label="Tekstgrootte verkleinen"
               >
@@ -308,7 +311,7 @@ export const Header = () => {
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
-                    className={`h-full px-1.5 sm:px-2 flex items-center gap-0.5 text-[11px] font-semibold transition-colors rounded-xs hover:bg-accent/15 border-x border-accent/20 ${
+                    className={`h-full px-1.5 flex items-center gap-0.5 text-[11px] font-semibold transition-colors rounded-xs hover:bg-accent/15 border-x border-accent/20 ${
                       fontSize !== 100 ? "text-accent font-bold" : "text-foreground/80"
                     }`}
                     title={`Huidige tekstgrootte: ${fontSize}%. Klik voor opties.`}
@@ -364,7 +367,7 @@ export const Header = () => {
                 type="button"
                 onClick={increaseFontSize}
                 disabled={fontSize >= 145}
-                className="h-full px-1.5 sm:px-2 flex items-center justify-center text-accent hover:bg-accent hover:text-accent-foreground disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-accent rounded-xs transition-colors font-bold text-xs"
+                className="h-full px-1.5 flex items-center justify-center text-accent hover:bg-accent hover:text-accent-foreground disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-accent rounded-xs transition-colors font-bold text-xs"
                 title="Tekstgrootte vergroten (A+)"
                 aria-label="Tekstgrootte vergroten"
               >
@@ -372,23 +375,23 @@ export const Header = () => {
               </button>
             </div>
 
-            {/* 3. Kleurcontrast voor kleurenblindheid knop (alleen desktop, op mobiel in menu-drawer) */}
-            <div className="hidden lg:inline-flex shrink-0">
+            {/* 5. Kleurcontrast voor kleurenblindheid knop (zichtbaar op xl+) */}
+            <div className="hidden xl:inline-flex shrink-0">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
                     aria-label="Kleurcontrast en kleurenblindheid instellingen"
                     title="Kleurcontrast voor kleurenblindheid (WCAG)"
-                    className={`w-9 h-9 sm:w-10 sm:h-10 inline-flex items-center justify-center rounded-sm border transition-all shrink-0 relative ${
+                    className={`w-8 h-8 sm:w-9 sm:h-9 inline-flex items-center justify-center rounded-sm border transition-all shrink-0 relative ${
                       contrastMode === "high" || colorBlindMode !== "none"
                         ? "border-accent bg-accent text-accent-foreground shadow-sm ring-1 ring-accent"
                         : "border-accent/40 text-accent hover:bg-accent hover:text-accent-foreground"
                     }`}
                   >
-                    <Contrast className="w-4 h-4" />
+                    <Contrast className="w-3.5 h-3.5" />
                     {(contrastMode === "high" || colorBlindMode !== "none") && (
-                      <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-accent-foreground border-2 border-background rounded-full" />
+                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-accent-foreground border-2 border-background rounded-full" />
                     )}
                   </button>
                 </DropdownMenuTrigger>
@@ -469,23 +472,23 @@ export const Header = () => {
               </DropdownMenu>
             </div>
 
-            {/* 4. Theme Toggle (dark/lightmode) */}
+            {/* 6. Theme Toggle (dark/lightmode) */}
             <button
               onClick={toggle}
               aria-label="Wissel thema"
               title={theme === "dark" ? "Schakel naar licht thema" : "Schakel naar donker thema"}
-              className="w-9 h-9 sm:w-10 sm:h-10 inline-flex items-center justify-center rounded-sm border border-accent/40 text-accent hover:bg-accent hover:text-accent-foreground transition-colors shrink-0"
+              className="w-8 h-8 sm:w-9 sm:h-9 inline-flex items-center justify-center rounded-sm border border-accent/40 text-accent hover:bg-accent hover:text-accent-foreground transition-colors shrink-0"
             >
-              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              {theme === "dark" ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
             </button>
 
             {/* Mobile Hamburger Menu Button */}
             <button
               onClick={() => setMobileOpen(!mobileOpen)}
-              className="lg:hidden p-2 text-foreground rounded-md hover:bg-accent/10 transition-colors"
+              className="lg:hidden p-1.5 sm:p-2 text-foreground rounded-md hover:bg-accent/10 transition-colors shrink-0"
               aria-label="Menu"
             >
-              {mobileOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              {mobileOpen ? <X className="w-5 h-5 sm:w-6 sm:h-6" /> : <Menu className="w-5 h-5 sm:w-6 sm:h-6" />}
             </button>
           </div>
         </div>
@@ -502,14 +505,14 @@ export const Header = () => {
                 </div>
               )}
 
-              {/* Partij Accordion in Mobile */}
+              {/* Mensen Accordion in Mobile */}
               <button
                 onClick={() => setPartijMobileOpen((o) => !o)}
                 className={`px-3 py-3 text-sm uppercase tracking-wider font-medium border-l-2 flex items-center justify-between transition-colors ${
                   partijActive ? "text-accent border-accent font-semibold" : "text-foreground/80 border-transparent"
                 }`}
               >
-                <span>Partij</span>
+                <span>Mensen</span>
                 <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${partijMobileOpen ? "rotate-180" : ""}`} />
               </button>
               {partijMobileOpen &&
