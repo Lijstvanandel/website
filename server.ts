@@ -13,6 +13,10 @@ import nodemailer from "nodemailer";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import multer from "multer";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import Stripe from "stripe";
 import { createServer as createViteServer } from "vite";
 import { BUURTKAART_43_WIJKEN, syncWijkenWithBuurtkaart, LEGACY_SLUG_MAP } from "./src/data/defaultWijken.js";
@@ -20,17 +24,50 @@ import { getPageMetadata, injectMetadataIntoHtml } from "./src/server/metaGenera
 import { generateNewsletterHtml, generateNewsletterText, prepareNewsletterForDispatch } from "./src/server/newsletterTemplate.js";
 
 // Ensure .env is explicitly loaded from working directory in case of PM2 or systemd execution
-const envFileCandidate = path.join(process.cwd(), ".env");
-if (fs.existsSync(envFileCandidate)) {
-  dotenv.config({ path: envFileCandidate, override: false });
-  if (typeof (process as any).loadEnvFile === "function") {
-    try {
-      (process as any).loadEnvFile(envFileCandidate);
-    } catch (e) {
-      // already parsed
+function ensureEnvLoaded() {
+  const candidates = [
+    path.join(process.cwd(), ".env"),
+    path.join(__dirname, ".env"),
+    path.join(__dirname, "..", ".env"),
+  ];
+
+  for (const envPath of candidates) {
+    if (fs.existsSync(envPath)) {
+      try {
+        dotenv.config({ path: envPath, override: false });
+      } catch (e) {}
+
+      try {
+        const content = fs.readFileSync(envPath, "utf-8");
+        for (const line of content.split("\n")) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith("#")) continue;
+          const eqIdx = trimmed.indexOf("=");
+          if (eqIdx > 0) {
+            const key = trimmed.slice(0, eqIdx).trim();
+            let val = trimmed.slice(eqIdx + 1).trim();
+            if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+              val = val.slice(1, -1);
+            }
+            if (!process.env[key]) {
+              process.env[key] = val;
+            }
+          }
+        }
+      } catch (e) {}
+      break;
     }
   }
 }
+ensureEnvLoaded();
+
+console.log("[SMTP CONFIG STATUS]", {
+  host: process.env.SMTP_HOST || "(niet ingesteld)",
+  port: process.env.SMTP_PORT || "465",
+  user: process.env.SMTP_USER || "(niet ingesteld)",
+  hasPass: !!process.env.SMTP_PASS,
+  secure: process.env.SMTP_SECURE || "default (ssl/tls)",
+});
 
 // NodeMailer helper logic
 function getEmailTransporter() {
@@ -1196,9 +1233,16 @@ async function startServer() {
       `;
       const emailText = `Beste ${user.name || user.username},\n\nEr is een aanvraag gedaan om het wachtwoord van uw ledenaccount bij Lijst van Andel opnieuw in te stellen.\n\nOpen deze link om een nieuw wachtwoord in te stellen:\n${resetUrl}\n\nDeze link is 1 uur geldig.\n\nMet vriendelijke groet,\nLijst van Andel Steenwijkerland`;
 
-      sendTransactionalEmail(user.email || normalizedEmail, emailSubject, emailHtml, emailText).catch((err) => {
-        console.error("Fout bij achtergrond e-mailverzending:", err);
-      });
+      try {
+        const mailRes = await sendTransactionalEmail(user.email || normalizedEmail, emailSubject, emailHtml, emailText);
+        if (!mailRes.success) {
+          console.error(`[WACHTWOORD HERSTEL] Kon mail niet verzenden naar ${normalizedEmail}:`, mailRes.error);
+        } else {
+          console.log(`[WACHTWOORD HERSTEL] Herstelmail succesvol verzonden naar ${normalizedEmail}, id: ${mailRes.messageId}`);
+        }
+      } catch (err: any) {
+        console.error(`[WACHTWOORD HERSTEL] Onverwachte fout bij e-mailverzending naar ${normalizedEmail}:`, err.message);
+      }
 
       return res.status(200).json({
         success: true,
