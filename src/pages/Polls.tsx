@@ -27,7 +27,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { StellingItem, StellingAnswer, QrLocation } from "@/types/stelling";
 
-// Swipe Card Component with smooth drag & rotation physics
+// Swipe Card Component with smooth drag & rotation physics across the WHOLE card
 interface SwipeCardProps {
   stelling: StellingItem;
   onSwipe: (direction: "eens" | "oneens") => void;
@@ -36,22 +36,22 @@ interface SwipeCardProps {
 
 function SwipeCard({ stelling, onSwipe, isTop }: SwipeCardProps) {
   const x = useMotionValue(0);
-  // Smoother rotation and responsive visual feedback
-  const rotate = useTransform(x, [-180, 180], [-15, 15]);
+  // Responsive rotation and visual cues
+  const rotate = useTransform(x, [-180, 180], [-14, 14]);
   const opacity = useTransform(x, [-220, -140, 0, 140, 220], [0.6, 1, 1, 1, 0.6]);
   
-  // Badge opacities activate earlier for smoother visual feedback
-  const likeOpacity = useTransform(x, [15, 70], [0, 1]);
-  const nopeOpacity = useTransform(x, [-15, -70], [0, 1]);
+  // Badge opacities activate early for snappy visual feedback
+  const likeOpacity = useTransform(x, [12, 60], [0, 1]);
+  const nopeOpacity = useTransform(x, [-12, -60], [0, 1]);
 
   const handleDragEnd = (_: any, info: any) => {
-    // Smoother drag sensitivity: trigger at offset.x > 45px or velocity.x > 300px/s
+    // Highly responsive swipe sensitivity for mobile/touch screens & PWA
     const offset = info.offset.x;
     const velocity = info.velocity.x;
 
-    if (offset > 50 || velocity > 350) {
+    if (offset > 45 || velocity > 300) {
       onSwipe("eens");
-    } else if (offset < -50 || velocity < -350) {
+    } else if (offset < -45 || velocity < -300) {
       onSwipe("oneens");
     }
   };
@@ -63,25 +63,25 @@ function SwipeCard({ stelling, onSwipe, isTop }: SwipeCardProps) {
         rotate: isTop ? rotate : 0,
         opacity: isTop ? opacity : 0.9,
         zIndex: isTop ? 10 : 1,
-        touchAction: "none"
+        touchAction: "pan-y"
       }}
       drag={isTop ? "x" : false}
       dragConstraints={{ left: 0, right: 0 }}
-      dragElastic={0.8}
+      dragElastic={0.85}
       dragTransition={{ bounceStiffness: 600, bounceDamping: 20 }}
       onDragEnd={handleDragEnd}
-      whileTap={{ scale: isTop ? 1.02 : 1 }}
+      whileTap={{ scale: isTop ? 1.01 : 1 }}
       initial={{ scale: 0.95, opacity: 0, y: 20 }}
       animate={{ scale: 1, opacity: 1, y: 0 }}
       exit={{ scale: 0.85, opacity: 0, transition: { duration: 0.18 } }}
-      className="absolute inset-0 bg-card rounded-3xl border border-border shadow-2xl overflow-hidden flex flex-col select-none cursor-grab active:cursor-grabbing"
+      className="absolute inset-0 bg-card rounded-3xl border border-border shadow-2xl overflow-hidden flex flex-col select-none cursor-grab active:cursor-grabbing pointer-events-auto"
     >
       {/* Top Media Image Container */}
-      <div className="relative h-64 sm:h-72 w-full bg-muted overflow-hidden shrink-0">
+      <div className="relative h-60 sm:h-64 w-full bg-muted overflow-hidden shrink-0 pointer-events-none select-none">
         <img
           src={stelling.imageUrl || "/assets/stemmen.jpg"}
           alt={stelling.title}
-          className="w-full h-full object-cover pointer-events-none"
+          className="w-full h-full object-cover pointer-events-none select-none"
           onError={(e) => {
             (e.target as HTMLImageElement).src = "/assets/stemmen.jpg";
           }}
@@ -100,7 +100,7 @@ function SwipeCard({ stelling, onSwipe, isTop }: SwipeCardProps) {
           <>
             <motion.div
               style={{ opacity: likeOpacity }}
-              className="absolute top-6 right-6 bg-emerald-600 text-white px-4 py-2 rounded-2xl font-display font-black text-xl tracking-wider border-2 border-white shadow-xl rotate-12 flex items-center gap-1.5 pointer-events-none"
+              className="absolute top-6 right-6 bg-emerald-600 text-white px-4 py-2 rounded-2xl font-display font-black text-xl tracking-wider border-2 border-white shadow-xl rotate-12 flex items-center gap-1.5 pointer-events-none z-20"
             >
               <ThumbsUp className="w-5 h-5 fill-white" />
               EENS
@@ -108,7 +108,7 @@ function SwipeCard({ stelling, onSwipe, isTop }: SwipeCardProps) {
 
             <motion.div
               style={{ opacity: nopeOpacity }}
-              className="absolute top-6 left-6 bg-rose-600 text-white px-4 py-2 rounded-2xl font-display font-black text-xl tracking-wider border-2 border-white shadow-xl -rotate-12 flex items-center gap-1.5 pointer-events-none"
+              className="absolute top-6 left-6 bg-rose-600 text-white px-4 py-2 rounded-2xl font-display font-black text-xl tracking-wider border-2 border-white shadow-xl -rotate-12 flex items-center gap-1.5 pointer-events-none z-20"
             >
               <ThumbsDown className="w-5 h-5 fill-white" />
               ONEENS
@@ -117,27 +117,27 @@ function SwipeCard({ stelling, onSwipe, isTop }: SwipeCardProps) {
         )}
       </div>
 
-      {/* Card Content */}
-      <div className="p-6 flex-1 flex flex-col justify-between overflow-y-auto">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-display font-bold text-foreground leading-snug mb-3">
+      {/* Card Content - fully draggable area */}
+      <div className="p-6 flex-1 flex flex-col justify-between overflow-hidden select-none pointer-events-none">
+        <div className="space-y-2 pointer-events-none">
+          <h2 className="text-xl sm:text-2xl font-display font-bold text-foreground leading-snug">
             {stelling.title}
           </h2>
           {stelling.description && (
-            <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
+            <p className="text-sm sm:text-base text-muted-foreground leading-relaxed line-clamp-4">
               {stelling.description}
             </p>
           )}
         </div>
 
         {/* Swipe instructions banner */}
-        <div className="pt-4 mt-4 border-t border-border/60 flex items-center justify-between text-xs text-muted-foreground">
-          <span className="flex items-center text-rose-600 font-medium">
+        <div className="pt-4 mt-2 border-t border-border/60 flex items-center justify-between text-xs text-muted-foreground pointer-events-none select-none">
+          <span className="flex items-center text-rose-600 font-semibold">
             <ThumbsDown className="w-3.5 h-3.5 mr-1" />
-            Swipe links = Oneens
+            Veeg links = Oneens
           </span>
-          <span className="flex items-center text-emerald-600 font-medium">
-            Swipe rechts = Eens
+          <span className="flex items-center text-emerald-600 font-semibold">
+            Veeg rechts = Eens
             <ThumbsUp className="w-3.5 h-3.5 ml-1" />
           </span>
         </div>
@@ -248,36 +248,38 @@ export default function Polls() {
       const list = (data.stellingen || []).filter((s: StellingItem) => s.active !== false);
       setStellingen(list);
       setHasAlreadySubmitted(!!data.hasSubmitted);
-
-      if (data.hasSubmitted && data.userSubmission) {
-        setGeneralFeedback(data.userSubmission.generalFeedback || "");
-      }
     } catch (err) {
       console.error(err);
-      toast.error("Fout bij laden van stellingen.");
+      toast.error("Fout bij ophalen van fractiepeilingen.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSwipeChoice = (choice: "eens" | "oneens") => {
+  const handleSwipeChoice = (direction: "eens" | "oneens") => {
     const current = stellingen[currentIndex];
     if (!current) return;
 
-    const newAnswer: StellingAnswer = {
-      stellingId: current.id,
-      type: "swipe",
-      value: choice,
-      answeredAt: new Date().toISOString()
-    };
+    // Record answer
+    setAnswers((prev) => [
+      ...prev.filter((a) => a.stellingId !== current.id),
+      { stellingId: current.id, value: direction }
+    ]);
 
-    const updated = [...answers.filter((a) => a.stellingId !== current.id), newAnswer];
-    setAnswers(updated);
+    // Haptic feedback if available in PWA / mobile
+    if (typeof window !== "undefined" && window.navigator && "vibrate" in window.navigator) {
+      try {
+        window.navigator.vibrate(20);
+      } catch {
+        // ignore vibrate errors
+      }
+    }
 
+    // Move to next card
     if (currentIndex + 1 < stellingen.length) {
       setCurrentIndex(currentIndex + 1);
     } else {
-      // Reached the end -> Go to final feedback step
+      // Finished cards, go to optional feedback / thank you note step
       setCurrentIndex(stellingen.length);
     }
   };
@@ -286,15 +288,11 @@ export default function Polls() {
     const current = stellingen[currentIndex];
     if (!current) return;
 
-    const newAnswer: StellingAnswer = {
-      stellingId: current.id,
-      type: "scale",
-      value: scaleValue,
-      answeredAt: new Date().toISOString()
-    };
-
-    const updated = [...answers.filter((a) => a.stellingId !== current.id), newAnswer];
-    setAnswers(updated);
+    // Record scale answer (number 1..10)
+    setAnswers((prev) => [
+      ...prev.filter((a) => a.stellingId !== current.id),
+      { stellingId: current.id, value: scaleValue }
+    ]);
 
     if (currentIndex + 1 < stellingen.length) {
       setCurrentIndex(currentIndex + 1);
@@ -497,7 +495,7 @@ export default function Polls() {
         
         {/* QR LOCATION STICKER HEADER BANNER */}
         {activeQrLocation && (
-          <div className="w-full bg-linear-to-r from-accent/15 via-accent/25 to-accent/15 border border-accent/40 rounded-2xl p-4 mb-4 text-center shadow-md animate-fade-up">
+          <div className="w-full bg-gradient-to-r from-accent/15 via-accent/25 to-accent/15 border border-accent/40 rounded-2xl p-4 mb-4 text-center shadow-md animate-fade-up">
             <div className="flex items-center justify-center gap-2 text-xs font-bold text-accent uppercase tracking-wider mb-1">
               <QrCode className="w-4 h-4" />
               <MapPin className="w-3.5 h-3.5" />
@@ -680,18 +678,12 @@ export default function Polls() {
               </div>
             )}
 
-            {/* Extra Info: Deadline & Respondents */}
-            <div className="flex flex-wrap items-center justify-center gap-4 mt-6 text-xs text-muted-foreground">
-              {currentStelling.startDate && (
-                <span className="flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 text-accent" />
-                  Vanaf: <strong className="text-foreground">{currentStelling.startDate}</strong>
-                </span>
-              )}
+            {/* Context Info Below Card */}
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-4 text-xs text-muted-foreground">
               {currentStelling.deadlineDate && (
                 <span className="flex items-center gap-1">
                   <Calendar className="w-3.5 h-3.5 text-accent" />
-                  Tot: <strong className="text-foreground">{currentStelling.deadlineDate}</strong>
+                  Mening geven kan t/m: <strong className="text-foreground">{currentStelling.deadlineDate}</strong>
                 </span>
               )}
               {currentStelling.maxParticipants && (
