@@ -23,6 +23,10 @@ export interface EventItem {
   isCancelled?: boolean;
   attendees?: string[];
   isAttending?: boolean;
+  ticketCode?: string;
+  nonMemberPrice?: number;
+  ticketNotes?: string;
+  locationHiddenUntil12h?: boolean;
 }
 
 export const events: EventItem[] = [

@@ -363,7 +363,10 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
                         <div>
                           <span className="font-semibold">Plaats: {eventCity}</span>
                           <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-normal mt-0.5">
-                            <Lock className="w-3 h-3 text-accent" /> Adres zichtbaar na aanmelden via ledenportaal
+                            <Lock className="w-3 h-3 text-accent" />{" "}
+                            {ev.isPublic
+                              ? "Adres zichtbaar na aanmelden via ledenportaal of e-mail"
+                              : "Adres zichtbaar na aanmelden via ledenportaal"}
                           </span>
                         </div>
                       )}

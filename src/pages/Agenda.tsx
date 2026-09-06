@@ -7,12 +7,17 @@ import { AgendaMap, AgendaEventLocation } from "@/components/AgendaMap";
 import { EventItem } from "@/data/events";
 import { extractCity } from "@/lib/utils";
 import { ShareDialog } from "@/components/ShareDialog";
+import { GuestEventRegistrationModal } from "@/components/GuestEventRegistrationModal";
 
 export default function Agenda() {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [selectedEventId, setSelectedEventId] = useState<string | undefined>(undefined);
   const { isAuthenticated, token } = useAuth();
   const navigate = useNavigate();
+
+  // Guest Registration Modal state
+  const [guestModalOpen, setGuestModalOpen] = useState<boolean>(false);
+  const [selectedGuestEvent, setSelectedGuestEvent] = useState<EventItem | null>(null);
 
   // Share Dialog state
   const [shareDialogOpen, setShareDialogOpen] = useState<boolean>(false);
@@ -40,40 +45,77 @@ export default function Agenda() {
       .catch((err) => console.error("Error fetching agenda:", err));
   }, [token]);
 
-  const handleAttend = async (eventId: string, isCancelled: boolean) => {
-    if (isCancelled) return;
-    if (!isAuthenticated) {
-      toast.info("Log in op het ledenportaal om u aan te melden voor dit evenement");
-      navigate("/login");
+  const handleAttend = async (item: EventItem) => {
+    if (item.isCancelled) return;
+
+    if (item.isAttending) {
+      if (item.ticketCode) {
+        navigate(`/ticket/${item.ticketCode}`);
+      } else {
+        toast.info("U bent al aangemeld voor dit evenement.");
+      }
       return;
     }
 
-    try {
-      const res = await fetch(`/api/events/${eventId}/attend`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setEvents((prev) =>
-          prev.map((ev) =>
-            ev.id === eventId
-              ? {
-                  ...ev,
-                  isAttending: true,
-                  address: data.fullAddress || ev.address,
-                  fullAddress: data.fullAddress || ev.address,
-                }
-              : ev
-          )
-        );
-        toast.success("Goed dat u komt, op uw ledendashboard staat het adres, tot dan!");
-      } else {
-        const data = await res.json().catch(() => ({}));
-        toast.error(data.error || "Aanmelden mislukt");
+    if (isAuthenticated) {
+      try {
+        const res = await fetch(`/api/events/${item.id}/attend`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setEvents((prev) =>
+            prev.map((ev) =>
+              ev.id === item.id
+                ? {
+                    ...ev,
+                    isAttending: true,
+                    ticketCode: data.ticketCode,
+                    address: data.fullAddress || ev.address,
+                    fullAddress: data.fullAddress || ev.address,
+                  }
+                : ev
+            )
+          );
+          toast.success("Goed dat u komt! Uw digitale ticket met QR-code is naar uw e-mailadres verzonden.");
+        } else {
+          const data = await res.json().catch(() => ({}));
+          toast.error(data.error || "Aanmelden mislukt");
+        }
+      } catch {
+        toast.error("Fout bij aanmelden");
       }
-    } catch (e) {
-      toast.error("Fout bij aanmelden");
+      return;
+    }
+
+    // Niet ingelogde bezoeker
+    if (item.isPublic) {
+      // Publiek evenement: open direct de gast-registratie pop-up (zonder account verplichting)
+      setSelectedGuestEvent(item);
+      setGuestModalOpen(true);
+    } else {
+      // Besloten evenement: inloggen vereist
+      toast.info("Dit evenement is besloten voor leden. Log in op het ledenportaal om u aan te melden.");
+      navigate("/login");
+    }
+  };
+
+  const handleGuestRegistrationSuccess = (result: { ticketCode: string; fullAddress?: string }) => {
+    if (selectedGuestEvent) {
+      setEvents((prev) =>
+        prev.map((ev) =>
+          ev.id === selectedGuestEvent.id
+            ? {
+                ...ev,
+                isAttending: true,
+                ticketCode: result.ticketCode,
+                address: result.fullAddress || ev.address,
+                fullAddress: result.fullAddress || ev.address,
+              }
+            : ev
+        )
+      );
     }
   };
 
@@ -189,10 +231,19 @@ export default function Agenda() {
                 </div>
 
                 <div className="p-6 md:p-8 md:w-2/3 flex flex-col justify-center">
-                  <div className="flex items-center gap-2 mb-3">
+                  <div className="flex flex-wrap items-center gap-2 mb-3">
                     <span className="px-2.5 py-1 bg-accent/10 text-accent text-xs font-semibold uppercase tracking-wider rounded-full">
                       {item.isPublic ? "Publiek" : "Alleen voor leden"}
                     </span>
+                    {item.isPublic && item.nonMemberPrice && Number(item.nonMemberPrice) > 0 ? (
+                      <span className="px-2.5 py-1 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-xs font-semibold rounded-full">
+                        Niet-leden: €{Number(item.nonMemberPrice).toFixed(2)}
+                      </span>
+                    ) : item.isPublic ? (
+                      <span className="px-2.5 py-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-semibold rounded-full">
+                        Gratis toegang
+                      </span>
+                    ) : null}
                     {item.isCancelled && (
                       <span className="px-2.5 py-1 bg-red-500/10 text-red-500 text-xs font-semibold uppercase tracking-wider rounded-full">
                         Gecanceld
@@ -220,7 +271,7 @@ export default function Agenda() {
                             {item.fullAddress || item.address}
                           </span>
                           <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-500/10 px-2.5 py-0.5 rounded-full flex items-center gap-1 border border-emerald-500/20">
-                            <CheckCircle2 className="w-3 h-3" /> Aangemeld via ledenportaal
+                            <CheckCircle2 className="w-3 h-3" /> Aangemeld
                           </span>
                         </div>
                       ) : (
@@ -229,7 +280,10 @@ export default function Agenda() {
                             Plaats: {item.city || extractCity(item.address)}
                           </span>
                           <span className="text-[11px] text-muted-foreground bg-muted/70 px-2.5 py-0.5 rounded-full border border-border/60 flex items-center gap-1 font-normal">
-                            <Lock className="w-3 h-3 text-accent shrink-0" /> Adres zichtbaar na aanmelden via ledenportaal
+                            <Lock className="w-3 h-3 text-accent shrink-0" />{" "}
+                            {item.isPublic
+                              ? "Adres zichtbaar na aanmelden via ledenportaal of e-mail"
+                              : "Adres zichtbaar na aanmelden via ledenportaal"}
                           </span>
                         </div>
                       )}
@@ -242,7 +296,7 @@ export default function Agenda() {
 
                   <div className="mt-auto pt-2 flex flex-wrap items-center gap-2.5">
                     <button
-                      onClick={() => handleAttend(item.id, item.isCancelled)}
+                      onClick={() => handleAttend(item)}
                       disabled={item.isCancelled}
                       className={`inline-flex items-center justify-center px-5 py-2.5 rounded-full font-semibold text-xs transition-all duration-300 ${
                         item.isCancelled
@@ -256,7 +310,8 @@ export default function Agenda() {
                         "Evenement Gecanceld"
                       ) : item.isAttending ? (
                         <>
-                          <CheckCircle2 className="mr-1.5 w-3.5 h-3.5" /> Aanmelding Bevestigd
+                          <CheckCircle2 className="mr-1.5 w-3.5 h-3.5" />
+                          {item.ticketCode ? "Aangemeld (Bekijk Ticket)" : "Aanmelding Bevestigd"}
                         </>
                       ) : (
                         <>
@@ -309,6 +364,14 @@ export default function Agenda() {
         title={shareData.title}
         description={shareData.description}
         url={shareData.url}
+      />
+
+      {/* Guest Event Registration Modal for Public Events */}
+      <GuestEventRegistrationModal
+        open={guestModalOpen}
+        onOpenChange={setGuestModalOpen}
+        event={selectedGuestEvent}
+        onSuccess={handleGuestRegistrationSuccess}
       />
     </div>
   );

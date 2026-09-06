@@ -149,6 +149,9 @@ async function sendTransactionalEmail(
   }
 }
 
+// Alias for ticket/event transaction emails
+const sendEmailViaSMTP = sendTransactionalEmail;
+
 const execPromise = util.promisify(exec);
 let lastCacheClearedTime: string | null = null;
 let lastSystemSyncTime: string | null = null;
@@ -1028,6 +1031,13 @@ async function startServer() {
   const requireAdmin = (req: any, res: any, next: any) => {
     if (req.user.role !== 'admin') {
       return res.status(403).json({ error: "Toegang geweigerd: beheerdersrechten vereist" });
+    }
+    next();
+  };
+
+  const requireVolunteerOrAdmin = (req: any, res: any, next: any) => {
+    if (req.user.role !== 'admin' && req.user.role !== 'vrijwilliger') {
+      return res.status(403).json({ error: "Toegang geweigerd: beheerders- of vrijwilligersrechten vereist" });
     }
     next();
   };
@@ -3317,22 +3327,171 @@ async function startServer() {
     });
   });
 
-  // Admin: Check-in ticket at the door
-  app.post("/api/admin/events/tickets/:ticketCode/checkin", requireAuth, requireAdmin, (req: any, res: any) => {
+  // Volunteer & Admin: Lookup scanned ticket with detailed info for door check-in
+  app.get("/api/tickets/scan/:ticketCode", requireAuth, requireVolunteerOrAdmin, (req: any, res: any) => {
     const db = getDb();
     const code = String(req.params.ticketCode || "").trim().toLowerCase();
     const ticket = (db.eventTickets || []).find(
-      (t: any) => String(t.ticketCode || "").toLowerCase() === code || t.id === code
+      (t: any) => String(t.ticketCode || "").toLowerCase() === code || String(t.id || "").toLowerCase() === code
+    );
+    if (!ticket) return res.status(404).json({ error: "Geen ticket gevonden met deze code." });
+
+    const ev = (db.events || []).find((e: any) => e.id === ticket.eventId);
+
+    res.json({
+      success: true,
+      ticket: {
+        id: ticket.id,
+        ticketCode: ticket.ticketCode,
+        eventId: ticket.eventId,
+        eventTitle: ev?.title || ticket.eventTitle || "Evenement",
+        eventDate: ev?.date || ticket.eventDate || "",
+        eventTime: ev?.startTime || ticket.eventTime || "19:30",
+        eventCity: ev?.city || "Steenwijkerland",
+        eventAddress: ev?.fullAddress || ev?.address || "",
+        fullName: ticket.fullName,
+        email: ticket.email,
+        phone: ticket.phone || "",
+        isMember: Boolean(ticket.isMember),
+        price: ticket.price || 0,
+        paid: ticket.paid !== false,
+        status: ticket.status || "active",
+        checkedIn: Boolean(ticket.checkedIn),
+        checkedInAt: ticket.checkedInAt || null,
+        checkInStatus: ticket.checkInStatus || (ticket.checkedIn ? "accepted" : "pending"),
+        scannedBy: ticket.scannedBy || null,
+        rejectionReason: ticket.rejectionReason || "",
+      },
+    });
+  });
+
+  // Volunteer & Admin: Process door scan decision (accept or reject)
+  app.post("/api/tickets/:ticketCode/scan-decision", requireAuth, requireVolunteerOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const code = String(req.params.ticketCode || "").trim().toLowerCase();
+    const { decision, reason } = req.body; // 'accepted' | 'rejected' | 'reset'
+
+    const ticket = (db.eventTickets || []).find(
+      (t: any) => String(t.ticketCode || "").toLowerCase() === code || String(t.id || "").toLowerCase() === code
     );
     if (!ticket) return res.status(404).json({ error: "Ticket niet gevonden" });
 
-    ticket.checkedIn = true;
-    ticket.checkedInAt = new Date().toISOString();
+    if (decision === "accepted") {
+      ticket.checkedIn = true;
+      ticket.checkInStatus = "accepted";
+      ticket.checkedInAt = new Date().toISOString();
+      ticket.scannedBy = {
+        id: req.user.id,
+        name: req.user.fullName || req.user.username,
+        role: req.user.role || "vrijwilliger",
+      };
+      ticket.rejectionReason = "";
+    } else if (decision === "rejected") {
+      ticket.checkedIn = false;
+      ticket.checkInStatus = "rejected";
+      ticket.checkedInAt = new Date().toISOString();
+      ticket.scannedBy = {
+        id: req.user.id,
+        name: req.user.fullName || req.user.username,
+        role: req.user.role || "vrijwilliger",
+      };
+      ticket.rejectionReason = String(reason || "Toegang geweigerd").trim();
+    } else if (decision === "reset" || decision === "pending") {
+      ticket.checkedIn = false;
+      ticket.checkInStatus = "pending";
+      ticket.checkedInAt = null;
+      ticket.scannedBy = null;
+      ticket.rejectionReason = "";
+    } else {
+      return res.status(400).json({ error: "Ongeldige beslissing. Gebruik 'accepted', 'rejected' of 'reset'." });
+    }
+
+    saveDb(db);
+
+    const ev = (db.events || []).find((e: any) => e.id === ticket.eventId);
+
+    res.json({
+      success: true,
+      message:
+        decision === "accepted"
+          ? `Toegang geaccepteerd voor ${ticket.fullName}`
+          : decision === "rejected"
+          ? `Toegang geweigerd voor ${ticket.fullName}`
+          : `Status gereset voor ${ticket.fullName}`,
+      ticket: {
+        id: ticket.id,
+        ticketCode: ticket.ticketCode,
+        eventId: ticket.eventId,
+        eventTitle: ev?.title || ticket.eventTitle,
+        eventDate: ev?.date || ticket.eventDate,
+        eventTime: ev?.startTime || ticket.eventTime,
+        eventCity: ev?.city,
+        eventAddress: ev?.fullAddress || ev?.address,
+        fullName: ticket.fullName,
+        email: ticket.email,
+        phone: ticket.phone,
+        isMember: ticket.isMember,
+        price: ticket.price,
+        paid: ticket.paid,
+        status: ticket.status,
+        checkedIn: ticket.checkedIn,
+        checkedInAt: ticket.checkedInAt,
+        checkInStatus: ticket.checkInStatus,
+        scannedBy: ticket.scannedBy,
+        rejectionReason: ticket.rejectionReason,
+      },
+    });
+  });
+
+  // Admin & Volunteer: Check-in / status update ticket at the door from Agendabeheer
+  app.post("/api/admin/events/tickets/:ticketCode/checkin", requireAuth, requireVolunteerOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const code = String(req.params.ticketCode || "").trim().toLowerCase();
+    const { decision = "accepted", reason = "" } = req.body || {};
+
+    const ticket = (db.eventTickets || []).find(
+      (t: any) => String(t.ticketCode || "").toLowerCase() === code || String(t.id || "").toLowerCase() === code
+    );
+    if (!ticket) return res.status(404).json({ error: "Ticket niet gevonden" });
+
+    if (decision === "rejected") {
+      ticket.checkedIn = false;
+      ticket.checkInStatus = "rejected";
+      ticket.checkedInAt = new Date().toISOString();
+      ticket.scannedBy = {
+        id: req.user.id,
+        name: req.user.fullName || req.user.username,
+        role: req.user.role,
+      };
+      ticket.rejectionReason = String(reason || "Geweigerd door beheerder").trim();
+    } else if (decision === "reset" || decision === "pending") {
+      ticket.checkedIn = false;
+      ticket.checkInStatus = "pending";
+      ticket.checkedInAt = null;
+      ticket.scannedBy = null;
+      ticket.rejectionReason = "";
+    } else {
+      ticket.checkedIn = true;
+      ticket.checkInStatus = "accepted";
+      ticket.checkedInAt = new Date().toISOString();
+      ticket.scannedBy = {
+        id: req.user.id,
+        name: req.user.fullName || req.user.username,
+        role: req.user.role,
+      };
+      ticket.rejectionReason = "";
+    }
+
     saveDb(db);
 
     res.json({
       success: true,
-      message: `Ticket #${ticket.ticketCode} voor ${ticket.fullName} succesvol ingecheckt!`,
+      message:
+        decision === "rejected"
+          ? `Ticket #${ticket.ticketCode} voor ${ticket.fullName} gemarkeerd als geweigerd.`
+          : decision === "reset"
+          ? `Ticket #${ticket.ticketCode} voor ${ticket.fullName} gereset.`
+          : `Ticket #${ticket.ticketCode} voor ${ticket.fullName} succesvol ingecheckt!`,
       ticket,
     });
   });

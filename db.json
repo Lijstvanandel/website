@@ -255,10 +255,52 @@
       "lng": 6.1186,
       "thumbnailUrl": "/assets/markt-steenwijk.jpg",
       "attendees": [
-        "1788366262062",
-        "1788433753932"
+        "1788433753932",
+        "tkt_1788714711622_484",
+        "tkt_1788715004527_533"
       ],
-      "createdAt": "2026-09-02T21:13:16.955Z"
+      "createdAt": "2026-09-02T21:13:16.955Z",
+      "cancellations": [
+        {
+          "id": "canc_1788714922036_732",
+          "ticketId": null,
+          "ticketCode": "LID",
+          "eventId": "1788383596955",
+          "eventTitle": "Tijd voor verbetering — Inloopavond Steenwijkerland",
+          "userId": "1788366262062",
+          "fullName": "Lisa Mars",
+          "email": "Lisa123",
+          "isMember": true,
+          "registeredAt": "2026-09-02T21:13:16.955Z",
+          "cancelledAt": "2026-09-06T17:15:22.036Z",
+          "hoursBeforeEvent": 218.2,
+          "hoursAfterRegistration": 92,
+          "price": 0,
+          "paid": true,
+          "reason": "Niet opgegeven"
+        }
+      ]
+    },
+    {
+      "id": "1788714304520",
+      "title": "Teksten",
+      "date": "2026-09-06",
+      "address": "Markt 1, Steenwijk",
+      "startTime": "19:30",
+      "endTime": "20:30",
+      "shortDescription": "Hallo",
+      "description": "Hallo",
+      "isPublic": true,
+      "isPublished": true,
+      "isCancelled": false,
+      "nonMemberPrice": 4,
+      "ticketNotes": "Zaal open om 19:00",
+      "locationHiddenUntil12h": true,
+      "thumbnailUrl": "/uploads/events/1788714304509-927317283.jpg",
+      "attendees": [
+        "1788366262062"
+      ],
+      "createdAt": "2026-09-06T17:05:04.520Z"
     }
   ],
   "categories": [
@@ -1309,6 +1351,120 @@
       "sentAt": "2026-09-06T01:28:56.731Z",
       "recipientCount": 1,
       "sentBy": "Sammy123"
+    }
+  ],
+  "eventTickets": [
+    {
+      "id": "tkt_1788714702839_788",
+      "ticketCode": "71572",
+      "eventId": "1788714304520",
+      "eventTitle": "Teksten",
+      "eventDate": "2026-09-06",
+      "eventTime": "19:30",
+      "userId": null,
+      "fullName": "Anonieme Deelnemer",
+      "email": "gast.bezoeker@example.com",
+      "phone": "",
+      "isMember": false,
+      "registeredAt": "2026-09-06T17:11:42.839Z",
+      "price": 4,
+      "paid": false,
+      "status": "pending_payment",
+      "checkedIn": false,
+      "stripeSessionId": "cs_test_a1kajpMBZdQILKcthVegDOupJyTClWKVnS8Bn8UoPPGyF6r7F8bWPwud2F"
+    },
+    {
+      "id": "tkt_1788714711622_484",
+      "ticketCode": "14071",
+      "eventId": "1788383596955",
+      "eventTitle": "Tijd voor verbetering — Inloopavond Steenwijkerland",
+      "eventDate": "2026-09-15",
+      "eventTime": "19:30",
+      "userId": null,
+      "fullName": "Willem Test",
+      "email": "willem.test@example.com",
+      "phone": "",
+      "isMember": false,
+      "registeredAt": "2026-09-06T17:11:51.622Z",
+      "price": 0,
+      "paid": true,
+      "status": "active",
+      "checkedIn": false
+    },
+    {
+      "id": "tkt_1788714803291_310",
+      "ticketCode": "95321",
+      "eventId": "1788714304520",
+      "eventTitle": "Teksten",
+      "eventDate": "2026-09-06",
+      "eventTime": "19:30",
+      "userId": null,
+      "fullName": "Lees mee",
+      "email": "goldencrafteu@gmail.com",
+      "phone": "0642630238",
+      "isMember": false,
+      "registeredAt": "2026-09-06T17:13:23.292Z",
+      "price": 4,
+      "paid": false,
+      "status": "pending_payment",
+      "checkedIn": false,
+      "stripeSessionId": "cs_test_a1priOwkzzBfPACkHPO1zZJwDsOq5x0qwczyGIK0N0bLrOsd9LEupiZ61t"
+    },
+    {
+      "id": "tkt_1788714927512_764",
+      "ticketCode": "71956",
+      "eventId": "1788714304520",
+      "eventTitle": "Teksten",
+      "eventDate": "2026-09-06",
+      "eventTime": "19:30",
+      "userId": "1788366262062",
+      "fullName": "Lisa Mars",
+      "email": "Lisa123",
+      "phone": "",
+      "isMember": true,
+      "registeredAt": "2026-09-06T17:15:27.512Z",
+      "price": 0,
+      "paid": true,
+      "status": "active",
+      "checkedIn": false
+    },
+    {
+      "id": "tkt_1788715004527_533",
+      "ticketCode": "13610",
+      "eventId": "1788383596955",
+      "eventTitle": "Tijd voor verbetering — Inloopavond Steenwijkerland",
+      "eventDate": "2026-09-15",
+      "eventTime": "19:30",
+      "userId": null,
+      "fullName": "Johan Test",
+      "email": "johan.test@example.com",
+      "phone": "",
+      "isMember": false,
+      "registeredAt": "2026-09-06T17:16:44.527Z",
+      "price": 0,
+      "paid": true,
+      "status": "active",
+      "checkedIn": false
+    }
+  ],
+  "eventCancellations": [
+    {
+      "id": "canc_1788714922036_732",
+      "ticketId": null,
+      "ticketCode": "LID",
+      "eventId": "1788383596955",
+      "eventTitle": "Tijd voor verbetering — Inloopavond Steenwijkerland",
+      "userId": "1788366262062",
+      "fullName": "Lisa Mars",
+      "email": "Lisa123",
+      "isMember": true,
+      "registeredAt": "2026-09-02T21:13:16.955Z",
+      "cancelledAt": "2026-09-06T17:15:22.036Z",
+      "hoursBeforeEvent": 218.2,
+      "hoursAfterRegistration": 92,
+      "price": 0,
+      "paid": true,
+      "reason": "Niet opgegeven"
     }
   ]
 }

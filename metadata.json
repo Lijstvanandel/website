@@ -1,6 +1,6 @@
 {
   "name": "Lijst van Andel",
   "description": "Officiële website en ledenportaal van politieke partij Lijst van Andel in Steenwijkerland met nieuws, fractieleden, agenda, wijkpagina's en beheerderspaneel.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

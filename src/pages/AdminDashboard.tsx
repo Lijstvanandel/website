@@ -58,6 +58,7 @@ import { FaqManager } from "@/components/FaqManager";
 import { WijkManager } from "@/components/WijkManager";
 import { VacancyManager } from "@/components/VacancyManager";
 import { DocumentManager } from "@/components/DocumentManager";
+import { TicketScannerModal } from "@/components/TicketScannerModal";
 import { BelafsprakenManager } from "@/components/BelafsprakenManager";
 import { StemgedragManager } from "@/components/StemgedragManager";
 import { SystemManager } from "@/components/SystemManager";
@@ -128,6 +129,13 @@ interface EventAttendee {
   status?: string;
   checkedIn?: boolean;
   checkedInAt?: string;
+  checkInStatus?: "accepted" | "rejected" | "pending";
+  scannedBy?: {
+    id: string;
+    name: string;
+    role: string;
+  };
+  rejectionReason?: string;
   registeredAt?: string;
 }
 
@@ -188,6 +196,7 @@ export default function AdminDashboard() {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [categories, setCategories] = useState<NewsCategory[]>([]);
   const [attendeesMap, setAttendeesMap] = useState<Record<string, EventAttendee[]>>({});
+  const [isTicketScannerOpen, setIsTicketScannerOpen] = useState(false);
 
   // -- State for Contact Messages --
   const [messages, setMessages] = useState<ContactMessage[]>([]);
@@ -561,21 +570,34 @@ export default function AdminDashboard() {
     }
   };
 
-  const checkInTicket = async (ticketCode: string, eventId: string) => {
+  const checkInTicket = async (
+    ticketCode: string,
+    eventId: string,
+    decision: "accepted" | "rejected" | "reset" = "accepted",
+    reason?: string
+  ) => {
     try {
       const res = await fetch(`/api/admin/events/tickets/${encodeURIComponent(ticketCode)}/checkin`, {
         method: "POST",
-        headers,
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ decision, reason }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        toast.success(data.message || `Ticket #${ticketCode} succesvol ingecheckt!`);
+        toast.success(
+          data.message ||
+            (decision === "rejected"
+              ? `Ticket #${ticketCode} gemarkeerd als geweigerd.`
+              : decision === "reset"
+              ? `Ticket #${ticketCode} status gereset.`
+              : `Ticket #${ticketCode} succesvol geaccepteerd!`)
+        );
         fetchAttendees(eventId);
       } else {
-        toast.error(data.error || "Inchecken mislukt.");
+        toast.error(data.error || "Bijwerken mislukt.");
       }
     } catch {
-      toast.error("Fout bij inchecken.");
+      toast.error("Fout bij bijwerken status.");
     }
   };
 
@@ -1038,17 +1060,28 @@ export default function AdminDashboard() {
             Beheer leden, fractieleden, video's, nieuwsberichten, categorieën, agenda-evenementen, stemgedrag en server-updates.
           </p>
         </div>
-        <Button
-          type="button"
-          onClick={() => setActiveTab("system")}
-          variant={activeTab === "system" ? "default" : "outline"}
-          className={`shrink-0 text-xs font-semibold uppercase tracking-wider gap-2 h-10 px-4 cursor-pointer ${
-            activeTab === "system" ? "bg-accent text-accent-foreground" : "border-border hover:border-accent"
-          }`}
-        >
-          <Server className="w-4 h-4 text-accent" />
-          <span>Systeem & Updates</span>
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            onClick={() => setIsTicketScannerOpen(true)}
+            variant="outline"
+            className="shrink-0 text-xs font-semibold uppercase tracking-wider gap-2 h-10 px-4 cursor-pointer border-accent/40 bg-accent/10 text-accent hover:bg-accent/20 hover:border-accent"
+          >
+            <QrCode className="w-4 h-4 text-accent" />
+            <span>Ticket Scanner</span>
+          </Button>
+          <Button
+            type="button"
+            onClick={() => setActiveTab("system")}
+            variant={activeTab === "system" ? "default" : "outline"}
+            className={`shrink-0 text-xs font-semibold uppercase tracking-wider gap-2 h-10 px-4 cursor-pointer ${
+              activeTab === "system" ? "bg-accent text-accent-foreground" : "border-border hover:border-accent"
+            }`}
+          >
+            <Server className="w-4 h-4 text-accent" />
+            <span>Systeem & Updates</span>
+          </Button>
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -1194,6 +1227,8 @@ export default function AdminDashboard() {
                               className={`text-xs px-2 py-1 rounded border outline-none cursor-pointer ${
                                 u.role === "admin"
                                   ? "bg-accent/20 text-accent border-accent/20"
+                                  : u.role === "vrijwilliger"
+                                  ? "bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/30"
                                   : u.role === "raadslid"
                                   ? "bg-primary/20 text-primary border-primary/30"
                                   : "bg-secondary text-secondary-foreground border-border"
@@ -1201,15 +1236,18 @@ export default function AdminDashboard() {
                               value={u.role}
                               onChange={(e) => changeUserRole(u.id, e.target.value)}
                             >
-                              <option value="admin">admin</option>
+                              <option value="admin">admin (beheerder)</option>
+                              <option value="vrijwilliger">vrijwilliger</option>
                               <option value="raadslid">raadslid</option>
-                              <option value="member">member</option>
+                              <option value="member">member (lid)</option>
                             </select>
                           ) : (
                             <span
                               className={`px-2 py-1 rounded text-xs ${
                                 u.role === "admin"
                                   ? "bg-accent/20 text-accent"
+                                  : u.role === "vrijwilliger"
+                                  ? "bg-amber-500/20 text-amber-700 dark:text-amber-400"
                                   : u.role === "raadslid"
                                   ? "bg-primary/20 text-primary"
                                   : "bg-secondary text-secondary-foreground"
@@ -2961,61 +2999,140 @@ export default function AdminDashboard() {
                           {attendeesMap[e.id].length === 0 && (
                             <p className="text-muted-foreground italic py-1">Nog geen actieve aanmeldingen voor deze bijeenkomst.</p>
                           )}
-                          {attendeesMap[e.id].map((a: EventAttendee) => (
-                            <div
-                              key={a.id}
-                              className="p-2.5 bg-muted/40 rounded-lg border border-border/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
-                            >
-                              <div className="space-y-0.5 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-semibold text-foreground">{a.fullName}</span>
-                                  {a.isMember ? (
-                                    <span className="px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-600 font-semibold text-[10px]">
-                                      Lid
-                                    </span>
-                                  ) : (
-                                    <span className="px-1.5 py-0.2 rounded bg-sky-500/15 text-sky-600 font-semibold text-[10px]">
-                                      Gast
-                                    </span>
-                                  )}
-                                  {a.paid && (
-                                    <span className="px-1.5 py-0.2 rounded bg-accent/15 text-accent font-semibold text-[10px]">
-                                      Betaald (€{a.price || 0})
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="text-muted-foreground flex flex-wrap gap-x-3 text-[11px]">
-                                  <span>{a.email}</span>
-                                  {a.phone && <span>Tel: {a.phone}</span>}
-                                  {a.ticketCode && (
-                                    <span className="font-mono text-foreground/80 flex items-center gap-1">
-                                      <QrCode className="w-3 h-3" />
-                                      #{a.ticketCode}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
+                          {attendeesMap[e.id].map((a: EventAttendee) => {
+                            const isAccepted = a.checkInStatus === "accepted" || a.checkedIn;
+                            const isRejected = a.checkInStatus === "rejected";
 
-                              <div className="shrink-0 flex items-center gap-2">
-                                {a.checkedIn ? (
-                                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-emerald-500/20 text-emerald-600 font-semibold text-[11px]">
-                                    <Check className="w-3 h-3" />
-                                    Ingecheckt
-                                  </span>
-                                ) : a.ticketCode ? (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => checkInTicket(a.ticketCode!, e.id)}
-                                    className="h-7 text-[11px] px-2 border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10"
-                                  >
-                                    <UserCheck className="w-3 h-3 mr-1" />
-                                    Inchecken
-                                  </Button>
-                                ) : null}
+                            return (
+                              <div
+                                key={a.id}
+                                className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${
+                                  isAccepted
+                                    ? "bg-emerald-500/10 border-emerald-500/30"
+                                    : isRejected
+                                    ? "bg-destructive/10 border-destructive/30"
+                                    : "bg-muted/40 border-border/60"
+                                }`}
+                              >
+                                <div className="space-y-1 min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-bold text-foreground text-sm">{a.fullName}</span>
+                                    {a.isMember ? (
+                                      <span className="px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-600 font-semibold text-[10px]">
+                                        Lid
+                                      </span>
+                                    ) : (
+                                      <span className="px-1.5 py-0.2 rounded bg-sky-500/15 text-sky-600 font-semibold text-[10px]">
+                                        Gast
+                                      </span>
+                                    )}
+                                    {a.paid && (
+                                      <span className="px-1.5 py-0.2 rounded bg-accent/15 text-accent font-semibold text-[10px]">
+                                        Betaald (€{a.price || 0})
+                                      </span>
+                                    )}
+
+                                    {/* STATUS BADGE */}
+                                    {isAccepted ? (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500 text-white font-bold text-[10px]">
+                                        <Check className="w-3 h-3" />
+                                        Geaccepteerd
+                                      </span>
+                                    ) : isRejected ? (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-destructive text-white font-bold text-[10px]">
+                                        <X className="w-3 h-3" />
+                                        Geweigerd
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground font-semibold text-[10px] border border-border">
+                                        Nog niet gecheckt
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className="text-muted-foreground flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]">
+                                    <span>{a.email}</span>
+                                    {a.phone && <span>Tel: {a.phone}</span>}
+                                    {a.ticketCode && (
+                                      <span className="font-mono text-foreground font-semibold flex items-center gap-1">
+                                        <QrCode className="w-3 h-3 text-accent" />
+                                        #{a.ticketCode}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* SCAN / CONTROLE DETAILS */}
+                                  {(isAccepted || isRejected) && (
+                                    <div className="text-[10px] pt-1 border-t border-border/40 text-muted-foreground flex flex-wrap items-center gap-x-2">
+                                      {a.checkedInAt && (
+                                        <span>
+                                          Tijd: {new Date(a.checkedInAt).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })} ({new Date(a.checkedInAt).toLocaleDateString("nl-NL")})
+                                        </span>
+                                      )}
+                                      {a.scannedBy?.name && (
+                                        <span>
+                                          • Door: <strong className="text-foreground">{a.scannedBy.name}</strong> ({a.scannedBy.role})
+                                        </span>
+                                      )}
+                                      {isRejected && a.rejectionReason && (
+                                        <span className="text-destructive font-semibold">
+                                          • Reden: {a.rejectionReason}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="shrink-0 flex flex-wrap items-center gap-1.5 self-end sm:self-center">
+                                  {a.ticketCode && (
+                                    <>
+                                      {!isAccepted && (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => checkInTicket(a.ticketCode!, e.id, "accepted")}
+                                          className="h-7 text-[11px] px-2.5 border-emerald-500/50 text-emerald-600 hover:bg-emerald-500/15 font-semibold"
+                                        >
+                                          <Check className="w-3 h-3 mr-1" />
+                                          {isRejected ? "Alsnog Toelaten" : "Accepteren"}
+                                        </Button>
+                                      )}
+
+                                      {!isRejected && (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => {
+                                            const reason = prompt("Optionele reden van weigering:", "Niet voldaan aan voorwaarden");
+                                            if (reason !== null) {
+                                              checkInTicket(a.ticketCode!, e.id, "rejected", reason || undefined);
+                                            }
+                                          }}
+                                          className="h-7 text-[11px] px-2 border-destructive/40 text-destructive hover:bg-destructive/10"
+                                        >
+                                          <X className="w-3 h-3 mr-1" />
+                                          Weigeren
+                                        </Button>
+                                      )}
+
+                                      {(isAccepted || isRejected) && (
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => checkInTicket(a.ticketCode!, e.id, "reset")}
+                                          className="h-7 text-[10px] px-2 text-muted-foreground hover:text-foreground"
+                                          title="Reset status naar onbeslist"
+                                        >
+                                          <RotateCcw className="w-3 h-3 mr-1" />
+                                          Reset
+                                        </Button>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
 
@@ -3483,6 +3600,13 @@ export default function AdminDashboard() {
           <SystemManager token={token} />
         </TabsContent>
       </Tabs>
+
+      {/* Ticket Scanner Modal */}
+      <TicketScannerModal
+        open={isTicketScannerOpen}
+        onOpenChange={setIsTicketScannerOpen}
+        token={token}
+      />
     </div>
   );
 }

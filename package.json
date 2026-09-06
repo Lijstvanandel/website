@@ -57,6 +57,7 @@
     "express": "^5.2.1",
     "input-otp": "^1.4.2",
     "jsonwebtoken": "^9.0.3",
+    "jsqr": "^1.4.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.462.0",
     "motion": "^13.2.0",

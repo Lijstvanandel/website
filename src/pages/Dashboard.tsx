@@ -30,6 +30,7 @@ import {
   CalendarX,
   CreditCard,
   ExternalLink,
+  QrCode,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SecureDocumentViewer } from "@/components/SecureDocumentViewer";
 import { RaadslidBelafsprakenWidget } from "@/components/RaadslidBelafsprakenWidget";
+import { TicketScannerModal } from "@/components/TicketScannerModal";
 import { MemberDocument } from "@/types/document";
 import { fetchWithAuth } from "@/lib/api";
 import {
@@ -127,6 +129,9 @@ export default function Dashboard() {
   const [memberDocuments, setMemberDocuments] = useState<MemberDocument[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(false);
   const [viewingDocument, setViewingDocument] = useState<MemberDocument | null>(null);
+
+  // Ticket Scanner Modal State voor Vrijwilligers en Admins
+  const [isTicketScannerOpen, setIsTicketScannerOpen] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -665,6 +670,11 @@ export default function Dashboard() {
                   Raadslid / Fractielid
                 </span>
               )}
+              {user.role === "vrijwilliger" && (
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/40 uppercase tracking-wider">
+                  Vrijwilliger
+                </span>
+              )}
               {user.role === "admin" && (
                 <span className="px-3 py-1 rounded-full text-xs font-bold bg-primary/20 text-primary border border-primary/40 uppercase tracking-wider">
                   Beheerder
@@ -676,6 +686,18 @@ export default function Dashboard() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            {/* Ticket Scannen Knop voor Vrijwilligers en Admins */}
+            {(user.role === "admin" || user.role === "vrijwilliger") && (
+              <Button
+                onClick={() => setIsTicketScannerOpen(true)}
+                variant="outline"
+                className="px-4 py-2.5 rounded-full font-semibold flex items-center text-sm shadow-sm bg-accent/10 border-accent/40 text-accent hover:bg-accent/20 hover:border-accent hover:text-accent transition-all"
+              >
+                <QrCode className="w-4 h-4 mr-2 text-accent" />
+                Ticket scannen
+              </Button>
+            )}
+
             {/* Gegevens Wijzigen Knop */}
             <Button
               onClick={() => setIsEditProfileOpen(true)}
@@ -1191,14 +1213,24 @@ export default function Dashboard() {
 
               {/* LIDMAATSCHAP CARD MET WIJZIG KNOP */}
               <section className="bg-card rounded-2xl p-6 sm:p-8 border border-border">
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                   <h2 className="text-xl font-display">Lidmaatschap</h2>
-                  <button
-                    onClick={() => setIsEditProfileOpen(true)}
-                    className="text-xs text-accent hover:underline font-semibold flex items-center gap-1"
-                  >
-                    <Edit3 className="w-3 h-3" /> Gegevens wijzigen
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {(user.role === "admin" || user.role === "vrijwilliger") && (
+                      <button
+                        onClick={() => setIsTicketScannerOpen(true)}
+                        className="text-xs text-accent hover:underline font-semibold flex items-center gap-1 px-2.5 py-1 rounded-full bg-accent/10 border border-accent/30"
+                      >
+                        <QrCode className="w-3 h-3" /> Ticket scannen
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setIsEditProfileOpen(true)}
+                      className="text-xs text-muted-foreground hover:text-foreground hover:underline font-semibold flex items-center gap-1"
+                    >
+                      <Edit3 className="w-3 h-3" /> Gegevens wijzigen
+                    </button>
+                  </div>
                 </div>
                 <div className="space-y-3 text-sm">
                   <div className="flex justify-between py-2 border-b border-border/50">
@@ -1890,6 +1922,13 @@ export default function Dashboard() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Ticket Scanner Modal voor Vrijwilligers & Admins */}
+      <TicketScannerModal
+        open={isTicketScannerOpen}
+        onOpenChange={setIsTicketScannerOpen}
+        token={token}
+      />
     </div>
   );
 }

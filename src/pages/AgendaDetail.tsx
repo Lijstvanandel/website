@@ -27,6 +27,7 @@ import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { extractCity } from "@/lib/utils";
 import { ShareDialog } from "@/components/ShareDialog";
+import { GuestEventRegistrationModal } from "@/components/GuestEventRegistrationModal";
 
 export interface EventLocationStatus {
   isReleased: boolean;
@@ -79,6 +80,7 @@ export default function AgendaDetail() {
   const [guestName, setGuestName] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
   const [guestPhone, setGuestPhone] = useState("");
+  const [guestModalOpen, setGuestModalOpen] = useState(false);
   const [guestRegistrationSuccess, setGuestRegistrationSuccess] = useState<{
     ticketCode: string;
     ticketUrl: string;
@@ -381,13 +383,26 @@ export default function AgendaDetail() {
             <ArrowLeft className="w-4 h-4 mr-2" /> Terug naar agenda
           </Link>
 
-          <button
-            type="button"
-            onClick={() => setShareDialogOpen(true)}
-            className="inline-flex items-center text-xs font-semibold text-accent hover:text-accent/90 transition-colors bg-background/90 backdrop-blur px-4 py-2 rounded-full border border-border shadow-sm"
-          >
-            <Share2 className="w-3.5 h-3.5 mr-1.5" /> Deel dit evenement
-          </button>
+          <div className="flex items-center gap-2">
+            {event.isPublic && !isAuthenticated && !isAttending && !event.isCancelled && (
+              <button
+                type="button"
+                onClick={() => setGuestModalOpen(true)}
+                className="inline-flex items-center text-xs font-semibold text-primary-foreground bg-primary hover:bg-primary/90 transition-all px-4 py-2 rounded-full shadow-sm"
+              >
+                <Ticket className="w-3.5 h-3.5 mr-1.5" />
+                Meld u aan
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setShareDialogOpen(true)}
+              className="inline-flex items-center text-xs font-semibold text-accent hover:text-accent/90 transition-colors bg-background/90 backdrop-blur px-4 py-2 rounded-full border border-border shadow-sm"
+            >
+              <Share2 className="w-3.5 h-3.5 mr-1.5" /> Deel dit evenement
+            </button>
+          </div>
         </div>
 
         <div className="bg-card rounded-2xl border border-border p-6 md:p-10 shadow-sm animate-fade-up">
@@ -487,8 +502,13 @@ export default function AgendaDetail() {
                         <span>Locatiebescherming van kracht</span>
                       </div>
                       <p className="leading-relaxed">
-                        Om veiligheids- en organisatieredenen wordt het exacte adres (straat en nummer) 
-                        <strong> pas 12 uur na uw aanmelding</strong> vrijgegeven, tenzij de bijeenkomst al binnen 12 uur plaatsvindt. 
+                        Om veiligheids- en organisatieredenen is het exacte adres (straat en nummer){" "}
+                        <strong>
+                          {event.isPublic
+                            ? "zichtbaar na aanmelden via ledenportaal of e-mail"
+                            : "zichtbaar na aanmelden via het ledenportaal"}
+                        </strong>
+                        , tenzij de bijeenkomst al binnen 12 uur plaatsvindt. 
                         U ontvangt een unieke QR-toegangscode per e-mail; uw digitale ticket update het adres automatisch zodra deze beschikbaar is.
                       </p>
                       {event.locationStatus?.releaseDate && (
@@ -919,6 +939,24 @@ export default function AgendaDetail() {
         title={`${event.title} | Agenda Lijst van Andel`}
         description={event.shortDescription || (event.description ? event.description.replace(/<[^>]*>/g, '').slice(0, 160) : "")}
         url={currentUrl}
+      />
+
+      {/* Guest Event Registration Modal (Pop-up without requiring an account) */}
+      <GuestEventRegistrationModal
+        open={guestModalOpen}
+        onOpenChange={setGuestModalOpen}
+        event={event}
+        onSuccess={(data) => {
+          setIsAttending(true);
+          setTicketCode(data.ticketCode);
+          setGuestRegistrationSuccess({
+            ticketCode: data.ticketCode,
+            ticketUrl: data.ticketUrl,
+          });
+          if (data.fullAddress) {
+            setEvent((prev) => (prev ? { ...prev, fullAddress: data.fullAddress } : null));
+          }
+        }}
       />
     </div>
   );
