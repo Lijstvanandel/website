@@ -28,6 +28,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
+import { fetchWithAuth } from "@/lib/api";
 
 interface FaqManagerProps {
   token: string | null;
@@ -64,12 +65,9 @@ export function FaqManager({ token }: FaqManagerProps) {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchFaqs = useCallback(async () => {
-    if (!token) return;
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/faqs", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetchWithAuth("/api/admin/faqs");
       if (res.ok) {
         const data = await res.json().catch(() => []);
         setFaqs(Array.isArray(data) ? data : []);
@@ -81,7 +79,7 @@ export function FaqManager({ token }: FaqManagerProps) {
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, []);
 
   useEffect(() => {
     fetchFaqs();
@@ -146,10 +144,9 @@ export function FaqManager({ token }: FaqManagerProps) {
       };
 
       if (editingFaq) {
-        const res = await fetch(`/api/admin/faqs/${editingFaq.id}`, {
+        const res = await fetchWithAuth(`/api/admin/faqs/${editingFaq.id}`, {
           method: "PUT",
           headers: {
-            Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify(payload),
@@ -163,10 +160,9 @@ export function FaqManager({ token }: FaqManagerProps) {
           toast.error(err.error || "Fout bij bijwerken vraag");
         }
       } else {
-        const res = await fetch("/api/admin/faqs", {
+        const res = await fetchWithAuth("/api/admin/faqs", {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify(payload),
@@ -188,17 +184,15 @@ export function FaqManager({ token }: FaqManagerProps) {
   };
 
   const handleTogglePublished = async (faq: FaqItem) => {
-    if (!token) return;
     const newStatus = !faq.published;
     try {
       // Optimistic update
       setFaqs((prev) =>
         prev.map((f) => (f.id === faq.id ? { ...f, published: newStatus } : f))
       );
-      const res = await fetch(`/api/admin/faqs/${faq.id}`, {
+      const res = await fetchWithAuth(`/api/admin/faqs/${faq.id}`, {
         method: "PUT",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ published: newStatus }),
@@ -220,12 +214,11 @@ export function FaqManager({ token }: FaqManagerProps) {
   };
 
   const handleDelete = async () => {
-    if (!token || !faqToDelete) return;
+    if (!faqToDelete) return;
     setIsDeleting(true);
     try {
-      const res = await fetch(`/api/admin/faqs/${faqToDelete.id}`, {
+      const res = await fetchWithAuth(`/api/admin/faqs/${faqToDelete.id}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
         toast.success("Vraag definitief verwijderd");
@@ -242,7 +235,6 @@ export function FaqManager({ token }: FaqManagerProps) {
   };
 
   const handleMove = async (index: number, direction: "up" | "down") => {
-    if (!token) return;
     const targetIndex = direction === "up" ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= faqs.length) return;
 
@@ -255,10 +247,9 @@ export function FaqManager({ token }: FaqManagerProps) {
     setFaqs(newFaqs.map((f, idx) => ({ ...f, order: idx + 1 })));
 
     try {
-      const res = await fetch("/api/admin/faqs-reorder", {
+      const res = await fetchWithAuth("/api/admin/faqs-reorder", {
         method: "PUT",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ ids: updatedIds }),

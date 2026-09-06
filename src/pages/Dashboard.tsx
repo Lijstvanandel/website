@@ -38,6 +38,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { SecureDocumentViewer } from "@/components/SecureDocumentViewer";
 import { RaadslidBelafsprakenWidget } from "@/components/RaadslidBelafsprakenWidget";
 import { MemberDocument } from "@/types/document";
+import { fetchWithAuth } from "@/lib/api";
 import {
   Dialog,
   DialogContent,
@@ -500,22 +501,21 @@ export default function Dashboard() {
 
   // Newsletter Preferences Toggle
   const handleToggleNewsletter = async () => {
-    if (!token) return;
     const newStatus = !isNewsletterActive;
     setIsTogglingNewsletter(true);
 
     try {
-      const res = await fetch("/api/me/newsletter", {
+      const res = await fetchWithAuth("/api/me/newsletter", {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({ newsletterSubscribed: newStatus })
       });
 
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 401) return;
         throw new Error(data.error || "Kon nieuwsbriefvoorkeur niet wijzigen");
       }
 
@@ -534,24 +534,23 @@ export default function Dashboard() {
   };
 
   const handleSaveEmail = async () => {
-    if (!token) return;
     if (!emailInput || !emailInput.includes("@")) {
       toast.error("Voer een geldig e-mailadres in");
       return;
     }
 
     try {
-      const res = await fetch("/api/me/newsletter", {
+      const res = await fetchWithAuth("/api/me/newsletter", {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({ email: emailInput.trim() })
       });
 
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 401) return;
         throw new Error(data.error || "Kon e-mailadres niet opslaan");
       }
 

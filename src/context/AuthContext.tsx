@@ -55,6 +55,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (parsed && typeof parsed === "object") {
           setToken(storedToken);
           setUser(parsed);
+
+          // Valideer het token direct bij de backend
+          fetch("/api/me", {
+            headers: { Authorization: `Bearer ${storedToken}` },
+          })
+            .then((res) => {
+              if (res.status === 401) {
+                // Token is ongeldig of verlopen na bijv. een server herstart
+                console.warn("[Auth] Sessietoken is verlopen of ongeldig, sessie gewist.");
+                localStorage.removeItem("auth_token");
+                localStorage.removeItem("auth_user");
+                setToken(null);
+                setUser(null);
+              } else if (res.ok) {
+                return res.json().then((freshData) => {
+                  if (freshData?.user) {
+                    setUser(freshData.user);
+                    localStorage.setItem("auth_user", JSON.stringify(freshData.user));
+                  }
+                });
+              }
+            })
+            .catch(() => {});
         } else {
           throw new Error("Ongeldige gebruiker");
         }

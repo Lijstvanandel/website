@@ -35,7 +35,9 @@ function ensureEnvLoaded() {
     if (fs.existsSync(envPath)) {
       try {
         dotenv.config({ path: envPath, override: false });
-      } catch (e) {}
+      } catch (_e) {
+        // ignore error loading env
+      }
 
       try {
         const content = fs.readFileSync(envPath, "utf-8");
@@ -54,7 +56,9 @@ function ensureEnvLoaded() {
             }
           }
         }
-      } catch (e) {}
+      } catch (_e) {
+        // ignore read error
+      }
       break;
     }
   }
@@ -957,36 +961,59 @@ async function startServer() {
   // Middleware for checking auth & admin
   const requireAuth = (req: any, res: any, next: any) => {
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ error: "Niet geautoriseerd: geen sessietoken gevonden. Log opnieuw in." });
+    if (!authHeader || !authHeader.toLowerCase().startsWith("bearer ")) {
+      return res.status(401).json({ error: "Niet geautoriseerd: geen sessietoken gevonden. Log alstublieft opnieuw in.", code: "NO_TOKEN" });
     }
-    const token = authHeader.split(" ")[1];
+    let token = authHeader.slice(7).trim();
+    if ((token.startsWith('"') && token.endsWith('"')) || (token.startsWith("'") && token.endsWith("'"))) {
+      token = token.slice(1, -1).trim();
+    }
+    if (!token || token === "null" || token === "undefined" || token === "") {
+      return res.status(401).json({ error: "Niet geautoriseerd: ongeldig sessietoken. Log alstublieft opnieuw in.", code: "NO_TOKEN" });
+    }
     try {
       let decoded: any;
       try {
         decoded = jwt.verify(token, JWT_SECRET);
       } catch (err: any) {
         // Fallback for transition if JWT_SECRET was newly loaded or updated in .env
-        if (JWT_SECRET !== "super-secret-dev-key") {
-          try {
-            decoded = jwt.verify(token, "super-secret-dev-key");
-          } catch {
-            throw err;
+        let recovered = false;
+        const candidateSecrets = [
+          process.env.JWT_SECRET,
+          "super-secret-dev-key",
+          "vervang_dit_door_een_willekeurige_geheime_sleutel_van_minstens_32_tekens",
+        ].filter(Boolean) as string[];
+
+        for (const candidate of candidateSecrets) {
+          if (candidate !== JWT_SECRET) {
+            try {
+              decoded = jwt.verify(token, candidate);
+              recovered = true;
+              break;
+            } catch (_verifyErr) {
+              // Try next fallback secret
+            }
           }
-        } else {
+        }
+        if (!recovered) {
           throw err;
         }
       }
 
       const db = getDb();
-      const user = db.users.find((u: any) => u.id === decoded.id);
-      if (!user) return res.status(404).json({ error: "Gebruiker niet gevonden" });
+      const user = db.users.find((u: any) => String(u.id) === String(decoded.id) || (decoded.username && u.username === decoded.username));
+      if (!user) {
+        return res.status(401).json({ error: "Gebruiker niet gevonden of sessie ongeldig. Log opnieuw in.", code: "USER_NOT_FOUND" });
+      }
       req.user = user;
       next();
     } catch (error: any) {
+      const isExpired = error?.name === "TokenExpiredError";
       return res.status(401).json({
-        error: "Uw sessie is verlopen of het token is vernieuwd. Log alstublieft even opnieuw in.",
-        code: "INVALID_TOKEN",
+        error: isExpired
+          ? "Uw inlogsessie is verlopen. Log alstublieft even opnieuw in via het menu."
+          : "Uw inlogsessie is niet meer geldig of vernieuwd. Log alstublieft even opnieuw in via het menu.",
+        code: isExpired ? "TOKEN_EXPIRED" : "INVALID_TOKEN",
       });
     }
   };
@@ -1134,7 +1161,7 @@ async function startServer() {
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (isMatch) {
-      const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: "24h" });
+      const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: "30d" });
       const resolvedEmail = user.email || (user.username.includes("@") ? user.username : "");
       const newsletterSubscribed = user.newsletterSubscribed !== undefined ? Boolean(user.newsletterSubscribed) : true;
       res.status(200).json({ 
@@ -1571,7 +1598,7 @@ async function startServer() {
 
     saveDb(db);
 
-    const token = jwt.sign({ id: existingUser.id, username: existingUser.username }, JWT_SECRET, { expiresIn: "24h" });
+    const token = jwt.sign({ id: existingUser.id, username: existingUser.username }, JWT_SECRET, { expiresIn: "30d" });
     const { password: _p, ...safeUser } = existingUser;
 
     res.status(200).json({
@@ -1856,7 +1883,7 @@ async function startServer() {
       user.paidUntil = nextYear.toISOString();
       saveDb(db);
 
-      const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: "24h" });
+      const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: "30d" });
       const { password, ...safeUser } = user;
       return res.json({
         success: true,

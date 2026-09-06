@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
+import { fetchWithAuth } from "@/lib/api";
 import {
   MapPin,
   Search,
@@ -157,11 +158,8 @@ export const WijkManager: React.FC<WijkManagerProps> = ({ token }) => {
     else setUploadingAvatar(true);
 
     try {
-      const res = await fetch("/api/admin/wijken/upload", {
+      const res = await fetchWithAuth("/api/admin/wijken/upload", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
         body: formData,
       });
 
@@ -189,10 +187,6 @@ export const WijkManager: React.FC<WijkManagerProps> = ({ token }) => {
 
   const handleSaveWijk = async () => {
     if (!editingWijk) return;
-    if (!token) {
-      toast.error("Geen actieve beheerderssessie");
-      return;
-    }
 
     if (hasRep) {
       if (!voornaam.trim() || !achternaam.trim()) {
@@ -233,11 +227,10 @@ export const WijkManager: React.FC<WijkManagerProps> = ({ token }) => {
         removeVertegenwoordiger: !hasRep,
       };
 
-      const res = await fetch(`/api/admin/wijken/${editingWijk.slug}`, {
+      const res = await fetchWithAuth(`/api/admin/wijken/${editingWijk.slug}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
       });
@@ -268,17 +261,12 @@ export const WijkManager: React.FC<WijkManagerProps> = ({ token }) => {
       toast.error("Naam is verplicht");
       return;
     }
-    if (!token) {
-      toast.error("Geen beheerderssessie");
-      return;
-    }
 
     try {
-      const res = await fetch("/api/admin/wijken", {
+      const res = await fetchWithAuth("/api/admin/wijken", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           naam: newNaam.trim(),

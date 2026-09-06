@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { fetchWithAuth } from "@/lib/api";
 import { 
   Briefcase, 
   Mail, 
@@ -96,16 +97,11 @@ export function VacancyManager() {
   const [vacIsOpen, setVacIsOpen] = useState(true);
 
   const fetchData = useCallback(async () => {
-    if (!token) return;
     setIsLoading(true);
-    const headers = {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    };
     try {
       const [appRes, vacRes, wijkRes] = await Promise.all([
-        fetch("/api/admin/vacancies/applications", { headers }),
-        fetch("/api/admin/vacancies/custom", { headers }),
+        fetchWithAuth("/api/admin/vacancies/applications"),
+        fetchWithAuth("/api/admin/vacancies/custom"),
         fetch("/api/wijken"),
       ]);
 
@@ -132,7 +128,7 @@ export function VacancyManager() {
     } finally {
       setIsLoading(false);
     }
-  }, [token]);
+  }, []);
 
   useEffect(() => {
     fetchData();
@@ -140,9 +136,9 @@ export function VacancyManager() {
 
   const handleStatusChange = async (appId: string, newStatus: string) => {
     try {
-      const res = await fetch(`/api/admin/vacancies/applications/${appId}`, {
+      const res = await fetchWithAuth(`/api/admin/vacancies/applications/${appId}`, {
         method: "PATCH",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
       if (!res.ok) throw new Error("Status kon niet worden bijgewerkt");
@@ -162,9 +158,9 @@ export function VacancyManager() {
 
   const handleSaveNotes = async (appId: string, notes: string) => {
     try {
-      const res = await fetch(`/api/admin/vacancies/applications/${appId}`, {
+      const res = await fetchWithAuth(`/api/admin/vacancies/applications/${appId}`, {
         method: "PATCH",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ adminNotes: notes }),
       });
       if (!res.ok) throw new Error("Notities konden niet worden opgeslagen");
@@ -182,9 +178,8 @@ export function VacancyManager() {
   const handleDeleteApplication = async (appId: string) => {
     if (!confirm("Weet u zeker dat u deze aanmelding wilt verwijderen?")) return;
     try {
-      const res = await fetch(`/api/admin/vacancies/applications/${appId}`, {
+      const res = await fetchWithAuth(`/api/admin/vacancies/applications/${appId}`, {
         method: "DELETE",
-        headers,
       });
       if (!res.ok) throw new Error("Kon aanmelding niet verwijderen");
 
@@ -234,15 +229,15 @@ export function VacancyManager() {
 
       let res;
       if (editingVac) {
-        res = await fetch(`/api/admin/vacancies/custom/${editingVac.id}`, {
+        res = await fetchWithAuth(`/api/admin/vacancies/custom/${editingVac.id}`, {
           method: "PUT",
-          headers,
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
       } else {
-        res = await fetch("/api/admin/vacancies/custom", {
+        res = await fetchWithAuth("/api/admin/vacancies/custom", {
           method: "POST",
-          headers,
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
       }
@@ -262,9 +257,8 @@ export function VacancyManager() {
   const handleDeleteVacancy = async (id: string) => {
     if (!confirm("Weet u zeker dat u deze vacature wilt verwijderen?")) return;
     try {
-      const res = await fetch(`/api/admin/vacancies/custom/${id}`, {
+      const res = await fetchWithAuth(`/api/admin/vacancies/custom/${id}`, {
         method: "DELETE",
-        headers,
       });
       if (!res.ok) throw new Error("Kon vacature niet verwijderen");
       toast.success("Vacature verwijderd");

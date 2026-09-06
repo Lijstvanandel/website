@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { fetchWithAuth, getAuthHeaders as apiGetAuthHeaders } from "@/lib/api";
 import { getVideoThumbnail } from "@/lib/videoUtils";
 import {
   Mail,
@@ -74,15 +75,8 @@ export default function NewsletterManager({ token: propToken }: NewsletterManage
   const token = propToken || authContextToken || (typeof window !== "undefined" ? localStorage.getItem("auth_token") : "") || "";
 
   const getAuthHeaders = useCallback(() => {
-    const activeToken = token || (typeof window !== "undefined" ? localStorage.getItem("auth_token") : "") || "";
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    if (activeToken) {
-      headers["Authorization"] = `Bearer ${activeToken}`;
-    }
-    return headers;
-  }, [token]);
+    return apiGetAuthHeaders({ "Content-Type": "application/json" });
+  }, []);
 
   const [activeTab, setActiveTab] = useState<"compose" | "preview" | "history" | "subscribers">("compose");
 
@@ -131,7 +125,7 @@ export default function NewsletterManager({ token: propToken }: NewsletterManage
   const checkSmtp = async () => {
     setCheckingSmtp(true);
     try {
-      const res = await fetch("/api/admin/system/smtp-status", { headers: getAuthHeaders() });
+      const res = await fetchWithAuth("/api/admin/system/smtp-status", { headers: getAuthHeaders() });
       const data = await res.json();
       setSmtpStatus(data);
     } catch (e: any) {
@@ -164,8 +158,8 @@ export default function NewsletterManager({ token: propToken }: NewsletterManage
         fetch("/api/news").then((r) => (r.ok ? r.json() : [])),
         fetch("/api/videos").then((r) => (r.ok ? r.json() : [])),
         fetch("/api/events").then((r) => (r.ok ? r.json() : [])),
-        fetch("/api/admin/newsletter/history", { headers }).then((r) => (r.ok ? r.json() : [])),
-        fetch("/api/admin/newsletter/subscribers", { headers }).then((r) =>
+        fetchWithAuth("/api/admin/newsletter/history", { headers }).then((r) => (r.ok ? r.json() : [])),
+        fetchWithAuth("/api/admin/newsletter/subscribers", { headers }).then((r) =>
           r.ok ? r.json() : { totalActive: 0, activeRecipients: [], externalSubscribers: [], memberSubscribers: [] }
         ),
       ]);
@@ -190,7 +184,7 @@ export default function NewsletterManager({ token: propToken }: NewsletterManage
   // Update HTML preview whenever newsletter changes or tab opens
   const fetchPreview = useCallback(async (currentData = newsletter) => {
     try {
-      const res = await fetch("/api/admin/newsletter/preview", {
+      const res = await fetchWithAuth("/api/admin/newsletter/preview", {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify({ newsletter: currentData }),
@@ -330,7 +324,7 @@ export default function NewsletterManager({ token: propToken }: NewsletterManage
     }
     setSavingDraft(true);
     try {
-      const res = await fetch("/api/admin/newsletter/save", {
+      const res = await fetchWithAuth("/api/admin/newsletter/save", {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify(newsletter),
@@ -369,7 +363,7 @@ export default function NewsletterManager({ token: propToken }: NewsletterManage
   const handleDeleteNewsletter = async (id: string) => {
     if (!confirm("Weet u zeker dat u deze mailing uit het overzicht wilt verwijderen?")) return;
     try {
-      const res = await fetch(`/api/admin/newsletter/${id}`, {
+      const res = await fetchWithAuth(`/api/admin/newsletter/${id}`, {
         method: "DELETE",
         headers: getAuthHeaders(),
       });
@@ -389,7 +383,7 @@ export default function NewsletterManager({ token: propToken }: NewsletterManage
     }
     setSendingTest(true);
     try {
-      const res = await fetch("/api/admin/newsletter/send", {
+      const res = await fetchWithAuth("/api/admin/newsletter/send", {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -419,7 +413,7 @@ export default function NewsletterManager({ token: propToken }: NewsletterManage
   const handleSendLive = async () => {
     setSendingLive(true);
     try {
-      const res = await fetch("/api/admin/newsletter/send", {
+      const res = await fetchWithAuth("/api/admin/newsletter/send", {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -453,13 +447,18 @@ export default function NewsletterManager({ token: propToken }: NewsletterManage
       return;
     }
     try {
-      const res = await fetch("/api/admin/newsletter/subscribers", {
+      const res = await fetchWithAuth("/api/admin/newsletter/subscribers", {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify({ email: newSubEmail, name: newSubName }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Kon abonnee niet toevoegen");
+      if (!res.ok) {
+        if (res.status === 401) {
+          throw new Error("Uw beheerderssessie is verlopen of vernieuwd. Log alstublieft even opnieuw in via het menu.");
+        }
+        throw new Error(data.error || "Kon abonnee niet toevoegen");
+      }
       toast.success(data.message || "Abonnee toegevoegd!");
       setNewSubEmail("");
       setNewSubName("");
@@ -474,13 +473,18 @@ export default function NewsletterManager({ token: propToken }: NewsletterManage
   const handleRemoveSubscriber = async (email: string) => {
     if (!confirm(`Weet u zeker dat u ${email} wilt afmelden voor de nieuwsbrief?`)) return;
     try {
-      const res = await fetch("/api/admin/newsletter/subscribers", {
+      const res = await fetchWithAuth("/api/admin/newsletter/subscribers", {
         method: "DELETE",
         headers: getAuthHeaders(),
         body: JSON.stringify({ email }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Afmelden mislukt");
+      if (!res.ok) {
+        if (res.status === 401) {
+          throw new Error("Uw beheerderssessie is verlopen of vernieuwd. Log alstublieft even opnieuw in via het menu.");
+        }
+        throw new Error(data.error || "Afmelden mislukt");
+      }
       toast.success(data.message || "Abonnee afgemeld.");
       loadContent();
     } catch (err: any) {

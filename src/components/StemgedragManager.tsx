@@ -22,6 +22,7 @@ import {
   FileCheck2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { fetchWithAuth } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
@@ -201,9 +202,8 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
       const url = editingId ? `/api/admin/stemgedrag/${editingId}` : "/api/admin/stemgedrag";
       const method = editingId ? "PUT" : "POST";
 
-      const res = await fetch(url, {
+      const res = await fetchWithAuth(url, {
         method,
-        headers: authHeaders,
         body: formData,
       });
 
@@ -228,9 +228,8 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
     }
 
     try {
-      const res = await fetch(`/api/admin/stemgedrag/${id}`, {
+      const res = await fetchWithAuth(`/api/admin/stemgedrag/${id}`, {
         method: "DELETE",
-        headers: authHeaders,
       });
 
       if (res.ok) {
@@ -238,7 +237,8 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
         if (editingId === id) resetForm();
         fetchItems();
       } else {
-        toast.error("Kon het item niet verwijderen.");
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Kon het item niet verwijderen.");
       }
     } catch {
       toast.error("Fout bij verwijderen.");

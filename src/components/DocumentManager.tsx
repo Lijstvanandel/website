@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { fetchWithAuth } from "@/lib/api";
 import {
   FileText,
   Plus,
@@ -96,11 +97,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ token, current
   const fetchDocuments = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/documents", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const res = await fetchWithAuth("/api/admin/documents");
       if (res.ok) {
         const data = await res.json().catch(() => []);
         setDocuments(Array.isArray(data) ? data : []);
@@ -112,7 +109,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ token, current
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, []);
 
   useEffect(() => {
     fetchDocuments();
@@ -169,11 +166,8 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ token, current
     formData.append("file", file);
 
     try {
-      const res = await fetch("/api/admin/documents/upload", {
+      const res = await fetchWithAuth("/api/admin/documents/upload", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
         body: formData,
       });
 
@@ -225,11 +219,10 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ token, current
         : "/api/admin/documents";
       const method = activeDoc ? "PUT" : "POST";
 
-      const res = await fetch(url, {
+      const res = await fetchWithAuth(url, {
         method,
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
       });
@@ -256,11 +249,8 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ token, current
     if (!docToDelete) return;
 
     try {
-      const res = await fetch(`/api/admin/documents/${docToDelete.id}`, {
+      const res = await fetchWithAuth(`/api/admin/documents/${docToDelete.id}`, {
         method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
       });
 
       if (res.ok) {
