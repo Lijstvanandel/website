@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { Plus, Tag, Trash2, Edit3, Check, X, Palette, Hash } from "lucide-react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { Plus, Tag, Trash2, Edit3, Check, X, Palette, Hash, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { fetchWithAuth } from "@/lib/api";
 
 export interface NewsCategory {
   id: string;
@@ -16,6 +17,7 @@ export interface NewsCategory {
 
 interface CategoryManagerProps {
   token: string | null;
+  initialCategories?: NewsCategory[];
   onCategoriesChange?: (categories: NewsCategory[]) => void;
   className?: string;
 }
@@ -32,12 +34,27 @@ const COLOR_PRESETS = [
 ];
 
 export const CategoryManager: React.FC<CategoryManagerProps> = ({
-  token,
+  token: _token,
+  initialCategories = [],
   onCategoriesChange,
   className = "",
 }) => {
-  const [categories, setCategories] = useState<NewsCategory[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [categories, setCategories] = useState<NewsCategory[]>(initialCategories);
+  const [loading, setLoading] = useState(initialCategories.length === 0);
+
+  // Keep a stable reference to onCategoriesChange to avoid infinite re-render cycles
+  const onCategoriesChangeRef = useRef(onCategoriesChange);
+  useEffect(() => {
+    onCategoriesChangeRef.current = onCategoriesChange;
+  }, [onCategoriesChange]);
+
+  // Sync if initialCategories change from parent
+  useEffect(() => {
+    if (initialCategories && initialCategories.length > 0 && categories.length === 0) {
+      setCategories(initialCategories);
+      setLoading(false);
+    }
+  }, [initialCategories, categories.length]);
 
   // New category form state
   const [name, setName] = useState("");
@@ -53,11 +70,6 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({
   const [editDescription, setEditDescription] = useState("");
   const [editColor, setEditColor] = useState("#c6a858");
 
-  const headers = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  };
-
   const fetchCategories = useCallback(async () => {
     try {
       setLoading(true);
@@ -66,14 +78,19 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({
         const data: NewsCategory[] = await res.json().catch(() => []);
         const validData = Array.isArray(data) ? data : [];
         setCategories(validData);
-        if (onCategoriesChange) onCategoriesChange(validData);
+        if (onCategoriesChangeRef.current) {
+          onCategoriesChangeRef.current(validData);
+        }
+      } else {
+        toast.error("Kon categorieën niet ophalen");
       }
     } catch (e) {
       console.error("Fout bij ophalen categorieën:", e);
+      toast.error("Fout bij ophalen van categorieën");
     } finally {
       setLoading(false);
     }
-  }, [onCategoriesChange]);
+  }, []);
 
   useEffect(() => {
     fetchCategories();
@@ -98,9 +115,11 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({
 
     try {
       setSubmitting(true);
-      const res = await fetch("/api/admin/categories", {
+      const res = await fetchWithAuth("/api/admin/categories", {
         method: "POST",
-        headers,
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           name: name.trim(),
           slug: slug.trim() || undefined,
@@ -115,9 +134,9 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({
         setSlug("");
         setDescription("");
         setColor("#c6a858");
-        fetchCategories();
+        await fetchCategories();
       } else {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({}));
         toast.error(err.error || "Fout bij toevoegen categorie");
       }
     } catch (err) {
@@ -146,9 +165,11 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({
     }
 
     try {
-      const res = await fetch(`/api/admin/categories/${id}`, {
+      const res = await fetchWithAuth(`/api/admin/categories/${id}`, {
         method: "PUT",
-        headers,
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           name: editName.trim(),
           slug: editSlug.trim(),
@@ -160,9 +181,9 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({
       if (res.ok) {
         toast.success("Categorie bijgewerkt!");
         setEditingId(null);
-        fetchCategories();
+        await fetchCategories();
       } else {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({}));
         toast.error(err.error || "Fout bij bijwerken");
       }
     } catch (err) {
@@ -176,14 +197,13 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({
     }
 
     try {
-      const res = await fetch(`/api/admin/categories/${id}`, {
+      const res = await fetchWithAuth(`/api/admin/categories/${id}`, {
         method: "DELETE",
-        headers,
       });
 
       if (res.ok) {
         toast.success(`Categorie '${catName}' verwijderd`);
-        fetchCategories();
+        await fetchCategories();
       } else {
         toast.error("Kon categorie niet verwijderen");
       }
@@ -284,7 +304,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({
               disabled={submitting}
               className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold uppercase tracking-wider text-xs h-10 mt-2"
             >
-              <Plus className="w-4 h-4 mr-1.5" /> Categorie Opslaan
+              <Plus className="w-4 h-4 mr-1.5" /> {submitting ? "Opslaan..." : "Categorie Opslaan"}
             </Button>
           </form>
         </div>
@@ -300,10 +320,24 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({
                 Deze categorieën zijn direct beschikbaar bij het aanmaken van nieuws.
               </p>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchCategories}
+              disabled={loading}
+              className="h-8 text-xs gap-1.5"
+              title="Vernieuwen"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+              Vernieuwen
+            </Button>
           </div>
 
-          {loading ? (
-            <div className="py-12 text-center text-sm text-muted-foreground">Categorieën laden...</div>
+          {loading && categories.length === 0 ? (
+            <div className="py-12 text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
+              <RefreshCw className="w-5 h-5 animate-spin text-accent" />
+              <span>Categorieën laden...</span>
+            </div>
           ) : categories.length === 0 ? (
             <div className="py-12 text-center text-sm text-muted-foreground italic">
               Nog geen categorieën gevonden. Maak er links één aan!

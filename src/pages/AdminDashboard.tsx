@@ -2295,7 +2295,8 @@ export default function AdminDashboard() {
         <TabsContent value="categories">
           <CategoryManager
             token={token}
-            onCategoriesChange={(cats) => setCategories(cats)}
+            initialCategories={categories}
+            onCategoriesChange={setCategories}
           />
         </TabsContent>
 
