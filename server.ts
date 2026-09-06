@@ -14,6 +14,7 @@ import Stripe from "stripe";
 import { createServer as createViteServer } from "vite";
 import { BUURTKAART_43_WIJKEN, syncWijkenWithBuurtkaart, LEGACY_SLUG_MAP } from "./src/data/defaultWijken.js";
 import { getPageMetadata, injectMetadataIntoHtml } from "./src/server/metaGenerator.js";
+import { generateNewsletterHtml, generateNewsletterText, prepareNewsletterForDispatch } from "./src/server/newsletterTemplate.js";
 
 // NodeMailer helper logic
 function getEmailTransporter() {
@@ -33,7 +34,14 @@ function getEmailTransporter() {
   });
 }
 
-async function sendTransactionalEmail(to: string, subject: string, html: string, text?: string): Promise<boolean> {
+async function sendTransactionalEmail(
+  to: string,
+  subject: string,
+  html: string,
+  text?: string,
+  headers?: Record<string, string>,
+  attachments?: any[]
+): Promise<boolean> {
   const transporter = getEmailTransporter();
   const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER || '"Lijst van Andel" <info@lijstvanandel.nl>';
 
@@ -47,13 +55,20 @@ async function sendTransactionalEmail(to: string, subject: string, html: string,
   }
 
   try {
-    const info = await transporter.sendMail({
+    const mailOptions: any = {
       from: fromAddress,
       to,
       subject,
       html,
       text: text || html.replace(/<[^>]+>/g, ""),
-    });
+    };
+    if (headers) {
+      mailOptions.headers = headers;
+    }
+    if (attachments && attachments.length > 0) {
+      mailOptions.attachments = attachments;
+    }
+    const info = await transporter.sendMail(mailOptions);
     console.log(`[EMAIL DISPATCH - VERZONDEN VIA SMTP] E-mail succesvol verstuurd naar ${to}, Message ID: ${info.messageId}`);
     return true;
   } catch (err: any) {
@@ -121,6 +136,8 @@ function getDb() {
   if (!db.fractieleden) db.fractieleden = [];
   if (!db.videos) db.videos = [];
   if (!db.belafspraken) db.belafspraken = [];
+  if (!db.newsletterSubscribers) db.newsletterSubscribers = [];
+  if (!db.newsletters) db.newsletters = [];
   if (!db.news || !Array.isArray(db.news) || db.news.length === 0) {
     db.news = [
       {
@@ -529,6 +546,7 @@ function mirrorUploadToDist(subpath: string) {
 async function startServer() {
   const app = express();
   const PORT = 3000;
+  app.set('trust proxy', true);
 
   // Gzip/Brotli compression middleware for Core Web Vitals & fast LCP
   app.use(compression({
@@ -1881,6 +1899,449 @@ async function startServer() {
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", "attachment; filename=\"nieuwsbrief-leden-steenwijkerland.csv\"");
     return res.send("\uFEFF" + csvHeader + csvRows);
+  });
+
+  // Helper: Get unsubscribe token
+  function getUnsubscribeToken(email: string): string {
+    return crypto.createHash("sha256").update(email.toLowerCase() + JWT_SECRET).digest("hex").substring(0, 24);
+  }
+
+  // Helper: Get all active newsletter recipients (both registered members and external subscribers)
+  function getActiveNewsletterRecipients(db: any): Array<{ email: string; name: string; type: "member" | "external"; id?: string }> {
+    const map = new Map<string, { email: string; name: string; type: "member" | "external"; id?: string }>();
+
+    // 1. Members
+    if (Array.isArray(db.users)) {
+      db.users.forEach((u: any) => {
+        const isSubscribed = u.newsletterSubscribed !== false && u.newsletterSubscribed !== "false" && u.newsletterSubscribed !== 0;
+        if (isSubscribed && u.isActive !== false) {
+          const rawEmail = (u.email && typeof u.email === "string" && u.email.trim()) || 
+                           (u.username?.includes("@") ? u.username.trim() : "");
+          if (rawEmail && rawEmail.includes("@")) {
+            const lower = rawEmail.toLowerCase();
+            map.set(lower, {
+              email: rawEmail,
+              name: u.fullName || u.username,
+              type: "member",
+              id: u.id
+            });
+          }
+        }
+      });
+    }
+
+    // 2. External subscribers
+    if (Array.isArray(db.newsletterSubscribers)) {
+      db.newsletterSubscribers.forEach((s: any) => {
+        if (!s.unsubscribedAt && s.email && s.email.includes("@")) {
+          const lower = s.email.trim().toLowerCase();
+          if (!map.has(lower)) {
+            map.set(lower, {
+              email: s.email.trim(),
+              name: s.name || "",
+              type: "external",
+              id: s.id
+            });
+          }
+        }
+      });
+    }
+
+    return Array.from(map.values());
+  }
+
+  // Public: Subscribe to newsletter
+  app.post("/api/newsletter/subscribe", (req: any, res: any) => {
+    const { email, name } = req.body;
+    if (!email || typeof email !== "string" || !email.includes("@")) {
+      return res.status(400).json({ error: "Vul alstublieft een geldig e-mailadres in." });
+    }
+
+    const normalized = email.trim().toLowerCase();
+    const db = getDb();
+    let isNew = false;
+
+    // If user exists, update their preference
+    if (Array.isArray(db.users)) {
+      db.users.forEach((u: any) => {
+        const uEmail = (u.email || (u.username?.includes("@") ? u.username : "")).toLowerCase();
+        if (uEmail === normalized) {
+          u.newsletterSubscribed = true;
+        }
+      });
+    }
+
+    // External subscriber record
+    if (!db.newsletterSubscribers) db.newsletterSubscribers = [];
+    const existing = db.newsletterSubscribers.find((s: any) => s.email?.toLowerCase() === normalized);
+
+    if (existing) {
+      existing.unsubscribedAt = null;
+      if (name && typeof name === "string") existing.name = name.trim();
+    } else {
+      isNew = true;
+      db.newsletterSubscribers.push({
+        id: String(Date.now()),
+        email: normalized,
+        name: (name && typeof name === "string") ? name.trim() : "",
+        createdAt: new Date().toISOString(),
+        unsubscribedAt: null,
+        unsubscribeToken: getUnsubscribeToken(normalized),
+        source: "website"
+      });
+    }
+
+    saveDb(db);
+    return res.json({
+      success: true,
+      isNew,
+      message: "Hartelijk dank! U bent succesvol aangemeld voor de nieuwsbrief van Lijst van Andel."
+    });
+  });
+
+  // Public: Unsubscribe from newsletter (POST)
+  app.post("/api/newsletter/unsubscribe", (req: any, res: any) => {
+    const { email, token } = req.body;
+    if (!email || typeof email !== "string" || !email.includes("@")) {
+      return res.status(400).json({ error: "Vul een geldig e-mailadres in." });
+    }
+
+    const normalized = email.trim().toLowerCase();
+    const db = getDb();
+    let modified = false;
+
+    // Check token if provided
+    const expectedToken = getUnsubscribeToken(normalized);
+    if (token && token !== expectedToken) {
+      const subWithToken = (db.newsletterSubscribers || []).find((s: any) => s.email?.toLowerCase() === normalized && s.unsubscribeToken === token);
+      if (!subWithToken && token.length < 8) {
+        return res.status(400).json({ error: "Ongeldige afmeldlink of token." });
+      }
+    }
+
+    // 1. Update matching users
+    if (Array.isArray(db.users)) {
+      db.users.forEach((u: any) => {
+        const uEmail = (u.email || (u.username?.includes("@") ? u.username : "")).toLowerCase();
+        if (uEmail === normalized) {
+          u.newsletterSubscribed = false;
+          modified = true;
+        }
+      });
+    }
+
+    // 2. Update matching newsletterSubscribers
+    if (!db.newsletterSubscribers) db.newsletterSubscribers = [];
+    let foundSub = false;
+    db.newsletterSubscribers.forEach((s: any) => {
+      if (s.email?.toLowerCase() === normalized) {
+        s.unsubscribedAt = new Date().toISOString();
+        foundSub = true;
+        modified = true;
+      }
+    });
+
+    if (!foundSub) {
+      db.newsletterSubscribers.push({
+        id: String(Date.now()),
+        email: normalized,
+        name: "",
+        createdAt: new Date().toISOString(),
+        unsubscribedAt: new Date().toISOString(),
+        unsubscribeToken: expectedToken,
+        source: "unsubscribe"
+      });
+      modified = true;
+    }
+
+    if (modified) saveDb(db);
+
+    return res.json({
+      success: true,
+      message: "U bent succesvol afgemeld voor de nieuwsbrief van Lijst van Andel."
+    });
+  });
+
+  // Public: Unsubscribe GET redirect
+  app.get("/api/newsletter/unsubscribe", (req: any, res: any) => {
+    const email = (req.query.email as string) || "";
+    const token = (req.query.token as string) || "";
+    return res.redirect(`/nieuwsbrief/afmelden?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`);
+  });
+
+  // Admin: Get newsletter subscribers
+  app.get("/api/admin/newsletter/subscribers", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const activeRecipients = getActiveNewsletterRecipients(db);
+    const externalSubscribers = (db.newsletterSubscribers || []).map((s: any) => ({
+      id: s.id,
+      email: s.email,
+      name: s.name || "",
+      createdAt: s.createdAt,
+      unsubscribedAt: s.unsubscribedAt,
+      isSubscribed: !s.unsubscribedAt,
+      type: "external"
+    }));
+
+    const memberSubscribers = (db.users || []).filter((u: any) => {
+      const email = (u.email && u.email.trim()) || (u.username?.includes("@") ? u.username : "");
+      return Boolean(email);
+    }).map((u: any) => ({
+      id: u.id,
+      email: (u.email && u.email.trim()) || u.username,
+      name: u.fullName || u.username,
+      createdAt: u.createdAt,
+      isSubscribed: u.newsletterSubscribed !== false && u.isActive !== false,
+      role: u.role || "member",
+      type: "member"
+    }));
+
+    return res.json({
+      totalActive: activeRecipients.length,
+      activeRecipients,
+      externalSubscribers,
+      memberSubscribers
+    });
+  });
+
+  // Admin: Add subscriber manually
+  app.post("/api/admin/newsletter/subscribers", requireAuth, requireAdmin, (req: any, res: any) => {
+    const { email, name } = req.body;
+    if (!email || typeof email !== "string" || !email.includes("@")) {
+      return res.status(400).json({ error: "Vul een geldig e-mailadres in." });
+    }
+
+    const normalized = email.trim().toLowerCase();
+    const db = getDb();
+    if (!db.newsletterSubscribers) db.newsletterSubscribers = [];
+
+    const existing = db.newsletterSubscribers.find((s: any) => s.email?.toLowerCase() === normalized);
+    if (existing) {
+      existing.unsubscribedAt = null;
+      if (name) existing.name = name.trim();
+    } else {
+      db.newsletterSubscribers.push({
+        id: String(Date.now()),
+        email: normalized,
+        name: name ? name.trim() : "",
+        createdAt: new Date().toISOString(),
+        unsubscribedAt: null,
+        unsubscribeToken: getUnsubscribeToken(normalized),
+        source: "admin_manual"
+      });
+    }
+
+    saveDb(db);
+    return res.json({ success: true, message: `Abonnee ${normalized} succesvol toegevoegd.` });
+  });
+
+  // Admin: Remove / Unsubscribe subscriber
+  app.delete("/api/admin/newsletter/subscribers", requireAuth, requireAdmin, (req: any, res: any) => {
+    const email = req.body?.email || req.query?.email;
+    if (!email) return res.status(400).json({ error: "E-mailadres is verplicht." });
+
+    const normalized = String(email).trim().toLowerCase();
+    const db = getDb();
+
+    if (Array.isArray(db.users)) {
+      db.users.forEach((u: any) => {
+        const uEmail = (u.email || (u.username?.includes("@") ? u.username : "")).toLowerCase();
+        if (uEmail === normalized) u.newsletterSubscribed = false;
+      });
+    }
+
+    if (Array.isArray(db.newsletterSubscribers)) {
+      db.newsletterSubscribers.forEach((s: any) => {
+        if (s.email?.toLowerCase() === normalized) {
+          s.unsubscribedAt = new Date().toISOString();
+        }
+      });
+    }
+
+    saveDb(db);
+    return res.json({ success: true, message: `Abonnee ${normalized} afgemeld.` });
+  });
+
+  // Admin: Newsletter Mailings History & Drafts
+  app.get("/api/admin/newsletter/history", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    return res.json(db.newsletters || []);
+  });
+
+  // Admin: Save Newsletter Draft
+  app.post("/api/admin/newsletter/save", requireAuth, requireAdmin, (req: any, res: any) => {
+    const { id, subject, preheader, bannerUrl, introTitle, introText, ctaButtonText, ctaButtonUrl, ctaButtonColor, items } = req.body;
+    if (!subject) return res.status(400).json({ error: "Onderwerp is verplicht." });
+
+    const db = getDb();
+    if (!db.newsletters) db.newsletters = [];
+
+    const newsletterRecord = {
+      id: id || String(Date.now()),
+      subject: String(subject).trim(),
+      preheader: preheader ? String(preheader).trim() : "",
+      bannerUrl: bannerUrl || "",
+      introTitle: introTitle ? String(introTitle).trim() : "",
+      introText: introText || "",
+      ctaButtonText: ctaButtonText || "",
+      ctaButtonUrl: ctaButtonUrl || "",
+      ctaButtonColor: ctaButtonColor || "#c6a858",
+      items: Array.isArray(items) ? items : [],
+      status: "draft",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    const existingIdx = db.newsletters.findIndex((n: any) => n.id === newsletterRecord.id);
+    if (existingIdx >= 0) {
+      db.newsletters[existingIdx] = {
+        ...db.newsletters[existingIdx],
+        ...newsletterRecord,
+        createdAt: db.newsletters[existingIdx].createdAt,
+        updatedAt: new Date().toISOString()
+      };
+    } else {
+      db.newsletters.unshift(newsletterRecord);
+    }
+
+    saveDb(db);
+    return res.json({ success: true, newsletter: newsletterRecord, message: "Concept opgeslagen." });
+  });
+
+  // Admin: Delete Newsletter Draft or History
+  app.delete("/api/admin/newsletter/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    if (!db.newsletters) db.newsletters = [];
+    db.newsletters = db.newsletters.filter((n: any) => n.id !== req.params.id);
+    saveDb(db);
+    return res.json({ success: true, message: "Mailing verwijderd." });
+  });
+
+  // Admin: Preview Newsletter HTML
+  app.post("/api/admin/newsletter/preview", requireAuth, requireAdmin, (req: any, res: any) => {
+    const { newsletter } = req.body;
+    if (!newsletter) return res.status(400).json({ error: "Nieuwsbrief data ontbreekt." });
+
+    const host = req.headers["x-forwarded-host"] || req.get("host") || "localhost:3000";
+    const isLocal = host.includes("localhost") || host.includes("127.0.0.1");
+    const protocol = isLocal ? "http" : "https";
+    const baseUrl = `${protocol}://${host}`;
+
+    const previewEmail = req.user.email || req.user.username || "lezer@lijstvanandel.nl";
+    const token = getUnsubscribeToken(previewEmail);
+    const html = generateNewsletterHtml(newsletter, previewEmail, baseUrl, token);
+    const text = generateNewsletterText(newsletter, previewEmail, baseUrl, token);
+
+    return res.json({ html, text });
+  });
+
+  // Admin: Send Newsletter (Test or Live to All)
+  app.post("/api/admin/newsletter/send", requireAuth, requireAdmin, async (req: any, res: any) => {
+    const { newsletter, isTest, testEmail, testRecipient } = req.body;
+    if (!newsletter || !newsletter.subject) {
+      return res.status(400).json({ error: "Nieuwsbrief onderwerp en inhoud zijn verplicht." });
+    }
+
+    const db = getDb();
+    const host = req.headers["x-forwarded-host"] || req.get("host") || "localhost:3000";
+    const isLocal = host.includes("localhost") || host.includes("127.0.0.1");
+    const protocol = isLocal ? "http" : "https";
+    const baseUrl = `${protocol}://${host}`;
+    const publicDir = path.join(process.cwd(), "public");
+
+    if (isTest) {
+      const candidateEmail = testEmail || testRecipient;
+      const targetEmail = (candidateEmail && typeof candidateEmail === "string" && candidateEmail.includes("@"))
+        ? candidateEmail.trim()
+        : (req.user.email || req.user.username);
+
+      if (!targetEmail || !targetEmail.includes("@")) {
+        return res.status(400).json({ error: "Vul een geldig e-mailadres in voor de test e-mail." });
+      }
+
+      const testToken = getUnsubscribeToken(targetEmail);
+      const testSubject = `[TEST] ${newsletter.subject}`;
+      const dispatchPkg = prepareNewsletterForDispatch(newsletter, targetEmail, baseUrl, testToken, publicDir);
+      const unsubscribeUrl = `${baseUrl.replace(/\/+$/, "")}/nieuwsbrief/afmelden?email=${encodeURIComponent(targetEmail)}&token=${encodeURIComponent(testToken)}`;
+
+      const sent = await sendTransactionalEmail(
+        targetEmail,
+        testSubject,
+        dispatchPkg.html,
+        dispatchPkg.text,
+        {
+          "List-Unsubscribe": `<${unsubscribeUrl}>`,
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+        },
+        dispatchPkg.attachments
+      );
+
+      return res.json({
+        success: true,
+        isTest: true,
+        delivered: sent,
+        recipient: targetEmail,
+        message: sent
+          ? `Test e-mail succesvol verzonden naar ${targetEmail}!`
+          : `Test e-mail gesimuleerd naar ${targetEmail} (zie console/server logs).`
+      });
+    }
+
+    // Live blast to all active recipients
+    const recipients = getActiveNewsletterRecipients(db);
+    if (recipients.length === 0) {
+      return res.status(400).json({ error: "Er zijn momenteel geen actieve abonnees geregistreerd om de nieuwsbrief naar te verzenden." });
+    }
+
+    let sentCount = 0;
+    for (const recipient of recipients) {
+      const token = getUnsubscribeToken(recipient.email);
+      const dispatchPkg = prepareNewsletterForDispatch(newsletter, recipient.email, baseUrl, token, publicDir);
+      const unsubscribeUrl = `${baseUrl.replace(/\/+$/, "")}/nieuwsbrief/afmelden?email=${encodeURIComponent(recipient.email)}&token=${encodeURIComponent(token)}`;
+
+      try {
+        await sendTransactionalEmail(
+          recipient.email,
+          newsletter.subject,
+          dispatchPkg.html,
+          dispatchPkg.text,
+          {
+            "List-Unsubscribe": `<${unsubscribeUrl}>`,
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+          },
+          dispatchPkg.attachments
+        );
+        sentCount++;
+      } catch (err: any) {
+        console.error(`Fout bij verzenden naar ${recipient.email}:`, err.message);
+      }
+    }
+
+    // Save sent newsletter in archive
+    if (!db.newsletters) db.newsletters = [];
+    const newsletterRecord = {
+      ...newsletter,
+      id: newsletter.id || String(Date.now()),
+      status: "sent",
+      sentAt: new Date().toISOString(),
+      recipientCount: recipients.length,
+      sentBy: req.user.username || "Admin"
+    };
+
+    const existingIdx = db.newsletters.findIndex((n: any) => n.id === newsletterRecord.id);
+    if (existingIdx >= 0) {
+      db.newsletters[existingIdx] = newsletterRecord;
+    } else {
+      db.newsletters.unshift(newsletterRecord);
+    }
+    saveDb(db);
+
+    return res.json({
+      success: true,
+      recipientCount: recipients.length,
+      sentCount,
+      message: `Nieuwsbrief '${newsletter.subject}' is succesvol verzonden naar ${recipients.length} abonnees!`
+    });
   });
 
   // Admin Routes - Fractieleden
@@ -4275,8 +4736,11 @@ Sitemap: ${baseUrl}/sitemap.xml
     app.get('*all', async (req, res, next) => {
       try {
         const url = req.originalUrl;
-        // Let assets pass through if not handled by vite middleware
-        if (url.startsWith("/api") || url.startsWith("/uploads") || url.startsWith("/assets") || url.includes(".")) {
+        const pathname = (req.path || url.split("?")[0] || "").toLowerCase();
+
+        // Let actual static assets and API routes pass through to express/vite handlers
+        const isStaticAsset = /\.(js|mjs|cjs|css|png|jpg|jpeg|gif|svg|ico|webp|woff2?|map|json|txt|pdf|mp4)$/i.test(pathname);
+        if (pathname.startsWith("/api") || pathname.startsWith("/uploads") || pathname.startsWith("/assets") || isStaticAsset) {
           return next();
         }
         const templatePath = path.join(process.cwd(), "index.html");

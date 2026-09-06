@@ -28,6 +28,7 @@ import Doneren from "./pages/Doneren";
 import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard";
 import AdminDashboard from "./pages/AdminDashboard";
+import NieuwsbriefAfmelden from "./pages/NieuwsbriefAfmelden";
 
 const queryClient = new QueryClient();
 
@@ -69,6 +70,7 @@ const App = () => (
                   <Route path="/registreren" element={<Register />} />
                   <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/admin" element={<AdminDashboard />} />
+                  <Route path="/nieuwsbrief/afmelden" element={<NieuwsbriefAfmelden />} />
                 </Route>
                 <Route path="*" element={<NotFound />} />
               </Routes>

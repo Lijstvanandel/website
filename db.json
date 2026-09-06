@@ -11,7 +11,7 @@
       "role": "admin",
       "isActive": true,
       "email": "info@lijstvanandel.nl",
-      "newsletterSubscribed": true,
+      "newsletterSubscribed": false,
       "stripeSessionId": "cs_test_a1cUq8vRSO8pTDIGXuo5Dx8zOUNubPYc160HSSlJTHxHql8we6XfV34F2S"
     },
     {
@@ -44,12 +44,12 @@
       "isActive": true,
       "createdAt": "2026-09-02T16:50:26.430Z",
       "email": "stef@lijstvanandel.nl",
-      "newsletterSubscribed": true
+      "newsletterSubscribed": false
     },
     {
       "id": "1788433753932",
       "salutation": "Dhr.",
-      "fullName": "Sammy Andel",
+      "fullName": "Sammy van Andel",
       "address": "Het Schar 73",
       "city": "Steenwijk",
       "username": "Sammy123",
@@ -73,7 +73,7 @@
       "password": "$2b$10$sKYYlj9x5PzwoIOn/rEfhO5dbL.r/MbtYK4SiOpmlEKMfLikqVrne",
       "remarks": "",
       "directDebit": true,
-      "newsletterSubscribed": true,
+      "newsletterSubscribed": false,
       "role": "member",
       "isActive": true,
       "billingStatus": "pending",
@@ -1249,5 +1249,62 @@
     "description": "Jaarlijkse partijcontributie voor leden van Lijst van Andel",
     "requirePaymentAtRegistration": true,
     "updatedAt": "2026-09-05T14:02:39.343Z"
-  }
+  },
+  "newsletterSubscribers": [],
+  "newsletters": [
+    {
+      "subject": "Fractie-update Lijst van Andel: Belangrijke besluiten Steenwijkerland",
+      "preheader": "Lees het laatste nieuws, onze nieuwste video's en komende fractiebijeenkomsten.",
+      "bannerUrl": "/assets/hero-banner.jpg",
+      "introTitle": "Beste inwoner van Steenwijkerland,",
+      "introText": "Hierbij ontvangt u onze nieuwste nieuwsbrief. Als Lijst van Andel blijven we ons onvermoeibaar inzetten voor nuchter lokaal bestuur, betaalbare starterswoningen, en het behoud van onze prachtige dorpskernen en natuur. Hieronder vindt u een overzicht van onze recente activiteiten en standpunten.",
+      "ctaButtonText": "Steun onze fractie met een donatie",
+      "ctaButtonUrl": "/doneren",
+      "ctaButtonColor": "#c6a858",
+      "items": [
+        {
+          "id": "item-1788657811605-twvq",
+          "type": "news",
+          "sourceId": "kopwijzer-rtv-slos",
+          "title": "Sammy van Andel te gast bij Kopwijzer (RTV SLOS)",
+          "subtitle": "Nieuws • 18 april 2026",
+          "text": "In de uitzending van Kopwijzer sprak Sammy met de presentator over de speerpunten van Lijst van Andel en de lokale agenda.",
+          "imageUrl": "",
+          "buttonText": "Lees het hele artikel",
+          "buttonUrl": "/nieuws/kopwijzer-rtv-slos",
+          "buttonColor": "#1b2a4a"
+        },
+        {
+          "id": "item-1788657814397-2fvu",
+          "type": "video",
+          "sourceId": "1001",
+          "title": "Bijdrage over woningbouw Oostermeenthe",
+          "subtitle": "Video • Bekijk opname",
+          "text": "Bekijk onze nieuwste video van de fractie.",
+          "imageUrl": "",
+          "buttonText": "Bekijk video",
+          "buttonUrl": "/video/1001",
+          "buttonColor": "#991b1b"
+        },
+        {
+          "id": "item-1788657817732-06n3",
+          "type": "event",
+          "sourceId": "1788383596955",
+          "title": "Tijd voor verbetering — Inloopavond Steenwijkerland",
+          "subtitle": "Agenda • dinsdag 15 september  ",
+          "dateLabel": "Agenda • dinsdag 15 september  ",
+          "text": "Een interactieve avond over de toekomst van onze gemeente. Kom meepraten met Sammy van Andel en de fractie over wonen, zorg en lokale voorzieningen.",
+          "imageUrl": "",
+          "buttonText": "Meer info & Aanmelden",
+          "buttonUrl": "/agenda",
+          "buttonColor": "#c6a858"
+        }
+      ],
+      "id": "1788658136731",
+      "status": "sent",
+      "sentAt": "2026-09-06T01:28:56.731Z",
+      "recipientCount": 1,
+      "sentBy": "Sammy123"
+    }
+  ]
 }

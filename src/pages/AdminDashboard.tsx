@@ -54,6 +54,7 @@ import { DocumentManager } from "@/components/DocumentManager";
 import { BelafsprakenManager } from "@/components/BelafsprakenManager";
 import { StemgedragManager } from "@/components/StemgedragManager";
 import { SystemManager } from "@/components/SystemManager";
+import NewsletterManager from "@/components/admin/NewsletterManager";
 import { WIJKEN_EN_KERNEN } from "@/data/wijken";
 import { NewsItem } from "@/data/news";
 import { hoofdstukken } from "@/data/partijprogramma";
@@ -992,6 +993,9 @@ export default function AdminDashboard() {
           </TabsTrigger>
           <TabsTrigger value="belafspraken" className="gap-2 text-xs">
             <Phone className="w-4 h-4 text-accent" /> Belafspraken
+          </TabsTrigger>
+          <TabsTrigger value="newsletter" className="gap-2 text-xs text-accent">
+            <Mail className="w-4 h-4 text-accent" /> Nieuwsbrief & Mailings
           </TabsTrigger>
           <TabsTrigger value="system" className="gap-2 text-xs text-accent">
             <Server className="w-4 h-4" /> Systeem & Updates
@@ -3011,6 +3015,11 @@ export default function AdminDashboard() {
         {/* STEMGEDRAG & MOTIES BEHEER */}
         <TabsContent value="stemgedrag">
           <StemgedragManager token={token} />
+        </TabsContent>
+
+        {/* NIEUWSBRIEF & MAILINGS */}
+        <TabsContent value="newsletter">
+          <NewsletterManager token={token || effectiveToken} />
         </TabsContent>
 
         {/* SYSTEEM, CACHE & GITHUB UPDATES */}
