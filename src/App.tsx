@@ -29,6 +29,7 @@ import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard";
 import AdminDashboard from "./pages/AdminDashboard";
 import NieuwsbriefAfmelden from "./pages/NieuwsbriefAfmelden";
+import TicketView from "./pages/TicketView";
 
 const queryClient = new QueryClient();
 
@@ -55,6 +56,7 @@ const App = () => (
                   <Route path="/standpunten" element={<Standpunten />} />
                   <Route path="/agenda" element={<Agenda />} />
                   <Route path="/agenda/:id" element={<AgendaDetail />} />
+                  <Route path="/ticket/:code" element={<TicketView />} />
                   <Route path="/nieuws" element={<Nieuws />} />
                   <Route path="/nieuws/:id" element={<NieuwsDetail />} />
                   <Route path="/wijken-en-kernen" element={<WijkenEnKernen />} />

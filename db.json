@@ -28,7 +28,11 @@
       "isActive": true,
       "createdAt": "2026-09-02T16:24:22.062Z",
       "email": "lisa@lijstvanandel.nl",
-      "newsletterSubscribed": false
+      "newsletterSubscribed": false,
+      "billingStatus": "paid",
+      "paidAmount": 12,
+      "paidAt": "2026-09-06T16:30:45.581Z",
+      "paidUntil": "2027-09-06T16:30:45.581Z"
     },
     {
       "id": "1788367826430",

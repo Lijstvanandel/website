@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { fetchWithAuth } from "@/lib/api";
 import { Navigate, Link } from "react-router-dom";
@@ -43,6 +43,12 @@ import {
   CreditCard,
   Coins,
   Receipt,
+  QrCode,
+  Ticket,
+  BarChart3,
+  UserCheck,
+  UserX,
+  TrendingDown,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VideoPlayer } from "@/components/VideoPlayer";
@@ -114,6 +120,28 @@ interface EventAttendee {
   id: string;
   fullName: string;
   email: string;
+  phone?: string;
+  ticketCode?: string;
+  isMember?: boolean;
+  price?: number;
+  paid?: boolean;
+  status?: string;
+  checkedIn?: boolean;
+  checkedInAt?: string;
+  registeredAt?: string;
+}
+
+interface EventCancellationItem {
+  id: string;
+  eventId: string;
+  ticketId?: string;
+  ticketCode?: string;
+  fullName?: string;
+  email?: string;
+  isMember?: boolean;
+  cancelledAt: string;
+  reason: string;
+  hoursBeforeEvent?: number;
 }
 
 interface EventItem {
@@ -129,6 +157,9 @@ interface EventItem {
   isPublished: boolean;
   isCancelled?: boolean;
   thumbnailUrl?: string;
+  nonMemberPrice?: number;
+  ticketNotes?: string;
+  locationHiddenUntil12h?: boolean;
   attendees?: EventAttendee[];
 }
 
@@ -215,9 +246,29 @@ export default function AdminDashboard() {
   const [ePublish, setEPublish] = useState(true);
   const [eThumb, setEThumb] = useState<File | null>(null);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [eNonMemberPrice, setENonMemberPrice] = useState("0");
+  const [eTicketNotes, setETicketNotes] = useState("");
+  const [eLocationHiddenUntil12h, setELocationHiddenUntil12h] = useState(true);
+
+  // Cancellation and ticket management states
+  const [cancellationsMap, setCancellationsMap] = useState<Record<string, EventCancellationItem[]>>({});
+  const [activeAttendeeTab, setActiveAttendeeTab] = useState<Record<string, "attendees" | "cancellations">>({});
+  const [eventAnalytics, setEventAnalytics] = useState<{
+    summary: {
+      totalRegistrations: number;
+      activeRegistrations: number;
+      totalCancellations: number;
+      cancellationRate: number;
+      avgHoursBeforeEvent: number;
+    };
+    reasonsBreakdown: Array<{ reason: string; count: number }>;
+    allCancellations: any[];
+  } | null>(null);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+  const [showFullAnalyticsLog, setShowFullAnalyticsLog] = useState(false);
 
   const effectiveToken = token || (typeof window !== "undefined" ? localStorage.getItem("auth_token") : "") || "";
-  const headers = { Authorization: `Bearer ${effectiveToken}` };
+  const headers = useMemo(() => ({ Authorization: `Bearer ${effectiveToken}` }), [effectiveToken]);
 
   // Membership & Stripe settings state
   const [membershipData, setMembershipData] = useState<{
@@ -392,6 +443,21 @@ export default function AdminDashboard() {
       .catch(console.error);
   }, [token]);
 
+  const fetchCancellationAnalytics = useCallback(async () => {
+    setLoadingAnalytics(true);
+    try {
+      const res = await fetch("/api/admin/events/cancellations/analytics", { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setEventAnalytics(data);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingAnalytics(false);
+    }
+  }, [headers]);
+
   useEffect(() => {
     if (user?.role === "admin") {
       fetchUsers();
@@ -400,10 +466,11 @@ export default function AdminDashboard() {
       fetchVideos();
       fetchNews();
       fetchEvents();
+      fetchCancellationAnalytics();
       fetchCategories();
       fetchMessages();
     }
-  }, [user, fetchUsers, fetchMembershipSettings, fetchFractieleden, fetchVideos, fetchNews, fetchEvents, fetchCategories, fetchMessages]);
+  }, [user, fetchUsers, fetchMembershipSettings, fetchFractieleden, fetchVideos, fetchNews, fetchEvents, fetchCancellationAnalytics, fetchCategories, fetchMessages]);
 
   useEffect(() => {
     if (selectedMessageId) {
@@ -481,6 +548,34 @@ export default function AdminDashboard() {
       setAttendeesMap((prev) => ({ ...prev, [eventId]: data }));
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const fetchCancellations = async (eventId: string) => {
+    try {
+      const res = await fetch(`/api/admin/events/${eventId}/cancellations`, { headers });
+      const data = await res.json();
+      setCancellationsMap((prev) => ({ ...prev, [eventId]: Array.isArray(data) ? data : [] }));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const checkInTicket = async (ticketCode: string, eventId: string) => {
+    try {
+      const res = await fetch(`/api/admin/events/tickets/${encodeURIComponent(ticketCode)}/checkin`, {
+        method: "POST",
+        headers,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        toast.success(data.message || `Ticket #${ticketCode} succesvol ingecheckt!`);
+        fetchAttendees(eventId);
+      } else {
+        toast.error(data.error || "Inchecken mislukt.");
+      }
+    } catch {
+      toast.error("Fout bij inchecken.");
     }
   };
 
@@ -814,6 +909,9 @@ export default function AdminDashboard() {
     setEDesc(ev.description || "");
     setEPublic(ev.isPublic !== false);
     setEPublish(ev.isPublished !== false);
+    setENonMemberPrice(ev.nonMemberPrice !== undefined ? String(ev.nonMemberPrice) : "0");
+    setETicketNotes(ev.ticketNotes || "");
+    setELocationHiddenUntil12h(ev.locationHiddenUntil12h !== false);
     setEThumb(null);
     window.scrollTo({ top: 350, behavior: "smooth" });
   };
@@ -829,6 +927,9 @@ export default function AdminDashboard() {
     setEDesc("");
     setEPublic(true);
     setEPublish(true);
+    setENonMemberPrice("0");
+    setETicketNotes("");
+    setELocationHiddenUntil12h(true);
     setEThumb(null);
   };
 
@@ -844,6 +945,9 @@ export default function AdminDashboard() {
     formData.append("description", eDesc);
     formData.append("isPublic", String(ePublic));
     formData.append("isPublished", String(ePublish));
+    formData.append("nonMemberPrice", eNonMemberPrice || "0");
+    formData.append("ticketNotes", eTicketNotes);
+    formData.append("locationHiddenUntil12h", String(eLocationHiddenUntil12h));
     if (eThumb) formData.append("thumbnail", eThumb);
 
     try {
@@ -853,6 +957,7 @@ export default function AdminDashboard() {
       if (res.ok) {
         toast.success(editingEventId ? "Evenement succesvol bijgewerkt!" : "Evenement toegevoegd!");
         fetchEvents();
+        fetchCancellationAnalytics();
         cancelEditEvent();
       } else {
         const data = await res.json().catch(() => ({}));
@@ -2302,6 +2407,182 @@ export default function AdminDashboard() {
 
         {/* AGENDA */}
         <TabsContent value="agenda">
+          {/* AFMELDINGEN & TICKETING ANALYSE BANNER */}
+          <div className="mb-8 bg-card rounded-2xl border border-border p-6 shadow-sm space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/80 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-accent/10 text-accent">
+                  <BarChart3 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-display">Bijeenkomsten, Aanmeldingen & Afmeldingsanalyse</h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Realtime monitoring van aanmeldingen, opkomst, annuleringen en redenen van afwezigheid.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fetchCancellationAnalytics()}
+                  disabled={loadingAnalytics}
+                  className="text-xs h-8"
+                >
+                  <RotateCcw className={`w-3.5 h-3.5 mr-1.5 ${loadingAnalytics ? "animate-spin" : ""}`} />
+                  Analyse Verversen
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowFullAnalyticsLog((prev) => !prev)}
+                  className="text-xs h-8"
+                >
+                  <Ticket className="w-3.5 h-3.5 mr-1.5" />
+                  {showFullAnalyticsLog ? "Verberg Afmeldingslog" : "Toon Afmeldingslogboek"}
+                </Button>
+              </div>
+            </div>
+
+            {/* Metric KPI cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="p-4 rounded-xl bg-muted/40 border border-border/60">
+                <span className="text-xs text-muted-foreground font-medium block mb-1">Totaal Aanmeldingen</span>
+                <div className="text-2xl font-bold text-foreground">
+                  {eventAnalytics?.summary?.totalRegistrations ?? 0}
+                </div>
+                <span className="text-[11px] text-emerald-600 font-medium">
+                  {eventAnalytics?.summary?.activeRegistrations ?? 0} actieve tickets
+                </span>
+              </div>
+
+              <div className="p-4 rounded-xl bg-muted/40 border border-border/60">
+                <span className="text-xs text-muted-foreground font-medium block mb-1">Totaal Afgemeld</span>
+                <div className="text-2xl font-bold text-amber-600">
+                  {eventAnalytics?.summary?.totalCancellations ?? 0}
+                </div>
+                <span className="text-[11px] text-muted-foreground">
+                  Geregistreerd voor analyse
+                </span>
+              </div>
+
+              <div className="p-4 rounded-xl bg-muted/40 border border-border/60">
+                <span className="text-xs text-muted-foreground font-medium block mb-1">Uitvalpercentage</span>
+                <div className="text-2xl font-bold text-foreground flex items-center gap-1.5">
+                  <span>{eventAnalytics?.summary?.cancellationRate ?? 0}%</span>
+                  <TrendingDown className="w-4 h-4 text-muted-foreground" />
+                </div>
+                <span className="text-[11px] text-muted-foreground">
+                  Percentage geannuleerd
+                </span>
+              </div>
+
+              <div className="p-4 rounded-xl bg-muted/40 border border-border/60">
+                <span className="text-xs text-muted-foreground font-medium block mb-1">Gem. Tijd voor Aanvang</span>
+                <div className="text-2xl font-bold text-foreground">
+                  {eventAnalytics?.summary?.avgHoursBeforeEvent ?? 0}u
+                </div>
+                <span className="text-[11px] text-muted-foreground">
+                  Vooraf tijdig gemeld
+                </span>
+              </div>
+            </div>
+
+            {/* Redenen breakdown */}
+            {eventAnalytics?.reasonsBreakdown && eventAnalytics.reasonsBreakdown.length > 0 && (
+              <div className="p-4 rounded-xl bg-background border border-border/70 space-y-3">
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Top Opgegeven Redenen van Afmelding
+                </span>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {eventAnalytics.reasonsBreakdown.map((r, idx) => (
+                    <div
+                      key={idx}
+                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted border border-border text-xs"
+                    >
+                      <span className="font-medium text-foreground">{r.reason}</span>
+                      <span className="px-1.5 py-0.5 rounded-full bg-accent/20 text-accent font-bold text-[10px]">
+                        {r.count}x
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Full Cancellation Log Table */}
+            {showFullAnalyticsLog && (
+              <div className="border border-border rounded-xl overflow-hidden bg-background">
+                <div className="p-3 bg-muted/50 border-b border-border flex items-center justify-between">
+                  <span className="text-xs font-semibold">
+                    Afmeldingslogboek ({eventAnalytics?.allCancellations?.length || 0} registraties)
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    Inclusief tijdsbestek en motivatie
+                  </span>
+                </div>
+                <div className="max-h-72 overflow-y-auto">
+                  {(!eventAnalytics?.allCancellations || eventAnalytics.allCancellations.length === 0) ? (
+                    <div className="p-6 text-center text-xs text-muted-foreground italic">
+                      Nog geen afmeldingen geregistreerd in het systeem.
+                    </div>
+                  ) : (
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-muted/30 text-muted-foreground border-b border-border text-[11px]">
+                        <tr>
+                          <th className="p-2.5">Datum Afmelding</th>
+                          <th className="p-2.5">Naam / Ticket</th>
+                          <th className="p-2.5">Type</th>
+                          <th className="p-2.5">Vooraf gemeld</th>
+                          <th className="p-2.5">Opgegeven Reden</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/60">
+                        {eventAnalytics.allCancellations.map((c: any) => (
+                          <tr key={c.id} className="hover:bg-muted/20">
+                            <td className="p-2.5 whitespace-nowrap text-muted-foreground">
+                              {new Date(c.cancelledAt).toLocaleString("nl-NL", {
+                                dateStyle: "short",
+                                timeStyle: "short",
+                              })}
+                            </td>
+                            <td className="p-2.5 font-medium">
+                              {c.fullName || "Deelnemer"}
+                              {c.ticketCode && (
+                                <span className="block text-[10px] text-muted-foreground font-mono">
+                                  #{c.ticketCode}
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-2.5">
+                              {c.isMember ? (
+                                <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-semibold text-[10px]">
+                                  Partijlid
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-600 font-semibold text-[10px]">
+                                  Gast / Niet-lid
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-2.5 whitespace-nowrap text-muted-foreground">
+                              {c.hoursBeforeEvent !== undefined
+                                ? `${c.hoursBeforeEvent} uur voor aanvang`
+                                : "-"}
+                            </td>
+                            <td className="p-2.5 text-foreground max-w-xs truncate" title={c.reason}>
+                              {c.reason || "Geen toelichting"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="grid lg:grid-cols-12 gap-8">
             <div className="lg:col-span-7 bg-card rounded-xl border border-border p-6 shadow-sm">
               <div className="flex items-center justify-between mb-6">
@@ -2442,6 +2723,56 @@ export default function AdminDashboard() {
                   </p>
                 </div>
 
+                <div className="grid sm:grid-cols-2 gap-4 p-3 bg-muted/40 rounded-xl border border-border">
+                  <div>
+                    <label className="text-xs font-semibold mb-1 block text-foreground">
+                      Toegangsprijs Niet-leden (€)
+                    </label>
+                    <Input
+                      type="number"
+                      step="0.50"
+                      min="0"
+                      value={eNonMemberPrice}
+                      onChange={(e) => setENonMemberPrice(e.target.value)}
+                      placeholder="0.00 (gratis)"
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      0.00 = gratis. &gt; 0 = betaling via Stripe Checkout (geen cashback voor niet-leden).
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold mb-1 block text-foreground">
+                      Locatie Vrijgave
+                    </label>
+                    <label className="flex items-start text-xs gap-2 cursor-pointer mt-2 text-foreground/90">
+                      <input
+                        type="checkbox"
+                        checked={eLocationHiddenUntil12h}
+                        onChange={(e) => setELocationHiddenUntil12h(e.target.checked)}
+                        className="rounded border-border text-accent focus:ring-accent mt-0.5"
+                      />
+                      <span>
+                        Houd adres geheim tot 12 uur na aanmelding of uiterlijk 12 uur voor aanvang
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold mb-1 block text-foreground">
+                    Ticket instructies / Notities
+                  </label>
+                  <Input
+                    value={eTicketNotes}
+                    onChange={(e) => setETicketNotes(e.target.value)}
+                    placeholder="Bijv. Zaal open om 19:00. Toon uw QR-code bij de balie."
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Wordt vermeld in de e-mail met het QR-ticket.
+                  </p>
+                </div>
+
                 <div className="flex flex-wrap items-center gap-6 py-2">
                   <label className="flex items-center text-sm gap-2 cursor-pointer">
                     <input
@@ -2515,6 +2846,20 @@ export default function AdminDashboard() {
                           <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-accent/15 text-accent font-semibold">
                             {e.isPublic ? "Publiek" : "Alleen leden"}
                           </span>
+                          {e.nonMemberPrice && Number(e.nonMemberPrice) > 0 ? (
+                            <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-semibold">
+                              Niet-leden: €{Number(e.nonMemberPrice).toFixed(2)}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-semibold">
+                              Gratis
+                            </span>
+                          )}
+                          {e.locationHiddenUntil12h !== false && (
+                            <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-600 font-semibold" title="Locatie wordt 12u na aanmelden of 12u voor aanvang vrijgegeven">
+                              12u Privacy
+                            </span>
+                          )}
                           {e.isCancelled && (
                             <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-red-500/15 text-red-500 font-semibold">
                               Gecanceld
@@ -2583,28 +2928,137 @@ export default function AdminDashboard() {
                     </div>
 
                     <div className="mt-3 pt-3 border-t border-border/60">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => fetchAttendees(e.id)}
-                        className="w-full text-xs h-7"
-                      >
-                        Aanmeldingen Bekijken ({e.attendees?.length || 0})
-                      </Button>
-                      {attendeesMap[e.id] && (
-                        <div className="mt-2 space-y-1 text-xs">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Button
+                          variant={(!activeAttendeeTab[e.id] || activeAttendeeTab[e.id] === "attendees") ? "secondary" : "ghost"}
+                          size="sm"
+                          onClick={() => {
+                            setActiveAttendeeTab((prev) => ({ ...prev, [e.id]: "attendees" }));
+                            fetchAttendees(e.id);
+                          }}
+                          className="flex-1 text-xs h-7"
+                        >
+                          <Ticket className="w-3 h-3 mr-1.5" />
+                          Aanmeldingen ({e.attendees?.length || 0})
+                        </Button>
+                        <Button
+                          variant={activeAttendeeTab[e.id] === "cancellations" ? "secondary" : "ghost"}
+                          size="sm"
+                          onClick={() => {
+                            setActiveAttendeeTab((prev) => ({ ...prev, [e.id]: "cancellations" }));
+                            fetchCancellations(e.id);
+                          }}
+                          className="flex-1 text-xs h-7 text-amber-600 hover:text-amber-700"
+                        >
+                          <UserX className="w-3 h-3 mr-1.5" />
+                          Afmeldingen
+                        </Button>
+                      </div>
+
+                      {/* Weergave actieve tickets/aanmeldingen */}
+                      {(!activeAttendeeTab[e.id] || activeAttendeeTab[e.id] === "attendees") && attendeesMap[e.id] && (
+                        <div className="mt-2 space-y-2 text-xs">
                           {attendeesMap[e.id].length === 0 && (
-                            <p className="text-muted-foreground italic">Nog geen aanmeldingen.</p>
+                            <p className="text-muted-foreground italic py-1">Nog geen actieve aanmeldingen voor deze bijeenkomst.</p>
                           )}
                           {attendeesMap[e.id].map((a: EventAttendee) => (
                             <div
                               key={a.id}
-                              className="flex justify-between bg-muted/50 p-2 rounded"
+                              className="p-2.5 bg-muted/40 rounded-lg border border-border/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
                             >
-                              <span>{a.fullName}</span>
-                              <span className="text-muted-foreground">{a.email}</span>
+                              <div className="space-y-0.5 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-semibold text-foreground">{a.fullName}</span>
+                                  {a.isMember ? (
+                                    <span className="px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-600 font-semibold text-[10px]">
+                                      Lid
+                                    </span>
+                                  ) : (
+                                    <span className="px-1.5 py-0.2 rounded bg-sky-500/15 text-sky-600 font-semibold text-[10px]">
+                                      Gast
+                                    </span>
+                                  )}
+                                  {a.paid && (
+                                    <span className="px-1.5 py-0.2 rounded bg-accent/15 text-accent font-semibold text-[10px]">
+                                      Betaald (€{a.price || 0})
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-muted-foreground flex flex-wrap gap-x-3 text-[11px]">
+                                  <span>{a.email}</span>
+                                  {a.phone && <span>Tel: {a.phone}</span>}
+                                  {a.ticketCode && (
+                                    <span className="font-mono text-foreground/80 flex items-center gap-1">
+                                      <QrCode className="w-3 h-3" />
+                                      #{a.ticketCode}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="shrink-0 flex items-center gap-2">
+                                {a.checkedIn ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-emerald-500/20 text-emerald-600 font-semibold text-[11px]">
+                                    <Check className="w-3 h-3" />
+                                    Ingecheckt
+                                  </span>
+                                ) : a.ticketCode ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => checkInTicket(a.ticketCode!, e.id)}
+                                    className="h-7 text-[11px] px-2 border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10"
+                                  >
+                                    <UserCheck className="w-3 h-3 mr-1" />
+                                    Inchecken
+                                  </Button>
+                                ) : null}
+                              </div>
                             </div>
                           ))}
+                        </div>
+                      )}
+
+                      {/* Weergave afmeldingen & redenen */}
+                      {activeAttendeeTab[e.id] === "cancellations" && (
+                        <div className="mt-2 space-y-2 text-xs">
+                          {(!cancellationsMap[e.id] || cancellationsMap[e.id].length === 0) ? (
+                            <p className="text-muted-foreground italic py-1">Geen afmeldingen geregistreerd voor dit evenement.</p>
+                          ) : (
+                            cancellationsMap[e.id].map((c) => (
+                              <div
+                                key={c.id}
+                                className="p-2.5 bg-amber-500/5 rounded-lg border border-amber-500/20 space-y-1"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2 font-medium text-foreground">
+                                    <span>{c.fullName || "Deelnemer"}</span>
+                                    {c.ticketCode && (
+                                      <span className="font-mono text-[10px] text-muted-foreground">
+                                        #{c.ticketCode}
+                                      </span>
+                                    )}
+                                    {c.isMember ? (
+                                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-600 font-semibold">
+                                        Lid
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-500/10 text-sky-600 font-semibold">
+                                        Gast
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="text-[10px] text-muted-foreground">
+                                    {c.hoursBeforeEvent !== undefined ? `${c.hoursBeforeEvent}u vooraf` : ""}
+                                  </span>
+                                </div>
+                                <div className="p-1.5 rounded bg-background/80 border border-border/50 text-[11px] text-foreground">
+                                  <span className="text-muted-foreground font-medium mr-1">Reden:</span>
+                                  {c.reason || "Geen toelichting opgegeven"}
+                                </div>
+                              </div>
+                            ))
+                          )}
                         </div>
                       )}
                     </div>

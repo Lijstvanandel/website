@@ -13,22 +13,27 @@ import nodemailer from "nodemailer";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import multer from "multer";
-import { fileURLToPath } from "url";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const appDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
 import Stripe from "stripe";
 import { createServer as createViteServer } from "vite";
 import { BUURTKAART_43_WIJKEN, syncWijkenWithBuurtkaart, LEGACY_SLUG_MAP } from "./src/data/defaultWijken.js";
 import { getPageMetadata, injectMetadataIntoHtml } from "./src/server/metaGenerator.js";
 import { generateNewsletterHtml, generateNewsletterText, prepareNewsletterForDispatch } from "./src/server/newsletterTemplate.js";
+import {
+  evaluateLocationRelease,
+  extractCityFromAddress,
+  generateTicketQRCodeBuffer,
+  generateTicketQRCodeDataUrl,
+  buildTicketEmailHtml,
+} from "./src/server/ticketService.js";
 
 // Ensure .env is explicitly loaded from working directory in case of PM2 or systemd execution
 function ensureEnvLoaded() {
   const candidates = [
     path.join(process.cwd(), ".env"),
-    path.join(__dirname, ".env"),
-    path.join(__dirname, "..", ".env"),
+    path.join(appDir, ".env"),
+    path.join(appDir, "..", ".env"),
   ];
 
   for (const envPath of candidates) {
@@ -205,6 +210,8 @@ function getDb() {
   if (!db.belafspraken) db.belafspraken = [];
   if (!db.newsletterSubscribers) db.newsletterSubscribers = [];
   if (!db.newsletters) db.newsletters = [];
+  if (!db.eventTickets) db.eventTickets = [];
+  if (!db.eventCancellations) db.eventCancellations = [];
   if (!db.news || !Array.isArray(db.news) || db.news.length === 0) {
     db.news = [
       {
@@ -2961,8 +2968,20 @@ async function startServer() {
       return res.status(404).json({ error: "Evenement niet gevonden" });
     }
 
-    const isAttending = Boolean(currentUserId && ev.attendees?.includes(currentUserId));
-    const canSeeFullAddress = Boolean(isAttending || isAdmin);
+    const userTicket = currentUserId
+      ? db.eventTickets?.find((t: any) => t.eventId === ev.id && t.userId === currentUserId && t.status === "active")
+      : null;
+    const isAttending = Boolean((currentUserId && ev.attendees?.includes(currentUserId)) || userTicket);
+
+    const regDate = userTicket?.registeredAt || ev.createdAt || new Date().toISOString();
+    const locationEval = evaluateLocationRelease(
+      regDate,
+      ev.date,
+      ev.startTime,
+      ev.locationHiddenUntil12h !== false
+    );
+
+    const canSeeFullAddress = Boolean(isAdmin || (isAttending && locationEval.isReleased));
     const city = extractCity(ev.address);
 
     if (!ev.isPublic && !isMember) {
@@ -2973,6 +2992,7 @@ async function startServer() {
         fullAddress: undefined,
         isPrivateForUser: true,
         isAttending: false,
+        locationStatus: { isReleased: false, message: "Besloten evenement" },
       });
     }
 
@@ -2982,6 +3002,8 @@ async function startServer() {
       address: canSeeFullAddress ? ev.address : city,
       fullAddress: canSeeFullAddress ? ev.address : undefined,
       isAttending,
+      ticketCode: userTicket?.ticketCode,
+      locationStatus: locationEval,
     });
   });
 
@@ -2992,9 +3014,26 @@ async function startServer() {
 
   app.post("/api/admin/events", requireAuth, requireAdmin, upload.single('thumbnail'), (req: any, res: any) => {
     const db = getDb();
-    const { title, date, address, startTime, endTime, shortDescription, description, isPublic, isPublished, lat, lng } = req.body;
+    const {
+      title,
+      date,
+      address,
+      startTime,
+      endTime,
+      shortDescription,
+      description,
+      isPublic,
+      isPublished,
+      lat,
+      lng,
+      nonMemberPrice,
+      ticketNotes,
+      locationHiddenUntil12h
+    } = req.body;
     const thumbnailUrl = req.file ? `/uploads/events/${req.file.filename}` : '';
     
+    const parsedPrice = nonMemberPrice !== undefined && nonMemberPrice !== "" ? Math.max(0, parseFloat(nonMemberPrice) || 0) : 0;
+
     const newEvent = {
       id: Date.now().toString(),
       title: title || "",
@@ -3007,6 +3046,9 @@ async function startServer() {
       isPublic: isPublic === 'true' || isPublic === true,
       isPublished: isPublished === 'true' || isPublished === true,
       isCancelled: false,
+      nonMemberPrice: parsedPrice,
+      ticketNotes: ticketNotes || "",
+      locationHiddenUntil12h: locationHiddenUntil12h === undefined ? true : (locationHiddenUntil12h === 'true' || locationHiddenUntil12h === true),
       lat: lat ? parseFloat(lat) : undefined,
       lng: lng ? parseFloat(lng) : undefined,
       thumbnailUrl,
@@ -3127,7 +3169,10 @@ async function startServer() {
       isPublished,
       isCancelled,
       lat,
-      lng
+      lng,
+      nonMemberPrice,
+      ticketNotes,
+      locationHiddenUntil12h
     } = req.body;
 
     if (title !== undefined) ev.title = title;
@@ -3140,6 +3185,9 @@ async function startServer() {
     if (isPublic !== undefined) ev.isPublic = isPublic === 'true' || isPublic === true;
     if (isPublished !== undefined) ev.isPublished = isPublished === 'true' || isPublished === true;
     if (isCancelled !== undefined) ev.isCancelled = isCancelled === 'true' || isCancelled === true;
+    if (nonMemberPrice !== undefined && nonMemberPrice !== "") ev.nonMemberPrice = Math.max(0, parseFloat(nonMemberPrice) || 0);
+    if (ticketNotes !== undefined) ev.ticketNotes = ticketNotes;
+    if (locationHiddenUntil12h !== undefined) ev.locationHiddenUntil12h = locationHiddenUntil12h === 'true' || locationHiddenUntil12h === true;
     if (lat !== undefined && lat !== "") ev.lat = parseFloat(lat);
     if (lng !== undefined && lng !== "") ev.lng = parseFloat(lng);
     if (req.file) {
@@ -3157,51 +3205,745 @@ async function startServer() {
     res.json({ message: "Evenement verwijderd" });
   });
 
+  function calculateCancellationMetrics(
+    registeredAtStr: string,
+    cancelledAtStr: string,
+    eventDateStr: string,
+    eventStartTimeStr?: string
+  ) {
+    const regTime = new Date(registeredAtStr).getTime();
+    const cancelTime = new Date(cancelledAtStr).getTime();
+    const timeStr = eventStartTimeStr && eventStartTimeStr.trim() ? eventStartTimeStr.trim() : "19:00";
+    const [h, m] = timeStr.split(":").map((n) => parseInt(n, 10) || 0);
+    const evStart = new Date(eventDateStr);
+    evStart.setHours(h, m, 0, 0);
+
+    const hoursBeforeEvent = Math.max(0, Math.round(((evStart.getTime() - cancelTime) / (1000 * 60 * 60)) * 10) / 10);
+    const hoursAfterRegistration = Math.max(0, Math.round(((cancelTime - regTime) / (1000 * 60 * 60)) * 10) / 10);
+
+    return { hoursBeforeEvent, hoursAfterRegistration };
+  }
+
+  // Admin: Get all attendees (members & anonymous guests) for an event
   app.get("/api/admin/events/:id/attendees", requireAuth, requireAdmin, (req: any, res: any) => {
     const db = getDb();
     const ev = db.events.find((e: any) => e.id === req.params.id);
     if (!ev) return res.status(404).json({ error: "Evenement niet gevonden" });
-    
-    const attendees = ev.attendees.map((uid: string) => {
-      const u = db.users.find((u: any) => u.id === uid);
-      return u ? { id: u.id, fullName: u.fullName, email: u.username } : null;
-    }).filter(Boolean);
-    
-    res.json(attendees);
+
+    const activeTickets = (db.eventTickets || []).filter(
+      (t: any) => t.eventId === ev.id && t.status !== "cancelled"
+    );
+
+    // Also include any user in ev.attendees that might not have a ticket object yet
+    const ticketUserIds = new Set(activeTickets.map((t: any) => t.userId).filter(Boolean));
+    const legacyMemberAttendees = (ev.attendees || [])
+      .filter((uid: string) => !ticketUserIds.has(uid))
+      .map((uid: string) => {
+        const u = db.users.find((user: any) => user.id === uid);
+        if (!u) return null;
+        return {
+          id: `legacy_${u.id}`,
+          ticketCode: "LID-" + u.id.slice(-4),
+          eventId: ev.id,
+          userId: u.id,
+          fullName: u.fullName || u.username,
+          email: u.username,
+          phone: u.phone || "",
+          isMember: true,
+          registeredAt: ev.createdAt || new Date().toISOString(),
+          price: 0,
+          paid: true,
+          status: "active",
+          checkedIn: false,
+        };
+      })
+      .filter(Boolean);
+
+    const allAttendees = [...activeTickets, ...legacyMemberAttendees];
+    res.json(allAttendees);
   });
 
-  app.post("/api/events/:id/attend", requireAuth, (req: any, res: any) => {
+  // Admin: Get cancellations for a specific event
+  app.get("/api/admin/events/:id/cancellations", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const cancellations = (db.eventCancellations || []).filter(
+      (c: any) => c.eventId === req.params.id
+    );
+    res.json(cancellations);
+  });
+
+  // Admin: Comprehensive Cancellation & Attendee Analytics
+  app.get("/api/admin/events/cancellations/analytics", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const cancellations = db.eventCancellations || [];
+    const tickets = db.eventTickets || [];
+
+    const totalCancellations = cancellations.length;
+    const totalTickets = tickets.length;
+    const activeTickets = tickets.filter((t: any) => t.status === "active").length;
+
+    // Gemiddelde uren voor aanvang afgemeld
+    const sumHoursBefore = cancellations.reduce((acc: number, c: any) => acc + (c.hoursBeforeEvent || 0), 0);
+    const avgHoursBeforeEvent = totalCancellations > 0 ? Math.round((sumHoursBefore / totalCancellations) * 10) / 10 : 0;
+
+    // Gemiddelde uren tussen aanmelding en afmelding
+    const sumHoursAfterReg = cancellations.reduce((acc: number, c: any) => acc + (c.hoursAfterRegistration || 0), 0);
+    const avgHoursAfterRegistration = totalCancellations > 0 ? Math.round((sumHoursAfterReg / totalCancellations) * 10) / 10 : 0;
+
+    // Verdeling per reden
+    const reasonsMap: Record<string, number> = {};
+    for (const c of cancellations) {
+      const reason = (c.reason || "Niet opgegeven").trim();
+      reasonsMap[reason] = (reasonsMap[reason] || 0) + 1;
+    }
+
+    // Uitvalpercentage
+    const totalInteractions = activeTickets + totalCancellations;
+    const cancellationRate = totalInteractions > 0 ? Math.round((totalCancellations / totalInteractions) * 1000) / 10 : 0;
+
+    res.json({
+      summary: {
+        totalRegistrations: totalInteractions,
+        activeAttendees: activeTickets,
+        totalCancellations,
+        cancellationRate,
+        avgHoursBeforeEvent,
+        avgHoursAfterRegistration,
+      },
+      reasonsBreakdown: reasonsMap,
+      allCancellations: cancellations.sort(
+        (a: any, b: any) => new Date(b.cancelledAt).getTime() - new Date(a.cancelledAt).getTime()
+      ),
+    });
+  });
+
+  // Admin: Check-in ticket at the door
+  app.post("/api/admin/events/tickets/:ticketCode/checkin", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const code = String(req.params.ticketCode || "").trim().toLowerCase();
+    const ticket = (db.eventTickets || []).find(
+      (t: any) => String(t.ticketCode || "").toLowerCase() === code || t.id === code
+    );
+    if (!ticket) return res.status(404).json({ error: "Ticket niet gevonden" });
+
+    ticket.checkedIn = true;
+    ticket.checkedInAt = new Date().toISOString();
+    saveDb(db);
+
+    res.json({
+      success: true,
+      message: `Ticket #${ticket.ticketCode} voor ${ticket.fullName} succesvol ingecheckt!`,
+      ticket,
+    });
+  });
+
+  // Member Registration: Ingelogd lid meldt zich aan
+  app.post("/api/events/:id/attend", requireAuth, async (req: any, res: any) => {
     const db = getDb();
     const ev = db.events.find((e: any) => e.id === req.params.id);
     if (!ev) return res.status(404).json({ error: "Evenement niet gevonden" });
     if (ev.isCancelled) return res.status(400).json({ error: "Evenement is geannuleerd" });
-    
+
+    const user = db.users.find((u: any) => u.id === req.user.id);
+    if (!user) return res.status(404).json({ error: "Gebruiker niet gevonden" });
+
+    if (!Array.isArray(ev.attendees)) ev.attendees = [];
     if (!ev.attendees.includes(req.user.id)) {
       ev.attendees.push(req.user.id);
+    }
+
+    if (!db.eventTickets) db.eventTickets = [];
+    let ticket = db.eventTickets.find(
+      (t: any) => t.eventId === ev.id && t.userId === req.user.id && t.status === "active"
+    );
+
+    const origin = resolveRequestOrigin(req);
+
+    if (!ticket) {
+      const ticketCode = String(Math.floor(10000 + Math.random() * 90000));
+      ticket = {
+        id: "tkt_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+        ticketCode,
+        eventId: ev.id,
+        eventTitle: ev.title,
+        eventDate: ev.date,
+        eventTime: ev.startTime || "19:30",
+        userId: user.id,
+        fullName: user.fullName || user.username,
+        email: user.username,
+        phone: user.phone || "",
+        isMember: true,
+        registeredAt: new Date().toISOString(),
+        price: 0,
+        paid: true,
+        status: "active",
+        checkedIn: false,
+      };
+      db.eventTickets.push(ticket);
+      saveDb(db);
+
+      // Verzend e-mail met unieke QR-code en locatie status
+      try {
+        const locationEval = evaluateLocationRelease(
+          ticket.registeredAt,
+          ev.date,
+          ev.startTime,
+          ev.locationHiddenUntil12h !== false
+        );
+
+        const qrBuffer = await generateTicketQRCodeBuffer(`${origin}/ticket/${ticket.ticketCode}`);
+        const emailHtml = buildTicketEmailHtml({
+          ticket,
+          event: ev,
+          isLocationReleased: locationEval.isReleased,
+          releaseDate: locationEval.releaseDate,
+          origin,
+          qrCodeCidOrDataUrl: "cid:ticket_qr",
+        });
+
+        await sendEmailViaSMTP(
+          ticket.email,
+          `Ticket: ${ev.title} #${ticket.ticketCode}`,
+          emailHtml,
+          `Uw toegangscode voor ${ev.title} is #${ticket.ticketCode}. Bekijk uw ticket online: ${origin}/ticket/${ticket.ticketCode}`,
+          undefined,
+          [
+            {
+              filename: `ticket-${ticket.ticketCode}.png`,
+              content: qrBuffer,
+              cid: "ticket_qr",
+            },
+          ]
+        );
+      } catch (err: any) {
+        console.error("Error sending member ticket email:", err);
+      }
+    } else {
       saveDb(db);
     }
+
+    const locationEval = evaluateLocationRelease(
+      ticket.registeredAt,
+      ev.date,
+      ev.startTime,
+      ev.locationHiddenUntil12h !== false
+    );
+
     res.json({
       message: "Succesvol aangemeld",
-      address: ev.address,
-      fullAddress: ev.address,
-      city: extractCity(ev.address)
+      ticketCode: ticket.ticketCode,
+      ticketUrl: `${origin}/ticket/${ticket.ticketCode}`,
+      address: locationEval.isReleased ? ev.address : extractCity(ev.address),
+      fullAddress: locationEval.isReleased ? ev.address : undefined,
+      city: extractCity(ev.address),
+      locationStatus: locationEval,
     });
   });
 
-  // Member Un-attend / Afmelden for event
+  // Anonymous / Guest Registration (for public events with price 0)
+  app.post("/api/events/:id/guest-register", async (req: any, res: any) => {
+    const db = getDb();
+    const ev = db.events.find((e: any) => e.id === req.params.id);
+    if (!ev) return res.status(404).json({ error: "Evenement niet gevonden" });
+    if (ev.isCancelled) return res.status(400).json({ error: "Evenement is geannuleerd" });
+    if (!ev.isPublic) {
+      return res.status(403).json({ error: "Dit evenement is besloten en uitsluitend toegankelijk voor leden." });
+    }
+
+    const { fullName, email, phone } = req.body || {};
+    if (!fullName || typeof fullName !== "string" || !fullName.trim()) {
+      return res.status(400).json({ error: "Vul alstublieft uw naam in." });
+    }
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!cleanEmail || !emailRegex.test(cleanEmail)) {
+      return res.status(400).json({ error: "Vul een geldig e-mailadres in om uw ticket te kunnen ontvangen." });
+    }
+
+    // Als het evenement een vergoeding vraagt voor niet-leden, moet checkout gebruikt worden
+    if (ev.nonMemberPrice && ev.nonMemberPrice > 0) {
+      return res.status(400).json({
+        error: `Voor niet-leden geldt een toegangsprijs van €${ev.nonMemberPrice.toFixed(2)}. Gebruik de betaalknop om uw ticket te boeken.`,
+        requiresPayment: true,
+        price: ev.nonMemberPrice,
+      });
+    }
+
+    if (!db.eventTickets) db.eventTickets = [];
+    const existingTicket = db.eventTickets.find(
+      (t: any) => t.eventId === ev.id && t.email.toLowerCase() === cleanEmail && t.status === "active"
+    );
+    if (existingTicket) {
+      const origin = resolveRequestOrigin(req);
+      return res.json({
+        success: true,
+        alreadyRegistered: true,
+        message: "U bent al aangemeld voor dit evenement!",
+        ticketCode: existingTicket.ticketCode,
+        ticketUrl: `${origin}/ticket/${existingTicket.ticketCode}`,
+      });
+    }
+
+    const ticketCode = String(Math.floor(10000 + Math.random() * 90000));
+    const newTicket: any = {
+      id: "tkt_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+      ticketCode,
+      eventId: ev.id,
+      eventTitle: ev.title,
+      eventDate: ev.date,
+      eventTime: ev.startTime || "19:30",
+      userId: null,
+      fullName: fullName.trim(),
+      email: cleanEmail,
+      phone: phone ? String(phone).trim() : "",
+      isMember: false,
+      registeredAt: new Date().toISOString(),
+      price: 0,
+      paid: true,
+      status: "active",
+      checkedIn: false,
+    };
+
+    db.eventTickets.push(newTicket);
+    if (!Array.isArray(ev.attendees)) ev.attendees = [];
+    ev.attendees.push(newTicket.id);
+    saveDb(db);
+
+    const origin = resolveRequestOrigin(req);
+    const locationEval = evaluateLocationRelease(
+      newTicket.registeredAt,
+      ev.date,
+      ev.startTime,
+      ev.locationHiddenUntil12h !== false
+    );
+
+    // E-mail verzenden met inline QR code attachment
+    try {
+      const qrBuffer = await generateTicketQRCodeBuffer(`${origin}/ticket/${newTicket.ticketCode}`);
+      const emailHtml = buildTicketEmailHtml({
+        ticket: newTicket,
+        event: ev,
+        isLocationReleased: locationEval.isReleased,
+        releaseDate: locationEval.releaseDate,
+        origin,
+        qrCodeCidOrDataUrl: "cid:ticket_qr",
+      });
+
+      await sendEmailViaSMTP(
+        newTicket.email,
+        `Ticket: ${ev.title} #${newTicket.ticketCode}`,
+        emailHtml,
+        `Uw toegangscode voor ${ev.title} is #${newTicket.ticketCode}. Bekijk uw digitale ticket via: ${origin}/ticket/${newTicket.ticketCode}`,
+        undefined,
+        [
+          {
+            filename: `ticket-${newTicket.ticketCode}.png`,
+            content: qrBuffer,
+            cid: "ticket_qr",
+          },
+        ]
+      );
+    } catch (err: any) {
+      console.error("Error sending guest ticket email:", err);
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "Aanmelding succesvol! Uw ticket met QR-code is verzonden naar uw e-mailadres.",
+      ticketCode: newTicket.ticketCode,
+      ticketUrl: `${origin}/ticket/${newTicket.ticketCode}`,
+      locationStatus: locationEval,
+    });
+  });
+
+  // Anonymous / Guest Checkout for paid non-member tickets (no cashback)
+  app.post("/api/events/:id/guest-checkout", async (req: any, res: any) => {
+    const db = getDb();
+    const ev = db.events.find((e: any) => e.id === req.params.id);
+    if (!ev) return res.status(404).json({ error: "Evenement niet gevonden" });
+    if (ev.isCancelled) return res.status(400).json({ error: "Evenement is geannuleerd" });
+    if (!ev.isPublic) {
+      return res.status(403).json({ error: "Dit evenement is besloten en uitsluitend toegankelijk voor leden." });
+    }
+
+    const { fullName, email, phone } = req.body || {};
+    if (!fullName || typeof fullName !== "string" || !fullName.trim()) {
+      return res.status(400).json({ error: "Vul alstublieft uw naam in." });
+    }
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!cleanEmail || !emailRegex.test(cleanEmail)) {
+      return res.status(400).json({ error: "Vul een geldig e-mailadres in." });
+    }
+
+    const price = ev.nonMemberPrice && ev.nonMemberPrice > 0 ? ev.nonMemberPrice : 0;
+    if (price <= 0) {
+      return res.status(400).json({ error: "Dit evenement is gratis. Gebruik de gratis aanmeldoptie." });
+    }
+
+    const origin = resolveRequestOrigin(req);
+    const ticketCode = String(Math.floor(10000 + Math.random() * 90000));
+
+    if (!db.eventTickets) db.eventTickets = [];
+    const pendingTicket: any = {
+      id: "tkt_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+      ticketCode,
+      eventId: ev.id,
+      eventTitle: ev.title,
+      eventDate: ev.date,
+      eventTime: ev.startTime || "19:30",
+      userId: null,
+      fullName: fullName.trim(),
+      email: cleanEmail,
+      phone: phone ? String(phone).trim() : "",
+      isMember: false,
+      registeredAt: new Date().toISOString(),
+      price,
+      paid: false,
+      status: "pending_payment",
+      checkedIn: false,
+    };
+    db.eventTickets.push(pendingTicket);
+    saveDb(db);
+
+    const stripe = getStripe();
+    if (!stripe) {
+      // Offline / dev modus zonder Stripe API key: markeer als direct bevestigd
+      console.warn("[STRIPE] Geen Stripe secret key geconfigureerd. Ticket direct geactiveerd in testmodus.");
+      pendingTicket.paid = true;
+      pendingTicket.status = "active";
+      pendingTicket.paymentMethod = "demo_no_stripe_key";
+      if (!Array.isArray(ev.attendees)) ev.attendees = [];
+      ev.attendees.push(pendingTicket.id);
+      saveDb(db);
+
+      try {
+        const locationEval = evaluateLocationRelease(
+          pendingTicket.registeredAt,
+          ev.date,
+          ev.startTime,
+          ev.locationHiddenUntil12h !== false
+        );
+        const qrBuffer = await generateTicketQRCodeBuffer(`${origin}/ticket/${pendingTicket.ticketCode}`);
+        const emailHtml = buildTicketEmailHtml({
+          ticket: pendingTicket,
+          event: ev,
+          isLocationReleased: locationEval.isReleased,
+          releaseDate: locationEval.releaseDate,
+          origin,
+          qrCodeCidOrDataUrl: "cid:ticket_qr",
+        });
+        await sendEmailViaSMTP(
+          pendingTicket.email,
+          `Ticket: ${ev.title} #${pendingTicket.ticketCode}`,
+          emailHtml,
+          `Uw toegangscode voor ${ev.title} is #${pendingTicket.ticketCode}.`
+        );
+      } catch (mailErr: any) {
+        console.warn("Failed sending initial ticket email:", mailErr?.message || mailErr);
+      }
+
+      return res.json({
+        success: true,
+        checkoutUrl: `${origin}/ticket/${pendingTicket.ticketCode}?payment=success`,
+      });
+    }
+
+    try {
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card", "ideal", "bancontact"],
+        line_items: [
+          {
+            price_data: {
+              currency: "eur",
+              product_data: {
+                name: `Toegangsticket: ${ev.title}`,
+                description: `${ev.ticketNotes || "Toegangsbewijs"} (Definitieve inschrijving, geen cashback bij afmelding)`,
+              },
+              unit_amount: Math.round(price * 100),
+            },
+            quantity: 1,
+          },
+        ],
+        mode: "payment",
+        customer_email: cleanEmail,
+        client_reference_id: pendingTicket.id,
+        metadata: {
+          type: "event_ticket",
+          ticketId: pendingTicket.id,
+          ticketCode: pendingTicket.ticketCode,
+          eventId: ev.id,
+          email: cleanEmail,
+          fullName: pendingTicket.fullName,
+        },
+        success_url: `${origin}/ticket/${pendingTicket.ticketCode}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${origin}/agenda/${ev.id}?payment=cancelled`,
+      });
+
+      pendingTicket.stripeSessionId = session.id;
+      saveDb(db);
+
+      res.json({
+        success: true,
+        checkoutUrl: session.url,
+      });
+    } catch (err: any) {
+      console.error("Stripe error creating ticket checkout session:", err.message);
+      res.status(500).json({ error: "Fout bij aanmaken betaalpagina: " + err.message });
+    }
+  });
+
+  // Public: View Ticket by Code (used by /ticket/:code)
+  app.get("/api/tickets/:ticketCode", async (req: any, res: any) => {
+    const db = getDb();
+    const code = String(req.params.ticketCode || "").trim().toLowerCase();
+    const ticket = (db.eventTickets || []).find(
+      (t: any) => String(t.ticketCode || "").toLowerCase() === code || t.id === code
+    );
+    if (!ticket) return res.status(404).json({ error: "Ticket niet gevonden" });
+
+    // Handle return from Stripe checkout
+    if (ticket.status === "pending_payment" && req.query.session_id) {
+      const stripe = getStripe();
+      if (stripe) {
+        try {
+          const session = await stripe.checkout.sessions.retrieve(req.query.session_id as string);
+          if (session.payment_status === "paid") {
+            ticket.paid = true;
+            ticket.status = "active";
+            ticket.paymentMethod = "stripe";
+
+            const ev = db.events.find((e: any) => e.id === ticket.eventId);
+            if (ev) {
+              if (!Array.isArray(ev.attendees)) ev.attendees = [];
+              if (!ev.attendees.includes(ticket.id)) ev.attendees.push(ticket.id);
+            }
+            saveDb(db);
+
+            // Verzend e-mail
+            try {
+              const origin = resolveRequestOrigin(req);
+              const locationEval = evaluateLocationRelease(
+                ticket.registeredAt,
+                ev?.date || new Date().toISOString().split("T")[0],
+                ev?.startTime,
+                ev?.locationHiddenUntil12h !== false
+              );
+              const qrBuffer = await generateTicketQRCodeBuffer(`${origin}/ticket/${ticket.ticketCode}`);
+              const emailHtml = buildTicketEmailHtml({
+                ticket,
+                event: ev,
+                isLocationReleased: locationEval.isReleased,
+                releaseDate: locationEval.releaseDate,
+                origin,
+                qrCodeCidOrDataUrl: "cid:ticket_qr",
+              });
+              await sendEmailViaSMTP(
+                ticket.email,
+                `Ticket: ${ev?.title} #${ticket.ticketCode}`,
+                emailHtml,
+                `Uw toegangscode voor ${ev?.title} is #${ticket.ticketCode}.`
+              );
+            } catch (mailErr: any) {
+              console.warn("Failed sending paid ticket email:", mailErr?.message || mailErr);
+            }
+          }
+        } catch (err: any) {
+          console.error("Error verifying Stripe session:", err.message);
+        }
+      }
+    }
+
+    const ev = (db.events || []).find((e: any) => e.id === ticket.eventId);
+    if (!ev) return res.status(404).json({ error: "Bijbehorend evenement niet gevonden" });
+
+    const locationEval = evaluateLocationRelease(
+      ticket.registeredAt,
+      ev.date,
+      ev.startTime,
+      ev.locationHiddenUntil12h !== false
+    );
+
+    const origin = resolveRequestOrigin(req);
+    const qrCodeDataUrl = await generateTicketQRCodeDataUrl(`${origin}/ticket/${ticket.ticketCode}`);
+
+    res.json({
+      ...ticket,
+      qrCodeDataUrl,
+      event: {
+        id: ev.id,
+        title: ev.title,
+        date: ev.date,
+        startTime: ev.startTime,
+        endTime: ev.endTime,
+        city: extractCity(ev.address),
+        address: locationEval.isReleased ? ev.address : extractCity(ev.address),
+        fullAddress: locationEval.isReleased ? ev.address : undefined,
+        ticketNotes: ev.ticketNotes,
+        thumbnailUrl: ev.thumbnailUrl,
+        isCancelled: ev.isCancelled,
+      },
+      locationStatus: locationEval,
+    });
+  });
+
+  // Ticket Cancellation (Afmelden) via ticket code (by guest or member)
+  app.post("/api/tickets/:ticketCode/cancel", async (req: any, res: any) => {
+    const db = getDb();
+    const code = String(req.params.ticketCode || "").trim().toLowerCase();
+    const ticket = (db.eventTickets || []).find(
+      (t: any) => String(t.ticketCode || "").toLowerCase() === code || t.id === code
+    );
+    if (!ticket) return res.status(404).json({ error: "Ticket niet gevonden" });
+    if (ticket.status === "cancelled") {
+      return res.status(400).json({ error: "Dit ticket is al geannuleerd." });
+    }
+
+    const ev = (db.events || []).find((e: any) => e.id === ticket.eventId);
+    const cancelReason = req.body?.reason ? String(req.body.reason).trim() : "Niet opgegeven";
+    const cancelledAt = new Date().toISOString();
+
+    ticket.status = "cancelled";
+    ticket.cancelledAt = cancelledAt;
+    ticket.cancelReason = cancelReason;
+
+    // Verwijder uit attendees
+    if (ev && Array.isArray(ev.attendees)) {
+      ev.attendees = ev.attendees.filter(
+        (idOrUid: string) => idOrUid !== ticket.id && idOrUid !== ticket.userId
+      );
+    }
+
+    const { hoursBeforeEvent, hoursAfterRegistration } = calculateCancellationMetrics(
+      ticket.registeredAt,
+      cancelledAt,
+      ev ? ev.date : new Date().toISOString().split("T")[0],
+      ev ? ev.startTime : "19:00"
+    );
+
+    const cancelRecord: any = {
+      id: "canc_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+      ticketId: ticket.id,
+      ticketCode: ticket.ticketCode,
+      eventId: ev ? ev.id : ticket.eventId,
+      eventTitle: ev ? ev.title : ticket.eventTitle,
+      userId: ticket.userId || null,
+      fullName: ticket.fullName,
+      email: ticket.email,
+      isMember: ticket.isMember,
+      registeredAt: ticket.registeredAt,
+      cancelledAt,
+      hoursBeforeEvent,
+      hoursAfterRegistration,
+      price: ticket.price || 0,
+      paid: ticket.paid,
+      reason: cancelReason,
+    };
+
+    if (!db.eventCancellations) db.eventCancellations = [];
+    db.eventCancellations.unshift(cancelRecord);
+
+    if (ev) {
+      if (!ev.cancellations) ev.cancellations = [];
+      ev.cancellations.unshift(cancelRecord);
+    }
+
+    saveDb(db);
+
+    // Verzend bevestigingsmail van afmelding
+    try {
+      const cancelHtml = `
+        <div style="font-family: verdana, sans-serif; max-width: 500px; margin: 0 auto; background: #ffffff; padding: 24px; border-radius: 8px; border: 1px solid #e2e8f0; color: #0f172a;">
+          <h2 style="color: #0f172a; margin-top: 0;">Afmelding Bevestigd</h2>
+          <p>Beste ${ticket.fullName},</p>
+          <p>Uw afmelding voor de bijeenkomst <strong>${ev ? ev.title : ticket.eventTitle}</strong> (Ticket #${ticket.ticketCode}) is succesvol verwerkt.</p>
+          <p><strong>Tijdstip van afmelding:</strong> ${new Date(cancelledAt).toLocaleString("nl-NL")}</p>
+          ${cancelReason && cancelReason !== "Niet opgegeven" ? `<p><strong>Opgegeven reden:</strong> ${cancelReason}</p>` : ""}
+          ${ticket.price > 0 ? `<p style="color: #64748b; font-size: 12px; margin-top: 10px;"><em>Let op: conform de reserveringsvoorwaarden voor niet-leden geldt er geen cashback of restitutie.</em></p>` : ""}
+          <p style="margin-top: 20px;">Dank voor het tijdig doorgeven. Wij hopen u bij een volgende bijeenkomst te mogen ontmoeten!</p>
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+          <p style="font-size: 11px; color: #94a3b8;">Lijst van Andel Steenwijkerland &bull; info@lijstvanandel.nl</p>
+        </div>
+      `;
+
+      sendEmailViaSMTP(
+        ticket.email,
+        `Afmelding bevestigd: ${ev ? ev.title : ticket.eventTitle} #${ticket.ticketCode}`,
+        cancelHtml,
+        `Uw afmelding voor ${ev ? ev.title : ticket.eventTitle} is succesvol verwerkt.`
+      ).catch((e: any) => console.error("Error sending cancel email:", e));
+    } catch (cancelMailErr: any) {
+      console.warn("Failed sending cancellation email:", cancelMailErr?.message || cancelMailErr);
+    }
+
+    res.json({
+      success: true,
+      message: "U bent succesvol afgemeld voor dit evenement.",
+    });
+  });
+
+  // Member Un-attend / Afmelden for event (with cancellation tracking)
   app.delete("/api/events/:id/attend", requireAuth, (req: any, res: any) => {
     const db = getDb();
     const ev = db.events.find((e: any) => e.id === req.params.id);
     if (!ev) return res.status(404).json({ error: "Evenement niet gevonden" });
 
+    const user = db.users.find((u: any) => u.id === req.user.id);
+    const cancelReason = req.body?.reason ? String(req.body.reason).trim() : "Niet opgegeven";
+    const cancelledAt = new Date().toISOString();
+
+    // Find and update active ticket if exists
+    const ticket = (db.eventTickets || []).find(
+      (t: any) => t.eventId === ev.id && t.userId === req.user.id && t.status === "active"
+    );
+    if (ticket) {
+      ticket.status = "cancelled";
+      ticket.cancelledAt = cancelledAt;
+      ticket.cancelReason = cancelReason;
+    }
+
     if (Array.isArray(ev.attendees)) {
       ev.attendees = ev.attendees.filter((uid: string) => String(uid) !== String(req.user.id));
-      saveDb(db);
     }
+
+    const { hoursBeforeEvent, hoursAfterRegistration } = calculateCancellationMetrics(
+      ticket?.registeredAt || ev.createdAt || cancelledAt,
+      cancelledAt,
+      ev.date,
+      ev.startTime
+    );
+
+    const cancelRecord: any = {
+      id: "canc_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+      ticketId: ticket?.id || null,
+      ticketCode: ticket?.ticketCode || "LID",
+      eventId: ev.id,
+      eventTitle: ev.title,
+      userId: req.user.id,
+      fullName: user ? (user.fullName || user.username) : "Lid",
+      email: user ? user.username : "",
+      isMember: true,
+      registeredAt: ticket?.registeredAt || ev.createdAt || cancelledAt,
+      cancelledAt,
+      hoursBeforeEvent,
+      hoursAfterRegistration,
+      price: 0,
+      paid: true,
+      reason: cancelReason,
+    };
+
+    if (!db.eventCancellations) db.eventCancellations = [];
+    db.eventCancellations.unshift(cancelRecord);
+
+    if (!ev.cancellations) ev.cancellations = [];
+    ev.cancellations.unshift(cancelRecord);
+
+    saveDb(db);
+
     res.json({
       success: true,
       message: "U bent succesvol afgemeld voor dit evenement.",
-      isAttending: false
+      isAttending: false,
     });
   });
 
@@ -3210,14 +3952,61 @@ async function startServer() {
     const ev = db.events.find((e: any) => e.id === req.params.id);
     if (!ev) return res.status(404).json({ error: "Evenement niet gevonden" });
 
+    const user = db.users.find((u: any) => u.id === req.user.id);
+    const cancelReason = req.body?.reason ? String(req.body.reason).trim() : "Niet opgegeven";
+    const cancelledAt = new Date().toISOString();
+
+    const ticket = (db.eventTickets || []).find(
+      (t: any) => t.eventId === ev.id && t.userId === req.user.id && t.status === "active"
+    );
+    if (ticket) {
+      ticket.status = "cancelled";
+      ticket.cancelledAt = cancelledAt;
+      ticket.cancelReason = cancelReason;
+    }
+
     if (Array.isArray(ev.attendees)) {
       ev.attendees = ev.attendees.filter((uid: string) => String(uid) !== String(req.user.id));
-      saveDb(db);
     }
+
+    const { hoursBeforeEvent, hoursAfterRegistration } = calculateCancellationMetrics(
+      ticket?.registeredAt || ev.createdAt || cancelledAt,
+      cancelledAt,
+      ev.date,
+      ev.startTime
+    );
+
+    const cancelRecord: any = {
+      id: "canc_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+      ticketId: ticket?.id || null,
+      ticketCode: ticket?.ticketCode || "LID",
+      eventId: ev.id,
+      eventTitle: ev.title,
+      userId: req.user.id,
+      fullName: user ? (user.fullName || user.username) : "Lid",
+      email: user ? user.username : "",
+      isMember: true,
+      registeredAt: ticket?.registeredAt || ev.createdAt || cancelledAt,
+      cancelledAt,
+      hoursBeforeEvent,
+      hoursAfterRegistration,
+      price: 0,
+      paid: true,
+      reason: cancelReason,
+    };
+
+    if (!db.eventCancellations) db.eventCancellations = [];
+    db.eventCancellations.unshift(cancelRecord);
+
+    if (!ev.cancellations) ev.cancellations = [];
+    ev.cancellations.unshift(cancelRecord);
+
+    saveDb(db);
+
     res.json({
       success: true,
       message: "U bent succesvol afgemeld voor dit evenement.",
-      isAttending: false
+      isAttending: false,
     });
   });
 
