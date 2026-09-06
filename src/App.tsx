@@ -31,6 +31,7 @@ import Dashboard from "./pages/Dashboard";
 import AdminDashboard from "./pages/AdminDashboard";
 import NieuwsbriefAfmelden from "./pages/NieuwsbriefAfmelden";
 import TicketView from "./pages/TicketView";
+import Polls from "./pages/Polls";
 
 const queryClient = new QueryClient();
 
@@ -73,6 +74,8 @@ const App = () => (
                   <Route path="/login" element={<Login />} />
                   <Route path="/registreren" element={<Register />} />
                   <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/peilingen" element={<Polls />} />
+                  <Route path="/polls" element={<Polls />} />
                   <Route path="/admin" element={<AdminDashboard />} />
                   <Route path="/nieuwsbrief/afmelden" element={<NieuwsbriefAfmelden />} />
                 </Route>

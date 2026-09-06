@@ -31,6 +31,9 @@ import {
   CreditCard,
   ExternalLink,
   QrCode,
+  Smartphone,
+  ThumbsUp,
+  Vote,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -749,6 +752,64 @@ export default function Dashboard() {
               {(user.role === "raadslid" || user.role === "admin") && (
                 <RaadslidBelafsprakenWidget token={token} currentUser={user} />
               )}
+
+              {/* FRACTIE PEILINGEN & STELLINGEN (PWA TINDER-STYLE POLLING) */}
+              <section className="bg-gradient-to-br from-card via-card to-accent/5 rounded-2xl p-6 sm:p-8 border border-accent/30 shadow-md relative overflow-hidden group">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
+                
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 relative z-10">
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-accent text-accent-foreground flex items-center justify-center shrink-0 shadow-lg shadow-accent/20">
+                      <Vote className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-accent/20 text-accent border border-accent/40">
+                          PWA Fractie Peiling
+                        </span>
+                        {user.billingStatus === "paid" || user.role === "admin" ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-600 border border-emerald-500/30">
+                            Toegang Actief
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-600 border border-amber-500/30">
+                            Contributie Vereist
+                          </span>
+                        )}
+                      </div>
+                      <h2 className="text-xl sm:text-2xl font-display font-bold text-foreground">
+                        Laat uw stem horen in onze fractie
+                      </h2>
+                      <p className="text-xs sm:text-sm text-muted-foreground mt-1 max-w-xl leading-relaxed">
+                        Swipe door actuele stellingen over Steenwijkerland (eens / oneens of schaal 1-10) en geef uw mening mee voor de fractievergadering.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="shrink-0 w-full sm:w-auto">
+                    {user.billingStatus === "paid" || user.role === "admin" ? (
+                      <Link to="/peilingen" className="block w-full sm:w-auto">
+                        <Button className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground font-semibold px-6 py-3 rounded-full shadow-md flex items-center justify-center gap-2">
+                          <Smartphone className="w-4 h-4" />
+                          <span>Start Peiling</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </Button>
+                      </Link>
+                    ) : (
+                      <Button
+                        onClick={() => {
+                          toast.error("Voldoe eerst uw contributie om deel te nemen aan fractiepeilingen.");
+                        }}
+                        variant="outline"
+                        className="w-full sm:w-auto border-amber-500/40 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10 rounded-full font-semibold"
+                      >
+                        <Lock className="w-4 h-4 mr-2" />
+                        Contributie vereist
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </section>
 
               {/* LIDMAATSCHAP & CONTRIBUTIE CARD */}
               <section className="bg-card rounded-2xl p-6 sm:p-8 border border-border shadow-sm relative overflow-hidden">

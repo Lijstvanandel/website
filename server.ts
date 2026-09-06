@@ -201,6 +201,7 @@ const UPLOAD_DIRS = [
   "public/uploads/documents",
   "public/uploads/stemgedrag",
   "public/uploads/dataproducts",
+  "public/uploads/stellingen",
 ];
 UPLOAD_DIRS.forEach((dir) => {
   const fullPath = path.join(process.cwd(), dir);
@@ -512,6 +513,54 @@ function getDb() {
     saveDb(db);
   }
 
+  if (!db.stellingSubmissions) {
+    db.stellingSubmissions = [];
+  }
+
+  if (!db.stellingen || !Array.isArray(db.stellingen) || db.stellingen.length === 0) {
+    db.stellingen = [
+      {
+        id: "stelling_1",
+        title: "Voorrang voor eigen inwoners bij nieuwbouw in Steenwijkerland",
+        category: "Wonen",
+        description: "Inwoners die al minimaal 3 jaar in onze gemeente wonen moeten voorrang krijgen bij toewijzing van nieuwe betaalbare koop- en huurwoningen in Steenwijkerland.",
+        imageUrl: "/assets/woningbouw-prioriteit.jpg",
+        type: "swipe",
+        deadlineDate: "2026-12-31",
+        maxParticipants: 500,
+        active: true,
+        createdAt: "2026-09-01T10:00:00.000Z"
+      },
+      {
+        id: "stelling_2",
+        title: "Behoud en versterking van lokale zorg- en dorpsvoorzieningen",
+        category: "Leefbaarheid",
+        description: "Op een schaal van 1 tot 10: Hoe belangrijk vindt u het dat de gemeente extra investeert in dorpshuizen, lokale sportaccommodaties en mobiele zorgpunten in de kleinere kernen?",
+        imageUrl: "/assets/dorpen-leefbaarheid.jpg",
+        type: "scale",
+        scaleMinLabel: "1 - Geen prioriteit",
+        scaleMaxLabel: "10 - Zeer hoge prioriteit",
+        deadlineDate: "2026-12-31",
+        maxParticipants: 500,
+        active: true,
+        createdAt: "2026-09-02T10:00:00.000Z"
+      },
+      {
+        id: "stelling_3",
+        title: "Geen verhoging van de OZB en lokale lasten voor gezinnen en MKB",
+        category: "Financiën & Belastingen",
+        description: "De gemeente Steenwijkerland moet de Onroerendezaakbelasting (OZB) en rioolheffing voor inwoners en lokale ondernemers de komende 4 jaar bevriezen.",
+        imageUrl: "/assets/stemmen.jpg",
+        type: "swipe",
+        deadlineDate: "2026-12-31",
+        maxParticipants: 500,
+        active: true,
+        createdAt: "2026-09-03T10:00:00.000Z"
+      }
+    ];
+    saveDb(db);
+  }
+
   return db;
 }
 
@@ -541,6 +590,8 @@ const storage = multer.diskStorage({
       subfolder = 'public/uploads/stemgedrag';
     } else if (url.includes('/documents') || file.fieldname === 'document' || file.fieldname === 'pdf') {
       subfolder = 'public/uploads/documents';
+    } else if (url.includes('/stellingen') || file.fieldname === 'stellingImage' || file.fieldname === 'image') {
+      subfolder = 'public/uploads/stellingen';
     }
     const fullDir = path.join(process.cwd(), subfolder);
     if (!fs.existsSync(fullDir)) {
@@ -2614,6 +2665,304 @@ async function startServer() {
 
     saveDb(db);
     res.json({ success: true, message: "Koppeling succesvol opgeslagen", fractielid: lid });
+  });
+
+  // =================================================================
+  // STELLINGEN & PEILINGEN (PWA Tinder-style fractie peilingen)
+  // =================================================================
+
+  // GET /api/stellingen - Get active stellingen for paid members
+  app.get("/api/stellingen", requireAuth, (req: any, res: any) => {
+    const db = getDb();
+    const user = req.user;
+
+    // Check if user has paid dues or is admin
+    const isPaid = user.role === "admin" || user.billingStatus === "paid";
+    if (!isPaid) {
+      return res.status(403).json({
+        error: "Exclusief voor contributiebetalende leden",
+        code: "MEMBERSHIP_DUES_REQUIRED",
+        message: "Deze peilingen zijn exclusief voor leden van Lijst van Andel waarvan de contributie is voldaan."
+      });
+    }
+
+    const stellingen = (db.stellingen || []).filter((s: any) => s.active !== false);
+    const submissions = db.stellingSubmissions || [];
+
+    // Check if current user already submitted their answers
+    const userSubmission = submissions.find((sub: any) => sub.userId === user.id);
+
+    // Calculate response counts and participation status per stelling
+    const now = new Date();
+    const formattedList = stellingen.map((s: any) => {
+      // Count total respondents who answered this stelling
+      const totalAnswers = submissions.filter((sub: any) =>
+        sub.answers && sub.answers.some((a: any) => a.stellingId === s.id)
+      ).length;
+
+      const isDeadlinePassed = s.deadlineDate ? new Date(s.deadlineDate + "T23:59:59") < now : false;
+      const isMaxReached = s.maxParticipants && s.maxParticipants > 0 ? totalAnswers >= s.maxParticipants : false;
+      const isOpen = !isDeadlinePassed && !isMaxReached;
+
+      return {
+        ...s,
+        totalAnswers,
+        isDeadlinePassed,
+        isMaxReached,
+        isOpen
+      };
+    });
+
+    res.json({
+      stellingen: formattedList,
+      hasSubmitted: !!userSubmission,
+      userSubmission: userSubmission || null
+    });
+  });
+
+  // POST /api/stellingen/submit - Submit answers and optional fractie feedback
+  app.post("/api/stellingen/submit", requireAuth, (req: any, res: any) => {
+    const db = getDb();
+    const user = req.user;
+
+    // Check paid status
+    const isPaid = user.role === "admin" || user.billingStatus === "paid";
+    if (!isPaid) {
+      return res.status(403).json({
+        error: "Exclusief voor contributiebetalende leden",
+        code: "MEMBERSHIP_DUES_REQUIRED"
+      });
+    }
+
+    if (!db.stellingSubmissions) db.stellingSubmissions = [];
+
+    const { answers, generalFeedback, isPWA } = req.body;
+
+    if (!Array.isArray(answers) || answers.length === 0) {
+      return res.status(400).json({ error: "Er zijn geen antwoorden verzonden." });
+    }
+
+    // Check if user already submitted - if so, update or replace
+    const existingIdx = db.stellingSubmissions.findIndex((s: any) => s.userId === user.id);
+
+    const submissionRecord = {
+      id: existingIdx >= 0 ? db.stellingSubmissions[existingIdx].id : `sub_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      userId: user.id,
+      username: user.username,
+      fullName: user.fullName || user.username,
+      city: user.city || "Steenwijkerland",
+      answers: answers.map((a: any) => ({
+        stellingId: a.stellingId,
+        type: a.type || "swipe",
+        value: a.value,
+        answeredAt: a.answeredAt || new Date().toISOString()
+      })),
+      generalFeedback: (generalFeedback || "").trim(),
+      submittedAt: new Date().toISOString(),
+      isPWA: !!isPWA
+    };
+
+    if (existingIdx >= 0) {
+      db.stellingSubmissions[existingIdx] = submissionRecord;
+    } else {
+      db.stellingSubmissions.push(submissionRecord);
+    }
+
+    saveDb(db);
+
+    res.json({
+      success: true,
+      message: "Hartelijk dank voor uw mening! Uw reactie en eventuele opmerkingen worden meegenomen in de voorbereiding van onze fractievergadering.",
+      submission: submissionRecord
+    });
+  });
+
+  // GET /api/admin/stellingen - Admin overview of all stellingen + submissions & statistics
+  app.get("/api/admin/stellingen", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const stellingen = db.stellingen || [];
+    const submissions = db.stellingSubmissions || [];
+
+    const now = new Date();
+
+    const perStelling: Record<string, any> = {};
+
+    stellingen.forEach((s: any) => {
+      const answersForThis = submissions
+        .map((sub: any) => sub.answers?.find((a: any) => a.stellingId === s.id))
+        .filter(Boolean);
+
+      const totalResponses = answersForThis.length;
+      let eensCount = 0;
+      let oneensCount = 0;
+      const scaleDistribution: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0 };
+      let scaleSum = 0;
+      let scaleCount = 0;
+
+      answersForThis.forEach((ans: any) => {
+        if (ans.value === "eens" || ans.value === true) eensCount++;
+        else if (ans.value === "oneens" || ans.value === false) oneensCount++;
+        else if (typeof ans.value === "number") {
+          const num = Math.min(10, Math.max(1, Math.round(ans.value)));
+          scaleDistribution[num] = (scaleDistribution[num] || 0) + 1;
+          scaleSum += num;
+          scaleCount++;
+        }
+      });
+
+      const isDeadlinePassed = s.deadlineDate ? new Date(s.deadlineDate + "T23:59:59") < now : false;
+      const isMaxReached = s.maxParticipants && s.maxParticipants > 0 ? totalResponses >= s.maxParticipants : false;
+
+      perStelling[s.id] = {
+        totalResponses,
+        eensCount,
+        oneensCount,
+        eensPercentage: totalResponses > 0 && (eensCount + oneensCount > 0) ? Math.round((eensCount / (eensCount + oneensCount)) * 100) : 0,
+        oneensPercentage: totalResponses > 0 && (eensCount + oneensCount > 0) ? Math.round((oneensCount / (eensCount + oneensCount)) * 100) : 0,
+        scaleDistribution,
+        scaleAverage: scaleCount > 0 ? Math.round((scaleSum / scaleCount) * 10) / 10 : 0,
+        isDeadlinePassed,
+        isMaxReached,
+        isOpen: !isDeadlinePassed && !isMaxReached && s.active !== false
+      };
+    });
+
+    // Remarks collected from members
+    const remarks = submissions
+      .filter((sub: any) => sub.generalFeedback && sub.generalFeedback.trim().length > 0)
+      .map((sub: any) => ({
+        id: sub.id,
+        userId: sub.userId,
+        fullName: sub.fullName,
+        city: sub.city,
+        generalFeedback: sub.generalFeedback,
+        submittedAt: sub.submittedAt,
+        isPWA: sub.isPWA
+      }));
+
+    res.json({
+      stellingen,
+      submissions,
+      stats: {
+        totalSubmissions: submissions.length,
+        totalParticipants: new Set(submissions.map((s: any) => s.userId)).size,
+        perStelling,
+        remarks
+      }
+    });
+  });
+
+  // POST /api/admin/stellingen - Create a new stelling
+  app.post("/api/admin/stellingen", requireAuth, requireAdmin, upload.single("stellingImage"), (req: any, res: any) => {
+    const db = getDb();
+    if (!db.stellingen) db.stellingen = [];
+
+    const {
+      title,
+      category,
+      description,
+      type,
+      scaleMinLabel,
+      scaleMaxLabel,
+      deadlineDate,
+      maxParticipants,
+      active
+    } = req.body;
+
+    if (!title || !title.trim()) {
+      return res.status(400).json({ error: "Titel van de stelling is verplicht." });
+    }
+
+    const imageUrl = req.file ? `/uploads/stellingen/${req.file.filename}` : (req.body.imageUrl || "/assets/stemmen.jpg");
+
+    const newStelling = {
+      id: `stelling_${Date.now()}`,
+      title: title.trim(),
+      category: (category || "Algemeen").trim(),
+      description: (description || "").trim(),
+      imageUrl,
+      type: type === "scale" ? "scale" : "swipe",
+      scaleMinLabel: (scaleMinLabel || "1 - Helemaal oneens").trim(),
+      scaleMaxLabel: (scaleMaxLabel || "10 - Volledig mee eens").trim(),
+      deadlineDate: deadlineDate || "",
+      maxParticipants: maxParticipants ? parseInt(maxParticipants, 10) : undefined,
+      active: active === "false" || active === false ? false : true,
+      createdAt: new Date().toISOString(),
+      createdBy: req.user.username || "Admin"
+    };
+
+    db.stellingen.unshift(newStelling);
+    saveDb(db);
+
+    res.status(201).json({ success: true, stelling: newStelling });
+  });
+
+  // PUT /api/admin/stellingen/:id - Update an existing stelling
+  app.put("/api/admin/stellingen/:id", requireAuth, requireAdmin, upload.single("stellingImage"), (req: any, res: any) => {
+    const db = getDb();
+    if (!db.stellingen) db.stellingen = [];
+
+    const index = db.stellingen.findIndex((s: any) => s.id === req.params.id);
+    if (index === -1) {
+      return res.status(404).json({ error: "Stelling niet gevonden." });
+    }
+
+    const current = db.stellingen[index];
+    const {
+      title,
+      category,
+      description,
+      type,
+      scaleMinLabel,
+      scaleMaxLabel,
+      deadlineDate,
+      maxParticipants,
+      active
+    } = req.body;
+
+    const imageUrl = req.file ? `/uploads/stellingen/${req.file.filename}` : (req.body.imageUrl || current.imageUrl);
+
+    const updated = {
+      ...current,
+      title: title ? title.trim() : current.title,
+      category: category ? category.trim() : current.category,
+      description: description !== undefined ? description.trim() : current.description,
+      imageUrl,
+      type: type === "scale" ? "scale" : "swipe",
+      scaleMinLabel: scaleMinLabel !== undefined ? scaleMinLabel.trim() : current.scaleMinLabel,
+      scaleMaxLabel: scaleMaxLabel !== undefined ? scaleMaxLabel.trim() : current.scaleMaxLabel,
+      deadlineDate: deadlineDate !== undefined ? deadlineDate : current.deadlineDate,
+      maxParticipants: maxParticipants !== undefined && maxParticipants !== "" ? parseInt(maxParticipants, 10) : undefined,
+      active: active === "false" || active === false ? false : true,
+      updatedAt: new Date().toISOString()
+    };
+
+    db.stellingen[index] = updated;
+    saveDb(db);
+
+    res.json({ success: true, stelling: updated });
+  });
+
+  // DELETE /api/admin/stellingen/:id - Delete a stelling
+  app.delete("/api/admin/stellingen/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    if (!db.stellingen) db.stellingen = [];
+
+    db.stellingen = db.stellingen.filter((s: any) => s.id !== req.params.id);
+    saveDb(db);
+
+    res.json({ success: true, message: "Stelling verwijderd." });
+  });
+
+  // DELETE /api/admin/stellingen/submissions/:id - Delete a single submission (if needed)
+  app.delete("/api/admin/stellingen/submissions/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    if (!db.stellingSubmissions) db.stellingSubmissions = [];
+
+    db.stellingSubmissions = db.stellingSubmissions.filter((s: any) => s.id !== req.params.id);
+    saveDb(db);
+
+    res.json({ success: true, message: "Inzending verwijderd." });
   });
 
   // Admin Routes - Videos

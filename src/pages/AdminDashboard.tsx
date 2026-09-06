@@ -49,6 +49,7 @@ import {
   UserCheck,
   UserX,
   TrendingDown,
+  ThumbsUp,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VideoPlayer } from "@/components/VideoPlayer";
@@ -63,6 +64,7 @@ import { BelafsprakenManager } from "@/components/BelafsprakenManager";
 import { StemgedragManager } from "@/components/StemgedragManager";
 import { SystemManager } from "@/components/SystemManager";
 import NewsletterManager from "@/components/admin/NewsletterManager";
+import { StellingenManager } from "@/components/admin/StellingenManager";
 import { WIJKEN_EN_KERNEN } from "@/data/wijken";
 import { NewsItem } from "@/data/news";
 import { hoofdstukken } from "@/data/partijprogramma";
@@ -1105,6 +1107,9 @@ export default function AdminDashboard() {
           </TabsTrigger>
           <TabsTrigger value="stemgedrag" className="gap-2 text-xs">
             <Vote className="w-4 h-4 text-accent" /> Stemgedrag
+          </TabsTrigger>
+          <TabsTrigger value="stellingen" className="gap-2 text-xs">
+            <ThumbsUp className="w-4 h-4 text-accent" /> Fractie Peilingen
           </TabsTrigger>
           <TabsTrigger value="videos" className="gap-2 text-xs">
             <Video className="w-4 h-4" /> Video's
@@ -3588,6 +3593,11 @@ export default function AdminDashboard() {
         {/* STEMGEDRAG & MOTIES BEHEER */}
         <TabsContent value="stemgedrag">
           <StemgedragManager token={token} />
+        </TabsContent>
+
+        {/* FRACTIE PEILINGEN & STELLINGEN (PWA TINDER-STYLE) */}
+        <TabsContent value="stellingen">
+          <StellingenManager token={token} />
         </TabsContent>
 
         {/* NIEUWSBRIEF & MAILINGS */}
