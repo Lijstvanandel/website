@@ -19,14 +19,18 @@ import {
   BarChart2,
   RefreshCw,
   Search,
-  Check
+  Check,
+  QrCode,
+  MapPin,
+  Sparkles
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { fetchWithAuth } from "@/lib/api";
-import { StellingItem, StellingStats, StellingSubmission } from "@/types/stelling";
+import { StellingItem, StellingStats, StellingSubmission, QrLocation } from "@/types/stelling";
+import { QrLocationManager } from "./QrLocationManager";
 import {
   Dialog,
   DialogContent,
@@ -41,13 +45,14 @@ interface StellingenManagerProps {
 
 export function StellingenManager({ token }: StellingenManagerProps) {
   const [stellingen, setStellingen] = useState<StellingItem[]>([]);
+  const [qrLocations, setQrLocations] = useState<QrLocation[]>([]);
   const [submissions, setSubmissions] = useState<StellingSubmission[]>([]);
   const [stats, setStats] = useState<StellingStats | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Filter & Search
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState<"stellingen" | "resultaten" | "opmerkingen">("stellingen");
+  const [activeTab, setActiveTab] = useState<"stellingen" | "resultaten" | "opmerkingen" | "qr-locations">("stellingen");
 
   // Create / Edit Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -58,8 +63,11 @@ export function StellingenManager({ token }: StellingenManagerProps) {
   const [formType, setFormType] = useState<"swipe" | "scale">("swipe");
   const [formScaleMin, setFormScaleMin] = useState("1 - Helemaal oneens");
   const [formScaleMax, setFormScaleMax] = useState("10 - Volledig mee eens");
+  const [formStartDate, setFormStartDate] = useState("");
   const [formDeadline, setFormDeadline] = useState("");
   const [formMaxParticipants, setFormMaxParticipants] = useState<number | "">("");
+  const [formTargetLocations, setFormTargetLocations] = useState<string[]>([]);
+  const [formShowInPwaAndApp, setFormShowInPwaAndApp] = useState(true);
   const [formActive, setFormActive] = useState(true);
   const [formFile, setFormFile] = useState<File | null>(null);
   const [formExistingImageUrl, setFormExistingImageUrl] = useState("");
@@ -72,6 +80,7 @@ export function StellingenManager({ token }: StellingenManagerProps) {
       const data = await res.json();
       if (res.ok) {
         setStellingen(data.stellingen || []);
+        setQrLocations(data.qrLocations || []);
         setSubmissions(data.submissions || []);
         setStats(data.stats || null);
       } else {
@@ -97,8 +106,11 @@ export function StellingenManager({ token }: StellingenManagerProps) {
     setFormType("swipe");
     setFormScaleMin("1 - Helemaal oneens");
     setFormScaleMax("10 - Volledig mee eens");
+    setFormStartDate("");
     setFormDeadline("");
     setFormMaxParticipants("");
+    setFormTargetLocations([]);
+    setFormShowInPwaAndApp(true);
     setFormActive(true);
     setFormFile(null);
     setFormExistingImageUrl("/assets/stemmen.jpg");
@@ -113,12 +125,21 @@ export function StellingenManager({ token }: StellingenManagerProps) {
     setFormType(st.type || "swipe");
     setFormScaleMin(st.scaleMinLabel || "1 - Helemaal oneens");
     setFormScaleMax(st.scaleMaxLabel || "10 - Volledig mee eens");
+    setFormStartDate(st.startDate || "");
     setFormDeadline(st.deadlineDate || "");
     setFormMaxParticipants(st.maxParticipants || "");
+    setFormTargetLocations(Array.isArray(st.targetLocations) ? st.targetLocations : []);
+    setFormShowInPwaAndApp(st.showInPwaAndApp !== false);
     setFormActive(st.active !== false);
     setFormFile(null);
     setFormExistingImageUrl(st.imageUrl || "/assets/stemmen.jpg");
     setIsModalOpen(true);
+  };
+
+  const handleToggleLocation = (locId: string) => {
+    setFormTargetLocations((prev) =>
+      prev.includes(locId) ? prev.filter((id) => id !== locId) : [...prev, locId]
+    );
   };
 
   const handleSaveStelling = async (e: React.FormEvent) => {
@@ -137,10 +158,13 @@ export function StellingenManager({ token }: StellingenManagerProps) {
       formData.append("type", formType);
       formData.append("scaleMinLabel", formScaleMin.trim());
       formData.append("scaleMaxLabel", formScaleMax.trim());
+      formData.append("startDate", formStartDate);
       formData.append("deadlineDate", formDeadline);
       if (formMaxParticipants !== "") {
         formData.append("maxParticipants", String(formMaxParticipants));
       }
+      formData.append("targetLocations", JSON.stringify(formTargetLocations));
+      formData.append("showInPwaAndApp", String(formShowInPwaAndApp));
       formData.append("active", String(formActive));
       if (formFile) {
         formData.append("stellingImage", formFile);
@@ -202,11 +226,11 @@ export function StellingenManager({ token }: StellingenManagerProps) {
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-display text-foreground">Fractie Peilingen & Stellingen</h2>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-accent/20 text-accent border border-accent/30">
-              PWA Tinder-stijl
+              PWA & QR Locaties
             </span>
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            Beheer interactieve stellingen (swipe / schaal 1-10) voor contributiebetalende leden en bekijk stemuitslagen & opmerkingen voor de fractievergadering.
+            Beheer interactieve stellingen (swipe / schaal 1-10) voor contributiebetalende leden én anonieme peilingen via unieke QR-locaties.
           </p>
         </div>
 
@@ -242,20 +266,33 @@ export function StellingenManager({ token }: StellingenManagerProps) {
             {stellingen.filter((s) => s.active !== false).length} / {stellingen.length}
           </div>
           <div className="text-xs text-muted-foreground mt-1">
-            Beschikbaar in de PWA
+            Beschikbaar in de PWA & QR
           </div>
         </div>
 
         <div className="bg-muted/40 p-4 rounded-xl border border-border">
           <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1 flex items-center justify-between">
-            <span>Totaal Gestemd</span>
+            <span>Totaal Deelnemers</span>
             <Users className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="text-2xl font-bold font-display text-emerald-600">
             {stats?.totalSubmissions || submissions.length}
           </div>
+          <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+            <span>{stats?.totalAnonymous || submissions.filter((s) => s.isAnonymous).length} anoniem via QR</span>
+          </div>
+        </div>
+
+        <div className="bg-muted/40 p-4 rounded-xl border border-border">
+          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1 flex items-center justify-between">
+            <span>QR Locaties</span>
+            <QrCode className="w-4 h-4 text-primary" />
+          </div>
+          <div className="text-2xl font-bold font-display text-foreground">
+            {qrLocations.length}
+          </div>
           <div className="text-xs text-muted-foreground mt-1">
-            Stemmen van betalende leden
+            Sticker campagnes in beheer
           </div>
         </div>
 
@@ -271,23 +308,10 @@ export function StellingenManager({ token }: StellingenManagerProps) {
             Suggesties voor fractieoverleg
           </div>
         </div>
-
-        <div className="bg-muted/40 p-4 rounded-xl border border-border">
-          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1 flex items-center justify-between">
-            <span>PWA Deelname</span>
-            <Smartphone className="w-4 h-4 text-primary" />
-          </div>
-          <div className="text-2xl font-bold font-display text-foreground">
-            {submissions.filter((s) => s.isPWA).length} ({submissions.length > 0 ? Math.round((submissions.filter((s) => s.isPWA).length / submissions.length) * 100) : 0}%)
-          </div>
-          <div className="text-xs text-muted-foreground mt-1">
-            Gestemd via geïnstalleerde PWA
-          </div>
-        </div>
       </div>
 
       {/* Navigation Sub-Tabs */}
-      <div className="flex items-center gap-2 border-b border-border pb-3">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
         <button
           onClick={() => setActiveTab("stellingen")}
           className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${
@@ -300,6 +324,17 @@ export function StellingenManager({ token }: StellingenManagerProps) {
           Stellingen ({stellingen.length})
         </button>
         <button
+          onClick={() => setActiveTab("qr-locations")}
+          className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${
+            activeTab === "qr-locations"
+              ? "bg-accent text-accent-foreground shadow-xs"
+              : "text-muted-foreground hover:bg-muted"
+          }`}
+        >
+          <QrCode className="w-4 h-4" />
+          QR Locaties & Stickers ({qrLocations.length})
+        </button>
+        <button
           onClick={() => setActiveTab("resultaten")}
           className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${
             activeTab === "resultaten"
@@ -308,7 +343,7 @@ export function StellingenManager({ token }: StellingenManagerProps) {
           }`}
         >
           <BarChart2 className="w-4 h-4" />
-          Resultaten & Statistieken
+          Resultaten & Locatie-uitslagen
         </button>
         <button
           onClick={() => setActiveTab("opmerkingen")}
@@ -388,6 +423,26 @@ export function StellingenManager({ token }: StellingenManagerProps) {
                         </p>
                       )}
 
+                      {/* Targeted Locations Badges */}
+                      {st.targetLocations && st.targetLocations.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1 pt-1">
+                          <span className="text-[10px] text-muted-foreground font-semibold flex items-center gap-1 mr-1">
+                            <MapPin className="w-3 h-3 text-accent" /> Gekoppeld aan:
+                          </span>
+                          {st.targetLocations.map((locId) => {
+                            const foundLoc = qrLocations.find((l) => l.id === locId || l.slug === locId);
+                            return (
+                              <span
+                                key={locId}
+                                className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30"
+                              >
+                                {foundLoc ? foundLoc.name : locId}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+
                       {/* Stats quick pill */}
                       <div className="pt-2 border-t border-border/60 flex flex-wrap items-center justify-between gap-2 text-xs">
                         <div className="flex items-center gap-1.5 text-muted-foreground">
@@ -395,12 +450,15 @@ export function StellingenManager({ token }: StellingenManagerProps) {
                           <span>{stStat?.totalResponses || 0} stemmen</span>
                           {st.maxParticipants ? <span className="text-muted-foreground/60">/ max. {st.maxParticipants}</span> : null}
                         </div>
-                        {st.deadlineDate && (
-                          <div className="flex items-center gap-1 text-muted-foreground">
-                            <Clock className="w-3.5 h-3.5 text-accent" />
-                            <span>Tot {st.deadlineDate}</span>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                          {st.startDate && <span>Vanaf {st.startDate}</span>}
+                          {st.deadlineDate && (
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-accent" />
+                              Tot {st.deadlineDate}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -431,9 +489,34 @@ export function StellingenManager({ token }: StellingenManagerProps) {
         </div>
       )}
 
-      {/* TAB 2: RESULTATEN & STATISTIEKEN */}
+      {/* TAB 2: QR-LOCATIES & STICKERS */}
+      {activeTab === "qr-locations" && (
+        <QrLocationManager token={token} />
+      )}
+
+      {/* TAB 3: RESULTATEN & STATISTIEKEN */}
       {activeTab === "resultaten" && (
         <div className="space-y-6">
+          {/* Per Location Overview stats */}
+          {stats?.perLocationCount && Object.keys(stats.perLocationCount).length > 0 && (
+            <div className="bg-muted/30 p-5 rounded-2xl border border-border space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <MapPin className="w-4 h-4 text-accent" />
+                Stemmen verdeeld per QR-locatie / kanaal:
+              </h4>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                {Object.entries(stats.perLocationCount).map(([locName, count]) => (
+                  <div key={locName} className="p-3 bg-card rounded-xl border border-border/60 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-foreground truncate">{locName}</span>
+                    <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-accent/20 text-accent ml-2">
+                      {count}x
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {stellingen.map((st) => {
             const stStat = stats?.perStelling?.[st.id];
             const total = stStat?.totalResponses || 0;
@@ -459,6 +542,7 @@ export function StellingenManager({ token }: StellingenManagerProps) {
 
                   <div className="text-xs text-muted-foreground flex items-center gap-3">
                     <span className="font-semibold text-foreground text-sm">{total} respondenten</span>
+                    {st.startDate && <span>• Vanaf: {st.startDate}</span>}
                     {st.deadlineDate && <span>• Deadline: {st.deadlineDate}</span>}
                   </div>
                 </div>
@@ -523,22 +607,48 @@ export function StellingenManager({ token }: StellingenManagerProps) {
                     </div>
                   </div>
                 )}
+
+                {/* Location breakdown for this stelling */}
+                {stStat?.locationBreakdown && Object.keys(stStat.locationBreakdown).length > 0 && (
+                  <div className="pt-3 border-t border-border/60">
+                    <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-2">
+                      Uitslag per locatie / kanaal:
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                      {Object.entries(stStat.locationBreakdown).map(([locName, breakdown]: [string, any]) => (
+                        <div key={locName} className="p-2.5 bg-card rounded-lg border border-border text-xs flex flex-col justify-between">
+                          <div className="font-semibold text-foreground mb-1">{locName} ({breakdown.total} stemmen)</div>
+                          {st.type === "swipe" ? (
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="text-emerald-600 font-bold">{breakdown.eens} eens</span>
+                              <span className="text-rose-600 font-bold">{breakdown.oneens} oneens</span>
+                            </div>
+                          ) : (
+                            <div className="text-[11px] text-accent font-bold">
+                              Gemiddeld: {breakdown.avgScale || "-"} / 10
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
       )}
 
-      {/* TAB 3: FRACTIE OPMERKINGEN & SUGGESTIES */}
+      {/* TAB 4: FRACTIE OPMERKINGEN & SUGGESTIES */}
       {activeTab === "opmerkingen" && (
         <div className="space-y-4">
           <div className="text-xs text-muted-foreground pb-2">
-            Onderstaande opmerkingen zijn door contributiebetalende partijleden achtergelaten na het stemmen op de stellingen.
+            Onderstaande opmerkingen zijn door partijleden én anonieme QR-bezoekers achtergelaten na het stemmen op de stellingen.
           </div>
 
           {(!stats?.remarks || stats.remarks.length === 0) ? (
             <div className="p-8 text-center bg-muted/20 rounded-2xl border border-border text-muted-foreground text-sm">
-              Er zijn nog geen toelichtingen of opmerkingen achtergelaten door leden.
+              Er zijn nog geen toelichtingen of opmerkingen achtergelaten.
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -546,8 +656,18 @@ export function StellingenManager({ token }: StellingenManagerProps) {
                 <div key={rem.id} className="bg-card p-5 rounded-2xl border border-border shadow-xs space-y-3">
                   <div className="flex items-center justify-between pb-2 border-b border-border/60">
                     <div>
-                      <div className="font-bold text-sm text-foreground">{rem.fullName}</div>
-                      <div className="text-xs text-muted-foreground">{rem.city || "Steenwijkerland"}</div>
+                      <div className="font-bold text-sm text-foreground flex items-center gap-1.5">
+                        <span>{rem.fullName}</span>
+                        {rem.isAnonymous && (
+                          <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-muted text-muted-foreground border">
+                            Anoniem
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                        <MapPin className="w-3 h-3 text-accent" />
+                        <span>{rem.qrLocationName || rem.city || "Steenwijkerland"}</span>
+                      </div>
                     </div>
                     <div className="text-right">
                       <span className="text-[10px] text-muted-foreground">
@@ -586,7 +706,7 @@ export function StellingenManager({ token }: StellingenManagerProps) {
               {editingStellingId ? "Stelling Bewerken" : "Nieuwe Stelling Aanmaken"}
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Configureer de stelling, categorie, afbeelding, type (Tinder swipe vs. schaal 1-10) en deadline.
+              Configureer de stelling, categorie, datumvenster (vanaf / tot wanneer), doelgroep / QR-locaties en type.
             </DialogDescription>
           </DialogHeader>
 
@@ -611,7 +731,7 @@ export function StellingenManager({ token }: StellingenManagerProps) {
                   Categorie / Dossier
                 </label>
                 <Input
-                  placeholder="Bijv. Wonen, Leefbaarheid, Financiën"
+                  placeholder="Bijv. Wonen, Leefbaarheid, Financiën, Jeugd"
                   value={formCategory}
                   onChange={(e) => setFormCategory(e.target.value)}
                 />
@@ -636,11 +756,11 @@ export function StellingenManager({ token }: StellingenManagerProps) {
             {/* Description */}
             <div>
               <label className="text-xs font-semibold uppercase text-muted-foreground block mb-1">
-                Toelichting / Context voor het lid
+                Toelichting / Context voor de kiezer
               </label>
               <Textarea
                 rows={3}
-                placeholder="Geef hier extra context of achtergrondinformatie mee zodat het lid een onderbouwde keuze kan maken..."
+                placeholder="Geef hier extra context of achtergrondinformatie mee zodat men een onderbouwde keuze kan maken..."
                 value={formDescription}
                 onChange={(e) => setFormDescription(e.target.value)}
               />
@@ -689,10 +809,24 @@ export function StellingenManager({ token }: StellingenManagerProps) {
               )}
             </div>
 
-            {/* Deadline and Max Participants */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Date Window (Vanaf wanneer & Tot wanneer) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-muted/30 rounded-xl border border-border">
               <div>
-                <label className="text-xs font-semibold uppercase text-muted-foreground block mb-1">
+                <label className="text-xs font-semibold uppercase text-muted-foreground block mb-1 flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5 text-accent" />
+                  Vanaf datum tonen (Startdatum)
+                </label>
+                <Input
+                  type="date"
+                  value={formStartDate}
+                  onChange={(e) => setFormStartDate(e.target.value)}
+                />
+                <span className="text-[10px] text-muted-foreground">Leeg = direct beschikbaar</span>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold uppercase text-muted-foreground block mb-1 flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-accent" />
                   Mening vragen tot datum (Deadline)
                 </label>
                 <Input
@@ -700,33 +834,92 @@ export function StellingenManager({ token }: StellingenManagerProps) {
                   value={formDeadline}
                   onChange={(e) => setFormDeadline(e.target.value)}
                 />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold uppercase text-muted-foreground block mb-1">
-                  Maximaal aantal respondenten (Optioneel)
-                </label>
-                <Input
-                  type="number"
-                  placeholder="Bijv. 250 (leeg = onbeperkt)"
-                  value={formMaxParticipants}
-                  onChange={(e) => setFormMaxParticipants(e.target.value ? parseInt(e.target.value, 10) : "")}
-                />
+                <span className="text-[10px] text-muted-foreground">Leeg = geen einddatum</span>
               </div>
             </div>
 
-            {/* Active Checkbox */}
-            <div className="flex items-center gap-2 pt-2">
-              <input
-                type="checkbox"
-                id="formActiveCheck"
-                checked={formActive}
-                onChange={(e) => setFormActive(e.target.checked)}
-                className="w-4 h-4 rounded text-accent accent-accent"
-              />
-              <label htmlFor="formActiveCheck" className="text-xs font-medium text-foreground cursor-pointer">
-                Stelling is actief en direct zichtbaar in de PWA voor betalende leden
+            {/* Max Participants */}
+            <div>
+              <label className="text-xs font-semibold uppercase text-muted-foreground block mb-1">
+                Maximaal aantal respondenten (Optioneel)
               </label>
+              <Input
+                type="number"
+                placeholder="Bijv. 100 (als dit maximum is behaald wordt de stelling gesloten)"
+                value={formMaxParticipants}
+                onChange={(e) => setFormMaxParticipants(e.target.value ? parseInt(e.target.value, 10) : "")}
+              />
+            </div>
+
+            {/* Target QR Locations Checkboxes */}
+            <div className="p-4 bg-muted/30 rounded-xl border border-border space-y-3">
+              <label className="text-xs font-bold uppercase text-foreground block flex items-center gap-1.5">
+                <MapPin className="w-4 h-4 text-accent" />
+                Koppelen aan specifieke QR-Locaties
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Kies op welke fysieke stickerlocaties deze stelling getoond mag worden wanneer iemand de QR-code scant.
+              </p>
+
+              {qrLocations.length === 0 ? (
+                <div className="text-xs text-muted-foreground italic">
+                  Nog geen QR-locaties aangemaakt. U kunt deze aanmaken onder het tabblad 'QR Locaties & Stickers'.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  {qrLocations.map((loc) => {
+                    const isChecked = formTargetLocations.includes(loc.id) || formTargetLocations.includes(loc.slug);
+                    return (
+                      <label
+                        key={loc.id}
+                        className={`flex items-center gap-2 p-2.5 rounded-lg border text-xs cursor-pointer transition-all ${
+                          isChecked ? "bg-accent/15 border-accent text-foreground font-semibold" : "bg-card border-border hover:bg-muted/50 text-muted-foreground"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => handleToggleLocation(loc.id)}
+                          className="w-4 h-4 rounded text-accent accent-accent"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate">{loc.name}</div>
+                          <div className="text-[10px] text-muted-foreground truncate">{loc.stickerText}</div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* PWA & Active Checkboxes */}
+            <div className="space-y-2 pt-2 border-t border-border">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="formShowPwaCheck"
+                  checked={formShowInPwaAndApp}
+                  onChange={(e) => setFormShowInPwaAndApp(e.target.checked)}
+                  className="w-4 h-4 rounded text-accent accent-accent"
+                />
+                <label htmlFor="formShowPwaCheck" className="text-xs font-medium text-foreground cursor-pointer">
+                  Ook tonen in de algemene PWA & website voor ingelogde partijleden
+                </label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="formActiveCheck"
+                  checked={formActive}
+                  onChange={(e) => setFormActive(e.target.checked)}
+                  className="w-4 h-4 rounded text-accent accent-accent"
+                />
+                <label htmlFor="formActiveCheck" className="text-xs font-medium text-foreground cursor-pointer">
+                  Stelling is actief
+                </label>
+              </div>
             </div>
 
             {/* Modal Actions */}

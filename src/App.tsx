@@ -8,6 +8,7 @@ import { ThemeProvider } from "./hooks/use-theme";
 import { AuthProvider } from "./context/AuthContext";
 import { AccessibilityProvider } from "./context/AccessibilityContext";
 import { PWARedirectHandler } from "./components/PWARedirectHandler";
+import { ScrollToTop } from "./components/ScrollToTop";
 import Home from "./pages/Home";
 import Raadsleden from "./pages/Raadsleden";
 import FractielidVideos from "./pages/FractielidVideos";
@@ -44,6 +45,7 @@ const App = () => (
             <Toaster />
             <Sonner />
             <BrowserRouter>
+              <ScrollToTop />
               <PWARedirectHandler />
               <Routes>
                 <Route element={<Layout />}>

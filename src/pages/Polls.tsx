@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence, useMotionValue, useTransform } from "framer-motion";
 import { 
   Sparkles, 
   Check, 
   X, 
   RotateCcw, 
-  HelpCircle, 
   Calendar, 
   Users, 
   Send, 
@@ -16,18 +15,17 @@ import {
   MessageSquare, 
   ThumbsUp, 
   ThumbsDown, 
-  Sliders, 
   ChevronRight, 
-  ShieldAlert,
-  Smartphone,
-  Info
+  QrCode,
+  MapPin,
+  Flame
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { fetchWithAuth } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { StellingItem, StellingAnswer } from "@/types/stelling";
+import { StellingItem, StellingAnswer, QrLocation } from "@/types/stelling";
 
 // Swipe Card Component with smooth drag & rotation physics
 interface SwipeCardProps {
@@ -38,17 +36,22 @@ interface SwipeCardProps {
 
 function SwipeCard({ stelling, onSwipe, isTop }: SwipeCardProps) {
   const x = useMotionValue(0);
-  const rotate = useTransform(x, [-200, 200], [-18, 18]);
-  const opacity = useTransform(x, [-200, -100, 0, 100, 200], [0.5, 1, 1, 1, 0.5]);
+  // Smoother rotation and responsive visual feedback
+  const rotate = useTransform(x, [-180, 180], [-15, 15]);
+  const opacity = useTransform(x, [-220, -140, 0, 140, 220], [0.6, 1, 1, 1, 0.6]);
   
-  // Badge opacities
-  const likeOpacity = useTransform(x, [20, 100], [0, 1]);
-  const nopeOpacity = useTransform(x, [-20, -100], [0, 1]);
+  // Badge opacities activate earlier for smoother visual feedback
+  const likeOpacity = useTransform(x, [15, 70], [0, 1]);
+  const nopeOpacity = useTransform(x, [-15, -70], [0, 1]);
 
   const handleDragEnd = (_: any, info: any) => {
-    if (info.offset.x > 100) {
+    // Smoother drag sensitivity: trigger at offset.x > 45px or velocity.x > 300px/s
+    const offset = info.offset.x;
+    const velocity = info.velocity.x;
+
+    if (offset > 50 || velocity > 350) {
       onSwipe("eens");
-    } else if (info.offset.x < -100) {
+    } else if (offset < -50 || velocity < -350) {
       onSwipe("oneens");
     }
   };
@@ -64,11 +67,13 @@ function SwipeCard({ stelling, onSwipe, isTop }: SwipeCardProps) {
       }}
       drag={isTop ? "x" : false}
       dragConstraints={{ left: 0, right: 0 }}
+      dragElastic={0.8}
+      dragTransition={{ bounceStiffness: 600, bounceDamping: 20 }}
       onDragEnd={handleDragEnd}
       whileTap={{ scale: isTop ? 1.02 : 1 }}
       initial={{ scale: 0.95, opacity: 0, y: 20 }}
       animate={{ scale: 1, opacity: 1, y: 0 }}
-      exit={{ scale: 0.9, opacity: 0, transition: { duration: 0.2 } }}
+      exit={{ scale: 0.85, opacity: 0, transition: { duration: 0.18 } }}
       className="absolute inset-0 bg-card rounded-3xl border border-border shadow-2xl overflow-hidden flex flex-col select-none cursor-grab active:cursor-grabbing"
     >
       {/* Top Media Image Container */}
@@ -95,7 +100,7 @@ function SwipeCard({ stelling, onSwipe, isTop }: SwipeCardProps) {
           <>
             <motion.div
               style={{ opacity: likeOpacity }}
-              className="absolute top-6 right-6 bg-emerald-600 text-white px-4 py-2 rounded-2xl font-display font-black text-xl tracking-wider border-2 border-white shadow-xl rotate-12 flex items-center gap-1.5"
+              className="absolute top-6 right-6 bg-emerald-600 text-white px-4 py-2 rounded-2xl font-display font-black text-xl tracking-wider border-2 border-white shadow-xl rotate-12 flex items-center gap-1.5 pointer-events-none"
             >
               <ThumbsUp className="w-5 h-5 fill-white" />
               EENS
@@ -103,7 +108,7 @@ function SwipeCard({ stelling, onSwipe, isTop }: SwipeCardProps) {
 
             <motion.div
               style={{ opacity: nopeOpacity }}
-              className="absolute top-6 left-6 bg-rose-600 text-white px-4 py-2 rounded-2xl font-display font-black text-xl tracking-wider border-2 border-white shadow-xl -rotate-12 flex items-center gap-1.5"
+              className="absolute top-6 left-6 bg-rose-600 text-white px-4 py-2 rounded-2xl font-display font-black text-xl tracking-wider border-2 border-white shadow-xl -rotate-12 flex items-center gap-1.5 pointer-events-none"
             >
               <ThumbsDown className="w-5 h-5 fill-white" />
               ONEENS
@@ -144,12 +149,18 @@ function SwipeCard({ stelling, onSwipe, isTop }: SwipeCardProps) {
 export default function Polls() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  // Check if opened through location QR code query param (e.g. ?location=skatebaan-steenwijk or ?loc=...)
+  const locationParam = searchParams.get("location") || searchParams.get("loc") || searchParams.get("qr");
 
   const [stellingen, setStellingen] = useState<StellingItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
   const [deniedReason, setDeniedReason] = useState("");
   const [hasAlreadySubmitted, setHasAlreadySubmitted] = useState(false);
+  const [activeQrLocation, setActiveQrLocation] = useState<QrLocation | null>(null);
+  const [isAnonymousQr, setIsAnonymousQr] = useState(false);
 
   // Flow State
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -166,6 +177,12 @@ export default function Polls() {
   );
 
   useEffect(() => {
+    // If accessed via QR location parameter, authentication is NOT required (anonymous access allowed)
+    if (locationParam) {
+      fetchStellingenForLocation(locationParam);
+      return;
+    }
+
     if (authLoading) return;
 
     if (!isAuthenticated) {
@@ -173,7 +190,7 @@ export default function Polls() {
       return;
     }
 
-    // Check paid status
+    // Check paid status for authenticated users
     const isPaid = user?.role === "admin" || user?.billingStatus === "paid";
     if (!isPaid) {
       setAccessDenied(true);
@@ -183,7 +200,33 @@ export default function Polls() {
     }
 
     fetchStellingen();
-  }, [authLoading, isAuthenticated, user]);
+  }, [authLoading, isAuthenticated, user, locationParam]);
+
+  const fetchStellingenForLocation = async (locSlug: string) => {
+    setLoading(true);
+    try {
+      // First fetch location stellingen directly (public access with location param)
+      const res = await fetch(`/api/stellingen?location=${encodeURIComponent(locSlug)}`);
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast.error(data.error || "Kon stellingen voor deze locatie niet laden.");
+        setLoading(false);
+        return;
+      }
+
+      setIsAnonymousQr(true);
+      setActiveQrLocation(data.activeQrLocation || null);
+      const list = (data.stellingen || []).filter((s: StellingItem) => s.active !== false);
+      setStellingen(list);
+      setHasAlreadySubmitted(!!data.hasSubmitted);
+    } catch (err) {
+      console.error(err);
+      toast.error("Fout bij laden van stellingen via QR-code.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchStellingen = async () => {
     setLoading(true);
@@ -202,7 +245,6 @@ export default function Polls() {
         return;
       }
 
-      // Filter open stellingen
       const list = (data.stellingen || []).filter((s: StellingItem) => s.active !== false);
       setStellingen(list);
       setHasAlreadySubmitted(!!data.hasSubmitted);
@@ -270,15 +312,31 @@ export default function Polls() {
 
     setIsSubmitting(true);
     try {
-      const res = await fetchWithAuth("/api/stellingen/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          answers,
-          generalFeedback: generalFeedback.trim(),
-          isPWA
-        })
-      });
+      const payload: any = {
+        answers,
+        generalFeedback: generalFeedback.trim(),
+        isPWA
+      };
+
+      if (isAnonymousQr && activeQrLocation) {
+        payload.qrLocationSlug = activeQrLocation.slug;
+        payload.qrLocationId = activeQrLocation.id;
+      }
+
+      let res: Response;
+      if (isAnonymousQr) {
+        res = await fetch("/api/stellingen/submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      } else {
+        res = await fetchWithAuth("/api/stellingen/submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      }
 
       const data = await res.json();
       if (!res.ok) {
@@ -308,7 +366,7 @@ export default function Polls() {
   }
 
   // 2. Access Denied (Geen betaalde contributie)
-  if (accessDenied) {
+  if (accessDenied && !isAnonymousQr) {
     return (
       <div className="pt-32 pb-24 min-h-screen bg-background flex items-center justify-center px-4">
         <div className="max-w-md w-full bg-card p-8 rounded-3xl border border-border shadow-xl text-center space-y-6 animate-fade-up">
@@ -364,11 +422,15 @@ export default function Polls() {
             Geen openstaande stellingen
           </h2>
           <p className="text-sm text-muted-foreground">
-            Er zijn op dit moment geen actieve stellingen die uw input vereisen. Zodra er een nieuw fractievoorstel of peiling is, ziet u deze hier direct verschijnen.
+            {activeQrLocation ? (
+              <>Voor de locatie <strong>{activeQrLocation.name}</strong> zijn momenteel alle stellingen afgerond of is het maximaal aantal respondenten behaald.</>
+            ) : (
+              <>Er zijn op dit moment geen actieve stellingen die uw input vereisen. Zodra er een nieuw fractievoorstel of peiling is, ziet u deze hier direct verschijnen.</>
+            )}
           </p>
-          <Link to="/dashboard">
+          <Link to="/">
             <Button className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-6 py-2.5">
-              Naar mijn Dashboard
+              Naar Homepage
             </Button>
           </Link>
         </div>
@@ -389,7 +451,7 @@ export default function Polls() {
 
           <div className="space-y-2">
             <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-accent/15 text-accent border border-accent/30">
-              Meningspeiling Afgerond
+              {isAnonymousQr ? `Locatie: ${activeQrLocation?.name || "QR Locatie"}` : "Meningspeiling Afgerond"}
             </span>
             <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">
               Hartelijk dank voor uw mening!
@@ -397,27 +459,29 @@ export default function Polls() {
           </div>
 
           <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
-            Wij nemen alle uitslagen en opmerkingen rechtstreeks mee ter voorbereiding op onze <strong className="text-foreground">fractievergadering</strong>. Zo zorgen we dat de stem van onze leden luid en duidelijk doorklinkt in de gemeenteraad van Steenwijkerland!
+            Wij nemen alle uitslagen en opmerkingen rechtstreeks mee ter voorbereiding op onze <strong className="text-foreground">fractievergadering</strong>. Zo zorgen we dat de stem van inwoners luid en duidelijk doorklinkt in de gemeenteraad van Steenwijkerland!
           </p>
 
           <div className="pt-4 flex flex-col gap-3">
-            <Link to="/dashboard">
+            <Link to="/">
               <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3.5 rounded-full shadow-md">
-                Terug naar Ledendashboard
+                Bekijk onze website & standpunten
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
             </Link>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setCurrentIndex(0);
-                setIsFinished(false);
-              }}
-              className="w-full rounded-full border-border text-muted-foreground hover:text-foreground"
-            >
-              <RotateCcw className="w-4 h-4 mr-2" />
-              Antwoorden bekijken of wijzigen
-            </Button>
+            {!isAnonymousQr && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setCurrentIndex(0);
+                  setIsFinished(false);
+                }}
+                className="w-full rounded-full border-border text-muted-foreground hover:text-foreground"
+              >
+                <RotateCcw className="w-4 h-4 mr-2" />
+                Antwoorden bekijken of wijzigen
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -431,12 +495,29 @@ export default function Polls() {
     <div className="pt-28 sm:pt-32 pb-24 min-h-screen bg-background flex flex-col items-center justify-start px-4">
       <div className="max-w-md w-full flex flex-col items-center">
         
+        {/* QR LOCATION STICKER HEADER BANNER */}
+        {activeQrLocation && (
+          <div className="w-full bg-linear-to-r from-accent/15 via-accent/25 to-accent/15 border border-accent/40 rounded-2xl p-4 mb-4 text-center shadow-md animate-fade-up">
+            <div className="flex items-center justify-center gap-2 text-xs font-bold text-accent uppercase tracking-wider mb-1">
+              <QrCode className="w-4 h-4" />
+              <MapPin className="w-3.5 h-3.5" />
+              <span>{activeQrLocation.name}</span>
+            </div>
+            <p className="text-base font-display font-bold text-foreground">
+              "{activeQrLocation.stickerText}"
+            </p>
+            <span className="inline-block mt-1 text-[11px] text-muted-foreground">
+              Anonieme peiling voor fractie Lijst van Andel
+            </span>
+          </div>
+        )}
+
         {/* Top Header & Progress */}
         <div className="w-full mb-6 text-center">
           <div className="flex items-center justify-between gap-2 mb-2 px-1">
             <span className="text-xs font-bold uppercase tracking-wider text-accent flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5" />
-              Fractie Peilingen
+              {isAnonymousQr ? "Locatie Peiling" : "Fractie Peilingen"}
             </span>
             <span className="text-xs font-semibold text-muted-foreground">
               {isFinalFeedbackStep ? "Afronding" : `${currentIndex + 1} van de ${stellingen.length}`}
@@ -457,7 +538,7 @@ export default function Polls() {
         </div>
 
         {/* ALREADY SUBMITTED NOTIFICATION BANNER */}
-        {hasAlreadySubmitted && (
+        {hasAlreadySubmitted && !isAnonymousQr && (
           <div className="w-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400 p-3.5 rounded-2xl text-xs mb-5 flex items-center justify-between gap-3 shadow-xs">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
@@ -476,7 +557,7 @@ export default function Polls() {
                 {/* Tinder Card Container (Fixed Aspect Ratio) */}
                 <div className="relative w-full h-[470px] sm:h-[500px]">
                   <AnimatePresence>
-                    {stellingen.slice(currentIndex, currentIndex + 2).reverse().map((stelling, idx) => {
+                    {stellingen.slice(currentIndex, currentIndex + 2).reverse().map((stelling) => {
                       const isTop = stelling.id === currentStelling.id;
                       return (
                         <SwipeCard
@@ -501,7 +582,7 @@ export default function Polls() {
                   </button>
 
                   <div className="text-center text-xs text-muted-foreground font-medium select-none">
-                    Druk op een knop<br />of swipe de kaart
+                    Druk op een knop<br />of veeg de kaart
                   </div>
 
                   <button
@@ -601,16 +682,22 @@ export default function Polls() {
 
             {/* Extra Info: Deadline & Respondents */}
             <div className="flex flex-wrap items-center justify-center gap-4 mt-6 text-xs text-muted-foreground">
+              {currentStelling.startDate && (
+                <span className="flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5 text-accent" />
+                  Vanaf: <strong className="text-foreground">{currentStelling.startDate}</strong>
+                </span>
+              )}
               {currentStelling.deadlineDate && (
                 <span className="flex items-center gap-1">
                   <Calendar className="w-3.5 h-3.5 text-accent" />
-                  Mening gevraagd tot: <strong className="text-foreground">{currentStelling.deadlineDate}</strong>
+                  Tot: <strong className="text-foreground">{currentStelling.deadlineDate}</strong>
                 </span>
               )}
               {currentStelling.maxParticipants && (
                 <span className="flex items-center gap-1">
                   <Users className="w-3.5 h-3.5 text-accent" />
-                  Max. respondenten: <strong className="text-foreground">{currentStelling.maxParticipants}</strong>
+                  Max: <strong className="text-foreground">{currentStelling.maxParticipants}</strong>
                 </span>
               )}
             </div>

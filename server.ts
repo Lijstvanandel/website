@@ -517,6 +517,48 @@ function getDb() {
     db.stellingSubmissions = [];
   }
 
+  if (!db.qrLocations || !Array.isArray(db.qrLocations) || db.qrLocations.length === 0) {
+    db.qrLocations = [
+      {
+        id: "qr_skatebaan",
+        name: "Skatebaan Steenwijk",
+        slug: "skatebaan-steenwijk",
+        stickerText: "Geef je mening tijdens het skaten",
+        description: "Stickerlocatie op het bord bij de skatebaan / jongerenontmoetingsplek in Steenwijk.",
+        address: "Eesveenseweg, Steenwijk",
+        createdAt: "2026-09-01T10:00:00.000Z"
+      },
+      {
+        id: "qr_kroeg_wc",
+        name: "WC Café De Markt",
+        slug: "wc-cafe-de-markt",
+        stickerText: "Geef je mening tijdens de natuurlijke behoefte",
+        description: "Sticker op de spiegel of toiletdeur in Café De Markt.",
+        address: "Markt 14, Steenwijk",
+        createdAt: "2026-09-01T10:00:00.000Z"
+      },
+      {
+        id: "qr_sportpark",
+        name: "Kantine Sportpark De Eendracht",
+        slug: "sportpark-de-eendracht",
+        stickerText: "Geef je mening tijdens de 3e helft",
+        description: "Sticker op de bartafel in de sportkantine.",
+        address: "Sportpark Eendracht, Steenwijk",
+        createdAt: "2026-09-02T10:00:00.000Z"
+      },
+      {
+        id: "qr_bushalte",
+        name: "Bushalte NS Station Steenwijk",
+        slug: "station-steenwijk",
+        stickerText: "Geef je mening tijdens het wachten op de bus",
+        description: "Sticker bij het overstapstation Steenwijk.",
+        address: "Stationsplein, Steenwijk",
+        createdAt: "2026-09-03T10:00:00.000Z"
+      }
+    ];
+    saveDb(db);
+  }
+
   if (!db.stellingen || !Array.isArray(db.stellingen) || db.stellingen.length === 0) {
     db.stellingen = [
       {
@@ -526,8 +568,11 @@ function getDb() {
         description: "Inwoners die al minimaal 3 jaar in onze gemeente wonen moeten voorrang krijgen bij toewijzing van nieuwe betaalbare koop- en huurwoningen in Steenwijkerland.",
         imageUrl: "/assets/woningbouw-prioriteit.jpg",
         type: "swipe",
+        startDate: "2026-09-01",
         deadlineDate: "2026-12-31",
         maxParticipants: 500,
+        targetLocations: [],
+        showInPwaAndApp: true,
         active: true,
         createdAt: "2026-09-01T10:00:00.000Z"
       },
@@ -540,8 +585,11 @@ function getDb() {
         type: "scale",
         scaleMinLabel: "1 - Geen prioriteit",
         scaleMaxLabel: "10 - Zeer hoge prioriteit",
+        startDate: "2026-09-01",
         deadlineDate: "2026-12-31",
         maxParticipants: 500,
+        targetLocations: [],
+        showInPwaAndApp: true,
         active: true,
         createdAt: "2026-09-02T10:00:00.000Z"
       },
@@ -552,10 +600,45 @@ function getDb() {
         description: "De gemeente Steenwijkerland moet de Onroerendezaakbelasting (OZB) en rioolheffing voor inwoners en lokale ondernemers de komende 4 jaar bevriezen.",
         imageUrl: "/assets/stemmen.jpg",
         type: "swipe",
+        startDate: "2026-09-01",
         deadlineDate: "2026-12-31",
         maxParticipants: 500,
+        targetLocations: [],
+        showInPwaAndApp: true,
         active: true,
         createdAt: "2026-09-03T10:00:00.000Z"
+      },
+      {
+        id: "stelling_skate",
+        title: "Meer verlichting en onderhoud voor jongerenontmoetingsplekken (JOP) & Skatebanen",
+        category: "Jeugd & Sport",
+        description: "Vind je dat de gemeente Steenwijkerland direct extra budget moet vrijmaken voor schone, veilige en goed verlichte skate- en sportplekken in de avonduren?",
+        imageUrl: "/assets/woningbouw-prioriteit.jpg",
+        type: "swipe",
+        startDate: "2026-09-01",
+        deadlineDate: "2026-12-31",
+        maxParticipants: 300,
+        targetLocations: ["qr_skatebaan"],
+        showInPwaAndApp: true,
+        active: true,
+        createdAt: "2026-09-04T10:00:00.000Z"
+      },
+      {
+        id: "stelling_horeca",
+        title: "Verruiming van terrastijden en evenementen in het uitgaansleven",
+        category: "Horeca & Evenementen",
+        description: "Op een schaal van 1 tot 10: Hoe belangrijk vind je het dat cafés en horeca in het weekend meer vrijheid krijgen voor livemuziek en langere terrastijden?",
+        imageUrl: "/assets/markt-steenwijk.jpg",
+        type: "scale",
+        scaleMinLabel: "1 - Onbelangrijk",
+        scaleMaxLabel: "10 - Zeer belangrijk",
+        startDate: "2026-09-01",
+        deadlineDate: "2026-12-31",
+        maxParticipants: 250,
+        targetLocations: ["qr_kroeg_wc"],
+        showInPwaAndApp: true,
+        active: true,
+        createdAt: "2026-09-04T10:00:00.000Z"
       }
     ];
     saveDb(db);
@@ -2668,104 +2751,362 @@ async function startServer() {
   });
 
   // =================================================================
-  // STELLINGEN & PEILINGEN (PWA Tinder-style fractie peilingen)
+  // QR LOCATIES & STICKER BEHEER (Voor stellingen via QR-codes)
   // =================================================================
 
-  // GET /api/stellingen - Get active stellingen for paid members
-  app.get("/api/stellingen", requireAuth, (req: any, res: any) => {
+  // GET /api/qr-locations/public/:slug - Get public QR location info (no auth required)
+  app.get("/api/qr-locations/public/:slug", (req: any, res: any) => {
     const db = getDb();
-    const user = req.user;
-
-    // Check if user has paid dues or is admin
-    const isPaid = user.role === "admin" || user.billingStatus === "paid";
-    if (!isPaid) {
-      return res.status(403).json({
-        error: "Exclusief voor contributiebetalende leden",
-        code: "MEMBERSHIP_DUES_REQUIRED",
-        message: "Deze peilingen zijn exclusief voor leden van Lijst van Andel waarvan de contributie is voldaan."
-      });
+    const qrLocations = db.qrLocations || [];
+    const location = qrLocations.find((l: any) => l.slug === req.params.slug || l.id === req.params.slug);
+    if (!location) {
+      return res.status(404).json({ error: "QR-locatie niet gevonden" });
     }
+    res.json(location);
+  });
 
-    const stellingen = (db.stellingen || []).filter((s: any) => s.active !== false);
+  // GET /api/admin/qr-locations - List all QR locations
+  app.get("/api/admin/qr-locations", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const qrLocations = db.qrLocations || [];
     const submissions = db.stellingSubmissions || [];
 
-    // Check if current user already submitted their answers
-    const userSubmission = submissions.find((sub: any) => sub.userId === user.id);
-
-    // Calculate response counts and participation status per stelling
-    const now = new Date();
-    const formattedList = stellingen.map((s: any) => {
-      // Count total respondents who answered this stelling
-      const totalAnswers = submissions.filter((sub: any) =>
-        sub.answers && sub.answers.some((a: any) => a.stellingId === s.id)
-      ).length;
-
-      const isDeadlinePassed = s.deadlineDate ? new Date(s.deadlineDate + "T23:59:59") < now : false;
-      const isMaxReached = s.maxParticipants && s.maxParticipants > 0 ? totalAnswers >= s.maxParticipants : false;
-      const isOpen = !isDeadlinePassed && !isMaxReached;
-
+    // Calculate submissions count per location
+    const listWithStats = qrLocations.map((loc: any) => {
+      const locationSubmissions = submissions.filter((s: any) => s.qrLocationId === loc.id || s.qrLocationId === loc.slug);
       return {
-        ...s,
-        totalAnswers,
-        isDeadlinePassed,
-        isMaxReached,
-        isOpen
+        ...loc,
+        submissionCount: locationSubmissions.length
       };
     });
 
+    res.json(listWithStats);
+  });
+
+  // POST /api/admin/qr-locations - Create a new QR location
+  app.post("/api/admin/qr-locations", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    if (!db.qrLocations) db.qrLocations = [];
+
+    const { name, stickerText, description, address, customSlug } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: "Naam van de locatie is verplicht." });
+    }
+
+    const baseSlug = (customSlug || name)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+
+    let finalSlug = baseSlug || `loc-${Date.now()}`;
+    // Check if slug exists
+    let counter = 1;
+    while (db.qrLocations.some((l: any) => l.slug === finalSlug)) {
+      finalSlug = `${baseSlug}-${counter++}`;
+    }
+
+    const newLocation = {
+      id: `qr_${Date.now()}`,
+      name: name.trim(),
+      slug: finalSlug,
+      stickerText: (stickerText || "Scan en geef direct je mening").trim(),
+      description: (description || "").trim(),
+      address: (address || "").trim(),
+      createdAt: new Date().toISOString()
+    };
+
+    db.qrLocations.push(newLocation);
+    saveDb(db);
+
+    res.status(201).json({ success: true, location: newLocation });
+  });
+
+  // PUT /api/admin/qr-locations/:id - Update QR location
+  app.put("/api/admin/qr-locations/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    if (!db.qrLocations) db.qrLocations = [];
+
+    const index = db.qrLocations.findIndex((l: any) => l.id === req.params.id);
+    if (index === -1) {
+      return res.status(404).json({ error: "Locatie niet gevonden." });
+    }
+
+    const current = db.qrLocations[index];
+    const { name, stickerText, description, address } = req.body;
+
+    const updated = {
+      ...current,
+      name: name ? name.trim() : current.name,
+      stickerText: stickerText !== undefined ? stickerText.trim() : current.stickerText,
+      description: description !== undefined ? description.trim() : current.description,
+      address: address !== undefined ? address.trim() : current.address,
+      updatedAt: new Date().toISOString()
+    };
+
+    db.qrLocations[index] = updated;
+    saveDb(db);
+
+    res.json({ success: true, location: updated });
+  });
+
+  // DELETE /api/admin/qr-locations/:id - Delete QR location
+  app.delete("/api/admin/qr-locations/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    if (!db.qrLocations) db.qrLocations = [];
+
+    db.qrLocations = db.qrLocations.filter((l: any) => l.id !== req.params.id);
+    saveDb(db);
+
+    res.json({ success: true, message: "QR Locatie verwijderd." });
+  });
+
+  // =================================================================
+  // STELLINGEN & PEILINGEN (PWA & Anonieme QR-code Peilingen)
+  // =================================================================
+
+  // GET /api/stellingen - Get active stellingen for paid members OR anonymous QR location visitors
+  app.get("/api/stellingen", (req: any, res: any) => {
+    const db = getDb();
+    const qrSlug = req.query.location as string | undefined;
+
+    let user: any = null;
+    let isAnonymousQr = false;
+    let activeQrLocation: any = null;
+
+    // Check if accessing via QR location
+    if (qrSlug) {
+      const qrLocations = db.qrLocations || [];
+      activeQrLocation = qrLocations.find((l: any) => l.slug === qrSlug || l.id === qrSlug);
+      if (activeQrLocation) {
+        isAnonymousQr = true;
+      }
+    }
+
+    // If not valid QR location, require authentication with paid dues
+    if (!isAnonymousQr) {
+      // Check auth manually from session/token since route is public-accessible with QR
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({
+          error: "Inloggen vereist",
+          code: "AUTH_REQUIRED",
+          message: "Log in met een account van Lijst van Andel om mee te doen aan peilingen, of scan een QR-code op locatie."
+        });
+      }
+
+      const token = authHeader.split(" ")[1];
+      try {
+        const decoded: any = jwt.verify(token, JWT_SECRET);
+        user = (db.users || []).find((u: any) => u.id === decoded.id);
+        if (!user) {
+          return res.status(401).json({ error: "Gebruiker niet gevonden" });
+        }
+      } catch (err) {
+        return res.status(401).json({ error: "Ongeldig of verlopen token" });
+      }
+
+      const isPaid = user.role === "admin" || user.billingStatus === "paid";
+      if (!isPaid) {
+        return res.status(403).json({
+          error: "Exclusief voor contributiebetalende leden",
+          code: "MEMBERSHIP_DUES_REQUIRED",
+          message: "Deze peilingen zijn exclusief voor leden van Lijst van Andel waarvan de contributie is voldaan."
+        });
+      }
+    }
+
+    const allStellingen = db.stellingen || [];
+    const submissions = db.stellingSubmissions || [];
+    const now = new Date();
+    const todayStr = now.toISOString().split("T")[0];
+
+    // Filter stellingen according to access mode (PWA/Login vs QR Location) and date window
+    const formattedList = allStellingen
+      .filter((s: any) => {
+        if (s.active === false) return false;
+
+        // Check start date (vanaf wanneer)
+        if (s.startDate && s.startDate > todayStr) {
+          return false; // Not yet started
+        }
+
+        // Check deadline date (tot wanneer)
+        if (s.deadlineDate && s.deadlineDate < todayStr) {
+          return false; // Expired
+        }
+
+        // Location filtering
+        if (isAnonymousQr && activeQrLocation) {
+          // If targeted to specific locations, must match this location
+          if (Array.isArray(s.targetLocations) && s.targetLocations.length > 0) {
+            const matchesLocation = s.targetLocations.includes(activeQrLocation.id) || s.targetLocations.includes(activeQrLocation.slug);
+            if (!matchesLocation) return false;
+          }
+        } else {
+          // Member PWA / Web login: Show if showInPwaAndApp is true or targetLocations is empty
+          if (s.showInPwaAndApp === false && Array.isArray(s.targetLocations) && s.targetLocations.length > 0) {
+            return false;
+          }
+        }
+
+        return true;
+      })
+      .map((s: any) => {
+        const totalAnswers = submissions.filter((sub: any) =>
+          sub.answers && sub.answers.some((a: any) => a.stellingId === s.id)
+        ).length;
+
+        const isDeadlinePassed = s.deadlineDate ? s.deadlineDate < todayStr : false;
+        const isMaxReached = s.maxParticipants && s.maxParticipants > 0 ? totalAnswers >= s.maxParticipants : false;
+        const isNotStarted = s.startDate ? s.startDate > todayStr : false;
+        const isOpen = !isDeadlinePassed && !isMaxReached && !isNotStarted;
+
+        return {
+          ...s,
+          totalAnswers,
+          isDeadlinePassed,
+          isMaxReached,
+          isOpen
+        };
+      })
+      // Only keep open ones for active polling (or if max reached, hide them from active deck)
+      .filter((s: any) => s.isOpen);
+
+    // Check if user or visitor already submitted
+    let userSubmission = null;
+    if (user) {
+      userSubmission = submissions.find((sub: any) => sub.userId === user.id);
+    }
+
     res.json({
       stellingen: formattedList,
+      isAnonymousQr,
+      activeQrLocation: activeQrLocation || null,
       hasSubmitted: !!userSubmission,
       userSubmission: userSubmission || null
     });
   });
 
-  // POST /api/stellingen/submit - Submit answers and optional fractie feedback
-  app.post("/api/stellingen/submit", requireAuth, (req: any, res: any) => {
+  // POST /api/stellingen/submit - Submit answers and optional fractie feedback (Supports member or anonymous QR)
+  app.post("/api/stellingen/submit", (req: any, res: any) => {
     const db = getDb();
-    const user = req.user;
-
-    // Check paid status
-    const isPaid = user.role === "admin" || user.billingStatus === "paid";
-    if (!isPaid) {
-      return res.status(403).json({
-        error: "Exclusief voor contributiebetalende leden",
-        code: "MEMBERSHIP_DUES_REQUIRED"
-      });
-    }
-
     if (!db.stellingSubmissions) db.stellingSubmissions = [];
 
-    const { answers, generalFeedback, isPWA } = req.body;
+    const { answers, generalFeedback, isPWA, qrLocationSlug, qrLocationId } = req.body;
 
     if (!Array.isArray(answers) || answers.length === 0) {
       return res.status(400).json({ error: "Er zijn geen antwoorden verzonden." });
     }
 
-    // Check if user already submitted - if so, update or replace
-    const existingIdx = db.stellingSubmissions.findIndex((s: any) => s.userId === user.id);
+    let user: any = null;
+    let isAnonymous = false;
+    let matchedLocation: any = null;
 
-    const submissionRecord = {
-      id: existingIdx >= 0 ? db.stellingSubmissions[existingIdx].id : `sub_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      userId: user.id,
-      username: user.username,
-      fullName: user.fullName || user.username,
-      city: user.city || "Steenwijkerland",
-      answers: answers.map((a: any) => ({
-        stellingId: a.stellingId,
-        type: a.type || "swipe",
-        value: a.value,
-        answeredAt: a.answeredAt || new Date().toISOString()
-      })),
-      generalFeedback: (generalFeedback || "").trim(),
-      submittedAt: new Date().toISOString(),
-      isPWA: !!isPWA
-    };
+    // Check if submitted via a valid QR location
+    const qrSlug = qrLocationSlug || qrLocationId;
+    if (qrSlug) {
+      const qrLocations = db.qrLocations || [];
+      matchedLocation = qrLocations.find((l: any) => l.slug === qrSlug || l.id === qrSlug);
+      if (matchedLocation) {
+        isAnonymous = true;
+      }
+    }
 
-    if (existingIdx >= 0) {
-      db.stellingSubmissions[existingIdx] = submissionRecord;
-    } else {
+    // If not anonymous QR submission, authenticate user & check paid dues
+    if (!isAnonymous) {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({
+          error: "Inloggen vereist",
+          code: "AUTH_REQUIRED",
+          message: "Log in om uw stem uit te brengen of scan een QR-code op locatie."
+        });
+      }
+
+      const token = authHeader.split(" ")[1];
+      try {
+        const decoded: any = jwt.verify(token, JWT_SECRET);
+        user = (db.users || []).find((u: any) => u.id === decoded.id);
+        if (!user) {
+          return res.status(401).json({ error: "Gebruiker niet gevonden" });
+        }
+      } catch (err) {
+        return res.status(401).json({ error: "Ongeldig of verlopen token" });
+      }
+
+      const isPaid = user.role === "admin" || user.billingStatus === "paid";
+      if (!isPaid) {
+        return res.status(403).json({
+          error: "Exclusief voor contributiebetalende leden",
+          code: "MEMBERSHIP_DUES_REQUIRED"
+        });
+      }
+    }
+
+    // Check max participants limit per stelling
+    const submissions = db.stellingSubmissions;
+    const stellingen = db.stellingen || [];
+    answers.forEach((ans: any) => {
+      const stellingObj = stellingen.find((s: any) => s.id === ans.stellingId);
+      if (stellingObj && stellingObj.maxParticipants && stellingObj.maxParticipants > 0) {
+        const currentCount = submissions.filter((sub: any) =>
+          sub.answers && sub.answers.some((a: any) => a.stellingId === ans.stellingId)
+        ).length;
+        if (currentCount >= stellingObj.maxParticipants) {
+          // Max reached, stelling is now closed
+          stellingObj.isMaxReached = true;
+        }
+      }
+    });
+
+    let submissionRecord: any;
+
+    if (isAnonymous) {
+      submissionRecord = {
+        id: `sub_qr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        isAnonymous: true,
+        qrLocationId: matchedLocation.id,
+        qrLocationName: matchedLocation.name,
+        qrLocationSlug: matchedLocation.slug,
+        fullName: `Anonieme bezoeker (${matchedLocation.name})`,
+        city: "Steenwijkerland",
+        answers: answers.map((a: any) => ({
+          stellingId: a.stellingId,
+          type: a.type || "swipe",
+          value: a.value,
+          answeredAt: a.answeredAt || new Date().toISOString()
+        })),
+        generalFeedback: (generalFeedback || "").trim(),
+        submittedAt: new Date().toISOString(),
+        isPWA: !!isPWA
+      };
       db.stellingSubmissions.push(submissionRecord);
+    } else {
+      // Member submission
+      const existingIdx = db.stellingSubmissions.findIndex((s: any) => s.userId === user.id);
+      submissionRecord = {
+        id: existingIdx >= 0 ? db.stellingSubmissions[existingIdx].id : `sub_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        userId: user.id,
+        username: user.username,
+        fullName: user.fullName || user.username,
+        city: user.city || "Steenwijkerland",
+        isAnonymous: false,
+        answers: answers.map((a: any) => ({
+          stellingId: a.stellingId,
+          type: a.type || "swipe",
+          value: a.value,
+          answeredAt: a.answeredAt || new Date().toISOString()
+        })),
+        generalFeedback: (generalFeedback || "").trim(),
+        submittedAt: new Date().toISOString(),
+        isPWA: !!isPWA
+      };
+
+      if (existingIdx >= 0) {
+        db.stellingSubmissions[existingIdx] = submissionRecord;
+      } else {
+        db.stellingSubmissions.push(submissionRecord);
+      }
     }
 
     saveDb(db);
@@ -2777,19 +3118,39 @@ async function startServer() {
     });
   });
 
-  // GET /api/admin/stellingen - Admin overview of all stellingen + submissions & statistics
+  // GET /api/admin/stellingen - Admin overview of all stellingen + submissions & detailed statistics
   app.get("/api/admin/stellingen", requireAuth, requireAdmin, (req: any, res: any) => {
     const db = getDb();
     const stellingen = db.stellingen || [];
     const submissions = db.stellingSubmissions || [];
+    const qrLocations = db.qrLocations || [];
 
     const now = new Date();
+    const todayStr = now.toISOString().split("T")[0];
 
     const perStelling: Record<string, any> = {};
+    const perLocationCount: Record<string, number> = {};
+
+    submissions.forEach((sub: any) => {
+      if (sub.qrLocationName) {
+        perLocationCount[sub.qrLocationName] = (perLocationCount[sub.qrLocationName] || 0) + 1;
+      } else if (sub.isPWA) {
+        perLocationCount["PWA App (Leden)"] = (perLocationCount["PWA App (Leden)"] || 0) + 1;
+      } else {
+        perLocationCount["Website Portaal (Leden)"] = (perLocationCount["Website Portaal (Leden)"] || 0) + 1;
+      }
+    });
 
     stellingen.forEach((s: any) => {
       const answersForThis = submissions
-        .map((sub: any) => sub.answers?.find((a: any) => a.stellingId === s.id))
+        .map((sub: any) => {
+          const ans = sub.answers?.find((a: any) => a.stellingId === s.id);
+          if (!ans) return null;
+          return {
+            ...ans,
+            location: sub.qrLocationName || (sub.isPWA ? "PWA Leden" : "Website Leden")
+          };
+        })
         .filter(Boolean);
 
       const totalResponses = answersForThis.length;
@@ -2799,21 +3160,44 @@ async function startServer() {
       let scaleSum = 0;
       let scaleCount = 0;
 
+      const locationBreakdown: Record<string, { total: number; eens: number; oneens: number; avgScale: number; scaleSum: number; scaleCount: number }> = {};
+
       answersForThis.forEach((ans: any) => {
-        if (ans.value === "eens" || ans.value === true) eensCount++;
-        else if (ans.value === "oneens" || ans.value === false) oneensCount++;
-        else if (typeof ans.value === "number") {
+        const loc = ans.location || "Onbekend";
+        if (!locationBreakdown[loc]) {
+          locationBreakdown[loc] = { total: 0, eens: 0, oneens: 0, avgScale: 0, scaleSum: 0, scaleCount: 0 };
+        }
+        locationBreakdown[loc].total++;
+
+        if (ans.value === "eens" || ans.value === true) {
+          eensCount++;
+          locationBreakdown[loc].eens++;
+        } else if (ans.value === "oneens" || ans.value === false) {
+          oneensCount++;
+          locationBreakdown[loc].oneens++;
+        } else if (typeof ans.value === "number") {
           const num = Math.min(10, Math.max(1, Math.round(ans.value)));
           scaleDistribution[num] = (scaleDistribution[num] || 0) + 1;
           scaleSum += num;
           scaleCount++;
+          locationBreakdown[loc].scaleSum += num;
+          locationBreakdown[loc].scaleCount++;
         }
       });
 
-      const isDeadlinePassed = s.deadlineDate ? new Date(s.deadlineDate + "T23:59:59") < now : false;
+      // Calculate averages for location breakdown
+      Object.keys(locationBreakdown).forEach((loc) => {
+        const item = locationBreakdown[loc];
+        item.avgScale = item.scaleCount > 0 ? Math.round((item.scaleSum / item.scaleCount) * 10) / 10 : 0;
+      });
+
+      const isNotStartedYet = s.startDate ? s.startDate > todayStr : false;
+      const isDeadlinePassed = s.deadlineDate ? s.deadlineDate < todayStr : false;
       const isMaxReached = s.maxParticipants && s.maxParticipants > 0 ? totalResponses >= s.maxParticipants : false;
 
       perStelling[s.id] = {
+        title: s.title,
+        type: s.type,
         totalResponses,
         eensCount,
         oneensCount,
@@ -2821,13 +3205,15 @@ async function startServer() {
         oneensPercentage: totalResponses > 0 && (eensCount + oneensCount > 0) ? Math.round((oneensCount / (eensCount + oneensCount)) * 100) : 0,
         scaleDistribution,
         scaleAverage: scaleCount > 0 ? Math.round((scaleSum / scaleCount) * 10) / 10 : 0,
+        isNotStartedYet,
         isDeadlinePassed,
         isMaxReached,
-        isOpen: !isDeadlinePassed && !isMaxReached && s.active !== false
+        isOpen: !isDeadlinePassed && !isMaxReached && !isNotStartedYet && s.active !== false,
+        locationBreakdown
       };
     });
 
-    // Remarks collected from members
+    // Remarks collected from members & QR locations
     const remarks = submissions
       .filter((sub: any) => sub.generalFeedback && sub.generalFeedback.trim().length > 0)
       .map((sub: any) => ({
@@ -2835,6 +3221,8 @@ async function startServer() {
         userId: sub.userId,
         fullName: sub.fullName,
         city: sub.city,
+        isAnonymous: !!sub.isAnonymous,
+        qrLocationName: sub.qrLocationName,
         generalFeedback: sub.generalFeedback,
         submittedAt: sub.submittedAt,
         isPWA: sub.isPWA
@@ -2842,10 +3230,13 @@ async function startServer() {
 
     res.json({
       stellingen,
+      qrLocations,
       submissions,
       stats: {
         totalSubmissions: submissions.length,
-        totalParticipants: new Set(submissions.map((s: any) => s.userId)).size,
+        totalParticipants: new Set(submissions.filter((s: any) => !s.isAnonymous).map((s: any) => s.userId)).size,
+        totalAnonymous: submissions.filter((s: any) => s.isAnonymous).length,
+        perLocationCount,
         perStelling,
         remarks
       }
@@ -2864,8 +3255,11 @@ async function startServer() {
       type,
       scaleMinLabel,
       scaleMaxLabel,
+      startDate,
       deadlineDate,
       maxParticipants,
+      targetLocations,
+      showInPwaAndApp,
       active
     } = req.body;
 
@@ -2874,6 +3268,17 @@ async function startServer() {
     }
 
     const imageUrl = req.file ? `/uploads/stellingen/${req.file.filename}` : (req.body.imageUrl || "/assets/stemmen.jpg");
+
+    let parsedLocations: string[] = [];
+    if (Array.isArray(targetLocations)) {
+      parsedLocations = targetLocations;
+    } else if (typeof targetLocations === "string") {
+      try {
+        parsedLocations = JSON.parse(targetLocations);
+      } catch {
+        parsedLocations = targetLocations.split(",").map((s) => s.trim()).filter(Boolean);
+      }
+    }
 
     const newStelling = {
       id: `stelling_${Date.now()}`,
@@ -2884,8 +3289,11 @@ async function startServer() {
       type: type === "scale" ? "scale" : "swipe",
       scaleMinLabel: (scaleMinLabel || "1 - Helemaal oneens").trim(),
       scaleMaxLabel: (scaleMaxLabel || "10 - Volledig mee eens").trim(),
+      startDate: startDate || "",
       deadlineDate: deadlineDate || "",
       maxParticipants: maxParticipants ? parseInt(maxParticipants, 10) : undefined,
+      targetLocations: parsedLocations,
+      showInPwaAndApp: showInPwaAndApp === "false" || showInPwaAndApp === false ? false : true,
       active: active === "false" || active === false ? false : true,
       createdAt: new Date().toISOString(),
       createdBy: req.user.username || "Admin"
@@ -2915,12 +3323,28 @@ async function startServer() {
       type,
       scaleMinLabel,
       scaleMaxLabel,
+      startDate,
       deadlineDate,
       maxParticipants,
+      targetLocations,
+      showInPwaAndApp,
       active
     } = req.body;
 
     const imageUrl = req.file ? `/uploads/stellingen/${req.file.filename}` : (req.body.imageUrl || current.imageUrl);
+
+    let parsedLocations: string[] = current.targetLocations || [];
+    if (targetLocations !== undefined) {
+      if (Array.isArray(targetLocations)) {
+        parsedLocations = targetLocations;
+      } else if (typeof targetLocations === "string") {
+        try {
+          parsedLocations = JSON.parse(targetLocations);
+        } catch {
+          parsedLocations = targetLocations.split(",").map((s) => s.trim()).filter(Boolean);
+        }
+      }
+    }
 
     const updated = {
       ...current,
@@ -2931,8 +3355,11 @@ async function startServer() {
       type: type === "scale" ? "scale" : "swipe",
       scaleMinLabel: scaleMinLabel !== undefined ? scaleMinLabel.trim() : current.scaleMinLabel,
       scaleMaxLabel: scaleMaxLabel !== undefined ? scaleMaxLabel.trim() : current.scaleMaxLabel,
+      startDate: startDate !== undefined ? startDate : current.startDate,
       deadlineDate: deadlineDate !== undefined ? deadlineDate : current.deadlineDate,
       maxParticipants: maxParticipants !== undefined && maxParticipants !== "" ? parseInt(maxParticipants, 10) : undefined,
+      targetLocations: parsedLocations,
+      showInPwaAndApp: showInPwaAndApp !== undefined ? (showInPwaAndApp === "true" || showInPwaAndApp === true) : current.showInPwaAndApp !== false,
       active: active === "false" || active === false ? false : true,
       updatedAt: new Date().toISOString()
     };
