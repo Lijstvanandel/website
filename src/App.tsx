@@ -7,6 +7,7 @@ import { Layout } from "./components/Layout";
 import { ThemeProvider } from "./hooks/use-theme";
 import { AuthProvider } from "./context/AuthContext";
 import { AccessibilityProvider } from "./context/AccessibilityContext";
+import { PWARedirectHandler } from "./components/PWARedirectHandler";
 import Home from "./pages/Home";
 import Raadsleden from "./pages/Raadsleden";
 import FractielidVideos from "./pages/FractielidVideos";
@@ -42,6 +43,7 @@ const App = () => (
             <Toaster />
             <Sonner />
             <BrowserRouter>
+              <PWARedirectHandler />
               <Routes>
                 <Route element={<Layout />}>
                   <Route path="/" element={<Home />} />

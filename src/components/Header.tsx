@@ -18,6 +18,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { BelafspraakDialog } from "./BelafspraakDialog";
+import { PWAInstallButton } from "./PWAInstallButton";
 import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/context/AuthContext";
 import { ColorBlindMode } from "@/context/AccessibilityContext";
@@ -248,6 +249,9 @@ export const Header = () => {
                 <span>Doneren</span>
               </Button>
             </Link>
+
+            {/* PWA Install Button */}
+            <PWAInstallButton variant="header" />
 
             <div className="hidden sm:block w-[1px] h-6 bg-border mx-0.5" />
 
@@ -570,6 +574,10 @@ export const Header = () => {
                     <span>Doneren aan de partij</span>
                   </Button>
                 </Link>
+
+                <div className="w-full">
+                  <PWAInstallButton variant="header" className="w-full justify-center h-10" />
+                </div>
 
                 {isAuthenticated ? (
                   <div className="flex flex-col gap-2">

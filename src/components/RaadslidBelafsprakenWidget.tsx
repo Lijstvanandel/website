@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { PushNotificationManager } from "./PushNotificationManager";
 
 export interface BelafspraakItem {
   id: string;
@@ -235,6 +236,11 @@ export function RaadslidBelafsprakenWidget({ token, currentUser }: Props) {
               Zie allen ({appointments.length})
             </Button>
           </div>
+        </div>
+
+        {/* Push Notificaties Manager voor raadslid */}
+        <div className="pt-4">
+          <PushNotificationManager token={token} />
         </div>
 
         {/* List of upcoming appointments */}

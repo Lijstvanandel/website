@@ -27,6 +27,13 @@ import {
   generateTicketQRCodeDataUrl,
   buildTicketEmailHtml,
 } from "./src/server/ticketService.js";
+import {
+  ensureVapidKeys,
+  savePushSubscription,
+  removePushSubscription,
+  sendPushNotificationToUser,
+  notifyRaadslidForBelafspraak,
+} from "./src/server/pushService.js";
 
 // Ensure .env is explicitly loaded from working directory in case of PM2 or systemd execution
 function ensureEnvLoaded() {
@@ -4488,11 +4495,83 @@ async function startServer() {
     db.belafspraken.unshift(newBelafspraak);
     saveDb(db);
 
+    // Asynchronously dispatch push notification to linked raadslid / council members
+    try {
+      notifyRaadslidForBelafspraak(db, newBelafspraak, saveDb).catch((err: any) => {
+        console.warn("Fout bij versturen push notificatie voor belafspraak:", err);
+      });
+    } catch (err: any) {
+      console.warn("Fout bij triggeren push notificatie:", err);
+    }
+
     res.status(201).json({
       success: true,
       message: "Belafspraak succesvol ingepland! We nemen contact met u op.",
       data: newBelafspraak
     });
+  });
+
+  // Push Notifications API endpoints
+  app.get("/api/push/vapid-public-key", (req, res) => {
+    const db = getDb();
+    const { publicKey } = ensureVapidKeys(db, saveDb);
+    res.json({ publicKey });
+  });
+
+  app.post("/api/push/subscribe", requireAuth, (req: any, res: any) => {
+    const db = getDb();
+    const { subscription, userAgent } = req.body;
+    if (!subscription || !subscription.endpoint) {
+      return res.status(400).json({ error: "Ongeldige push subscription gegevens" });
+    }
+
+    const saved = savePushSubscription(db, req.user, subscription, userAgent, saveDb);
+    if (!saved) {
+      return res.status(400).json({ error: "Kon push subscription niet opslaan" });
+    }
+
+    res.json({ success: true, message: "Push notificaties succesvol geactiveerd" });
+  });
+
+  app.post("/api/push/unsubscribe", requireAuth, (req: any, res: any) => {
+    const db = getDb();
+    const { endpoint } = req.body;
+    removePushSubscription(db, req.user.id, endpoint, saveDb);
+    res.json({ success: true, message: "Push subscription verwijderd" });
+  });
+
+  app.get("/api/push/status", requireAuth, (req: any, res: any) => {
+    const db = getDb();
+    const subs = (db.pushSubscriptions || []).filter((s: any) => s.userId === req.user.id);
+    res.json({
+      isSubscribed: subs.length > 0,
+      subscriptionCount: subs.length
+    });
+  });
+
+  app.post("/api/push/test", requireAuth, async (req: any, res: any) => {
+    const db = getDb();
+    const payload = {
+      title: "🔔 Test Notificatie — Lijst van Andel",
+      body: `Hallo ${req.user.fullName || req.user.username}! Uw PWA push notificaties voor belafspraken werken perfect.`,
+      url: "/dashboard",
+      tag: "test-notification"
+    };
+
+    try {
+      const result = await sendPushNotificationToUser(db, req.user.id, payload, saveDb);
+      if (result.sent === 0 && result.failed === 0) {
+        return res.status(404).json({ error: "Geen actieve push subscriptions gevonden voor uw account op dit apparaat. Schakel eerst notificaties in." });
+      }
+      res.json({
+        success: true,
+        message: `Testnotificatie verzonden naar ${result.sent} apparaat/apparaten`,
+        sent: result.sent,
+        failed: result.failed
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Fout bij verzenden van testnotificatie" });
+    }
   });
 
   // Authenticated: Get belafspraken for current logged-in user (or all if admin)
