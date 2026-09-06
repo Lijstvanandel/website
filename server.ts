@@ -1166,7 +1166,7 @@ async function startServer() {
   });
 
   const handleLoginLogic = async (req: any, res: any) => {
-    const { username, password } = req.body;
+    const { username, password, rememberMe } = req.body;
     if (!username || !password) {
       return res.status(400).json({ error: "Gebruikersnaam of e-mailadres en wachtwoord zijn verplicht." });
     }
@@ -1185,7 +1185,8 @@ async function startServer() {
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (isMatch) {
-      const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: "30d" });
+      const tokenExpiresIn = rememberMe !== false ? "365d" : "1d";
+      const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: tokenExpiresIn });
       const resolvedEmail = user.email || (user.username.includes("@") ? user.username : "");
       const newsletterSubscribed = user.newsletterSubscribed !== undefined ? Boolean(user.newsletterSubscribed) : true;
       res.status(200).json({ 

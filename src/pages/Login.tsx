@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -17,6 +17,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Form,
   FormControl,
@@ -38,6 +39,7 @@ import { useAuth } from "@/context/AuthContext";
 const loginSchema = z.object({
   username: z.string().min(1, "Gebruikersnaam of e-mailadres is verplicht"),
   password: z.string().min(1, "Wachtwoord is verplicht"),
+  rememberMe: z.boolean().default(true),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
@@ -64,9 +66,16 @@ const memberBenefits = [
 export default function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { login } = useAuth();
+  const { login, isAuthenticated, loading } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const redirectUrl = searchParams.get("redirect");
+
+  // Auto-redirect if already logged in
+  useEffect(() => {
+    if (!loading && isAuthenticated) {
+      navigate(redirectUrl || "/dashboard", { replace: true });
+    }
+  }, [isAuthenticated, loading, navigate, redirectUrl]);
 
   // Forgot password state
   const [forgotOpen, setForgotOpen] = useState(false);
@@ -75,11 +84,19 @@ export default function Login() {
   const [forgotSent, setForgotSent] = useState(false);
   const [previewResetUrl, setPreviewResetUrl] = useState<string | null>(null);
 
+  const savedUsername =
+    typeof window !== "undefined" ? localStorage.getItem("saved_username") || "" : "";
+  const savedRemember =
+    typeof window !== "undefined"
+      ? localStorage.getItem("auth_remember") !== "false"
+      : true;
+
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      username: "",
+      username: savedUsername,
       password: "",
+      rememberMe: savedRemember,
     },
   });
 
@@ -100,7 +117,14 @@ export default function Login() {
         throw new Error(result.error || "Inloggen mislukt");
       }
 
-      login(result.user, result.token);
+      login(result.user, result.token, data.rememberMe);
+
+      if (data.rememberMe) {
+        localStorage.setItem("saved_username", data.username.trim());
+      } else {
+        localStorage.removeItem("saved_username");
+      }
+
       toast.success("Succesvol ingelogd", {
         description: `Welkom terug, ${result.user.name || result.user.username}!`,
       });
@@ -208,6 +232,34 @@ export default function Login() {
                       <Input type="password" placeholder="Uw wachtwoord" {...field} />
                     </FormControl>
                     <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="rememberMe"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-lg border border-accent/20 bg-accent/5 p-3.5 shadow-sm transition-colors hover:bg-accent/10">
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        id="remember-me-checkbox"
+                        className="mt-0.5"
+                      />
+                    </FormControl>
+                    <div className="space-y-1 leading-none select-none">
+                      <label
+                        htmlFor="remember-me-checkbox"
+                        className="text-sm font-medium text-foreground cursor-pointer"
+                      >
+                        Onthoud mij op dit apparaat
+                      </label>
+                      <p className="text-xs text-foreground/70">
+                        Automatisch ingelogd blijven in de PWA app en browser.
+                      </p>
+                    </div>
                   </FormItem>
                 )}
               />
