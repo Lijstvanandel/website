@@ -124,6 +124,29 @@ export default function NewsletterManager({ token: propToken }: NewsletterManage
   const [sendingLive, setSendingLive] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
 
+  // SMTP diagnostics
+  const [smtpStatus, setSmtpStatus] = useState<{ configured?: boolean; verified?: boolean; host?: string; port?: string; message?: string } | null>(null);
+  const [checkingSmtp, setCheckingSmtp] = useState(false);
+
+  const checkSmtp = async () => {
+    setCheckingSmtp(true);
+    try {
+      const res = await fetch("/api/admin/system/smtp-status", { headers: getAuthHeaders() });
+      const data = await res.json();
+      setSmtpStatus(data);
+    } catch (e: any) {
+      setSmtpStatus({ configured: false, message: e.message || "Kon SMTP-status niet ophalen" });
+    } finally {
+      setCheckingSmtp(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isTestEmailOpen && !smtpStatus) {
+      checkSmtp();
+    }
+  }, [isTestEmailOpen]);
+
   // New Subscriber manual form
   const [newSubEmail, setNewSubEmail] = useState("");
   const [newSubName, setNewSubName] = useState("");
@@ -1230,6 +1253,50 @@ export default function NewsletterManager({ token: propToken }: NewsletterManage
           </DialogHeader>
 
           <div className="space-y-3 my-2 text-xs">
+            {/* SMTP Status banner */}
+            {checkingSmtp ? (
+              <div className="p-2.5 rounded bg-muted/40 border border-muted text-muted-foreground flex items-center gap-2">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-accent" />
+                <span>SMTP-verbindingsstatus controleren...</span>
+              </div>
+            ) : smtpStatus ? (
+              <div className={`p-2.5 rounded border text-[11px] ${
+                smtpStatus.verified 
+                  ? "bg-accent/10 border-accent/30 text-accent" 
+                  : smtpStatus.configured
+                  ? "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400"
+                  : "bg-destructive/10 border-destructive/30 text-destructive"
+              }`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-1.5 font-semibold">
+                    {smtpStatus.verified ? (
+                      <CheckCircle2 className="w-4 h-4 shrink-0 text-accent" />
+                    ) : (
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                    )}
+                    <span>
+                      {smtpStatus.verified
+                        ? `SMTP Server Actief (${smtpStatus.host}:${smtpStatus.port})`
+                        : smtpStatus.configured
+                        ? "SMTP Geconfigureerd maar verbinding mislukt"
+                        : "SMTP Niet Geconfigureerd in .env"}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={checkSmtp}
+                    disabled={checkingSmtp}
+                    className="text-[10px] underline hover:opacity-80"
+                  >
+                    Opnieuw testen
+                  </button>
+                </div>
+                <p className="mt-1 text-muted-foreground leading-tight">
+                  {smtpStatus.message}
+                </p>
+              </div>
+            ) : null}
+
             <div>
               <label className="font-semibold block mb-1">E-mailadres voor testontvangst</label>
               <Input

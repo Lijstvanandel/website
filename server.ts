@@ -1,3 +1,6 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import express from "express";
 import compression from "compression";
 import path from "path";
@@ -16,6 +19,19 @@ import { BUURTKAART_43_WIJKEN, syncWijkenWithBuurtkaart, LEGACY_SLUG_MAP } from 
 import { getPageMetadata, injectMetadataIntoHtml } from "./src/server/metaGenerator.js";
 import { generateNewsletterHtml, generateNewsletterText, prepareNewsletterForDispatch } from "./src/server/newsletterTemplate.js";
 
+// Ensure .env is explicitly loaded from working directory in case of PM2 or systemd execution
+const envFileCandidate = path.join(process.cwd(), ".env");
+if (fs.existsSync(envFileCandidate)) {
+  dotenv.config({ path: envFileCandidate, override: false });
+  if (typeof (process as any).loadEnvFile === "function") {
+    try {
+      (process as any).loadEnvFile(envFileCandidate);
+    } catch (e) {
+      // already parsed
+    }
+  }
+}
+
 // NodeMailer helper logic
 function getEmailTransporter() {
   const host = process.env.SMTP_HOST;
@@ -31,6 +47,12 @@ function getEmailTransporter() {
     port,
     secure,
     auth: { user, pass },
+    tls: {
+      rejectUnauthorized: false,
+    },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
   });
 }
 
@@ -41,17 +63,21 @@ async function sendTransactionalEmail(
   text?: string,
   headers?: Record<string, string>,
   attachments?: any[]
-): Promise<boolean> {
+): Promise<{ success: boolean; simulated?: boolean; error?: string; messageId?: string }> {
   const transporter = getEmailTransporter();
   const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER || '"Lijst van Andel" <info@lijstvanandel.nl>';
 
   if (!transporter) {
-    console.log(`[EMAIL DISPATCH - SIMULATION MODE]
+    console.warn(`[EMAIL DISPATCH - SIMULATION MODE]
   Geen SMTP-configuratie gevonden in omgevingsvariabelen (SMTP_HOST, SMTP_USER, SMTP_PASS).
   Naar: ${to}
   Onderwerp: ${subject}
   Preview text: ${text || html.replace(/<[^>]+>/g, "").slice(0, 150)}...`);
-    return false;
+    return {
+      success: false,
+      simulated: true,
+      error: "Geen SMTP-configuratie gevonden op de server (SMTP_HOST, SMTP_USER of SMTP_PASS ontbreekt in .env)."
+    };
   }
 
   try {
@@ -70,10 +96,10 @@ async function sendTransactionalEmail(
     }
     const info = await transporter.sendMail(mailOptions);
     console.log(`[EMAIL DISPATCH - VERZONDEN VIA SMTP] E-mail succesvol verstuurd naar ${to}, Message ID: ${info.messageId}`);
-    return true;
+    return { success: true, messageId: info.messageId };
   } catch (err: any) {
     console.error(`[EMAIL DISPATCH - FOUT BIJ VERZENDEN VIA SMTP]:`, err.message);
-    return false;
+    return { success: false, error: err.message };
   }
 }
 
@@ -2264,7 +2290,7 @@ async function startServer() {
       const dispatchPkg = prepareNewsletterForDispatch(newsletter, targetEmail, baseUrl, testToken, publicDir);
       const unsubscribeUrl = `${baseUrl.replace(/\/+$/, "")}/nieuwsbrief/afmelden?email=${encodeURIComponent(targetEmail)}&token=${encodeURIComponent(testToken)}`;
 
-      const sent = await sendTransactionalEmail(
+      const dispatchResult = await sendTransactionalEmail(
         targetEmail,
         testSubject,
         dispatchPkg.html,
@@ -2276,14 +2302,20 @@ async function startServer() {
         dispatchPkg.attachments
       );
 
+      if (!dispatchResult.success) {
+        return res.status(500).json({
+          error: dispatchResult.simulated
+            ? "SMTP-configuratie ontbreekt op deze server. Voeg SMTP_HOST, SMTP_USER en SMTP_PASS toe aan het .env bestand (/var/www/lijst-van-andel/.env) en herstart de server."
+            : `Fout bij verzenden via SMTP-server (${process.env.SMTP_HOST || 'onbekend'}): ${dispatchResult.error}`
+        });
+      }
+
       return res.json({
         success: true,
         isTest: true,
-        delivered: sent,
+        delivered: true,
         recipient: targetEmail,
-        message: sent
-          ? `Test e-mail succesvol verzonden naar ${targetEmail}!`
-          : `Test e-mail gesimuleerd naar ${targetEmail} (zie console/server logs).`
+        message: `Test e-mail succesvol verzonden naar ${targetEmail}!`
       });
     }
 
@@ -2300,7 +2332,7 @@ async function startServer() {
       const unsubscribeUrl = `${baseUrl.replace(/\/+$/, "")}/nieuwsbrief/afmelden?email=${encodeURIComponent(recipient.email)}&token=${encodeURIComponent(token)}`;
 
       try {
-        await sendTransactionalEmail(
+        const sendRes = await sendTransactionalEmail(
           recipient.email,
           newsletter.subject,
           dispatchPkg.html,
@@ -2311,10 +2343,20 @@ async function startServer() {
           },
           dispatchPkg.attachments
         );
-        sentCount++;
+        if (sendRes.success) {
+          sentCount++;
+        } else {
+          console.error(`Fout bij verzenden naar ${recipient.email}:`, sendRes.error);
+        }
       } catch (err: any) {
         console.error(`Fout bij verzenden naar ${recipient.email}:`, err.message);
       }
+    }
+
+    if (sentCount === 0) {
+      return res.status(500).json({
+        error: "Nieuwsbrief kon naar geen enkele abonnee verzonden worden. Controleer de SMTP-instellingen in .env en de serverlogs."
+      });
     }
 
     // Save sent newsletter in archive
@@ -2325,6 +2367,7 @@ async function startServer() {
       status: "sent",
       sentAt: new Date().toISOString(),
       recipientCount: recipients.length,
+      sentCount,
       sentBy: req.user.username || "Admin"
     };
 
@@ -2340,8 +2383,57 @@ async function startServer() {
       success: true,
       recipientCount: recipients.length,
       sentCount,
-      message: `Nieuwsbrief '${newsletter.subject}' is succesvol verzonden naar ${recipients.length} abonnees!`
+      message: `Nieuwsbrief '${newsletter.subject}' is succesvol verzonden naar ${sentCount} van de ${recipients.length} abonnees!`
     });
+  });
+
+  // Admin: Check / Test SMTP Configuration
+  app.get("/api/admin/system/smtp-status", requireAuth, requireAdmin, async (req: any, res: any) => {
+    const host = process.env.SMTP_HOST || "";
+    const user = process.env.SMTP_USER || "";
+    const pass = process.env.SMTP_PASS || "";
+    const port = process.env.SMTP_PORT || "587";
+
+    if (!host || !user || !pass) {
+      return res.json({
+        configured: false,
+        host: host || null,
+        user: user || null,
+        port,
+        hasPass: !!pass,
+        message: "SMTP is nog NIET volledig geconfigureerd in .env (host, user of pass ontbreekt)."
+      });
+    }
+
+    const transporter = getEmailTransporter();
+    if (!transporter) {
+      return res.json({
+        configured: false,
+        message: "Kon geen e-mail transporter aanmaken."
+      });
+    }
+
+    try {
+      await transporter.verify();
+      return res.json({
+        configured: true,
+        verified: true,
+        host,
+        user,
+        port,
+        message: `SMTP-verbinding met ${host}:${port} is succesvol geverifieerd!`
+      });
+    } catch (err: any) {
+      return res.json({
+        configured: true,
+        verified: false,
+        host,
+        user,
+        port,
+        error: err.message,
+        message: `SMTP-verbinding of authenticatie met ${host}:${port} is mislukt: ${err.message}`
+      });
+    }
   });
 
   // Admin Routes - Fractieleden

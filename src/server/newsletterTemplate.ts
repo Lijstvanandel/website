@@ -182,7 +182,7 @@ export function generateNewsletterHtml(
                 let badgeBg = "#1a2e21";
                 let badgeColor = goldColor;
                 let badgeBorder = "#2b4231";
-                let badgeText = item.type === "video" ? "VIDEO" : item.type === "event" ? "AGENDA EVENEMENT" : "NIEUWS";
+                const badgeText = item.type === "video" ? "VIDEO" : item.type === "event" ? "AGENDA EVENEMENT" : "NIEUWS";
 
                 if (item.type === "video") {
                   badgeBg = "#2a1515";
