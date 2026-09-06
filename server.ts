@@ -4302,22 +4302,40 @@ async function startServer() {
   // --- ADMIN SYSTEM, CACHE & GITHUB UPDATE ENDPOINTS ---
   async function runCmd(cmd: string, timeout = 120000) {
     try {
-      const normalizedCmd = cmd.startsWith("git ")
-        ? cmd.replace(/^git\s+/, "git -c safe.directory=* ")
-        : cmd;
-      const res = await execPromise(normalizedCmd, {
-        cwd: process.cwd(),
-        timeout,
-        maxBuffer: 10 * 1024 * 1024,
-        env: {
-          ...process.env,
-          GIT_CONFIG_COUNT: "1",
-          GIT_CONFIG_KEY_0: "safe.directory",
-          GIT_CONFIG_VALUE_0: "*",
-          GIT_TERMINAL_PROMPT: "0"
+      let res;
+      try {
+        const normalizedCmd = cmd.startsWith("git ")
+          ? cmd.replace(/^git\s+/, "git -c safe.directory=* ")
+          : cmd;
+        res = await execPromise(normalizedCmd, {
+          cwd: process.cwd(),
+          timeout,
+          maxBuffer: 10 * 1024 * 1024,
+          env: {
+            ...process.env,
+            GIT_CONFIG_COUNT: "1",
+            GIT_CONFIG_KEY_0: "safe.directory",
+            GIT_CONFIG_VALUE_0: "*",
+            GIT_TERMINAL_PROMPT: "0"
+          }
+        });
+      } catch (firstErr: any) {
+        // Fallback to plain command without -c safe.directory=* if git rejected options
+        if (cmd.startsWith("git ")) {
+          res = await execPromise(cmd, {
+            cwd: process.cwd(),
+            timeout,
+            maxBuffer: 10 * 1024 * 1024,
+            env: {
+              ...process.env,
+              GIT_TERMINAL_PROMPT: "0"
+            }
+          });
+        } else {
+          throw firstErr;
         }
-      });
-      return { stdout: (res.stdout || "").toString().trim(), stderr: (res.stderr || "").toString().trim(), success: true };
+      }
+      return { stdout: (res?.stdout || "").toString().trim(), stderr: (res?.stderr || "").toString().trim(), success: true };
     } catch (err: any) {
       return {
         stdout: (err.stdout || "").toString().trim(),
@@ -4390,6 +4408,10 @@ async function startServer() {
 
   // 1. Get system & Git status
   app.get("/api/admin/system/status", requireAuth, requireAdmin, async (req: any, res: any) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+
     const isGitRepo = fs.existsSync(path.join(process.cwd(), ".git"));
     let branch = "main";
     let currentCommit = {
@@ -4431,7 +4453,7 @@ async function startServer() {
 
     if (isGitRepo) {
       const bRes = await runCmd("git rev-parse --abbrev-ref HEAD");
-      if (bRes.success && bRes.stdout) branch = bRes.stdout;
+      if (bRes.success && bRes.stdout && bRes.stdout !== "HEAD") branch = bRes.stdout;
 
       const logRes = await runCmd('git log -1 --format="%h||%H||%s||%an||%cd"');
       if (logRes.success && logRes.stdout) {
@@ -4468,6 +4490,29 @@ async function startServer() {
                   branch,
                   commitUrl: `https://github.com/Lijstvanandel/website/commit/${h}`
                 };
+              } else {
+                const packedPath = path.join(process.cwd(), ".git", "packed-refs");
+                if (fs.existsSync(packedPath)) {
+                  const packed = fs.readFileSync(packedPath, "utf-8");
+                  for (const line of packed.split("\n")) {
+                    const trimmed = line.trim();
+                    if (trimmed && !trimmed.startsWith("#") && !trimmed.startsWith("^") && trimmed.includes(refRel)) {
+                      const h = trimmed.split(/\s+/)[0];
+                      if (h && h.length >= 7) {
+                        currentCommit = {
+                          hash: h.substring(0, 7),
+                          fullHash: h,
+                          message: "Actieve commit uit git packed-refs",
+                          author: "Git",
+                          date: new Date().toISOString(),
+                          branch,
+                          commitUrl: `https://github.com/Lijstvanandel/website/commit/${h}`
+                        };
+                        break;
+                      }
+                    }
+                  }
+                }
               }
             } else if (headContent.length >= 7) {
               currentCommit = {
@@ -4523,6 +4568,10 @@ async function startServer() {
 
   // 3. Check for updates from GitHub
   app.post("/api/admin/system/check-updates", requireAuth, requireAdmin, async (req: any, res: any) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+
     const isGitRepo = fs.existsSync(path.join(process.cwd(), ".git"));
     let branch = "main";
     let repoName = "Lijstvanandel/website";
@@ -4782,7 +4831,7 @@ async function startServer() {
       setTimeout(async () => {
         try {
           console.log("[System] Herladen van PM2 proces na voltooide update...");
-          await runCmd("pm2 reload all || pm2 restart all");
+          await runCmd("pm2 restart lijst-van-andel --update-env || pm2 restart all || pm2 reload all --update-env");
         } catch (e) {
           console.error("Fout bij uitvoeren van pm2 reload:", e);
         }

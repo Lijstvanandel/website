@@ -18,6 +18,7 @@ import {
   RotateCcw
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { fetchWithAuth } from "@/lib/api";
 
 interface SystemStatus {
   isGitRepo: boolean;
@@ -98,7 +99,7 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ token }) => {
   const fetchStatus = useCallback(async () => {
     try {
       setLoadingStatus(true);
-      const res = await fetch("/api/admin/system/status", { headers });
+      const res = await fetchWithAuth(`/api/admin/system/status?t=${Date.now()}`);
       if (res.ok) {
         const data = await res.json();
         setStatus(data);
@@ -108,7 +109,7 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ token }) => {
     } finally {
       setLoadingStatus(false);
     }
-  }, [headers]);
+  }, []);
 
   useEffect(() => {
     fetchStatus();
@@ -152,9 +153,8 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ token }) => {
     try {
       setClearingCache(true);
       setFeedback(null);
-      const res = await fetch("/api/admin/system/clear-cache", {
+      const res = await fetchWithAuth("/api/admin/system/clear-cache", {
         method: "POST",
-        headers,
       });
       const data = await safeParseResponse(res);
       if (res.ok && data.success) {
@@ -179,9 +179,8 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ token }) => {
       setFeedback(null);
       appendLog(`[${new Date().toLocaleTimeString()}] Controleren op wijzigingen in GitHub repository...`);
 
-      const res = await fetch("/api/admin/system/check-updates", {
+      const res = await fetchWithAuth(`/api/admin/system/check-updates?t=${Date.now()}`, {
         method: "POST",
-        headers,
       });
       const data: CheckUpdatesResult = await safeParseResponse(res);
       setUpdateResult(data);
@@ -226,9 +225,8 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ token }) => {
       setFeedback(null);
       appendLog(`[${new Date().toLocaleTimeString()}] Start geautomatiseerde update- en bouwcyclus...`);
 
-      const res = await fetch("/api/admin/system/full-sync", {
+      const res = await fetchWithAuth("/api/admin/system/full-sync", {
         method: "POST",
-        headers,
         body: JSON.stringify({ force }),
       });
       const data = await safeParseResponse(res);
