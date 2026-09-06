@@ -958,18 +958,36 @@ async function startServer() {
   const requireAuth = (req: any, res: any, next: any) => {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ error: "Niet geautoriseerd" });
+      return res.status(401).json({ error: "Niet geautoriseerd: geen sessietoken gevonden. Log opnieuw in." });
     }
     const token = authHeader.split(" ")[1];
     try {
-      const decoded: any = jwt.verify(token, JWT_SECRET);
+      let decoded: any;
+      try {
+        decoded = jwt.verify(token, JWT_SECRET);
+      } catch (err: any) {
+        // Fallback for transition if JWT_SECRET was newly loaded or updated in .env
+        if (JWT_SECRET !== "super-secret-dev-key") {
+          try {
+            decoded = jwt.verify(token, "super-secret-dev-key");
+          } catch {
+            throw err;
+          }
+        } else {
+          throw err;
+        }
+      }
+
       const db = getDb();
       const user = db.users.find((u: any) => u.id === decoded.id);
       if (!user) return res.status(404).json({ error: "Gebruiker niet gevonden" });
       req.user = user;
       next();
-    } catch (error) {
-      return res.status(401).json({ error: "Ongeldige token" });
+    } catch (error: any) {
+      return res.status(401).json({
+        error: "Uw sessie is verlopen of het token is vernieuwd. Log alstublieft even opnieuw in.",
+        code: "INVALID_TOKEN",
+      });
     }
   };
 

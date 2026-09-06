@@ -400,7 +400,12 @@ export default function NewsletterManager({ token: propToken }: NewsletterManage
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Testmail verzenden mislukt");
+      if (!res.ok) {
+        if (res.status === 401) {
+          throw new Error("Uw beheerderssessie is verlopen of vernieuwd. Log alstublieft even opnieuw in via het menu.");
+        }
+        throw new Error(data.error || "Testmail verzenden mislukt");
+      }
       toast.success(data.message || `Testmail verzonden naar ${testEmailAddress}!`);
       setIsTestEmailOpen(false);
     } catch (err: any) {
@@ -423,7 +428,12 @@ export default function NewsletterManager({ token: propToken }: NewsletterManage
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Verzenden mislukt");
+      if (!res.ok) {
+        if (res.status === 401) {
+          throw new Error("Uw beheerderssessie is verlopen of vernieuwd. Log alstublieft even opnieuw in via het menu.");
+        }
+        throw new Error(data.error || "Verzenden mislukt");
+      }
       toast.success(data.message || "Nieuwsbrief succesvol verzonden!");
       setIsSendConfirmOpen(false);
       loadContent();
