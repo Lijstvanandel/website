@@ -159,6 +159,8 @@ export default function Polls() {
   const [accessDenied, setAccessDenied] = useState(false);
   const [deniedReason, setDeniedReason] = useState("");
   const [hasAlreadySubmitted, setHasAlreadySubmitted] = useState(false);
+  const [hasSubmittedAllActive, setHasSubmittedAllActive] = useState(false);
+  const [totalActiveCount, setTotalActiveCount] = useState(0);
   const [activeQrLocation, setActiveQrLocation] = useState<QrLocation | null>(null);
   const [isAnonymousQr, setIsAnonymousQr] = useState(false);
 
@@ -219,7 +221,9 @@ export default function Polls() {
       setActiveQrLocation(data.activeQrLocation || null);
       const list = (data.stellingen || []).filter((s: StellingItem) => s.active !== false);
       setStellingen(list);
+      setTotalActiveCount(data.totalActiveStellingenCount || list.length);
       setHasAlreadySubmitted(!!data.hasSubmitted);
+      setHasSubmittedAllActive(!!data.hasSubmittedAllActive);
     } catch (err) {
       console.error(err);
       toast.error("Fout bij laden van stellingen via QR-code.");
@@ -247,7 +251,9 @@ export default function Polls() {
 
       const list = (data.stellingen || []).filter((s: StellingItem) => s.active !== false);
       setStellingen(list);
+      setTotalActiveCount(data.totalActiveStellingenCount || list.length);
       setHasAlreadySubmitted(!!data.hasSubmitted);
+      setHasSubmittedAllActive(!!data.hasSubmittedAllActive);
     } catch (err) {
       console.error(err);
       toast.error("Fout bij ophalen van fractiepeilingen.");
@@ -408,35 +414,59 @@ export default function Polls() {
     );
   }
 
-  // 3. Geen actieve stellingen beschikbaar
+  // 3. Geen actieve stellingen beschikbaar of reeds alles beantwoord
   if (stellingen.length === 0) {
     return (
-      <div className="pt-32 pb-24 min-h-screen bg-background flex items-center justify-center px-4">
-        <div className="max-w-md w-full bg-card p-8 rounded-3xl border border-border shadow-xl text-center space-y-5">
-          <div className="w-16 h-16 bg-primary/10 text-primary rounded-2xl flex items-center justify-center mx-auto">
-            <CheckCircle2 className="w-8 h-8" />
+      <div className="pt-32 pb-24 min-h-screen bg-background flex items-center justify-center px-4 animate-fade-up">
+        <div className="max-w-md w-full bg-card p-8 sm:p-10 rounded-3xl border border-border shadow-xl text-center space-y-6 relative overflow-hidden">
+          <div className="w-20 h-20 bg-emerald-500/10 text-emerald-600 rounded-full flex items-center justify-center mx-auto border-2 border-emerald-500/20 shadow-inner">
+            <CheckCircle2 className="w-10 h-10" />
           </div>
-          <h2 className="text-2xl font-display font-bold text-foreground">
-            Geen openstaande stellingen
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            {activeQrLocation ? (
-              <>Voor de locatie <strong>{activeQrLocation.name}</strong> zijn momenteel alle stellingen afgerond of is het maximaal aantal respondenten behaald.</>
+
+          <div className="space-y-2">
+            <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-accent/15 text-accent border border-accent/30">
+              {isAnonymousQr ? `Locatie: ${activeQrLocation?.name || "QR Locatie"}` : "Fractie Peilingen"}
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-display font-bold text-foreground">
+              {hasAlreadySubmitted ? "Hartelijk dank voor uw deelname!" : "Geen openstaande stellingen"}
+            </h2>
+          </div>
+
+          <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
+            {hasAlreadySubmitted ? (
+              <>
+                U heeft uw mening al succesvol doorgegeven voor alle actieve fractiestellingen. Binnenkort staat er weer een nieuwe peiling open zodra onze fractie nieuwe stellingen en voorstellen formuleert!
+              </>
+            ) : activeQrLocation ? (
+              <>
+                Voor de locatie <strong>{activeQrLocation.name}</strong> zijn momenteel alle stellingen afgerond of is het maximaal aantal respondenten behaald.
+              </>
             ) : (
-              <>Er zijn op dit moment geen actieve stellingen die uw input vereisen. Zodra er een nieuw fractievoorstel of peiling is, ziet u deze hier direct verschijnen.</>
+              <>
+                Er zijn op dit moment geen openstaande stellingen die uw input vereisen. Zodra er een nieuwe stelling of peiling actief wordt, kunt u hier direct weer uw stem laten horen.
+              </>
             )}
           </p>
-          <Link to="/">
-            <Button className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-6 py-2.5">
-              Naar Homepage
-            </Button>
-          </Link>
+
+          <div className="pt-3 flex flex-col gap-3">
+            <Link to="/dashboard">
+              <Button className="w-full bg-accent hover:bg-accent/90 text-accent-foreground font-semibold py-3 rounded-full shadow-md">
+                Terug naar Ledendashboard
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </Link>
+            <Link to="/">
+              <Button variant="outline" className="w-full rounded-full border-border text-muted-foreground hover:text-foreground">
+                Naar Homepage
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
     );
   }
 
-  // 4. Bedankt Scherm (Finished / Afgerond)
+  // 4. Bedankt Scherm (Finished / Direct na afronden van de huidige sessie)
   if (isFinished) {
     return (
       <div className="pt-32 pb-24 min-h-screen bg-background flex items-center justify-center px-4 animate-fade-up">
@@ -457,29 +487,21 @@ export default function Polls() {
           </div>
 
           <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
-            Wij nemen alle uitslagen en opmerkingen rechtstreeks mee ter voorbereiding op onze <strong className="text-foreground">fractievergadering</strong>. Zo zorgen we dat de stem van inwoners luid en duidelijk doorklinkt in de gemeenteraad van Steenwijkerland!
+            Wij nemen alle uitslagen en opmerkingen rechtstreeks mee ter voorbereiding op onze <strong className="text-foreground">fractievergadering</strong>. Binnenkort staat er weer een nieuwe peiling voor u open zodra er nieuwe vraagstukken zijn!
           </p>
 
           <div className="pt-4 flex flex-col gap-3">
-            <Link to="/">
-              <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3.5 rounded-full shadow-md">
-                Bekijk onze website & standpunten
+            <Link to="/dashboard">
+              <Button className="w-full bg-accent hover:bg-accent/90 text-accent-foreground font-semibold py-3.5 rounded-full shadow-md">
+                Terug naar Dashboard
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
             </Link>
-            {!isAnonymousQr && (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setCurrentIndex(0);
-                  setIsFinished(false);
-                }}
-                className="w-full rounded-full border-border text-muted-foreground hover:text-foreground"
-              >
-                <RotateCcw className="w-4 h-4 mr-2" />
-                Antwoorden bekijken of wijzigen
+            <Link to="/">
+              <Button variant="outline" className="w-full rounded-full border-border text-muted-foreground hover:text-foreground">
+                Bekijk onze website & standpunten
               </Button>
-            )}
+            </Link>
           </div>
         </div>
       </div>
@@ -535,12 +557,12 @@ export default function Polls() {
           </div>
         </div>
 
-        {/* ALREADY SUBMITTED NOTIFICATION BANNER */}
+        {/* NEW UNVOTED STELLINGEN NOTIFICATION BANNER */}
         {hasAlreadySubmitted && !isAnonymousQr && (
-          <div className="w-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400 p-3.5 rounded-2xl text-xs mb-5 flex items-center justify-between gap-3 shadow-xs">
+          <div className="w-full bg-accent/10 border border-accent/30 text-foreground p-3.5 rounded-2xl text-xs mb-5 flex items-center justify-between gap-3 shadow-xs animate-fade-up">
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
-              <span>U heeft eerder al gestemd op deze stellingen. U kunt uw stemmen hieronder opnieuw bijwerken.</span>
+              <Sparkles className="w-4 h-4 shrink-0 text-accent" />
+              <span>Er zijn <strong>{stellingen.length}</strong> nieuwe stelling(en) toegevoegd waarop u nog niet heeft gestemd!</span>
             </div>
           </div>
         )}

@@ -291,9 +291,9 @@ export const Header = () => {
 
             <div className="hidden xl:block w-[1px] h-5 bg-border mx-0.5" />
 
-            {/* 4. Tekstgrootte vergroten & verkleinen knoppen (zichtbaar op xl+) */}
+            {/* 4. Tekstgrootte vergroten & verkleinen knoppen (zichtbaar op md+) */}
             <div
-              className="hidden xl:inline-flex items-center rounded-sm border border-accent/40 bg-background/60 h-8 sm:h-9 p-0.5 shrink-0 shadow-2xs"
+              className="hidden md:inline-flex items-center rounded-sm border border-accent/40 bg-background/60 h-8 sm:h-9 p-0.5 shrink-0 shadow-2xs"
               title="Tekstgrootte aanpassen voor de hele website"
             >
               <button
@@ -375,8 +375,8 @@ export const Header = () => {
               </button>
             </div>
 
-            {/* 5. Kleurcontrast voor kleurenblindheid knop (zichtbaar op xl+) */}
-            <div className="hidden xl:inline-flex shrink-0">
+            {/* 5. Kleurcontrast voor kleurenblindheid knop (zichtbaar op md+) */}
+            <div className="hidden md:inline-flex shrink-0">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button

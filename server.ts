@@ -2972,19 +2972,108 @@ async function startServer() {
       // Only keep open ones for active polling (or if max reached, hide them from active deck)
       .filter((s: any) => s.isOpen);
 
-    // Check if user or visitor already submitted
+    // Check if user already submitted and calculate unvoted stellingen
     let userSubmission = null;
+    let unvotedStellingen = formattedList;
+    let hasSubmittedAllActive = false;
+
     if (user) {
       userSubmission = submissions.find((sub: any) => sub.userId === user.id);
+      if (userSubmission && Array.isArray(userSubmission.answers)) {
+        const answeredIds = new Set(userSubmission.answers.map((a: any) => a.stellingId));
+        unvotedStellingen = formattedList.filter((s: any) => !answeredIds.has(s.id));
+        hasSubmittedAllActive = formattedList.length > 0 && unvotedStellingen.length === 0;
+      }
     }
 
     res.json({
-      stellingen: formattedList,
+      stellingen: user ? unvotedStellingen : formattedList,
+      totalActiveStellingenCount: formattedList.length,
       isAnonymousQr,
       activeQrLocation: activeQrLocation || null,
       hasSubmitted: !!userSubmission,
+      hasSubmittedAllActive,
       userSubmission: userSubmission || null
     });
+  });
+
+  // GET /api/admin/stellingen/export-csv - Export stelling(en) results to CSV format
+  app.get("/api/admin/stellingen/export-csv", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const stellingen = db.stellingen || [];
+    const submissions = db.stellingSubmissions || [];
+    const stellingId = req.query.stellingId as string | undefined;
+
+    let targetStellingen = stellingen;
+    if (stellingId) {
+      targetStellingen = stellingen.filter((s: any) => s.id === stellingId);
+      if (targetStellingen.length === 0) {
+        return res.status(404).json({ error: "Stelling niet gevonden." });
+      }
+    }
+
+    // Prepare CSV rows
+    const csvRows: string[] = [];
+    // Header
+    csvRows.push([
+      "Inzending ID",
+      "Datum & Tijd",
+      "Type Deelnemer",
+      "QR Locatie / Kanaal",
+      "Gebruikersnaam / Deelnemer",
+      "Woonplaats",
+      "Stelling ID",
+      "Stelling Titel",
+      "Categorie",
+      "Type Vraag",
+      "Gegeven Antwoord / Score",
+      "Algemene Opmerking Fractie"
+    ].map(col => `"${String(col).replace(/"/g, '""')}"`).join(";"));
+
+    submissions.forEach((sub: any) => {
+      const isAnon = !!sub.isAnonymous;
+      const channel = sub.qrLocationName || (sub.isPWA ? "PWA App (Leden)" : "Website (Leden)");
+      const participant = isAnon ? `Anoniem (${sub.qrLocationName || "QR"})` : (sub.fullName || sub.username || "Lid");
+      const city = sub.city || "Steenwijkerland";
+      const dateStr = sub.submittedAt ? new Date(sub.submittedAt).toLocaleString("nl-NL") : "";
+      const feedback = sub.generalFeedback || "";
+
+      if (Array.isArray(sub.answers)) {
+        sub.answers.forEach((ans: any) => {
+          const stellingObj = targetStellingen.find((s: any) => s.id === ans.stellingId);
+          if (!stellingObj) return;
+
+          let displayVal = "";
+          if (ans.value === "eens" || ans.value === true) displayVal = "Eens";
+          else if (ans.value === "oneens" || ans.value === false) displayVal = "Oneens";
+          else displayVal = String(ans.value);
+
+          csvRows.push([
+            sub.id || "",
+            dateStr,
+            isAnon ? "QR Locatie (Anoniem)" : "Partijlid",
+            channel,
+            participant,
+            city,
+            stellingObj.id,
+            stellingObj.title,
+            stellingObj.category || "Algemeen",
+            stellingObj.type === "scale" ? "Schaal 1-10" : "Tinder Swipe",
+            displayVal,
+            feedback
+          ].map(col => `"${String(col).replace(/"/g, '""')}"`).join(";"));
+        });
+      }
+    });
+
+    const csvContent = "\uFEFF" + csvRows.join("\r\n"); // UTF-8 BOM for proper Excel rendering in Dutch
+    const filename = stellingId 
+      ? `stelling_${stellingId}_export_${new Date().toISOString().split("T")[0]}.csv`
+      : `alle_stellingen_export_${new Date().toISOString().split("T")[0]}.csv`;
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    return res.send(csvContent);
   });
 
   // POST /api/stellingen/submit - Submit answers and optional fractie feedback (Supports member or anonymous QR)
@@ -3082,8 +3171,22 @@ async function startServer() {
       };
       db.stellingSubmissions.push(submissionRecord);
     } else {
-      // Member submission
+      // Member submission - merge answers with previous submissions if any
       const existingIdx = db.stellingSubmissions.findIndex((s: any) => s.userId === user.id);
+      let mergedAnswers = answers.map((a: any) => ({
+        stellingId: a.stellingId,
+        type: a.type || "swipe",
+        value: a.value,
+        answeredAt: a.answeredAt || new Date().toISOString()
+      }));
+
+      if (existingIdx >= 0) {
+        const oldAnswers = db.stellingSubmissions[existingIdx].answers || [];
+        const newIds = new Set(mergedAnswers.map((a: any) => a.stellingId));
+        // Keep old answers for previous stellingen and add / update new ones
+        mergedAnswers = [...oldAnswers.filter((a: any) => !newIds.has(a.stellingId)), ...mergedAnswers];
+      }
+
       submissionRecord = {
         id: existingIdx >= 0 ? db.stellingSubmissions[existingIdx].id : `sub_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         userId: user.id,
@@ -3091,13 +3194,8 @@ async function startServer() {
         fullName: user.fullName || user.username,
         city: user.city || "Steenwijkerland",
         isAnonymous: false,
-        answers: answers.map((a: any) => ({
-          stellingId: a.stellingId,
-          type: a.type || "swipe",
-          value: a.value,
-          answeredAt: a.answeredAt || new Date().toISOString()
-        })),
-        generalFeedback: (generalFeedback || "").trim(),
+        answers: mergedAnswers,
+        generalFeedback: (generalFeedback || (existingIdx >= 0 ? db.stellingSubmissions[existingIdx].generalFeedback : "") || "").trim(),
         submittedAt: new Date().toISOString(),
         isPWA: !!isPWA
       };

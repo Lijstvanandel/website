@@ -22,7 +22,14 @@ import {
   Check,
   QrCode,
   MapPin,
-  Sparkles
+  Sparkles,
+  Download,
+  ChevronLeft,
+  ChevronRight,
+  Filter,
+  ArrowUpDown,
+  History,
+  AlertTriangle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,9 +57,19 @@ export function StellingenManager({ token }: StellingenManagerProps) {
   const [stats, setStats] = useState<StellingStats | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Filter & Search
+  // Filter & Search & Sorting & Pagination
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState<"stellingen" | "resultaten" | "opmerkingen" | "qr-locations">("stellingen");
+  const [activeTab, setActiveTab] = useState<"stellingen" | "resultaten" | "activiteiten" | "opmerkingen" | "qr-locations">("stellingen");
+  const [sortOption, setSortOption] = useState<"active-first" | "expired" | "most-answered" | "least-answered" | "newest">("active-first");
+  const [showExpiredInList, setShowExpiredInList] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  // Activity Log Filter
+  const [activitySearch, setActivitySearch] = useState("");
+  const [activityLocationFilter, setActivityLocationFilter] = useState("all");
+  const [activityPage, setActivityPage] = useState(1);
+  const activityPerPage = 15;
 
   // Create / Edit Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -97,6 +114,20 @@ export function StellingenManager({ token }: StellingenManagerProps) {
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Helper to check if a stelling is expired
+  const isStellingExpired = (st: StellingItem) => {
+    if (st.active === false) return true;
+    const now = new Date();
+    if (st.deadlineDate) {
+      const d = new Date(st.deadlineDate);
+      d.setHours(23, 59, 59, 999);
+      if (now > d) return true;
+    }
+    const respCount = stats?.perStelling?.[st.id]?.totalResponses || 0;
+    if (st.maxParticipants && respCount >= st.maxParticipants) return true;
+    return false;
+  };
 
   const openCreateModal = () => {
     setEditingStellingId(null);
@@ -212,10 +243,133 @@ export function StellingenManager({ token }: StellingenManagerProps) {
     }
   };
 
-  const filteredStellingen = stellingen.filter((s) =>
-    s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (s.category && s.category.toLowerCase().includes(searchQuery.toLowerCase())) ||
-    (s.description && s.description.toLowerCase().includes(searchQuery.toLowerCase()))
+  // CSV Export Handler
+  const handleExportCsv = (stellingId?: string) => {
+    const url = stellingId 
+      ? `/api/admin/stellingen/export-csv?stellingId=${encodeURIComponent(stellingId)}`
+      : "/api/admin/stellingen/export-csv";
+
+    // Download using auth token
+    fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || "Kon CSV export niet genereren");
+        }
+        return res.blob();
+      })
+      .then((blob) => {
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = downloadUrl;
+        a.download = stellingId 
+          ? `stelling_${stellingId}_export.csv` 
+          : `stellingen_en_qr_locaties_export_${new Date().toISOString().split("T")[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        toast.success("CSV export succesvol gedownload!");
+      })
+      .catch((err) => {
+        console.error(err);
+        toast.error(err.message || "Fout bij downloaden CSV.");
+      });
+  };
+
+  // 1. Filter stellingen
+  const filteredList = stellingen.filter((s) => {
+    const matchesSearch = 
+      s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (s.category && s.category.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (s.description && s.description.toLowerCase().includes(searchQuery.toLowerCase()));
+
+    if (!matchesSearch) return false;
+
+    const expired = isStellingExpired(s);
+
+    // If "expired" sort is explicitly chosen, show expired
+    if (sortOption === "expired") {
+      return expired;
+    }
+
+    // Otherwise, exclude expired from default overview unless user explicitly toggled it
+    if (!showExpiredInList && expired) {
+      return false;
+    }
+
+    return true;
+  });
+
+  // 2. Sort stellingen
+  const sortedStellingen = [...filteredList].sort((a, b) => {
+    const responsesA = stats?.perStelling?.[a.id]?.totalResponses || 0;
+    const responsesB = stats?.perStelling?.[b.id]?.totalResponses || 0;
+
+    if (sortOption === "most-answered") {
+      return responsesB - responsesA;
+    }
+    if (sortOption === "least-answered") {
+      return responsesA - responsesB;
+    }
+    if (sortOption === "expired") {
+      return (b.createdAt || "").localeCompare(a.createdAt || "");
+    }
+    if (sortOption === "newest") {
+      return (b.createdAt || "").localeCompare(a.createdAt || "");
+    }
+
+    // Default "active-first": active non-expired first, then newest
+    const aExp = isStellingExpired(a) ? 1 : 0;
+    const bExp = isStellingExpired(b) ? 1 : 0;
+    if (aExp !== bExp) return aExp - bExp;
+    return (b.createdAt || "").localeCompare(a.createdAt || "");
+  });
+
+  // 3. Paginate stellingen (10 per page)
+  const totalPages = Math.max(1, Math.ceil(sortedStellingen.length / itemsPerPage));
+  const currentStellingenPage = Math.min(currentPage, totalPages);
+  const paginatedStellingen = sortedStellingen.slice(
+    (currentStellingenPage - 1) * itemsPerPage,
+    currentStellingenPage * itemsPerPage
+  );
+
+  // 4. Filter & Paginate Activity Log
+  const filteredActivities = submissions.filter((sub) => {
+    const matchesSearch = 
+      (sub.fullName && sub.fullName.toLowerCase().includes(activitySearch.toLowerCase())) ||
+      (sub.qrLocationName && sub.qrLocationName.toLowerCase().includes(activitySearch.toLowerCase())) ||
+      (sub.city && sub.city.toLowerCase().includes(activitySearch.toLowerCase())) ||
+      (sub.generalFeedback && sub.generalFeedback.toLowerCase().includes(activitySearch.toLowerCase()));
+
+    if (!matchesSearch) return false;
+
+    if (activityLocationFilter !== "all") {
+      if (activityLocationFilter === "pwa") {
+        if (!sub.isPWA || sub.isAnonymous) return false;
+      } else if (activityLocationFilter === "web") {
+        if (sub.isPWA || sub.isAnonymous) return false;
+      } else if (activityLocationFilter === "anon_qr") {
+        if (!sub.isAnonymous) return false;
+      } else {
+        // Specific QR Location ID or slug
+        if (sub.qrLocationId !== activityLocationFilter && sub.qrLocationSlug !== activityLocationFilter) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  });
+
+  const totalActivityPages = Math.max(1, Math.ceil(filteredActivities.length / activityPerPage));
+  const currentActPage = Math.min(activityPage, totalActivityPages);
+  const paginatedActivities = filteredActivities.slice(
+    (currentActPage - 1) * activityPerPage,
+    currentActPage * activityPerPage
   );
 
   return (
@@ -230,11 +384,22 @@ export function StellingenManager({ token }: StellingenManagerProps) {
             </span>
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            Beheer interactieve stellingen (swipe / schaal 1-10) voor contributiebetalende leden én anonieme peilingen via unieke QR-locaties.
+            Beheer interactieve stellingen (swipe / schaal 1-10) voor contributiebetalende leden én anonieme peilingen via unieke QR-locaties met activiteitslog en CSV-export.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* CSV Export All */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleExportCsv()}
+            className="text-xs font-semibold border-emerald-500/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10"
+            title="Download CSV export van alle stellingen en QR-resultaten"
+          >
+            <Download className="w-3.5 h-3.5 mr-1.5 text-emerald-600" />
+            Exporteer .CSV
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -263,10 +428,10 @@ export function StellingenManager({ token }: StellingenManagerProps) {
             <Vote className="w-4 h-4 text-accent" />
           </div>
           <div className="text-2xl font-bold font-display text-foreground">
-            {stellingen.filter((s) => s.active !== false).length} / {stellingen.length}
+            {stellingen.filter((s) => !isStellingExpired(s)).length} / {stellingen.length}
           </div>
           <div className="text-xs text-muted-foreground mt-1">
-            Beschikbaar in de PWA & QR
+            Openstaand in PWA & QR
           </div>
         </div>
 
@@ -343,7 +508,18 @@ export function StellingenManager({ token }: StellingenManagerProps) {
           }`}
         >
           <BarChart2 className="w-4 h-4" />
-          Resultaten & Locatie-uitslagen
+          Resultaten & Uitslagen
+        </button>
+        <button
+          onClick={() => setActiveTab("activiteiten")}
+          className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${
+            activeTab === "activiteiten"
+              ? "bg-accent text-accent-foreground shadow-xs"
+              : "text-muted-foreground hover:bg-muted"
+          }`}
+        >
+          <History className="w-4 h-4" />
+          Activiteitslog QR ({submissions.length})
         </button>
         <button
           onClick={() => setActiveTab("opmerkingen")}
@@ -358,134 +534,260 @@ export function StellingenManager({ token }: StellingenManagerProps) {
         </button>
       </div>
 
-      {/* TAB 1: STELLINGEN OVERZICHT */}
+      {/* TAB 1: STELLINGEN OVERZICHT MET SORTERING & PAGINERING */}
       {activeTab === "stellingen" && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between gap-4">
-            <div className="relative max-w-sm w-full">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Zoek stellingen op onderwerp..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 h-9 text-xs"
-              />
+          {/* Controls bar: Search, Sortering, Verlopen toggle */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-3 bg-muted/20 rounded-xl border border-border">
+            <div className="flex flex-wrap items-center gap-3 flex-1">
+              {/* Search box */}
+              <div className="relative max-w-xs w-full">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Zoek stellingen..."
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="pl-9 h-9 text-xs"
+                />
+              </div>
+
+              {/* Sortering dropdown */}
+              <div className="flex items-center gap-2">
+                <ArrowUpDown className="w-3.5 h-3.5 text-accent shrink-0" />
+                <select
+                  value={sortOption}
+                  onChange={(e) => {
+                    setSortOption(e.target.value as any);
+                    setCurrentPage(1);
+                  }}
+                  className="h-9 px-3 rounded-md border border-input bg-background text-xs font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
+                >
+                  <option value="active-first">Actieve stellingen eerst</option>
+                  <option value="most-answered">Meest beantwoorde stelling</option>
+                  <option value="least-answered">Minst beantwoorde stelling</option>
+                  <option value="expired">Verlopen stellingen</option>
+                  <option value="newest">Nieuwste eerst</option>
+                </select>
+              </div>
+
+              {/* Toggle to show/hide expired stellingen in standard view */}
+              {sortOption !== "expired" && (
+                <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none ml-1">
+                  <input
+                    type="checkbox"
+                    checked={showExpiredInList}
+                    onChange={(e) => {
+                      setShowExpiredInList(e.target.checked);
+                      setCurrentPage(1);
+                    }}
+                    className="w-3.5 h-3.5 rounded text-accent accent-accent"
+                  />
+                  <span>Toon ook verlopen stellingen</span>
+                </label>
+              )}
             </div>
-            <span className="text-xs text-muted-foreground">
-              {filteredStellingen.length} van {stellingen.length} stellingen
-            </span>
+
+            <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0 justify-between lg:justify-end">
+              <span>
+                {sortedStellingen.length} stellingen gevonden (10 per pagina)
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleExportCsv()}
+                className="text-xs h-8 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+              >
+                <Download className="w-3.5 h-3.5 mr-1" />
+                CSV
+              </Button>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {filteredStellingen.map((st) => {
-              const stStat = stats?.perStelling?.[st.id];
-              return (
-                <div
-                  key={st.id}
-                  className={`bg-card rounded-2xl border overflow-hidden shadow-sm flex flex-col justify-between transition-all ${
-                    st.active !== false ? "border-border hover:border-accent/40" : "border-border/50 opacity-60"
-                  }`}
-                >
-                  <div>
-                    <div className="relative h-44 w-full bg-muted overflow-hidden">
-                      <img
-                        src={st.imageUrl || "/assets/stemmen.jpg"}
-                        alt={st.title}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = "/assets/stemmen.jpg";
-                        }}
-                      />
-                      <div className="absolute top-3 left-3 bg-background/90 backdrop-blur-md px-2.5 py-0.5 rounded-full text-[10px] font-bold text-accent border border-accent/30">
-                        {st.category || "Algemeen"}
-                      </div>
-                      <div className="absolute top-3 right-3 flex items-center gap-1.5">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          st.type === "scale" ? "bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/30" : "bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-500/30"
-                        }`}>
-                          {st.type === "scale" ? "1-10 Schaal" : "Tinder Swipe"}
-                        </span>
-                        {st.active === false && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-600 border border-rose-500/30">
-                            Inactief
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="p-5 space-y-3">
-                      <h3 className="font-display font-bold text-base text-foreground leading-snug">
-                        {st.title}
-                      </h3>
-                      {st.description && (
-                        <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">
-                          {st.description}
-                        </p>
-                      )}
-
-                      {/* Targeted Locations Badges */}
-                      {st.targetLocations && st.targetLocations.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-1 pt-1">
-                          <span className="text-[10px] text-muted-foreground font-semibold flex items-center gap-1 mr-1">
-                            <MapPin className="w-3 h-3 text-accent" /> Gekoppeld aan:
-                          </span>
-                          {st.targetLocations.map((locId) => {
-                            const foundLoc = qrLocations.find((l) => l.id === locId || l.slug === locId);
-                            return (
-                              <span
-                                key={locId}
-                                className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30"
-                              >
-                                {foundLoc ? foundLoc.name : locId}
-                              </span>
-                            );
-                          })}
+          {/* Stellingen Cards Grid */}
+          {paginatedStellingen.length === 0 ? (
+            <div className="p-12 text-center bg-muted/20 rounded-2xl border border-border text-muted-foreground text-sm space-y-2">
+              <Vote className="w-10 h-10 mx-auto text-muted-foreground/50 mb-2" />
+              <p className="font-semibold text-foreground">Geen stellingen gevonden</p>
+              <p className="text-xs max-w-md mx-auto">
+                {sortOption === "expired" 
+                  ? "Er zijn momenteel geen verlopen stellingen." 
+                  : "Er zijn geen stellingen die aan de huidige zoekfilters voldoen."}
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {paginatedStellingen.map((st) => {
+                const stStat = stats?.perStelling?.[st.id];
+                const expired = isStellingExpired(st);
+                return (
+                  <div
+                    key={st.id}
+                    className={`bg-card rounded-2xl border overflow-hidden shadow-sm flex flex-col justify-between transition-all ${
+                      !expired ? "border-border hover:border-accent/40" : "border-border/50 opacity-70 bg-muted/20"
+                    }`}
+                  >
+                    <div>
+                      <div className="relative h-44 w-full bg-muted overflow-hidden">
+                        <img
+                          src={st.imageUrl || "/assets/stemmen.jpg"}
+                          alt={st.title}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = "/assets/stemmen.jpg";
+                          }}
+                        />
+                        <div className="absolute top-3 left-3 bg-background/90 backdrop-blur-md px-2.5 py-0.5 rounded-full text-[10px] font-bold text-accent border border-accent/30">
+                          {st.category || "Algemeen"}
                         </div>
-                      )}
-
-                      {/* Stats quick pill */}
-                      <div className="pt-2 border-t border-border/60 flex flex-wrap items-center justify-between gap-2 text-xs">
-                        <div className="flex items-center gap-1.5 text-muted-foreground">
-                          <Users className="w-3.5 h-3.5 text-accent" />
-                          <span>{stStat?.totalResponses || 0} stemmen</span>
-                          {st.maxParticipants ? <span className="text-muted-foreground/60">/ max. {st.maxParticipants}</span> : null}
-                        </div>
-                        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                          {st.startDate && <span>Vanaf {st.startDate}</span>}
-                          {st.deadlineDate && (
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-3 h-3 text-accent" />
-                              Tot {st.deadlineDate}
+                        <div className="absolute top-3 right-3 flex items-center gap-1.5">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            st.type === "scale" ? "bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/30" : "bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-500/30"
+                          }`}>
+                            {st.type === "scale" ? "1-10 Schaal" : "Tinder Swipe"}
+                          </span>
+                          {expired ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-600 border border-rose-500/30">
+                              Verlopen / Gesloten
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-600 border border-emerald-500/30">
+                              Actief
                             </span>
                           )}
                         </div>
                       </div>
+
+                      <div className="p-5 space-y-3">
+                        <h3 className="font-display font-bold text-base text-foreground leading-snug">
+                          {st.title}
+                        </h3>
+                        {st.description && (
+                          <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">
+                            {st.description}
+                          </p>
+                        )}
+
+                        {/* Targeted Locations Badges */}
+                        {st.targetLocations && st.targetLocations.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-1 pt-1">
+                            <span className="text-[10px] text-muted-foreground font-semibold flex items-center gap-1 mr-1">
+                              <MapPin className="w-3 h-3 text-accent" /> Gekoppeld aan:
+                            </span>
+                            {st.targetLocations.map((locId) => {
+                              const foundLoc = qrLocations.find((l) => l.id === locId || l.slug === locId);
+                              return (
+                                <span
+                                  key={locId}
+                                  className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30"
+                                >
+                                  {foundLoc ? foundLoc.name : locId}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Stats quick pill */}
+                        <div className="pt-2 border-t border-border/60 flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <div className="flex items-center gap-1.5 text-muted-foreground font-semibold">
+                            <Users className="w-3.5 h-3.5 text-accent" />
+                            <span>{stStat?.totalResponses || 0} stemmen</span>
+                            {st.maxParticipants ? <span className="text-muted-foreground/60 font-normal">/ max. {st.maxParticipants}</span> : null}
+                          </div>
+                          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                            {st.startDate && <span>Vanaf {st.startDate}</span>}
+                            {st.deadlineDate && (
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-accent" />
+                                Tot {st.deadlineDate}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-muted/20 border-t border-border/60 flex items-center justify-between gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleExportCsv(st.id)}
+                        className="text-xs h-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
+                        title="Download CSV export voor deze stelling"
+                      >
+                        <Download className="w-3.5 h-3.5 mr-1" />
+                        CSV Export
+                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openEditModal(st)}
+                          className="text-xs h-8"
+                        >
+                          <Edit3 className="w-3.5 h-3.5 mr-1 text-accent" />
+                          Bewerken
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteStelling(st.id, st.title)}
+                          className="text-xs h-8 text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
+                );
+              })}
+            </div>
+          )}
 
-                  <div className="p-4 bg-muted/20 border-t border-border/60 flex items-center justify-end gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openEditModal(st)}
-                      className="text-xs h-8"
-                    >
-                      <Edit3 className="w-3.5 h-3.5 mr-1 text-accent" />
-                      Bewerken
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDeleteStelling(st.id, st.title)}
-                      className="text-xs h-8 text-destructive hover:bg-destructive/10"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          {/* Pagination Controls (10 per page) */}
+          {totalPages > 1 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-border">
+              <span className="text-xs text-muted-foreground">
+                Pagina {currentStellingenPage} van {totalPages} ({sortedStellingen.length} stellingen totaal)
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentStellingenPage <= 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className="text-xs h-8"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5 mr-1" /> Vorige
+                </Button>
+                {Array.from({ length: totalPages }, (_, idx) => idx + 1).map((pageNumber) => (
+                  <Button
+                    key={pageNumber}
+                    variant={pageNumber === currentStellingenPage ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setCurrentPage(pageNumber)}
+                    className={`text-xs h-8 w-8 p-0 ${
+                      pageNumber === currentStellingenPage ? "bg-accent text-accent-foreground font-bold" : ""
+                    }`}
+                  >
+                    {pageNumber}
+                  </Button>
+                ))}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentStellingenPage >= totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  className="text-xs h-8"
+                >
+                  Volgende <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -497,6 +799,23 @@ export function StellingenManager({ token }: StellingenManagerProps) {
       {/* TAB 3: RESULTATEN & STATISTIEKEN */}
       {activeTab === "resultaten" && (
         <div className="space-y-6">
+          {/* Action header with CSV Download */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-muted/20 rounded-2xl border border-border">
+            <div>
+              <h3 className="text-sm font-bold text-foreground">Uitgebreide Resultaten & Locatie-uitslagen</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Bekijk hoe er is gestemd via de PWA en per specifieke fysieke QR-stickerlocatie in de gemeente.
+              </p>
+            </div>
+            <Button
+              onClick={() => handleExportCsv()}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shrink-0 shadow-xs"
+            >
+              <Download className="w-3.5 h-3.5 mr-1.5" />
+              Exporteer alle uitslagen (.CSV)
+            </Button>
+          </div>
+
           {/* Per Location Overview stats */}
           {stats?.perLocationCount && Object.keys(stats.perLocationCount).length > 0 && (
             <div className="bg-muted/30 p-5 rounded-2xl border border-border space-y-3">
@@ -540,10 +859,21 @@ export function StellingenManager({ token }: StellingenManagerProps) {
                     </h3>
                   </div>
 
-                  <div className="text-xs text-muted-foreground flex items-center gap-3">
-                    <span className="font-semibold text-foreground text-sm">{total} respondenten</span>
-                    {st.startDate && <span>• Vanaf: {st.startDate}</span>}
-                    {st.deadlineDate && <span>• Deadline: {st.deadlineDate}</span>}
+                  <div className="flex items-center gap-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleExportCsv(st.id)}
+                      className="text-xs h-7 border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
+                    >
+                      <Download className="w-3 h-3 mr-1" />
+                      .CSV Stelling
+                    </Button>
+                    <div className="text-xs text-muted-foreground flex items-center gap-2">
+                      <span className="font-semibold text-foreground text-sm">{total} respondenten</span>
+                      {st.startDate && <span>• Vanaf: {st.startDate}</span>}
+                      {st.deadlineDate && <span>• Deadline: {st.deadlineDate}</span>}
+                    </div>
                   </div>
                 </div>
 
@@ -639,11 +969,196 @@ export function StellingenManager({ token }: StellingenManagerProps) {
         </div>
       )}
 
-      {/* TAB 4: FRACTIE OPMERKINGEN & SUGGESTIES */}
+      {/* TAB 4: ACTIVITEITSLOG QR & INZENDINGEN */}
+      {activeTab === "activiteiten" && (
+        <div className="space-y-4">
+          {/* Activity Log Filter Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-muted/20 rounded-2xl border border-border">
+            <div className="flex flex-wrap items-center gap-3 flex-1">
+              <div className="relative max-w-xs w-full">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Zoek in activiteitslog..."
+                  value={activitySearch}
+                  onChange={(e) => {
+                    setActivitySearch(e.target.value);
+                    setActivityPage(1);
+                  }}
+                  className="pl-9 h-9 text-xs"
+                />
+              </div>
+
+              {/* Location Filter dropdown */}
+              <div className="flex items-center gap-2">
+                <Filter className="w-3.5 h-3.5 text-accent shrink-0" />
+                <select
+                  value={activityLocationFilter}
+                  onChange={(e) => {
+                    setActivityLocationFilter(e.target.value);
+                    setActivityPage(1);
+                  }}
+                  className="h-9 px-3 rounded-md border border-input bg-background text-xs font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
+                >
+                  <option value="all">Alle QR-locaties & kanalen</option>
+                  <option value="anon_qr">Alleen anonieme QR-stickers</option>
+                  <option value="pwa">Alleen PWA App (Leden)</option>
+                  <option value="web">Alleen Website (Leden)</option>
+                  {qrLocations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      Locatie: {loc.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xs text-muted-foreground">
+                {filteredActivities.length} inzendingen gelogd
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleExportCsv()}
+                className="text-xs h-8 border-emerald-500/40 text-emerald-600 dark:text-emerald-400"
+              >
+                <Download className="w-3.5 h-3.5 mr-1" />
+                Exporteer Log (.CSV)
+              </Button>
+            </div>
+          </div>
+
+          {/* Activity Log Table / Cards */}
+          {paginatedActivities.length === 0 ? (
+            <div className="p-12 text-center bg-muted/20 rounded-2xl border border-border text-muted-foreground text-sm space-y-2">
+              <History className="w-10 h-10 mx-auto text-muted-foreground/50 mb-2" />
+              <p className="font-semibold text-foreground">Nog geen activiteit gevonden</p>
+              <p className="text-xs max-w-md mx-auto">
+                Er zijn nog geen QR-inzendingen geregistreerd die voldoen aan het geselecteerde zoekfilter.
+              </p>
+            </div>
+          ) : (
+            <div className="bg-card rounded-2xl border border-border overflow-hidden shadow-xs">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-muted/50 border-b border-border text-muted-foreground uppercase font-bold text-[10px] tracking-wider">
+                    <tr>
+                      <th className="py-3 px-4">Datum & Tijd</th>
+                      <th className="py-3 px-4">Type Deelnemer</th>
+                      <th className="py-3 px-4">Locatie / Sticker</th>
+                      <th className="py-3 px-4">Aantal Vragen Beantwoord</th>
+                      <th className="py-3 px-4">Opmerking</th>
+                      <th className="py-3 px-4">Platform</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60">
+                    {paginatedActivities.map((act) => {
+                      const dateObj = new Date(act.submittedAt);
+                      const isAnon = !!act.isAnonymous;
+                      return (
+                        <tr key={act.id} className="hover:bg-muted/30 transition-colors">
+                          <td className="py-3 px-4 font-mono text-[11px] whitespace-nowrap text-muted-foreground">
+                            {dateObj.toLocaleDateString("nl-NL", {
+                              day: "2-digit",
+                              month: "short",
+                              year: "numeric"
+                            })}{" "}
+                            {dateObj.toLocaleTimeString("nl-NL", {
+                              hour: "2-digit",
+                              minute: "2-digit"
+                            })}
+                          </td>
+                          <td className="py-3 px-4">
+                            {isAnon ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                                Anoniem via QR
+                              </span>
+                            ) : (
+                              <div className="font-semibold text-foreground">
+                                {act.fullName || act.username || "Partijlid"}
+                                {act.city && <span className="text-[10px] text-muted-foreground ml-1">({act.city})</span>}
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-1.5 font-medium text-foreground">
+                              <MapPin className="w-3.5 h-3.5 text-accent shrink-0" />
+                              <span>{act.qrLocationName || "PWA / Hoofdkanaal"}</span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className="px-2 py-0.5 rounded-md bg-accent/15 text-accent font-bold text-[11px]">
+                              {Array.isArray(act.answers) ? act.answers.length : 0} stellingen
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 max-w-xs truncate text-muted-foreground italic">
+                            {act.generalFeedback ? `"${act.generalFeedback}"` : <span className="text-muted-foreground/40">-</span>}
+                          </td>
+                          <td className="py-3 px-4 whitespace-nowrap">
+                            {act.isPWA ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-accent">
+                                <Smartphone className="w-3 h-3" /> PWA App
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-muted-foreground">Browser</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Activity Log Pagination */}
+          {totalActivityPages > 1 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-border">
+              <span className="text-xs text-muted-foreground">
+                Pagina {currentActPage} van {totalActivityPages} ({filteredActivities.length} logs)
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentActPage <= 1}
+                  onClick={() => setActivityPage((p) => Math.max(1, p - 1))}
+                  className="text-xs h-8"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5 mr-1" /> Vorige
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentActPage >= totalActivityPages}
+                  onClick={() => setActivityPage((p) => Math.min(totalActivityPages, p + 1))}
+                  className="text-xs h-8"
+                >
+                  Volgende <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 5: FRACTIE OPMERKINGEN & SUGGESTIES */}
       {activeTab === "opmerkingen" && (
         <div className="space-y-4">
-          <div className="text-xs text-muted-foreground pb-2">
-            Onderstaande opmerkingen zijn door partijleden én anonieme QR-bezoekers achtergelaten na het stemmen op de stellingen.
+          <div className="text-xs text-muted-foreground pb-2 flex items-center justify-between">
+            <span>
+              Onderstaande opmerkingen zijn door partijleden én anonieme QR-bezoekers achtergelaten na het stemmen op de stellingen.
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleExportCsv()}
+              className="text-xs h-8 border-emerald-500/40 text-emerald-600 dark:text-emerald-400"
+            >
+              <Download className="w-3.5 h-3.5 mr-1" />
+              Exporteer naar .CSV
+            </Button>
           </div>
 
           {(!stats?.remarks || stats.remarks.length === 0) ? (
