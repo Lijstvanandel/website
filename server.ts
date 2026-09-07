@@ -1183,6 +1183,95 @@ async function startServer() {
     next();
   };
 
+  // Helper to compute whether an account is officially a full 'lid' (active only 24 hours after registration / checkout)
+  function computeMembershipDetails(user: any) {
+    if (!user) {
+      return {
+        isFullMember: false,
+        isLid: false,
+        membershipState: 'unpaid' as const,
+        hoursRemaining24h: 24,
+        activatedAt: null,
+        membershipNotice: 'Geen gebruiker gevonden'
+      };
+    }
+
+    const isAdmin = user.role === 'admin';
+    const isExempt = user.billingStatus === 'exempt' || isAdmin;
+    const isPaid = user.billingStatus === 'paid' || isExempt;
+
+    if (isAdmin) {
+      return {
+        isFullMember: true,
+        isLid: true,
+        membershipState: 'active' as const,
+        hoursRemaining24h: 0,
+        activatedAt: user.createdAt || new Date().toISOString(),
+        membershipNotice: 'Beheerdersaccount met volledige toegang'
+      };
+    }
+
+    if (!isPaid) {
+      return {
+        isFullMember: false,
+        isLid: false,
+        membershipState: 'unpaid' as const,
+        hoursRemaining24h: 24,
+        activatedAt: null,
+        membershipNotice: 'Contributie nog niet voldaan'
+      };
+    }
+
+    // User is paid or exempt. Calculate 24-hour cooldown after registration or payment
+    const regTime = new Date(user.paidAt || user.createdAt || Date.now()).getTime();
+    const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+    const elapsedMs = Date.now() - regTime;
+    const is24hPassed = elapsedMs >= TWENTY_FOUR_HOURS_MS;
+    const remainingMs = Math.max(0, TWENTY_FOUR_HOURS_MS - elapsedMs);
+    const hoursRemaining = Math.ceil(remainingMs / (60 * 60 * 1000));
+    const activatedAt = new Date(regTime + TWENTY_FOUR_HOURS_MS).toISOString();
+
+    if (is24hPassed) {
+      return {
+        isFullMember: true,
+        isLid: true,
+        membershipState: 'active' as const,
+        hoursRemaining24h: 0,
+        activatedAt,
+        membershipNotice: 'Volwaardig lid met volledige toegang'
+      };
+    } else {
+      return {
+        isFullMember: false,
+        isLid: false,
+        membershipState: 'pending_24h' as const,
+        hoursRemaining24h: hoursRemaining,
+        activatedAt,
+        membershipNotice: `Lidmaatschap in verwerking. Volledige toegang als lid (inclusief stemrecht) is actief over ${hoursRemaining} uur (24 uur na registratie/afrekenen).`
+      };
+    }
+  }
+
+  function getSafeUserWithMembership(user: any) {
+    const { password, ...safeUser } = user;
+    const memDetails = computeMembershipDetails(user);
+    const resolvedEmail = safeUser.email || (safeUser.username?.includes("@") ? safeUser.username : "");
+    const newsletterSubscribed = safeUser.newsletterSubscribed !== undefined ? Boolean(safeUser.newsletterSubscribed) : true;
+    
+    return {
+      ...safeUser,
+      email: resolvedEmail,
+      newsletterSubscribed,
+      billingStatus: safeUser.billingStatus || (safeUser.role === "admin" ? "exempt" : "paid"),
+      isFullMember: memDetails.isFullMember,
+      isLid: memDetails.isLid,
+      membershipState: memDetails.membershipState,
+      hoursRemaining24h: memDetails.hoursRemaining24h,
+      activatedAt: memDetails.activatedAt,
+      membershipNotice: memDetails.membershipNotice,
+    };
+  }
+
   // Auth Routes
   app.post("/api/register", async (req, res) => {
     const { salutation, fullName, address, city, username, email, password, remarks, directDebit, newsletterSubscribed } = req.body;
@@ -1286,14 +1375,11 @@ async function startServer() {
     db.users.push(newUser);
     saveDb(db);
 
+    const safeUser = getSafeUserWithMembership(newUser);
+
     res.status(201).json({ 
       message: "Registratie succesvol", 
-      user: { 
-        id: newUser.id, 
-        username: newUser.username,
-        billingStatus: newUser.billingStatus,
-        role: newUser.role
-      },
+      user: safeUser,
       checkoutUrl,
       sessionId
     });
@@ -1321,27 +1407,10 @@ async function startServer() {
     if (isMatch) {
       const tokenExpiresIn = rememberMe !== false ? "365d" : "1d";
       const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: tokenExpiresIn });
-      const resolvedEmail = user.email || (user.username.includes("@") ? user.username : "");
-      const newsletterSubscribed = user.newsletterSubscribed !== undefined ? Boolean(user.newsletterSubscribed) : true;
+      const safeUser = getSafeUserWithMembership(user);
       res.status(200).json({ 
         message: "Succesvol ingelogd", 
-        user: { 
-          id: user.id, 
-          username: user.username, 
-          fullName: user.fullName, 
-          salutation: user.salutation,
-          address: user.address,
-          city: user.city,
-          email: resolvedEmail,
-          role: user.role, 
-          isActive: user.isActive,
-          newsletterSubscribed,
-          billingStatus: user.billingStatus || (user.role === "admin" ? "exempt" : "paid"),
-          paidAmount: user.paidAmount,
-          paidAt: user.paidAt,
-          paidUntil: user.paidUntil,
-          createdAt: user.createdAt
-        },
+        user: safeUser,
         token
       });
     } else {
@@ -1686,17 +1755,8 @@ async function startServer() {
   });
 
   app.get("/api/me", requireAuth, (req: any, res: any) => {
-    const { password, ...userProfile } = req.user;
-    if (userProfile.newsletterSubscribed === undefined) {
-      userProfile.newsletterSubscribed = true;
-    }
-    if (!userProfile.email && userProfile.username?.includes('@')) {
-      userProfile.email = userProfile.username;
-    }
-    if (!userProfile.billingStatus) {
-      userProfile.billingStatus = userProfile.role === 'admin' ? 'exempt' : 'paid';
-    }
-    res.status(200).json({ user: userProfile });
+    const safeUser = getSafeUserWithMembership(req.user);
+    res.status(200).json({ user: safeUser });
   });
 
   // Member Newsletter Preferences Toggle & Email update
@@ -1802,14 +1862,7 @@ async function startServer() {
   app.get("/api/admin/users", requireAuth, requireAdmin, (req: any, res: any) => {
     const db = getDb();
     const safeUsers = db.users.map((u: any) => {
-      const { password, ...rest } = u;
-      if (rest.newsletterSubscribed === undefined) {
-        rest.newsletterSubscribed = true;
-      }
-      if (!rest.billingStatus) {
-        rest.billingStatus = rest.role === "admin" ? "exempt" : "paid";
-      }
-      return rest;
+      return getSafeUserWithMembership(u);
     });
     res.json(safeUsers);
   });
@@ -1829,7 +1882,7 @@ async function startServer() {
     user.billingStatus = billingStatus;
     if (billingStatus === "paid") {
       user.paidAmount = paidAmount !== undefined ? parseFloat(paidAmount) : (db.membershipSettings?.amount || 12);
-      user.paidAt = new Date().toISOString();
+      user.paidAt = user.paidAt || new Date().toISOString();
       const nextYear = new Date();
       nextYear.setFullYear(nextYear.getFullYear() + 1);
       user.paidUntil = nextYear.toISOString();
@@ -1843,7 +1896,8 @@ async function startServer() {
     }
 
     saveDb(db);
-    res.json({ message: "Facturatiestatus succesvol bijgewerkt", user });
+    const safeUser = getSafeUserWithMembership(user);
+    res.json({ message: "Facturatiestatus succesvol bijgewerkt", user: safeUser });
   });
 
   // Public: Membership Configuration Info
@@ -2043,10 +2097,10 @@ async function startServer() {
       saveDb(db);
 
       const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: "30d" });
-      const { password, ...safeUser } = user;
+      const safeUser = getSafeUserWithMembership(user);
       return res.json({
         success: true,
-        message: "Betaling succesvol geverifieerd!",
+        message: "Betaling succesvol geverifieerd! Uw account wordt conform ons partijreglement 24 uur na registratie geactiveerd als volwaardig lid.",
         user: safeUser,
         token
       });
@@ -2905,8 +2959,17 @@ async function startServer() {
         return res.status(401).json({ error: "Ongeldig of verlopen token" });
       }
 
-      const isPaid = user.role === "admin" || user.billingStatus === "paid";
-      if (!isPaid) {
+      const memDetails = computeMembershipDetails(user);
+      if (!memDetails.isFullMember) {
+        if (memDetails.membershipState === 'pending_24h') {
+          return res.status(403).json({
+            error: "Lidmaatschap in verwerking (24-uurs verificatieperiode)",
+            code: "MEMBERSHIP_PENDING_24H",
+            message: `Conform partijreglement is een account pas 24 uur na registratie/afrekenen volwaardig lid met stemrecht. Uw toegang wordt over ${memDetails.hoursRemaining24h} uur automatisch actief.`,
+            hoursRemaining: memDetails.hoursRemaining24h,
+            activatedAt: memDetails.activatedAt
+          });
+        }
         return res.status(403).json({
           error: "Exclusief voor contributiebetalende leden",
           code: "MEMBERSHIP_DUES_REQUIRED",
@@ -3123,11 +3186,21 @@ async function startServer() {
         return res.status(401).json({ error: "Ongeldig of verlopen token" });
       }
 
-      const isPaid = user.role === "admin" || user.billingStatus === "paid";
-      if (!isPaid) {
+      const memDetails = computeMembershipDetails(user);
+      if (!memDetails.isFullMember) {
+        if (memDetails.membershipState === 'pending_24h') {
+          return res.status(403).json({
+            error: "Lidmaatschap in verwerking (24-uurs verificatieperiode)",
+            code: "MEMBERSHIP_PENDING_24H",
+            message: `Conform partijreglement is een account pas 24 uur na registratie/afrekenen volwaardig lid met stemrecht. Uw toegang wordt over ${memDetails.hoursRemaining24h} uur automatisch actief.`,
+            hoursRemaining: memDetails.hoursRemaining24h,
+            activatedAt: memDetails.activatedAt
+          });
+        }
         return res.status(403).json({
           error: "Exclusief voor contributiebetalende leden",
-          code: "MEMBERSHIP_DUES_REQUIRED"
+          code: "MEMBERSHIP_DUES_REQUIRED",
+          message: "Stemmen op fractiestellingen is exclusief voor volwaardige leden."
         });
       }
     }

@@ -21,6 +21,12 @@ export interface User {
   paidUntil?: string;
   stripeCustomerId?: string;
   stripeSessionId?: string;
+  isFullMember?: boolean;
+  isLid?: boolean;
+  membershipState?: "active" | "pending_24h" | "unpaid";
+  hoursRemaining24h?: number;
+  activatedAt?: string | null;
+  membershipNotice?: string;
 }
 
 interface AuthContextType {

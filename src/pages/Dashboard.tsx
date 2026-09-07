@@ -830,9 +830,13 @@ export default function Dashboard() {
 
                   {/* Facturatiestatus Badge */}
                   <div className="shrink-0">
-                    {user.billingStatus === "paid" ? (
+                    {user.membershipState === "pending_24h" ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                        <Clock className="w-3.5 h-3.5" /> Verificatie actief ({user.hoursRemaining24h || 24}u resterend)
+                      </span>
+                    ) : user.billingStatus === "paid" ? (
                       <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Contributie Voldaan
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Volwaardig Lid
                       </span>
                     ) : user.billingStatus === "exempt" ? (
                       <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
@@ -847,7 +851,28 @@ export default function Dashboard() {
                 </div>
 
                 <div className="py-6 space-y-4">
-                  {user.billingStatus === "paid" ? (
+                  {user.membershipState === "pending_24h" ? (
+                    <div className="space-y-3">
+                      <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                          <div className="font-semibold text-sm text-foreground flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                            Aanmelding ontvangen & contributie voldaan
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {user.paidAt ? `Betaald op: ${new Date(user.paidAt).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" })}` : "Betaling geregistreerd"}
+                            {user.activatedAt && ` • Volledig lidmaatschap & stemrecht actief: ${new Date(user.activatedAt).toLocaleString("nl-NL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`}
+                          </div>
+                        </div>
+                        <span className="text-xs font-medium text-amber-800 dark:text-amber-300 bg-amber-500/20 border border-amber-500/40 px-3 py-1 rounded-md self-start sm:self-center">
+                          Nog {user.hoursRemaining24h || 24} uur
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        Conform het partijreglement van Lijst van Andel wordt een nieuw account <strong>24 uur na registratie/afrekenen</strong> officieel erkend als volwaardig lid. Zodra deze termijn verstreken is, worden alle stem- en raadplegingsfuncties automatisch voor u ontgrendeld.
+                      </p>
+                    </div>
+                  ) : user.billingStatus === "paid" ? (
                     <div className="space-y-3">
                       <div className="p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div>

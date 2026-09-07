@@ -239,9 +239,9 @@ export default function Polls() {
       const data = await res.json();
 
       if (!res.ok) {
-        if (data.code === "MEMBERSHIP_DUES_REQUIRED") {
+        if (data.code === "MEMBERSHIP_DUES_REQUIRED" || data.code === "MEMBERSHIP_PENDING_24H") {
           setAccessDenied(true);
-          setDeniedReason(data.message || "Contributie vereist.");
+          setDeniedReason(data.message || data.error || "Lidmaatschapstoegang vereist.");
         } else {
           toast.error(data.error || "Kon stellingen niet ophalen.");
         }

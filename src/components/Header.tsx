@@ -140,18 +140,21 @@ export const Header = () => {
           
           {/* Left Side: Logo & Brand Name + Desktop Navigation */}
           <div className="flex items-center gap-2.5 sm:gap-4 lg:gap-4 xl:gap-6 min-w-0 shrink">
-            {/* Logo & Brand Name with animated wijk/kern subtitle */}
-            <Link to="/" className="flex items-center gap-2 sm:gap-2.5 group shrink-0 select-none">
+            {/* Logo & Brand Name with animated wijk/kern subtitle (stable width so navbar never shifts) */}
+            <Link
+              to="/"
+              className="flex items-center gap-2 sm:gap-2.5 group shrink-0 select-none w-[190px] sm:w-[230px] lg:w-[270px] xl:w-[310px]"
+            >
               <img
                 src={logo}
                 alt="Lijst van Andel logo"
                 className="w-10 h-10 sm:w-12 sm:h-12 lg:w-14 lg:h-14 xl:w-16 xl:h-16 rounded-full object-cover transition-transform duration-300 group-hover:scale-105 shrink-0 shadow-sm ring-1 ring-accent/30"
               />
-              <div className="leading-tight shrink-0">
-                <div className="font-display text-base sm:text-lg lg:text-xl xl:text-2xl tracking-wide text-foreground">
+              <div className="leading-tight flex-1 min-w-0">
+                <div className="font-display text-base sm:text-lg lg:text-xl xl:text-2xl tracking-wide text-foreground whitespace-nowrap">
                   Lijst van Andel
                 </div>
-                <div className="h-4 sm:h-4.5 overflow-hidden flex items-center">
+                <div className="h-4 sm:h-4.5 overflow-visible flex items-center">
                   <AnimatePresence mode="wait" initial={false}>
                     <motion.div
                       key={currentSubtitle}
@@ -159,7 +162,7 @@ export const Header = () => {
                       animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
                       exit={{ opacity: 0, y: -7, filter: "blur(2px)" }}
                       transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-                      className="text-[9px] sm:text-[10px] xl:text-[11px] uppercase tracking-[0.18em] font-semibold text-accent whitespace-nowrap truncate max-w-[120px] sm:max-w-[160px] xl:max-w-[240px]"
+                      className="text-[8.5px] sm:text-[9.5px] lg:text-[10px] xl:text-[10.5px] uppercase tracking-[0.08em] sm:tracking-[0.10em] xl:tracking-[0.12em] font-semibold text-accent whitespace-nowrap"
                       title={currentSubtitle}
                     >
                       {currentSubtitle}

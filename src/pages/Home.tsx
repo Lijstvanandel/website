@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Users, Phone, Home as HomeIcon, TreePine, Tractor, Calendar as CalIcon, MapPin } from "lucide-react";
+import { ArrowRight, Users, Phone, Home as HomeIcon, TreePine, Tractor, Coins, Landmark, Calendar as CalIcon, MapPin } from "lucide-react";
 import { useEffect, useState } from "react";
 import heroBanner from "@/assets/steenwijk-aerial.jpg";
 import sammyImg from "@/assets/sammy.png";
@@ -141,36 +141,60 @@ const Home = () => {
         </div>
       </section>
 
-      {/* FEATURE GRID */}
-      <section className="container py-20">
-        <div className="text-xs uppercase tracking-[0.3em] text-accent mb-3">Waar wij voor staan</div>
-        <h2 className="font-display text-5xl md:text-6xl mb-10 border-gold-line pb-4">Speerpunten</h2>
-        <div className="grid md:grid-cols-3 gap-6">
+      {/* FEATURE GRID / SPEERPUNTEN */}
+      <section className="container py-14 sm:py-16">
+        <div className="text-xs uppercase tracking-[0.3em] text-accent mb-2.5">Waar wij voor staan</div>
+        <h2 className="font-display text-4xl sm:text-5xl md:text-6xl mb-6 sm:mb-8 border-gold-line pb-4">Speerpunten</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-3.5">
           {[
             {
               icon: HomeIcon,
               title: "Voorrang voor inwoners",
-              text: "Lokale binding telt bij woningtoewijzing. Onze jongeren verdienen een eerlijke kans.",
+              text: "Lokale binding telt bij woningtoewijzing. Onze eigen jongeren en starters verdienen een eerlijke kans op een betaalbaar thuis.",
               to: "/standpunten",
             },
             {
               icon: TreePine,
               title: "Behoud van natuur",
-              text: "Bescherming van de Weerribben-Wieden — ons unieke visitekaartje.",
+              text: "Bescherming van Nationaal Park Weerribben-Wieden en onze kenmerkende landschappen als groen erfgoed.",
               to: "/standpunten",
             },
             {
               icon: Tractor,
               title: "Boer terug in beleid",
-              text: "Een gemeente die als bondgenoot náást de boer staat, niet ertegenover.",
+              text: "Een gemeente die als betrouwbare bondgenoot náást de agrariërs en lokale ondernemers staat, niet ertegenover.",
+              to: "/standpunten",
+            },
+            {
+              icon: Coins,
+              title: "Geen lastenverhoging",
+              text: "Zuinig huishoudboekje en een lage OZB. De gemeente moet eerst op eigen apparaat besparen voordat lasten stijgen.",
+              to: "/standpunten",
+            },
+            {
+              icon: Landmark,
+              title: "Leefbare kernen",
+              text: "Behoud van dorpshuizen, scholen, veilige fietspaden en directe inspraak voor alle 43 wijken en kernen.",
               to: "/standpunten",
             },
           ].map((f) => (
-            <Link key={f.title} to={f.to} className="group block bg-card border border-border p-8 hover-lift">
-              <f.icon className="w-10 h-10 text-accent mb-5" />
-              <h3 className="font-display text-2xl mb-2">{f.title}</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">{f.text}</p>
-              <div className="mt-5 text-xs uppercase tracking-widest text-accent flex items-center gap-2 group-hover:gap-3 transition-all">
+            <Link
+              key={f.title}
+              to={f.to}
+              className="group flex flex-col justify-between bg-card border border-border/80 hover:border-accent/60 p-4 sm:p-5 rounded-xs hover-lift transition-all"
+            >
+              <div>
+                <div className="w-10 h-10 rounded-xs bg-accent/10 border border-accent/30 flex items-center justify-center mb-3.5 text-accent group-hover:scale-105 transition-transform">
+                  <f.icon className="w-5 h-5" />
+                </div>
+                <h3 className="font-display text-lg sm:text-xl font-bold mb-2 text-foreground group-hover:text-accent transition-colors leading-snug">
+                  {f.title}
+                </h3>
+                <p className="text-xs sm:text-[13px] text-muted-foreground leading-relaxed">
+                  {f.text}
+                </p>
+              </div>
+              <div className="mt-4 pt-3 border-t border-border/50 text-[11px] uppercase tracking-widest text-accent font-semibold flex items-center gap-1.5 group-hover:gap-2.5 transition-all">
                 Lees meer <ArrowRight className="w-3 h-3" />
               </div>
             </Link>
