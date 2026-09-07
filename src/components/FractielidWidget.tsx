@@ -139,7 +139,7 @@ export const FractielidWidget: React.FC<FractielidWidgetProps> = ({
                 className="flex-1 w-full border-accent text-accent hover:bg-accent hover:text-accent-foreground uppercase tracking-wider text-[11px] sm:text-xs font-semibold px-2 sm:px-3 py-2 h-9 inline-flex items-center justify-center whitespace-nowrap min-w-0"
               >
                 <Phone className="w-3.5 h-3.5 mr-1.5 shrink-0" />
-                <span className="truncate">Belafspraak inplannen</span>
+                <span className="truncate">Belafspraak</span>
               </Button>
             )}
 

@@ -245,17 +245,6 @@ export const Header = () => {
               </Link>
             )}
 
-            {/* 2. Doneren Button */}
-            <Link to="/doneren" className="inline-flex">
-              <Button
-                variant="outline"
-                className="border-rose-400/50 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 uppercase tracking-wider text-xs font-semibold px-2 sm:px-2.5 xl:px-3 h-8 sm:h-9 whitespace-nowrap shrink-0 shadow-2xs"
-              >
-                <Heart className="w-3.5 h-3.5 sm:mr-1 fill-rose-600 text-rose-600" />
-                <span className="hidden sm:inline">Doneren</span>
-              </Button>
-            </Link>
-
             {/* PWA Install Button */}
             <PWAInstallButton variant="header" />
 

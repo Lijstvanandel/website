@@ -67,7 +67,7 @@ const Raadsleden = () => {
           size="lg"
           className="bg-primary hover:bg-primary/90 uppercase tracking-wider font-semibold whitespace-nowrap"
         >
-          <Phone className="w-4 h-4 mr-2" /> Belafspraak inplannen
+          <Phone className="w-4 h-4 mr-2" /> Belafspraak
         </Button>
       </div>
 

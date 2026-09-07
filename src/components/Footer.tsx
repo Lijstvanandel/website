@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Facebook, Instagram, Linkedin, Twitter, Mail, CheckCircle2, ArrowRight } from "lucide-react";
+import { Facebook, Instagram, Linkedin, Twitter, Mail, CheckCircle2, ArrowRight, Heart } from "lucide-react";
 import logo from "@/assets/logo.png";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -83,18 +83,35 @@ export const Footer = () => {
             <li><Link to="/agenda" className="text-muted-foreground hover:text-accent transition-colors">Agenda</Link></li>
             <li><Link to="/nieuws" className="text-muted-foreground hover:text-accent transition-colors">Nieuws</Link></li>
             <li><Link to="/contact" className="text-muted-foreground hover:text-accent transition-colors">Contact</Link></li>
+            <li>
+              <Link to="/doneren" className="text-rose-400 hover:text-rose-300 transition-colors inline-flex items-center gap-1.5 font-medium">
+                <Heart className="w-3.5 h-3.5 fill-rose-500 text-rose-500" />
+                Doneren
+              </Link>
+            </li>
           </ul>
         </div>
 
         <div>
-          <h4 className="font-display text-lg text-accent mb-3">Gemeente</h4>
-          <p className="text-sm text-muted-foreground leading-relaxed">
+          <h4 className="font-display text-lg text-accent mb-3">Gemeente & Steun</h4>
+          <p className="text-sm text-muted-foreground leading-relaxed mb-4">
             Gemeente Steenwijkerland<br />
             Vendelweg 1<br />
             8331 XE Steenwijk<br />
-            <br />
             <span className="text-xs text-muted-foreground/80">Fractiekamer Lijst van Andel</span>
           </p>
+
+          <div className="pt-2 border-t border-accent/20">
+            <Link to="/doneren" className="inline-block w-full">
+              <Button
+                variant="outline"
+                className="w-full border-rose-500/40 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 hover:border-rose-400 uppercase tracking-wider text-xs font-semibold h-9 flex items-center justify-center gap-2 shadow-xs"
+              >
+                <Heart className="w-3.5 h-3.5 fill-rose-500 text-rose-500" />
+                <span>Steun onze partij (Doneren)</span>
+              </Button>
+            </Link>
+          </div>
         </div>
 
         <div>

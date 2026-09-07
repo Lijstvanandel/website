@@ -13,6 +13,7 @@ import nodemailer from "nodemailer";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import multer from "multer";
+import rateLimit from "express-rate-limit";
 
 const appDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
 import Stripe from "stripe";
@@ -34,6 +35,12 @@ import {
   sendPushNotificationToUser,
   notifyRaadslidForBelafspraak,
 } from "./src/server/pushService.js";
+import {
+  initDatabase,
+  getDbFromSqlite,
+  saveDbToSqlite,
+  persistSqlite
+} from "./src/server/sqliteDatabase.js";
 
 // Ensure .env is explicitly loaded from working directory in case of PM2 or systemd execution
 function ensureEnvLoaded() {
@@ -164,7 +171,8 @@ let lastCacheClearedTime: string | null = null;
 let lastSystemSyncTime: string | null = null;
 
 const JWT_SECRET = process.env.JWT_SECRET || "super-secret-dev-key";
-const DB_FILE = path.join(process.cwd(), "db.json");
+// SQLite Database is initialized in startServer() with database.sqlite
+const DB_FILE = path.join(process.cwd(), "database.sqlite");
 
 // Stripe Lazy Initialization Client
 let stripeClient: Stripe | null = null;
@@ -210,12 +218,9 @@ UPLOAD_DIRS.forEach((dir) => {
   }
 });
 
-if (!fs.existsSync(DB_FILE)) {
-  fs.writeFileSync(DB_FILE, JSON.stringify({ users: [], fractieleden: [], videos: [], news: [], events: [] }));
-}
-
 function getDb() {
-  const db = JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
+  const db = getDbFromSqlite();
+  if (!db.users) db.users = [];
   if (!db.fractieleden) db.fractieleden = [];
   if (!db.videos) db.videos = [];
   if (!db.belafspraken) db.belafspraken = [];
@@ -648,7 +653,7 @@ function getDb() {
 }
 
 function saveDb(data: any) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+  saveDbToSqlite(data);
 }
 
 const storage = multer.diskStorage({
@@ -762,6 +767,10 @@ function mirrorUploadToDist(subpath: string) {
 }
 
 async function startServer() {
+  // Initialize robust SQLite storage and run migrations from db.json if first time
+  await initDatabase();
+  console.log("[STORAGE] SQLite database geïnitialiseerd (WAL & atomic persistence geactiveerd).");
+
   const app = express();
   const PORT = 3000;
   app.set('trust proxy', true);
@@ -1182,6 +1191,30 @@ async function startServer() {
     }
     next();
   };
+
+  // Rate Limiting: Max 3 belafspraken per IP per uur ter voorkoming van spam / abuse
+  const belafspraakLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 uur
+    max: 3, // Max 3 verzoeken per uur per IP
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      error: "U heeft te veel belafspraken aangevraagd vanaf dit IP-adres in een kort tijdsbestek. Probeer het over een uur opnieuw.",
+      code: "RATE_LIMIT_EXCEEDED"
+    }
+  });
+
+  // Rate Limiting: Max 5 contactberichten per IP per 30 minuten
+  const contactLimiter = rateLimit({
+    windowMs: 30 * 60 * 1000, // 30 minuten
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      error: "U heeft te veel berichten verstuurd. Probeer het later opnieuw.",
+      code: "RATE_LIMIT_EXCEEDED"
+    }
+  });
 
   // Helper to compute whether an account is officially a full 'lid' (active only 24 hours after registration / checkout)
   function computeMembershipDetails(user: any) {
@@ -5149,8 +5182,8 @@ async function startServer() {
   });
 
   // Contact Messages Routes
-  // Public endpoint for submitting contact form
-  app.post("/api/contact", (req, res) => {
+  // Public endpoint for submitting contact form (met rate limiter)
+  app.post("/api/contact", contactLimiter, (req, res) => {
     const { name, email, phone, subject, message } = req.body;
     if (!name || !email || !message) {
       return res.status(400).json({ error: "Vul alstublieft alle verplichte velden in (naam, e-mail en bericht)." });
@@ -5379,8 +5412,8 @@ async function startServer() {
     res.json(personen);
   });
 
-  // Public: Book a new call appointment
-  app.post("/api/belafspraken", (req, res) => {
+  // Public: Book a new call appointment (met rate limiter tegen spam/abuse)
+  app.post("/api/belafspraken", belafspraakLimiter, (req, res) => {
     const db = getDb();
     if (!db.belafspraken) db.belafspraken = [];
 
