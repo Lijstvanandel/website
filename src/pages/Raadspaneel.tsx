@@ -104,13 +104,13 @@ const SECTION_HEADER_PATTERNS = [
 
 function isSectionHeader(rawTitle: string): boolean {
   if (!rawTitle) return true;
-  const clean = rawTitle.toLowerCase().replace(/^\d+[\.\s\-]+/, "").replace(/\s+/g, " ").trim();
+  const clean = rawTitle.toLowerCase().replace(/^\d+[.\s-]+/, "").replace(/\s+/g, " ").trim();
   return SECTION_HEADER_PATTERNS.some((h) => clean === h || clean.startsWith(h));
 }
 
 function isProceduralTopic(rawTitle: string): boolean {
   if (!rawTitle) return true;
-  const clean = rawTitle.toLowerCase().replace(/^\d+[\.\s\-]+/, "").replace(/\s+/g, " ").trim();
+  const clean = rawTitle.toLowerCase().replace(/^\d+[.\s-]+/, "").replace(/\s+/g, " ").trim();
   return PROCEDURAL_KEYWORDS.some((k) => clean.includes(k));
 }
 
@@ -178,6 +178,13 @@ export default function Raadspaneel() {
   const [modalNoteText, setModalNoteText] = useState("");
   const [submittingModalNote, setSubmittingModalNote] = useState(false);
   const [showModalNotes, setShowModalNotes] = useState(true);
+
+  // Contributions state (Politieke Markt & Raadsvergadering)
+  const [isPolitiekeMarktModalOpen, setIsPolitiekeMarktModalOpen] = useState(false);
+  const [politiekeMarktText, setPolitiekeMarktText] = useState("");
+  const [isRaadsvergaderingModalOpen, setIsRaadsvergaderingModalOpen] = useState(false);
+  const [raadsvergaderingText, setRaadsvergaderingText] = useState("");
+  const [isSavingContribution, setIsSavingContribution] = useState(false);
 
   // Active topic for note dialog or details
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
@@ -307,6 +314,67 @@ export default function Raadspaneel() {
       toast.success(data.message || "Toewijzing bijgewerkt");
     } catch (err: any) {
       toast.error(err.message || "Fout bij toewijzen");
+    }
+  };
+
+  // Save Politieke Markt contribution / Mark as hamerstuk
+  const handleSavePolitiekeMarkt = async (topicId: string, markAsHamerstuk?: boolean) => {
+    if (!token) return;
+    setIsSavingContribution(true);
+    try {
+      const res = await fetch(`/api/council/topics/${topicId}/contributions`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          bijdragePolitiekeMarkt: politiekeMarktText,
+          markAsHamerstuk: markAsHamerstuk,
+        }),
+      });
+      const data = await parseApiResponse(res);
+      if (!res.ok) throw new Error(data.error || "Kon bijdrage niet opslaan");
+
+      setTopics((prev) => prev.map((t) => (t.id === topicId ? data.topic : t)));
+      setIsPolitiekeMarktModalOpen(false);
+      toast.success(
+        markAsHamerstuk
+          ? "Bijdrage opgeslagen en gemarkeerd als afgehandeld hamerstuk!"
+          : "Bijdrage Politieke Markt succesvol opgeslagen!"
+      );
+    } catch (err: any) {
+      toast.error(err.message || "Fout bij opslaan");
+    } finally {
+      setIsSavingContribution(false);
+    }
+  };
+
+  // Save Raadsvergadering contribution
+  const handleSaveRaadsvergadering = async (topicId: string) => {
+    if (!token) return;
+    setIsSavingContribution(true);
+    try {
+      const res = await fetch(`/api/council/topics/${topicId}/contributions`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          bijdrageRaadsvergadering: raadsvergaderingText,
+        }),
+      });
+      const data = await parseApiResponse(res);
+      if (!res.ok) throw new Error(data.error || "Kon bijdrage niet opslaan");
+
+      setTopics((prev) => prev.map((t) => (t.id === topicId ? data.topic : t)));
+      setIsRaadsvergaderingModalOpen(false);
+      toast.success("Bijdrage Raadsvergadering succesvol opgeslagen!");
+    } catch (err: any) {
+      toast.error(err.message || "Fout bij opslaan");
+    } finally {
+      setIsSavingContribution(false);
     }
   };
 
@@ -885,6 +953,80 @@ export default function Raadspaneel() {
                   </div>
                 </div>
 
+                {/* Fractie Bijdragen & Behandeling Actieknoppen */}
+                <div className="p-4 rounded-xl bg-background border border-border/90 shadow-2xs space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-accent" />
+                      <span>Fractie-Inbreng & Behandeling</span>
+                    </div>
+                    {selectedTopic.status === "hamerstuk_afgehandeld" ? (
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Afgehandeld als hamerstuk {selectedTopic.hamerstukAfgehandeldBy ? `door ${selectedTopic.hamerstukAfgehandeldBy}` : ""}
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground border border-border">
+                        In behandeling (Bespreekstuk)
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Knop 1: Bijdrage Politieke Markt */}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setPolitiekeMarktText(selectedTopic.bijdragePolitiekeMarkt || "");
+                        setIsPolitiekeMarktModalOpen(true);
+                      }}
+                      className="h-auto py-2.5 px-3.5 text-xs rounded-xl border-accent/40 bg-accent/5 hover:bg-accent/15 text-foreground justify-start text-left flex items-start gap-2.5 group transition-all"
+                    >
+                      <MessageSquare className="w-4 h-4 text-accent shrink-0 mt-0.5" />
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-accent group-hover:underline flex items-center justify-between">
+                          <span>Bijdrage Politieke Markt</span>
+                          {selectedTopic.bijdragePolitiekeMarkt ? (
+                            <span className="text-[10px] bg-accent/20 px-1.5 py-0.2 rounded font-semibold text-accent">Ingevuld</span>
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground font-normal">Nog leeg</span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5">
+                          {selectedTopic.bijdragePolitiekeMarkt ? selectedTopic.bijdragePolitiekeMarkt : "Concept inbreng, standpunt & spreektijd..."}
+                        </p>
+                      </div>
+                    </Button>
+
+                    {/* Knop 2: Bijdrage Raadsvergadering */}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setRaadsvergaderingText(selectedTopic.bijdrageRaadsvergadering || "");
+                        setIsRaadsvergaderingModalOpen(true);
+                      }}
+                      className="h-auto py-2.5 px-3.5 text-xs rounded-xl border-border bg-card hover:bg-muted/40 text-foreground justify-start text-left flex items-start gap-2.5 group transition-all"
+                    >
+                      <FileCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-foreground group-hover:text-accent flex items-center justify-between">
+                          <span>Bijdrage Raadsvergadering</span>
+                          {selectedTopic.bijdrageRaadsvergadering ? (
+                            <span className="text-[10px] bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.2 rounded font-semibold">Ingevuld</span>
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground font-normal">Nog leeg</span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5">
+                          {selectedTopic.bijdrageRaadsvergadering ? selectedTopic.bijdrageRaadsvergadering : "Definitieve inbreng, stemadvies & moties..."}
+                        </p>
+                      </div>
+                    </Button>
+                  </div>
+                </div>
+
                 {/* Documentenlijst (Direct te bekijken en af te vinken) */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
@@ -1002,19 +1144,34 @@ export default function Raadspaneel() {
                   ) : (
                     <div className="space-y-2.5">
                       {selectedTopic.notes.map((note) => {
+                        const isMemberFeedback = note.source === "ledenfeedback";
                         const isAuthor = note.authorUsername === user?.username;
                         const canDelete = isAuthor || user?.role === "admin";
 
                         return (
                           <div
                             key={note.id}
-                            className="p-3.5 rounded-xl bg-muted/40 border border-border/70 space-y-1.5"
+                            className={`p-3.5 rounded-xl border space-y-1.5 transition-all ${
+                              isMemberFeedback
+                                ? "bg-blue-500/5 border-blue-500/30"
+                                : "bg-muted/40 border-border/70"
+                            }`}
                           >
-                            <div className="flex items-center justify-between text-xs">
-                              <div className="flex items-center gap-2">
+                            <div className="flex items-center justify-between text-xs flex-wrap gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-bold text-foreground">
                                   {note.authorName || note.authorUsername}
                                 </span>
+                                {isMemberFeedback && (
+                                  <span className="text-[10px] px-2 py-0.5 bg-blue-500/15 text-blue-600 dark:text-blue-400 rounded-full font-bold border border-blue-500/30">
+                                    Ledenfeedback / Inbreng
+                                  </span>
+                                )}
+                                {note.memberEmail && (
+                                  <span className="text-[10.5px] text-muted-foreground">
+                                    ({note.memberEmail})
+                                  </span>
+                                )}
                                 {note.documentTitle && (
                                   <span className="text-[10.5px] px-2 py-0.5 bg-accent/15 text-accent rounded-full font-medium truncate max-w-xs">
                                     Bij stuk: {note.documentTitle}
@@ -1370,6 +1527,177 @@ export default function Raadspaneel() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Bijdrage Politieke Markt Dialog */}
+      {selectedTopic && (
+        <Dialog open={isPolitiekeMarktModalOpen} onOpenChange={setIsPolitiekeMarktModalOpen}>
+          <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+            <DialogHeader>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-accent/15 text-accent border border-accent/30">
+                  Politieke Markt
+                </span>
+                {selectedTopic.status === "hamerstuk_afgehandeld" && (
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                    Afgehandeld als hamerstuk
+                  </span>
+                )}
+              </div>
+              <DialogTitle className="text-lg font-display font-bold leading-snug">
+                Bijdrage Politieke Markt: {selectedTopic.title}
+              </DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground">
+                Noteer hier het standpunt, de inbreng van de fractie en de concept spreektijd voor de Politieke Markt.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-2 flex-1 min-h-0 overflow-y-auto">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">
+                  Fractie-inbreng & Standpunt (Politieke Markt)
+                </label>
+                <Textarea
+                  rows={8}
+                  value={politiekeMarktText}
+                  onChange={(e) => setPolitiekeMarktText(e.target.value)}
+                  placeholder="Noteer hier uw standpunt, vragen aan het college/wethouder en kernpunten voor de politieke markt..."
+                  className="text-xs bg-muted/20"
+                />
+              </div>
+
+              {selectedTopic.bijdragePolitiekeMarktUpdatedAt && (
+                <div className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>
+                    Laatst gewijzigd door {selectedTopic.bijdragePolitiekeMarktUpdatedBy || "onbekend"} op{" "}
+                    {new Date(selectedTopic.bijdragePolitiekeMarktUpdatedAt).toLocaleString("nl-NL")}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <DialogFooter className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-3 border-t border-border">
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsPolitiekeMarktModalOpen(false)}
+                  disabled={isSavingContribution}
+                  className="text-xs"
+                >
+                  Sluiten
+                </Button>
+                {selectedTopic.status !== "hamerstuk_afgehandeld" ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={isSavingContribution}
+                    onClick={() => handleSavePolitiekeMarkt(selectedTopic.id, true)}
+                    className="text-xs border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-semibold gap-1"
+                    title="Markeer als afgehandeld hamerstuk (geen verdere bespreking in de raad nodig)"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Afgehandeld als hamerstuk
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={isSavingContribution}
+                    onClick={() => handleSavePolitiekeMarkt(selectedTopic.id, false)}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                    title="Zet terug naar bespreekstuk"
+                  >
+                    Terugzetten naar bespreekstuk
+                  </Button>
+                )}
+              </div>
+
+              <Button
+                type="button"
+                size="sm"
+                disabled={isSavingContribution}
+                onClick={() => handleSavePolitiekeMarkt(selectedTopic.id, undefined)}
+                className="text-xs bg-accent text-accent-foreground font-semibold"
+              >
+                {isSavingContribution ? "Opslaan..." : "Bijdrage Opslaan"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Bijdrage Raadsvergadering Dialog */}
+      {selectedTopic && (
+        <Dialog open={isRaadsvergaderingModalOpen} onOpenChange={setIsRaadsvergaderingModalOpen}>
+          <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+            <DialogHeader>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-primary/15 text-primary border border-primary/30">
+                  Raadsvergadering
+                </span>
+                <span className="text-xs text-muted-foreground">Besluitvorming</span>
+              </div>
+              <DialogTitle className="text-lg font-display font-bold leading-snug">
+                Bijdrage Raadsvergadering: {selectedTopic.title}
+              </DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground">
+                Noteer hier de definitieve inbreng, eventuele moties/amendementen en het fractie-stemadvies voor de raadsvergadering.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-2 flex-1 min-h-0 overflow-y-auto">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">
+                  Definitieve inbreng, Stemadvies & Moties
+                </label>
+                <Textarea
+                  rows={8}
+                  value={raadsvergaderingText}
+                  onChange={(e) => setRaadsvergaderingText(e.target.value)}
+                  placeholder="Bijv. Stemadvies: VOOR / TEGEN; Motie 'Behoud dorpshuis' indienen met mede-indieners..."
+                  className="text-xs bg-muted/20"
+                />
+              </div>
+
+              {selectedTopic.bijdrageRaadsvergaderingUpdatedAt && (
+                <div className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>
+                    Laatst gewijzigd door {selectedTopic.bijdrageRaadsvergaderingUpdatedBy || "onbekend"} op{" "}
+                    {new Date(selectedTopic.bijdrageRaadsvergaderingUpdatedAt).toLocaleString("nl-NL")}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <DialogFooter className="flex items-center justify-between gap-2 pt-3 border-t border-border">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsRaadsvergaderingModalOpen(false)}
+                disabled={isSavingContribution}
+                className="text-xs"
+              >
+                Sluiten
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={isSavingContribution}
+                onClick={() => handleSaveRaadsvergadering(selectedTopic.id)}
+                className="text-xs bg-accent text-accent-foreground font-semibold"
+              >
+                {isSavingContribution ? "Opslaan..." : "Bijdrage Raadsvergadering Opslaan"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

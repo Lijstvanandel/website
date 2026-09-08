@@ -14,9 +14,11 @@ export interface CouncilTopicNote {
   id: string;
   authorUsername: string;
   authorName: string;
-  documentId?: string; // Optional: linked to a specific document
-  documentTitle?: string;
+  documentId?: string | null; // Optional: linked to a specific document
+  documentTitle?: string | null;
   note: string;
+  source?: "fractie" | "ledenfeedback";
+  memberEmail?: string;
   createdAt: string;
   updatedAt?: string;
 }
@@ -29,7 +31,7 @@ export interface CouncilAgendaTopic {
   meetingTitle: string; // e.g. "Raadsvergadering (Oordeelsvormend)", "Oordeelsvorming"
   meetingType: string; // e.g. "Oordeelsvormend", "Besluitvormend", etc.
   agendaItemNumber?: string; // e.g. "4.1" or "5"
-  category: "Oordeelvorming - bespreekstukken" | "Hamerstukken" | "Informatief" | "Overig";
+  category: "Oordeelvorming - bespreekstukken" | "Oordeelvorming - hamerstukken" | "Hamerstukken" | "Informatief" | "Overig" | string;
   title: string;
   description?: string;
   assignedTo?: string | null; // username of assigned council member/fractielid
@@ -41,6 +43,20 @@ export interface CouncilAgendaTopic {
   archivedAt?: string | null;
   sourceUrl?: string;
   scrapedAt: string;
+
+  // Politieke Markt & Raadsvergadering contributions
+  bijdragePolitiekeMarkt?: string;
+  bijdragePolitiekeMarktUpdatedBy?: string;
+  bijdragePolitiekeMarktUpdatedAt?: string;
+
+  bijdrageRaadsvergadering?: string;
+  bijdrageRaadsvergaderingUpdatedBy?: string;
+  bijdrageRaadsvergaderingUpdatedAt?: string;
+
+  // Status & Hamerstuk handling
+  status?: "in_behandeling" | "hamerstuk_afgehandeld" | "bespreekstuk" | "afgerond" | string;
+  hamerstukAfgehandeldAt?: string | null;
+  hamerstukAfgehandeldBy?: string | null;
 }
 
 export interface CouncilMeetingScrapeSummary {
@@ -52,3 +68,4 @@ export interface CouncilMeetingScrapeSummary {
   status: "idle" | "scraping" | "success" | "error";
   errorMessage?: string;
 }
+

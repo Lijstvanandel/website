@@ -34,6 +34,9 @@ import {
   removePushSubscription,
   sendPushNotificationToUser,
   notifyRaadslidForBelafspraak,
+  notifyTopicAssigned,
+  notifyAllDocumentsViewed,
+  notifyMemberFeedbackSubmitted,
 } from "./src/server/pushService.js";
 import {
   initDatabase,
@@ -7020,7 +7023,7 @@ Sitemap: ${baseUrl}/sitemap.xml
   });
 
   // 3. Assign topic to council member (Admin or self-assign)
-  app.patch("/api/council/topics/:topicId/assign", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+  app.patch("/api/council/topics/:topicId/assign", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
     const { topicId } = req.params;
     const { assignedTo } = req.body; // username or null
     const db = getDb();
@@ -7035,8 +7038,10 @@ Sitemap: ${baseUrl}/sitemap.xml
     }
 
     let assignedMemberName: string | null = null;
+    let assignedUserObj: any = null;
     if (assignedTo) {
       const user = (db.users || []).find((u: any) => u.username === assignedTo || u.id === assignedTo);
+      assignedUserObj = user;
       assignedMemberName = user ? (user.fullName || user.username) : assignedTo;
       topic.assignedTo = user ? user.username : assignedTo;
       topic.assignedName = assignedMemberName;
@@ -7048,6 +7053,16 @@ Sitemap: ${baseUrl}/sitemap.xml
     }
 
     saveDb(db);
+
+    // Send push notification to assigned user if assigned
+    if (assignedUserObj) {
+      try {
+        await notifyTopicAssigned(db, topic, assignedUserObj, saveDb);
+      } catch (pushErr: any) {
+        console.warn("[PUSH NOTIFICATIE FOUT TOEPASSEN ONDERWERP]:", pushErr?.message);
+      }
+    }
+
     return res.json({
       success: true,
       topic,
@@ -7056,7 +7071,7 @@ Sitemap: ${baseUrl}/sitemap.xml
   });
 
   // 4. Mark document as viewed (or toggle)
-  app.post("/api/council/topics/:topicId/documents/:docId/view", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+  app.post("/api/council/topics/:topicId/documents/:docId/view", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
     const { topicId, docId } = req.params;
     const username = req.user.username;
     const fullName = req.user.fullName || username;
@@ -7097,10 +7112,158 @@ Sitemap: ${baseUrl}/sitemap.xml
     }
 
     saveDb(db);
+
+    // Check if ALL documents in this topic are now marked as viewed by this user or the assigned member
+    const targetUsername = topic.assignedTo || username;
+    const allDocs = Array.isArray(topic.documents) ? topic.documents : [];
+    const allRead = allDocs.length > 0 && allDocs.every((d: any) =>
+      Array.isArray(d.viewedBy) && d.viewedBy.some((v: any) => v.username === targetUsername || v.username === username)
+    );
+
+    if (allRead && !req.body.toggleOff) {
+      try {
+        await notifyAllDocumentsViewed(db, topic, { id: req.user.id, username, fullName }, saveDb);
+      } catch (pushErr: any) {
+        console.warn("[PUSH NOTIFICATIE FOUT DOCUMENTEN GELEZEN]:", pushErr?.message);
+      }
+    }
+
     return res.json({
       success: true,
       topic,
-      document: doc
+      document: doc,
+      allRead
+    });
+  });
+
+  // 4b. Update Topic Contributions (Bijdrage Politieke Markt, Bijdrage Raadsvergadering, Hamerstuk)
+  app.patch("/api/council/topics/:topicId/contributions", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    const { topicId } = req.params;
+    const { bijdragePolitiekeMarkt, bijdrageRaadsvergadering, markAsHamerstuk } = req.body;
+    const db = getDb();
+
+    const topic = (db.councilAgendaTopics || []).find((t: any) => t.id === topicId);
+    if (!topic) {
+      return res.status(404).json({ error: "Onderwerp niet gevonden" });
+    }
+
+    if (bijdragePolitiekeMarkt !== undefined) {
+      topic.bijdragePolitiekeMarkt = bijdragePolitiekeMarkt;
+      topic.bijdragePolitiekeMarktUpdatedBy = req.user.fullName || req.user.username;
+      topic.bijdragePolitiekeMarktUpdatedAt = new Date().toISOString();
+    }
+
+    if (bijdrageRaadsvergadering !== undefined) {
+      topic.bijdrageRaadsvergadering = bijdrageRaadsvergadering;
+      topic.bijdrageRaadsvergaderingUpdatedBy = req.user.fullName || req.user.username;
+      topic.bijdrageRaadsvergaderingUpdatedAt = new Date().toISOString();
+    }
+
+    if (markAsHamerstuk === true) {
+      topic.status = "hamerstuk_afgehandeld";
+      topic.category = "Oordeelvorming - hamerstukken";
+      topic.hamerstukAfgehandeldAt = new Date().toISOString();
+      topic.hamerstukAfgehandeldBy = req.user.fullName || req.user.username;
+    } else if (markAsHamerstuk === false) {
+      topic.status = "in_behandeling";
+      topic.hamerstukAfgehandeldAt = null;
+      topic.hamerstukAfgehandeldBy = null;
+    }
+
+    saveDb(db);
+
+    return res.json({
+      success: true,
+      topic,
+      message: "Bijdragen en status succesvol opgeslagen."
+    });
+  });
+
+  // 4c. Member Dashboard: Get Active Council Topics for Members
+  app.get("/api/council/member-topics", requireAuth, (req: any, res: any) => {
+    const db = getDb();
+    const allTopics = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
+
+    // Filter active (non-archived) topics
+    const memberTopics = allTopics
+      .filter((t: any) => !t.isArchived)
+      .map((t: any) => {
+        const memberNotesCount = (t.notes || []).filter((n: any) => n.source === "ledenfeedback").length;
+        const fractieNotesCount = (t.notes || []).filter((n: any) => n.source !== "ledenfeedback").length;
+        
+        return {
+          id: t.id,
+          title: t.title,
+          description: t.description,
+          meetingDate: t.meetingDate,
+          meetingDateDisplay: t.meetingDateDisplay,
+          meetingTitle: t.meetingTitle,
+          category: t.category,
+          status: t.status || "in_behandeling",
+          assignedTo: t.assignedTo,
+          assignedName: t.assignedName,
+          documents: t.documents || [],
+          memberNotesCount,
+          fractieNotesCount,
+          hamerstukAfgehandeldAt: t.hamerstukAfgehandeldAt,
+          hamerstukAfgehandeldBy: t.hamerstukAfgehandeldBy,
+          // Only show member's own submitted feedback notes
+          myFeedback: (t.notes || []).filter((n: any) => n.authorUsername === req.user.username && n.source === "ledenfeedback")
+        };
+      });
+
+    return res.json({
+      topics: memberTopics
+    });
+  });
+
+  // 4d. Member Dashboard: Post Feedback / Input on a Council Topic
+  app.post("/api/council/topics/:topicId/member-feedback", requireAuth, async (req: any, res: any) => {
+    const { topicId } = req.params;
+    const { feedback, documentId, documentTitle } = req.body;
+
+    if (!feedback || typeof feedback !== "string" || !feedback.trim()) {
+      return res.status(400).json({ error: "Inbreng of feedback mag niet leeg zijn." });
+    }
+
+    const db = getDb();
+    const topic = (db.councilAgendaTopics || []).find((t: any) => t.id === topicId);
+    if (!topic) {
+      return res.status(404).json({ error: "Onderwerp niet gevonden" });
+    }
+
+    if (!Array.isArray(topic.notes)) {
+      topic.notes = [];
+    }
+
+    const memberName = req.user.fullName || req.user.username;
+    const newFeedbackNote = {
+      id: "feedback_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7),
+      authorUsername: req.user.username,
+      authorName: memberName,
+      memberEmail: req.user.email || null,
+      documentId: documentId || null,
+      documentTitle: documentTitle || null,
+      note: feedback.trim(),
+      source: "ledenfeedback",
+      createdAt: new Date().toISOString()
+    };
+
+    topic.notes.push(newFeedbackNote);
+    saveDb(db);
+
+    // Send push notification to assigned council member & fractie admins
+    try {
+      await notifyMemberFeedbackSubmitted(db, topic, { id: req.user.id, username: req.user.username, fullName: memberName }, feedback.trim(), saveDb);
+    } catch (pushErr: any) {
+      console.warn("[PUSH NOTIFICATIE FOUT LEDENFEEDBACK]:", pushErr?.message);
+    }
+
+    return res.json({
+      success: true,
+      topic,
+      feedback: newFeedbackNote,
+      message: "Uw inbreng is direct doorgestuurd naar de fractie!"
     });
   });
 
@@ -7134,6 +7297,7 @@ Sitemap: ${baseUrl}/sitemap.xml
       documentId: documentId || null,
       documentTitle: documentTitle || null,
       note: note.trim(),
+      source: "fractie",
       createdAt: new Date().toISOString()
     };
 
@@ -7184,7 +7348,7 @@ Sitemap: ${baseUrl}/sitemap.xml
   });
 
   // 7. Proxy document to avoid iframe/CORS issues and directly deliver pure PDF
-  app.get("/api/council/document-proxy", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
+  app.get("/api/council/document-proxy", requireAuth, async (req: any, res: any) => {
     const rawDocUrl = req.query.url;
     if (!rawDocUrl || typeof rawDocUrl !== "string") {
       return res.status(400).json({ error: "Geen geldige document URL opgegeven" });

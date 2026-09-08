@@ -72,13 +72,13 @@ export const SECTION_HEADER_PATTERNS = [
 
 export function isSectionHeader(rawTitle: string): boolean {
   if (!rawTitle) return true;
-  const clean = rawTitle.toLowerCase().replace(/^\d+[\.\s\-]+/, "").replace(/\s+/g, " ").trim();
+  const clean = rawTitle.toLowerCase().replace(/^\d+[.\s-]+/, "").replace(/\s+/g, " ").trim();
   return SECTION_HEADER_PATTERNS.some((h) => clean === h || clean.startsWith(h));
 }
 
 export function isProceduralTopic(rawTitle: string): boolean {
   if (!rawTitle) return true;
-  const clean = rawTitle.toLowerCase().replace(/^\d+[\.\s\-]+/, "").replace(/\s+/g, " ").trim();
+  const clean = rawTitle.toLowerCase().replace(/^\d+[.\s-]+/, "").replace(/\s+/g, " ").trim();
   return PROCEDURAL_KEYWORDS.some((k) => clean.includes(k));
 }
 

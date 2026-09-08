@@ -304,3 +304,114 @@ export async function notifyRaadslidForBelafspraak(
 
   return { recipients: recipientUserIds.size, sent: totalSent };
 }
+
+/**
+ * Send push notification when an agenda topic is assigned to a user
+ */
+export async function notifyTopicAssigned(
+  db: any,
+  topic: { id: string; title: string },
+  assignedUser: { id: string; username: string; fullName?: string },
+  saveDbCallback?: (db: any) => void
+): Promise<{ sent: number; failed: number }> {
+  const payload: PushPayload = {
+    title: "📌 Onderwerp toebedeeld",
+    body: `"${topic.title}" is aan u toebedeeld.`,
+    url: "/raadspaneel",
+    tag: `topic-assign-${topic.id}`,
+  };
+
+  return await sendPushNotificationToUser(db, assignedUser.id, payload, saveDbCallback);
+}
+
+/**
+ * Send push notification when all documents of a topic are marked as read
+ */
+export async function notifyAllDocumentsViewed(
+  db: any,
+  topic: { id: string; title: string; assignedTo?: string | null },
+  readerUser: { id: string; username: string; fullName?: string },
+  saveDbCallback?: (db: any) => void
+): Promise<{ recipients: number; sent: number }> {
+  ensureVapidKeys(db, saveDbCallback);
+
+  if (!db.pushSubscriptions || db.pushSubscriptions.length === 0) {
+    return { recipients: 0, sent: 0 };
+  }
+
+  const recipientUserIds = new Set<string>();
+
+  // Notify fractieleden & admins
+  if (db.users) {
+    for (const usr of db.users) {
+      if (usr.role === "raadslid" || usr.role === "admin" || usr.role === "fractielid") {
+        recipientUserIds.add(usr.id);
+      }
+    }
+  }
+
+  const payload: PushPayload = {
+    title: "✅ Alle documenten gelezen",
+    body: `Alle documenten voor "${topic.title}" zijn op gelezen gezet door ${readerUser.fullName || readerUser.username}.`,
+    url: "/raadspaneel",
+    tag: `topic-docs-read-${topic.id}`,
+  };
+
+  let totalSent = 0;
+  for (const uid of recipientUserIds) {
+    const res = await sendPushNotificationToUser(db, uid, payload, saveDbCallback);
+    totalSent += res.sent;
+  }
+
+  return { recipients: recipientUserIds.size, sent: totalSent };
+}
+
+/**
+ * Send push notification when a member submits feedback on a council topic
+ */
+export async function notifyMemberFeedbackSubmitted(
+  db: any,
+  topic: { id: string; title: string; assignedTo?: string | null },
+  memberUser: { id: string; username: string; fullName?: string },
+  feedbackSnippet: string,
+  saveDbCallback?: (db: any) => void
+): Promise<{ recipients: number; sent: number }> {
+  ensureVapidKeys(db, saveDbCallback);
+
+  if (!db.pushSubscriptions || db.pushSubscriptions.length === 0) {
+    return { recipients: 0, sent: 0 };
+  }
+
+  const recipientUserIds = new Set<string>();
+
+  // Add assigned user if available
+  if (topic.assignedTo && db.users) {
+    const assigned = db.users.find((u: any) => u.username === topic.assignedTo || u.id === topic.assignedTo);
+    if (assigned) recipientUserIds.add(assigned.id);
+  }
+
+  // Add admins and raadsleden
+  if (db.users) {
+    for (const usr of db.users) {
+      if (usr.role === "admin" || usr.role === "raadslid") {
+        recipientUserIds.add(usr.id);
+      }
+    }
+  }
+
+  const payload: PushPayload = {
+    title: "💬 Nieuwe ledeninbreng raadsonderwerp",
+    body: `${memberUser.fullName || memberUser.username} heeft inbreng geplaatst bij "${topic.title}": "${feedbackSnippet.slice(0, 80)}"`,
+    url: "/raadspaneel",
+    tag: `topic-feedback-${topic.id}`,
+  };
+
+  let totalSent = 0;
+  for (const uid of recipientUserIds) {
+    const res = await sendPushNotificationToUser(db, uid, payload, saveDbCallback);
+    totalSent += res.sent;
+  }
+
+  return { recipients: recipientUserIds.size, sent: totalSent };
+}
+

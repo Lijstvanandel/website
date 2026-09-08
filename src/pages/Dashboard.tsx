@@ -41,6 +41,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SecureDocumentViewer } from "@/components/SecureDocumentViewer";
 import { RaadslidBelafsprakenWidget } from "@/components/RaadslidBelafsprakenWidget";
+import { MemberCouncilTopicsWidget } from "@/components/MemberCouncilTopicsWidget";
 import { TicketScannerModal } from "@/components/TicketScannerModal";
 import { MemberDocument } from "@/types/document";
 import { fetchWithAuth } from "@/lib/api";
@@ -821,6 +822,9 @@ export default function Dashboard() {
                   </div>
                 </div>
               </section>
+
+              {/* ACTUELE RAADSONDERWERPEN & LEDEN INBRENG WIDGET */}
+              <MemberCouncilTopicsWidget token={token} currentUser={user} />
 
               {/* LIDMAATSCHAP & CONTRIBUTIE CARD */}
               <section className="bg-card rounded-2xl p-6 sm:p-8 border border-border shadow-sm relative overflow-hidden">
