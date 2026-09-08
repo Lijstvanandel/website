@@ -31,3 +31,12 @@ dist/version.json
 .env
 .env.*
 !.env.example
+
+# SQLite Database & Uploads for persistent production on OVH/VPS
+database.sqlite
+database.sqlite*
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+uploads/
+

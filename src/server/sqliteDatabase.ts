@@ -2,7 +2,7 @@ import initSqlJs from "sql.js";
 import fs from "fs";
 import path from "path";
 
-const SQLITE_FILE = path.join(process.cwd(), "database.sqlite");
+const SQLITE_FILE = process.env.DATABASE_PATH || path.join(process.cwd(), "database.sqlite");
 const LEGACY_JSON = path.join(process.cwd(), "db.json");
 
 let sqlInstance: any = null;
@@ -144,6 +144,10 @@ export async function initDatabase() {
 export function persistSqlite() {
   if (!sqliteDb) return;
   try {
+    const parentDir = path.dirname(SQLITE_FILE);
+    if (!fs.existsSync(parentDir)) {
+      fs.mkdirSync(parentDir, { recursive: true });
+    }
     const data = sqliteDb.export();
     const buffer = Buffer.from(data);
     const tempFile = `${SQLITE_FILE}.tmp`;
