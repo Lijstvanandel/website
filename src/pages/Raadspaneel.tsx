@@ -55,60 +55,106 @@ import {
   CouncilMeetingScrapeSummary,
 } from "@/types/council";
 
-const PROCEDURAL_PATTERNS = [
-  "vaststelling besluitenlijst",
-  "vaststellen besluitenlijst",
-  "besluitenlijst",
-  "gelegenheid om vragen te stellen",
-  "gelegenheid tot het stellen van vragen",
-  "vragen stellen",
-  "sluiting",
-  "opening en mededelingen",
-  "opening van de vergadering",
+const PROCEDURAL_KEYWORDS = [
   "opening",
-  "vaststelling agenda",
-  "vaststellen agenda",
-  "spreekrecht voor niet-geagendeerde",
-  "spreekrecht burgers",
+  "sluiting",
+  "agenda",
   "spreekrecht",
-  "vragenhalfuurtje",
-  "vragenhalfuur",
-  "vragenkwartier",
-  "rondvraag",
-  "vaststelling van de notulen",
-  "vaststellen notulen",
-  "goedkeuring notulen",
-  "mededelingen van de voorzitter",
-  "mededelingen van het college",
-  "mededelingen van de burgemeester",
-  "mededelingen burgemeester",
+  "vragen",
+  "besluitenlijst",
+  "notulen",
   "mededelingen",
+  "beediging",
   "beëdiging",
   "installatie",
   "afscheid",
+  "toezegging",
+  "advies van de commissie",
+  "besluit",
+  "pauze",
+  "schorsing",
+  "hervatting",
+  "rondvraag",
+  "insprekers",
+  "onderwerp",
+  "vragenhalfuur",
+  "vragenhalfuurtje",
+  "vragenkwartier",
 ];
+
+const SECTION_HEADER_PATTERNS = [
+  "oordeelvorming - hamerstukken",
+  "oordeelvorming - bespreekstukken",
+  "beeldvorming - bespreekstukken",
+  "beeldvorming - hamerstukken",
+  "besluitvorming - hamerstukken",
+  "besluitvorming - bespreekstukken",
+  "hamerstukken",
+  "bespreekstukken",
+  "politieke markt",
+  "raadsvergadering",
+  "gemeenteraad",
+  "raadsbijeenkomst",
+  "presidium",
+  "commissie",
+  "informatief",
+  "informatieve bijeenkomst",
+  "algemeen",
+];
+
+function isSectionHeader(rawTitle: string): boolean {
+  if (!rawTitle) return true;
+  const clean = rawTitle.toLowerCase().replace(/^\d+[\.\s\-]+/, "").replace(/\s+/g, " ").trim();
+  return SECTION_HEADER_PATTERNS.some((h) => clean === h || clean.startsWith(h));
+}
 
 function isProceduralTopic(rawTitle: string): boolean {
   if (!rawTitle) return true;
-  const clean = rawTitle.toLowerCase().replace(/\s+/g, " ").trim();
-  return PROCEDURAL_PATTERNS.some((pattern) => {
-    if (clean === pattern || clean.startsWith(pattern)) return true;
-    if (clean.includes(pattern)) {
-      if (pattern === "sluiting" || pattern === "opening") {
-        return (
-          clean === "sluiting" ||
-          clean === "opening" ||
-          clean.startsWith("sluiting van") ||
-          clean.startsWith("opening van") ||
-          clean.startsWith("opening en") ||
-          clean.includes("sluiting van de vergadering") ||
-          clean.includes("opening van de vergadering")
-        );
-      }
-      return true;
-    }
-    return false;
-  });
+  const clean = rawTitle.toLowerCase().replace(/^\d+[\.\s\-]+/, "").replace(/\s+/g, " ").trim();
+  return PROCEDURAL_KEYWORDS.some((k) => clean.includes(k));
+}
+
+function isRawDocumentFileName(rawTitle: string): boolean {
+  if (!rawTitle) return true;
+  const clean = rawTitle.toLowerCase().trim();
+  if (/\d+\s*(kb|mb|gb)$/i.test(clean)) return true;
+  if (/\.(pdf|docx|xlsx)$/i.test(clean)) return true;
+  if (clean.includes("- raadsvoorstel") || clean.includes("- besluitenlijst") || clean.includes("- adviesnota")) return true;
+  if (/^zienswijze\s+\d+/i.test(clean) || /^nieuw\s*-\s*/i.test(clean) || /^bijlage\s+\d+/i.test(clean)) return true;
+  return false;
+}
+
+function isInvalidOrJunkTopic(rawTitle: string): boolean {
+  if (!rawTitle) return true;
+  const tLower = rawTitle.toLowerCase().trim();
+  if (tLower.startsWith("http://") || tLower.startsWith("https://")) return true;
+  if (tLower.includes("de voorzitter sluit") || tLower.includes("de voorzitter opent") || tLower.includes("de voorzitter vermeld") || tLower.includes("zegt toe") || tLower.includes("toezegging")) {
+    return true;
+  }
+  const JUNK = [
+    "welkom",
+    "vergaderingen",
+    "overzichten",
+    "wie is wie",
+    "uw invloed",
+    "veel gestelde vragen",
+    "de griffie",
+    "ibabs vergadermanagement",
+    "bijlagen",
+    "inloggen",
+    "cookie",
+    "cookies",
+    "zoek",
+    "zoeken",
+    "privacy",
+    "contact",
+  ];
+  if (JUNK.includes(tLower)) return true;
+  if (/^(dinsdag|woensdag|donderdag|vrijdag|zaterdag|zondag|maandag)\s+\d{1,2}\s+[a-z]+\s+\d{4}$/i.test(rawTitle)) return true;
+  if (isSectionHeader(rawTitle)) return true;
+  if (isProceduralTopic(rawTitle)) return true;
+  if (isRawDocumentFileName(rawTitle)) return true;
+  return false;
 }
 
 export default function Raadspaneel() {
@@ -377,16 +423,16 @@ export default function Raadspaneel() {
   const uniqueDates = useMemo(() => {
     const set = new Set<string>();
     topics.forEach((t) => {
-      if (t.meetingDate && !isProceduralTopic(t.title)) set.add(t.meetingDate);
+      if (t.meetingDate && !isInvalidOrJunkTopic(t.title)) set.add(t.meetingDate);
     });
     return Array.from(set).sort();
   }, [topics]);
 
-  // Filtered topics (excluding procedural items)
+  // Filtered topics (excluding procedural items & section headers)
   const filteredTopics = useMemo(() => {
     return topics.filter((t) => {
-      // Exclude procedural items
-      if (isProceduralTopic(t.title)) {
+      // Exclude procedural items & headers
+      if (isInvalidOrJunkTopic(t.title)) {
         return false;
       }
 
@@ -521,7 +567,7 @@ export default function Raadspaneel() {
               <AlertCircle className="w-4 h-4 text-amber-500" />
             </div>
             <div className="text-2xl font-bold text-foreground">
-              {topics.filter((t) => !isProceduralTopic(t.title) && t.category === "Oordeelvorming - bespreekstukken" && !t.isArchived).length}
+              {topics.filter((t) => !isInvalidOrJunkTopic(t.title) && t.category === "Oordeelvorming - bespreekstukken" && !t.isArchived).length}
             </div>
             <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
               Oordeelsvorming
@@ -534,7 +580,7 @@ export default function Raadspaneel() {
               <UserCheck className="w-4 h-4 text-accent" />
             </div>
             <div className="text-2xl font-bold text-accent">
-              {topics.filter((t) => !isProceduralTopic(t.title) && !t.isArchived && t.assignedTo === user?.username).length}
+              {topics.filter((t) => !isInvalidOrJunkTopic(t.title) && !t.isArchived && t.assignedTo === user?.username).length}
             </div>
             <span className="text-[11px] text-muted-foreground">
               Jouw agendapunten
@@ -547,7 +593,7 @@ export default function Raadspaneel() {
               <Layers className="w-4 h-4 text-sky-500" />
             </div>
             <div className="text-2xl font-bold text-foreground">
-              {topics.filter((t) => !isProceduralTopic(t.title) && !t.isArchived && !t.assignedTo).length}
+              {topics.filter((t) => !isInvalidOrJunkTopic(t.title) && !t.isArchived && !t.assignedTo).length}
             </div>
             <span className="text-[11px] text-muted-foreground">
               Kies een fractielid
@@ -560,7 +606,7 @@ export default function Raadspaneel() {
               <Archive className="w-4 h-4 text-muted-foreground" />
             </div>
             <div className="text-2xl font-bold text-foreground">
-              {topics.filter((t) => !isProceduralTopic(t.title) && t.isArchived).length}
+              {topics.filter((t) => !isInvalidOrJunkTopic(t.title) && t.isArchived).length}
             </div>
             <span className="text-[11px] text-muted-foreground">
               &gt; 7 dagen na vergadering

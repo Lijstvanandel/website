@@ -1,6 +1,6 @@
 import * as cheerio from "cheerio";
 import { CouncilAgendaTopic, CouncilDocument } from "../types/council.js";
-import { getDbFromSqlite, saveDbToSqlite } from "./sqliteDatabase.js";
+import { getDbFromSqlite, saveDbToSqlite, initDatabase } from "./sqliteDatabase.js";
 
 const BASE_URL = "https://steenwijkerland.bestuurlijkeinformatie.nl";
 const AGENDAS_API_TEMPLATE = `${BASE_URL}/Agenda/RetrieveAgendasForYear?agendatypeId=100000059&year=`;
@@ -21,64 +21,108 @@ const MONTH_MAP: Record<string, string> = {
 };
 
 /**
- * Procedural agenda patterns that should be filtered out from the scraper
+ * Procedural keywords and remark patterns that should be filtered out from topics
  */
-export const PROCEDURAL_PATTERNS = [
-  "vaststelling besluitenlijst",
-  "vaststellen besluitenlijst",
-  "besluitenlijst",
-  "gelegenheid om vragen te stellen",
-  "gelegenheid tot het stellen van vragen",
-  "vragen stellen",
-  "sluiting",
-  "opening en mededelingen",
-  "opening van de vergadering",
+export const PROCEDURAL_KEYWORDS = [
   "opening",
-  "vaststelling agenda",
-  "vaststellen agenda",
-  "spreekrecht voor niet-geagendeerde",
-  "spreekrecht burgers",
+  "sluiting",
+  "agenda",
   "spreekrecht",
-  "vragenhalfuurtje",
-  "vragenhalfuur",
-  "vragenkwartier",
-  "rondvraag",
-  "vaststelling van de notulen",
-  "vaststellen notulen",
-  "goedkeuring notulen",
-  "mededelingen van de voorzitter",
-  "mededelingen van het college",
-  "mededelingen van de burgemeester",
-  "mededelingen burgemeester",
+  "vragen",
+  "besluitenlijst",
+  "notulen",
   "mededelingen",
+  "beediging",
   "beëdiging",
   "installatie",
   "afscheid",
+  "toezegging",
+  "advies van de commissie",
+  "besluit",
+  "pauze",
+  "schorsing",
+  "hervatting",
+  "rondvraag",
+  "insprekers",
+  "onderwerp",
+  "vragenhalfuur",
+  "vragenhalfuurtje",
+  "vragenkwartier",
 ];
+
+export const SECTION_HEADER_PATTERNS = [
+  "oordeelvorming - hamerstukken",
+  "oordeelvorming - bespreekstukken",
+  "beeldvorming - bespreekstukken",
+  "beeldvorming - hamerstukken",
+  "besluitvorming - hamerstukken",
+  "besluitvorming - bespreekstukken",
+  "hamerstukken",
+  "bespreekstukken",
+  "politieke markt",
+  "raadsvergadering",
+  "gemeenteraad",
+  "raadsbijeenkomst",
+  "presidium",
+  "commissie",
+  "informatief",
+  "informatieve bijeenkomst",
+  "algemeen",
+];
+
+export function isSectionHeader(rawTitle: string): boolean {
+  if (!rawTitle) return true;
+  const clean = rawTitle.toLowerCase().replace(/^\d+[\.\s\-]+/, "").replace(/\s+/g, " ").trim();
+  return SECTION_HEADER_PATTERNS.some((h) => clean === h || clean.startsWith(h));
+}
 
 export function isProceduralTopic(rawTitle: string): boolean {
   if (!rawTitle) return true;
-  const clean = rawTitle.toLowerCase().replace(/\s+/g, " ").trim();
-  
-  return PROCEDURAL_PATTERNS.some((pattern) => {
-    if (clean === pattern) return true;
-    if (clean.startsWith(pattern)) return true;
-    if (clean.includes(pattern)) {
-      if (pattern === "sluiting" || pattern === "opening") {
-        return (
-          clean === "sluiting" ||
-          clean === "opening" ||
-          clean.startsWith("sluiting van") ||
-          clean.startsWith("opening van") ||
-          clean.startsWith("opening en") ||
-          clean.includes("sluiting van de vergadering") ||
-          clean.includes("opening van de vergadering")
-        );
-      }
-      return true;
-    }
-    return false;
-  });
+  const clean = rawTitle.toLowerCase().replace(/^\d+[\.\s\-]+/, "").replace(/\s+/g, " ").trim();
+  return PROCEDURAL_KEYWORDS.some((k) => clean.includes(k));
+}
+
+export function isRawDocumentFileName(rawTitle: string): boolean {
+  if (!rawTitle) return true;
+  const clean = rawTitle.toLowerCase().trim();
+  if (/\d+\s*(kb|mb|gb)$/i.test(clean)) return true;
+  if (/\.(pdf|docx|xlsx)$/i.test(clean)) return true;
+  if (clean.includes("- raadsvoorstel") || clean.includes("- besluitenlijst") || clean.includes("- adviesnota")) return true;
+  if (/^zienswijze\s+\d+/i.test(clean) || /^nieuw\s*-\s*/i.test(clean) || /^bijlage\s+\d+/i.test(clean)) return true;
+  return false;
+}
+
+export function isInvalidOrJunkTopic(rawTitle: string): boolean {
+  if (!rawTitle) return true;
+  const tLower = rawTitle.toLowerCase().trim();
+  if (tLower.startsWith("http://") || tLower.startsWith("https://")) return true;
+  if (tLower.includes("de voorzitter sluit") || tLower.includes("de voorzitter opent") || tLower.includes("de voorzitter vermeld") || tLower.includes("zegt toe") || tLower.includes("toezegging")) {
+    return true;
+  }
+  const JUNK = [
+    "welkom",
+    "vergaderingen",
+    "overzichten",
+    "wie is wie",
+    "uw invloed",
+    "veel gestelde vragen",
+    "de griffie",
+    "ibabs vergadermanagement",
+    "bijlagen",
+    "inloggen",
+    "cookie",
+    "cookies",
+    "zoek",
+    "zoeken",
+    "privacy",
+    "contact",
+  ];
+  if (JUNK.includes(tLower)) return true;
+  if (/^(dinsdag|woensdag|donderdag|vrijdag|zaterdag|zondag|maandag)\s+\d{1,2}\s+[a-z]+\s+\d{4}$/i.test(rawTitle)) return true;
+  if (isSectionHeader(rawTitle)) return true;
+  if (isProceduralTopic(rawTitle)) return true;
+  if (isRawDocumentFileName(rawTitle)) return true;
+  return false;
 }
 
 /**
@@ -115,6 +159,9 @@ export function parseDutchDate(text: string, defaultYear?: number): { dateIso: s
 export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date().getFullYear(), new Date().getFullYear() + 1]) {
   console.log(`[RAADSPANEEL SCRAPER] Start scraping voor gemeenteraad Steenwijkerland (jaren: ${yearsToScrape.join(", ")})...`);
   
+  // Ensure DB is initialized
+  await initDatabase();
+
   const scrapedMeetingLinks: { url: string; dateDisplay: string; year: number }[] = [];
 
   for (const year of yearsToScrape) {
@@ -123,7 +170,7 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
       console.log(`[RAADSPANEEL SCRAPER] Ophalen agenda index voor jaar ${year} van ${url}`);
       
       const res = await fetch(url, {
-        signal: AbortSignal.timeout(8000),
+        signal: AbortSignal.timeout(15000),
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/1.0",
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -168,7 +215,9 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
   const existingTopics: CouncilAgendaTopic[] = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
   const existingTopicsMap = new Map<string, CouncilAgendaTopic>();
   for (const t of existingTopics) {
-    existingTopicsMap.set(t.id, t);
+    if (!isInvalidOrJunkTopic(t.title)) {
+      existingTopicsMap.set(t.id, t);
+    }
   }
 
   let totalNewOrUpdated = 0;
@@ -185,7 +234,7 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
           const meetingId = meetingIdMatch ? meetingIdMatch[1] : Buffer.from(meeting.url).toString("hex").slice(0, 16);
 
           const res = await fetch(meeting.url, {
-            signal: AbortSignal.timeout(8000),
+            signal: AbortSignal.timeout(15000),
             headers: {
               "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/1.0",
               "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -236,25 +285,22 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
             
             if (!rawTitle) return;
 
-            const lowerTitle = rawTitle.toLowerCase();
-
-            // Check if this is a section category header
-            if (lowerTitle.includes("oordeelvorming - bespreekstukken") || (lowerTitle.includes("bespreekstukken") && !lowerTitle.includes("hamerstuk"))) {
-              currentSectionCategory = "Oordeelvorming - bespreekstukken";
-              return; // Skip category header row itself
-            } else if (lowerTitle.includes("oordeelvorming - hamerstukken") || lowerTitle.includes("hamerstukken")) {
-              currentSectionCategory = "Oordeelvorming - hamerstukken";
-              return; // Skip category header row itself
-            } else if (lowerTitle.includes("informatief")) {
-              currentSectionCategory = "Informatief";
-              return;
+            // Check if this is a section category header (e.g. "4 Oordeelvorming - hamerstukken" or "Bespreekstukken")
+            if (isSectionHeader(rawTitle)) {
+              const lower = rawTitle.toLowerCase();
+              if (lower.includes("hamerstuk")) {
+                currentSectionCategory = "Oordeelvorming - hamerstukken";
+              } else if (lower.includes("bespreekstuk")) {
+                currentSectionCategory = "Oordeelvorming - bespreekstukken";
+              } else if (lower.includes("informatief")) {
+                currentSectionCategory = "Informatief";
+              }
+              return; // Category headers are NOT standalone agenda topics!
             }
 
-            // Ignore pure navigation junk and procedural topics (e.g. Besluitenlijst, Vragen stellen, Sluiting, Opening)
-            if (JUNK_TITLES.has(lowerTitle)) return;
-            if (/^(dinsdag|woensdag|donderdag|vrijdag|zaterdag|zondag|maandag)\s+\d{1,2}\s+[a-z]+\s+\d{4}$/i.test(rawTitle)) return;
-            if (isProceduralTopic(rawTitle)) {
-              return; // Skip procedural agenda items
+            // Ignore pure navigation junk, remarks, procedural topics (e.g. Besluitenlijst, Vragen stellen, Sluiting, Opening, Toezeggingen)
+            if (isInvalidOrJunkTopic(rawTitle)) {
+              return;
             }
 
             // Extract attached documents within this agenda item only
@@ -292,8 +338,14 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
               }
             });
 
+            // If an item has 0 documents and title is less than 15 chars or purely generic, skip
+            if (docLinks.length === 0 && (rawTitle.length < 15 || rawTitle.split(" ").length < 3)) {
+              return;
+            }
+
             // Determine category & relevance
             let topicCategory = currentSectionCategory;
+            const lowerTitle = rawTitle.toLowerCase();
             if (lowerTitle.includes("bespreekstuk") || lowerTitle.includes("oordeelvorming")) {
               topicCategory = "Oordeelvorming - bespreekstukken";
             } else if (lowerTitle.includes("hamerstuk")) {
@@ -352,21 +404,18 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
     );
   }
 
-  // Purge any older junk entries or procedural items that match junk titles or invalid patterns
+  // Purge any older junk entries, procedural remarks, section headers, or loose file records
   for (const [id, topic] of existingTopicsMap.entries()) {
-    const tLower = topic.title.toLowerCase().trim();
+    if (isInvalidOrJunkTopic(topic.title)) {
+      existingTopicsMap.delete(id);
+      continue;
+    }
+    // Also purge if topic has 0 documents and is not assigned and has no notes
     if (
-      tLower === "welkom" ||
-      tLower === "vergaderingen" ||
-      tLower === "overzichten" ||
-      tLower === "wie is wie" ||
-      tLower === "uw invloed" ||
-      tLower === "veel gestelde vragen" ||
-      tLower === "de griffie" ||
-      tLower === "ibabs vergadermanagement" ||
-      tLower === "bijlagen" ||
-      /^(dinsdag|woensdag|donderdag|vrijdag|zaterdag|zondag|maandag)\s+\d{1,2}\s+[a-z]+\s+\d{4}$/i.test(topic.title) ||
-      isProceduralTopic(topic.title)
+      (!topic.documents || topic.documents.length === 0) &&
+      !topic.assignedTo &&
+      (!topic.notes || topic.notes.length === 0) &&
+      (topic.title.length < 15 || topic.title.split(" ").length < 3)
     ) {
       existingTopicsMap.delete(id);
     }
