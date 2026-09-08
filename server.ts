@@ -43,6 +43,7 @@ import {
 } from "./src/server/sqliteDatabase.js";
 import {
   scrapeCouncilAgendas,
+  clearUnassignedCouncilTopics,
   startDailyCouncilScraper
 } from "./src/server/councilScraperService.js";
 
@@ -6988,12 +6989,33 @@ Sitemap: ${baseUrl}/sitemap.xml
 
   // 2. Trigger manual scrape on demand
   app.post("/api/council/scrape-now", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
+    res.setHeader("Content-Type", "application/json");
     try {
       const summary = await scrapeCouncilAgendas();
       return res.json({ success: true, message: "Agenda's en documenten succesvol gescraped!", summary });
     } catch (err: any) {
       console.error("[RAADSPANEEL SCRAPER FOUT]", err);
       return res.status(500).json({ error: "Fout bij scrapen van vergaderstukken: " + err.message });
+    }
+  });
+
+  // 2b. Clear unassigned scraper topics (preserves assigned topics & notes)
+  app.post("/api/council/clear-unassigned", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    res.setHeader("Content-Type", "application/json");
+    try {
+      const result = clearUnassignedCouncilTopics();
+      const db = getDb();
+      return res.json({
+        success: true,
+        removedCount: result.removedCount,
+        remainingCount: result.remainingCount,
+        topics: db.councilAgendaTopics || [],
+        summary: db.councilScrapeSummary,
+        message: `${result.removedCount} onverdeelde onderwerpen gewist. ${result.remainingCount} toegewezen/actieve onderwerpen behouden.`
+      });
+    } catch (err: any) {
+      console.error("[RAADSPANEEL CLEAR FOUT]", err);
+      return res.status(500).json({ error: "Fout bij leegmaken van onverdeelde stukken: " + err.message });
     }
   });
 

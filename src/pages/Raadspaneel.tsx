@@ -26,6 +26,8 @@ import {
   Download,
   X,
   Plus,
+  RotateCcw,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -44,6 +46,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   CouncilAgendaTopic,
@@ -60,6 +63,8 @@ export default function Raadspaneel() {
   const [councilMembers, setCouncilMembers] = useState<{ id: string; username: string; fullName: string; role?: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [isScraping, setIsScraping] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -80,6 +85,19 @@ export default function Raadspaneel() {
 
   const isCouncilOrAdmin = user && (user.role === "admin" || user.role === "raadslid" || user.role === "fractielid");
 
+  // Safe JSON parser for API responses to prevent HTML syntax errors
+  const parseApiResponse = async (res: Response) => {
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch (_err) {
+      if (res.status === 504 || res.status === 502) {
+        throw new Error("De externe gemeenteserver reageerde te traag (timeout). Probeer het over een momentje nogmaals.");
+      }
+      throw new Error(`Serverfout (${res.status}): ${text.slice(0, 100)}`);
+    }
+  };
+
   const fetchCouncilData = useCallback(async (quiet = false) => {
     if (!token) return;
     if (!quiet) setLoading(true);
@@ -87,10 +105,10 @@ export default function Raadspaneel() {
       const res = await fetch("/api/council/topics", {
         headers: { Authorization: `Bearer ${token}` },
       });
+      const data = await parseApiResponse(res);
       if (!res.ok) {
-        throw new Error("Kon raadsstukken niet ophalen");
+        throw new Error(data.error || "Kon raadsstukken niet ophalen");
       }
-      const data = await res.json();
       setTopics(data.topics || []);
       setSummary(data.summary || null);
       setCouncilMembers(data.councilMembers || []);
@@ -125,9 +143,12 @@ export default function Raadspaneel() {
     try {
       const res = await fetch("/api/council/scrape-now", {
         method: "POST",
-        headers: { credentials: "omit", Authorization: `Bearer ${token}` },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
       });
-      const data = await res.json();
+      const data = await parseApiResponse(res);
       if (!res.ok) throw new Error(data.error || "Scrapen mislukt");
       toast.success(data.message || "Agenda's en documenten succesvol gescraped!");
       await fetchCouncilData(true);
@@ -135,6 +156,32 @@ export default function Raadspaneel() {
       toast.error(err.message || "Fout bij scrapen");
     } finally {
       setIsScraping(false);
+    }
+  };
+
+  // Clear unassigned topics handler (preserves assigned topics and notes)
+  const handleClearUnassigned = async () => {
+    if (!token) return;
+    setIsClearing(true);
+    try {
+      const res = await fetch("/api/council/clear-unassigned", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await parseApiResponse(res);
+      if (!res.ok) throw new Error(data.error || "Wissen mislukt");
+      
+      toast.success(data.message || "Onverdeelde stukken succesvol gewist!");
+      setTopics(data.topics || []);
+      setSummary(data.summary || null);
+      setShowClearConfirm(false);
+    } catch (err: any) {
+      toast.error(err.message || "Fout bij wissen");
+    } finally {
+      setIsClearing(false);
     }
   };
 
@@ -151,7 +198,7 @@ export default function Raadspaneel() {
         },
         body: JSON.stringify({ assignedTo: value }),
       });
-      const data = await res.json();
+      const data = await parseApiResponse(res);
       if (!res.ok) throw new Error(data.error || "Kon toewijzing niet aanpassen");
       
       setTopics((prev) => prev.map((t) => (t.id === topicId ? data.topic : t)));
@@ -173,7 +220,7 @@ export default function Raadspaneel() {
         },
         body: JSON.stringify({ toggleOff: isCurrentlyViewed }),
       });
-      const data = await res.json();
+      const data = await parseApiResponse(res);
       if (!res.ok) throw new Error(data.error || "Kon bekeken-status niet updaten");
 
       setTopics((prev) => prev.map((t) => (t.id === topicId ? data.topic : t)));
@@ -207,7 +254,7 @@ export default function Raadspaneel() {
           documentTitle: docTitle || null,
         }),
       });
-      const data = await res.json();
+      const data = await parseApiResponse(res);
       if (!res.ok) throw new Error(data.error || "Kon notitie niet opslaan");
 
       setTopics((prev) => prev.map((t) => (t.id === topicId ? data.topic : t)));
@@ -238,7 +285,7 @@ export default function Raadspaneel() {
           documentTitle: activeDoc.doc.title,
         }),
       });
-      const data = await res.json();
+      const data = await parseApiResponse(res);
       if (!res.ok) throw new Error(data.error || "Kon opmerking niet opslaan");
 
       setTopics((prev) => prev.map((t) => (t.id === activeDoc.topic.id ? data.topic : t)));
@@ -260,7 +307,7 @@ export default function Raadspaneel() {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await res.json();
+      const data = await parseApiResponse(res);
       if (!res.ok) throw new Error(data.error || "Kon notitie niet verwijderen");
 
       setTopics((prev) => prev.map((t) => (t.id === topicId ? data.topic : t)));
@@ -379,8 +426,18 @@ export default function Raadspaneel() {
           {/* Action buttons */}
           <div className="flex flex-wrap items-center gap-2.5 shrink-0">
             <Button
+              onClick={() => setShowClearConfirm(true)}
+              disabled={isClearing || isScraping}
+              variant="outline"
+              className="border-destructive/40 text-destructive hover:bg-destructive/10 text-xs font-semibold h-9 rounded-xl shadow-xs"
+              title="Wis alle binnengehaalde onverdeelde stukken en behoud toegewezen stukken"
+            >
+              <RotateCcw className={`w-3.5 h-3.5 mr-1.5 ${isClearing ? "animate-spin" : ""}`} />
+              {isClearing ? "Wissen..." : "Onverdeelde Stukken Wissen"}
+            </Button>
+            <Button
               onClick={handleTriggerScrape}
-              disabled={isScraping}
+              disabled={isScraping || isClearing}
               variant="outline"
               className="border-accent/40 text-accent hover:bg-accent/15 text-xs font-semibold h-9 rounded-xl shadow-xs"
             >
@@ -1165,6 +1222,47 @@ export default function Raadspaneel() {
           </Dialog>
         );
       })()}
+
+      {/* Clear Unassigned Confirmation Dialog */}
+      <Dialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <div className="w-12 h-12 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center mb-2">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <DialogTitle className="text-xl font-display">Onverdeelde stukken wissen?</DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground pt-2 space-y-2">
+              <span>
+                Hiermee verwijdert u alle binnengehaalde agendapunten die <strong>nog niet zijn toegewezen</strong> en waar <strong>geen fractie-notities</strong> bij staan.
+              </span>
+              <span className="block text-xs p-2.5 rounded-lg bg-accent/10 border border-accent/20 text-accent font-medium mt-2">
+                ✓ Alle onderwerpen die aan een fractielid zijn toegekend, gelezen markeringen en geschreven notities blijven <strong>100% veilig bewaard</strong>.
+              </span>
+              <span className="block text-xs text-muted-foreground mt-1">
+                Hierna kunt u met een schone lei opnieuw vergaderstukken ophalen.
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4 gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setShowClearConfirm(false)}
+              disabled={isClearing}
+            >
+              Annuleren
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleClearUnassigned}
+              disabled={isClearing}
+              className="gap-1.5"
+            >
+              <RotateCcw className={`w-4 h-4 ${isClearing ? "animate-spin" : ""}`} />
+              {isClearing ? "Bezig met wissen..." : "Ja, onverdeelde stukken wissen"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
