@@ -30,6 +30,7 @@ import Doneren from "./pages/Doneren";
 import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard";
 import AdminDashboard from "./pages/AdminDashboard";
+import Raadspaneel from "./pages/Raadspaneel";
 import NieuwsbriefAfmelden from "./pages/NieuwsbriefAfmelden";
 import TicketView from "./pages/TicketView";
 import Polls from "./pages/Polls";
@@ -79,6 +80,7 @@ const App = () => (
                   <Route path="/peilingen" element={<Polls />} />
                   <Route path="/polls" element={<Polls />} />
                   <Route path="/admin" element={<AdminDashboard />} />
+                  <Route path="/raadspaneel" element={<Raadspaneel />} />
                   <Route path="/nieuwsbrief/afmelden" element={<NieuwsbriefAfmelden />} />
                 </Route>
                 <Route path="*" element={<NotFound />} />

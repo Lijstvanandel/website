@@ -14,6 +14,7 @@ import {
   Heart,
   UserPlus,
   Lock,
+  Shield,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { Button } from "@/components/ui/button";
@@ -59,7 +60,7 @@ export const Header = () => {
   const [partijMobileOpen, setPartijMobileOpen] = useState(false);
   const [belOpen, setBelOpen] = useState(false);
   const { theme, toggle } = useTheme();
-  const { isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
   const {
     fontSize,
     increaseFontSize,
@@ -251,6 +252,17 @@ export const Header = () => {
             {/* 3. Authentication Buttons (Logged in vs Guest) */}
             {isAuthenticated ? (
               <div className="hidden sm:flex items-center gap-1 shrink-0">
+                {(user?.role === "admin" || user?.role === "raadslid" || user?.role === "fractielid") && (
+                  <Link to="/raadspaneel">
+                    <Button
+                      variant="outline"
+                      className="border-accent/60 bg-accent/10 text-accent hover:bg-accent/20 uppercase tracking-wider text-xs font-semibold px-2 xl:px-3 h-8 sm:h-9 whitespace-nowrap shadow-xs"
+                    >
+                      <Shield className="w-3.5 h-3.5 mr-1 text-accent" />
+                      <span>Raadspaneel</span>
+                    </Button>
+                  </Link>
+                )}
                 <Link to="/dashboard">
                   <Button
                     variant="outline"
@@ -576,6 +588,17 @@ export const Header = () => {
 
                 {isAuthenticated ? (
                   <div className="flex flex-col gap-2">
+                    {(user?.role === "admin" || user?.role === "raadslid" || user?.role === "fractielid") && (
+                      <Link to="/raadspaneel" onClick={() => setMobileOpen(false)}>
+                        <Button
+                          variant="outline"
+                          className="w-full border-accent/60 bg-accent/15 text-accent hover:bg-accent/25 uppercase tracking-wider text-xs font-semibold justify-center"
+                        >
+                          <Shield className="w-4 h-4 mr-2 text-accent" />
+                          Raadspaneel
+                        </Button>
+                      </Link>
+                    )}
                     <Link to="/dashboard" onClick={() => setMobileOpen(false)}>
                       <Button
                         variant="outline"

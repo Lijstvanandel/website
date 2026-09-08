@@ -701,6 +701,17 @@ export default function Dashboard() {
               </Button>
             )}
 
+            {/* Raadspaneel Knop voor Raadsleden en Admins */}
+            {(user.role === "admin" || user.role === "raadslid" || user.role === "fractielid") && (
+              <Link
+                to="/raadspaneel"
+                className="px-4 py-2.5 rounded-full font-semibold flex items-center text-sm shadow-sm bg-accent text-accent-foreground hover:bg-accent/90 transition-all"
+              >
+                <ShieldCheck className="w-4 h-4 mr-2" />
+                Raadspaneel
+              </Link>
+            )}
+
             {/* Gegevens Wijzigen Knop */}
             <Button
               onClick={() => setIsEditProfileOpen(true)}

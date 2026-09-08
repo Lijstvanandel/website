@@ -1063,6 +1063,16 @@ export default function AdminDashboard() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Link to="/raadspaneel">
+            <Button
+              type="button"
+              variant="outline"
+              className="shrink-0 text-xs font-semibold uppercase tracking-wider gap-2 h-10 px-4 cursor-pointer border-accent/60 bg-accent/15 text-accent hover:bg-accent/25 hover:border-accent"
+            >
+              <ShieldCheck className="w-4 h-4 text-accent" />
+              <span>Raadspaneel</span>
+            </Button>
+          </Link>
           <Button
             type="button"
             onClick={() => setIsTicketScannerOpen(true)}

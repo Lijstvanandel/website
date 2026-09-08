@@ -1,0 +1,972 @@
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { Navigate, Link } from "react-router-dom";
+import { useAuth } from "@/context/AuthContext";
+import {
+  FileText,
+  Calendar,
+  UserCheck,
+  CheckCircle2,
+  Circle,
+  MessageSquare,
+  RefreshCw,
+  Search,
+  Filter,
+  ExternalLink,
+  Shield,
+  Eye,
+  Trash2,
+  Send,
+  Sparkles,
+  Archive,
+  ChevronRight,
+  Clock,
+  Layers,
+  FileCheck,
+  AlertCircle,
+  Download,
+  X,
+  Plus,
+} from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  CouncilAgendaTopic,
+  CouncilDocument,
+  CouncilTopicNote,
+  CouncilMeetingScrapeSummary,
+} from "@/types/council";
+
+export default function Raadspaneel() {
+  const { user, token, isAuthenticated } = useAuth();
+
+  const [topics, setTopics] = useState<CouncilAgendaTopic[]>([]);
+  const [summary, setSummary] = useState<CouncilMeetingScrapeSummary | null>(null);
+  const [councilMembers, setCouncilMembers] = useState<{ id: string; username: string; fullName: string; role?: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isScraping, setIsScraping] = useState(false);
+
+  // Filters
+  const [searchQuery, setSearchQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string>("oordeelvorming"); // "all" | "oordeelvorming" | "mine" | "unassigned" | "archived"
+  const [meetingDateFilter, setMeetingDateFilter] = useState<string>("all");
+
+  // Document modal viewer
+  const [activeDoc, setActiveDoc] = useState<{ doc: CouncilDocument; topic: CouncilAgendaTopic } | null>(null);
+
+  // Active topic for note dialog or details
+  const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
+  const [newNoteText, setNewNoteText] = useState("");
+  const [submittingNote, setSubmittingNote] = useState(false);
+  const [noteTargetDocId, setNoteTargetDocId] = useState<string | null>(null);
+
+  const isCouncilOrAdmin = user && (user.role === "admin" || user.role === "raadslid" || user.role === "fractielid");
+
+  const fetchCouncilData = useCallback(async (quiet = false) => {
+    if (!token) return;
+    if (!quiet) setLoading(true);
+    try {
+      const res = await fetch("/api/council/topics", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        throw new Error("Kon raadsstukken niet ophalen");
+      }
+      const data = await res.json();
+      setTopics(data.topics || []);
+      setSummary(data.summary || null);
+      setCouncilMembers(data.councilMembers || []);
+      
+      // Auto-select first bespreekstuk if none selected
+      if (!selectedTopicId && data.topics && data.topics.length > 0) {
+        const firstBespreek = data.topics.find((t: CouncilAgendaTopic) => !t.isArchived && t.category.includes("Oordeelvorming"));
+        if (firstBespreek) {
+          setSelectedTopicId(firstBespreek.id);
+        } else {
+          setSelectedTopicId(data.topics[0].id);
+        }
+      }
+    } catch (err: any) {
+      console.error(err);
+      if (!quiet) toast.error(err.message || "Fout bij inladen");
+    } finally {
+      if (!quiet) setLoading(false);
+    }
+  }, [token, selectedTopicId]);
+
+  useEffect(() => {
+    if (isAuthenticated && isCouncilOrAdmin) {
+      fetchCouncilData();
+    }
+  }, [isAuthenticated, isCouncilOrAdmin, fetchCouncilData]);
+
+  // Trigger manual scrape
+  const handleTriggerScrape = async () => {
+    if (!token) return;
+    setIsScraping(true);
+    try {
+      const res = await fetch("/api/council/scrape-now", {
+        method: "POST",
+        headers: { credentials: "omit", Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Scrapen mislukt");
+      toast.success(data.message || "Agenda's en documenten succesvol gescraped!");
+      await fetchCouncilData(true);
+    } catch (err: any) {
+      toast.error(err.message || "Fout bij scrapen");
+    } finally {
+      setIsScraping(false);
+    }
+  };
+
+  // Assign topic handler
+  const handleAssignTopic = async (topicId: string, assignedTo: string) => {
+    if (!token) return;
+    try {
+      const value = assignedTo === "none" ? null : assignedTo;
+      const res = await fetch(`/api/council/topics/${topicId}/assign`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ assignedTo: value }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Kon toewijzing niet aanpassen");
+      
+      setTopics((prev) => prev.map((t) => (t.id === topicId ? data.topic : t)));
+      toast.success(data.message || "Toewijzing bijgewerkt");
+    } catch (err: any) {
+      toast.error(err.message || "Fout bij toewijzen");
+    }
+  };
+
+  // Mark document as viewed toggle
+  const handleToggleDocViewed = async (topicId: string, docId: string, isCurrentlyViewed: boolean) => {
+    if (!token) return;
+    try {
+      const res = await fetch(`/api/council/topics/${topicId}/documents/${docId}/view`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ toggleOff: isCurrentlyViewed }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Kon bekeken-status niet updaten");
+
+      setTopics((prev) => prev.map((t) => (t.id === topicId ? data.topic : t)));
+      toast.success(isCurrentlyViewed ? "Gemarkeerd als ongelezen" : "Gemarkeerd als gelezen/bekeken!");
+    } catch (err: any) {
+      toast.error(err.message || "Fout bij markeren");
+    }
+  };
+
+  // Add note handler
+  const handleAddNote = async (topicId: string) => {
+    if (!token || !newNoteText.trim()) return;
+    setSubmittingNote(true);
+    try {
+      let docTitle: string | undefined;
+      if (noteTargetDocId) {
+        const topic = topics.find((t) => t.id === topicId);
+        const doc = topic?.documents.find((d) => d.id === noteTargetDocId);
+        docTitle = doc?.title;
+      }
+
+      const res = await fetch(`/api/council/topics/${topicId}/notes`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          note: newNoteText.trim(),
+          documentId: noteTargetDocId || null,
+          documentTitle: docTitle || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Kon notitie niet opslaan");
+
+      setTopics((prev) => prev.map((t) => (t.id === topicId ? data.topic : t)));
+      setNewNoteText("");
+      setNoteTargetDocId(null);
+      toast.success("Notitie succesvol toegevoegd!");
+    } catch (err: any) {
+      toast.error(err.message || "Fout bij notitie toevoegen");
+    } finally {
+      setSubmittingNote(false);
+    }
+  };
+
+  // Delete note handler
+  const handleDeleteNote = async (topicId: string, noteId: string) => {
+    if (!token) return;
+    try {
+      const res = await fetch(`/api/council/topics/${topicId}/notes/${noteId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Kon notitie niet verwijderen");
+
+      setTopics((prev) => prev.map((t) => (t.id === topicId ? data.topic : t)));
+      toast.success("Notitie verwijderd");
+    } catch (err: any) {
+      toast.error(err.message || "Fout bij verwijderen");
+    }
+  };
+
+  // Distinct meeting dates for filter dropdown
+  const uniqueDates = useMemo(() => {
+    const set = new Set<string>();
+    topics.forEach((t) => {
+      if (t.meetingDate) set.add(t.meetingDate);
+    });
+    return Array.from(set).sort();
+  }, [topics]);
+
+  // Filtered topics
+  const filteredTopics = useMemo(() => {
+    return topics.filter((t) => {
+      // Search
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchTitle = t.title.toLowerCase().includes(q);
+        const matchDesc = (t.description || "").toLowerCase().includes(q);
+        const matchMeeting = t.meetingTitle.toLowerCase().includes(q);
+        const matchAssigned = (t.assignedName || t.assignedTo || "").toLowerCase().includes(q);
+        const matchDocs = t.documents.some((d) => d.title.toLowerCase().includes(q));
+        const matchNotes = t.notes.some((n) => n.note.toLowerCase().includes(q));
+        if (!matchTitle && !matchDesc && !matchMeeting && !matchAssigned && !matchDocs && !matchNotes) {
+          return false;
+        }
+      }
+
+      // Date filter
+      if (meetingDateFilter !== "all" && t.meetingDate !== meetingDateFilter) {
+        return false;
+      }
+
+      // Category tab filter
+      if (categoryFilter === "oordeelvorming") {
+        return !t.isArchived && t.category === "Oordeelvorming - bespreekstukken";
+      }
+      if (categoryFilter === "mine") {
+        return !t.isArchived && t.assignedTo === user?.username;
+      }
+      if (categoryFilter === "unassigned") {
+        return !t.isArchived && !t.assignedTo;
+      }
+      if (categoryFilter === "archived") {
+        return t.isArchived;
+      }
+      if (categoryFilter === "all_active") {
+        return !t.isArchived;
+      }
+
+      return true;
+    });
+  }, [topics, searchQuery, categoryFilter, meetingDateFilter, user?.username]);
+
+  // Active selected topic
+  const selectedTopic = useMemo(() => {
+    return topics.find((t) => t.id === selectedTopicId) || filteredTopics[0] || null;
+  }, [topics, selectedTopicId, filteredTopics]);
+
+  // Access control
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (!isCouncilOrAdmin) {
+    return (
+      <div className="pt-32 pb-24 min-h-screen bg-background flex items-center justify-center">
+        <div className="max-w-md mx-auto p-8 rounded-2xl bg-card border border-border text-center shadow-lg">
+          <div className="w-14 h-14 rounded-full bg-destructive/15 text-destructive flex items-center justify-center mx-auto mb-4">
+            <Shield className="w-7 h-7" />
+          </div>
+          <h2 className="text-2xl font-display text-foreground mb-2">Toegang Geweigerd</h2>
+          <p className="text-sm text-muted-foreground mb-6">
+            Het Raadspaneel is exclusief toegankelijk voor fractieleden, raadsleden en beheerders van Lijst van Andel.
+          </p>
+          <Link to="/dashboard">
+            <Button className="w-full">Terug naar Mijn Dashboard</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pt-28 pb-24 min-h-screen bg-background text-foreground">
+      <div className="container mx-auto px-4 sm:px-6 max-w-7xl">
+        
+        {/* Top Banner & Header */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 border-b border-border/80 pb-6 animate-fade-up">
+          <div>
+            <div className="flex items-center gap-2.5 mb-1.5">
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-accent/20 text-accent border border-accent/40 flex items-center gap-1">
+                <Shield className="w-3.5 h-3.5" />
+                Interne Fractietool
+              </span>
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-accent" />
+                Elke 24u gescraped van Bestuurlijke Informatie
+              </span>
+            </div>
+            <h1 className="text-3xl sm:text-4xl font-display text-primary font-bold">
+              Raadspaneel Steenwijkerland
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
+              Vergaderstukken, bespreekstukken en voorbereiding voor de gemeenteraadsfractie. Verdeel onderwerpen onder fractieleden, markeer gelezen documenten en deel interne notities.
+            </p>
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            <Button
+              onClick={handleTriggerScrape}
+              disabled={isScraping}
+              variant="outline"
+              className="border-accent/40 text-accent hover:bg-accent/15 text-xs font-semibold h-9 rounded-xl shadow-xs"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isScraping ? "animate-spin" : ""}`} />
+              {isScraping ? "Scrapen..." : "Vergaderstukken Nu Ophalen"}
+            </Button>
+            <Link to="/dashboard">
+              <Button variant="ghost" className="text-xs h-9 text-muted-foreground hover:text-foreground">
+                Mijn Dashboard
+              </Button>
+            </Link>
+          </div>
+        </div>
+
+        {/* KPI / Status Bar */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+          <div className="p-4 rounded-2xl bg-card border border-border shadow-xs">
+            <div className="flex items-center justify-between text-muted-foreground mb-1">
+              <span className="text-xs font-semibold">Bespreekstukken</span>
+              <AlertCircle className="w-4 h-4 text-amber-500" />
+            </div>
+            <div className="text-2xl font-bold text-foreground">
+              {topics.filter((t) => t.category === "Oordeelvorming - bespreekstukken" && !t.isArchived).length}
+            </div>
+            <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+              Oordeelsvorming
+            </span>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-card border border-border shadow-xs">
+            <div className="flex items-center justify-between text-muted-foreground mb-1">
+              <span className="text-xs font-semibold">Aan Mij Toegewezen</span>
+              <UserCheck className="w-4 h-4 text-accent" />
+            </div>
+            <div className="text-2xl font-bold text-accent">
+              {topics.filter((t) => !t.isArchived && t.assignedTo === user?.username).length}
+            </div>
+            <span className="text-[11px] text-muted-foreground">
+              Jouw agendapunten
+            </span>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-card border border-border shadow-xs">
+            <div className="flex items-center justify-between text-muted-foreground mb-1">
+              <span className="text-xs font-semibold">Nog Onverdeeld</span>
+              <Layers className="w-4 h-4 text-sky-500" />
+            </div>
+            <div className="text-2xl font-bold text-foreground">
+              {topics.filter((t) => !t.isArchived && !t.assignedTo).length}
+            </div>
+            <span className="text-[11px] text-muted-foreground">
+              Kies een fractielid
+            </span>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-card border border-border shadow-xs">
+            <div className="flex items-center justify-between text-muted-foreground mb-1">
+              <span className="text-xs font-semibold">Gearchiveerd</span>
+              <Archive className="w-4 h-4 text-muted-foreground" />
+            </div>
+            <div className="text-2xl font-bold text-foreground">
+              {topics.filter((t) => t.isArchived).length}
+            </div>
+            <span className="text-[11px] text-muted-foreground">
+              &gt; 7 dagen na vergadering
+            </span>
+          </div>
+        </div>
+
+        {/* Filters & Search */}
+        <div className="bg-card rounded-2xl border border-border p-4 shadow-sm mb-6 space-y-3">
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+            {/* Search */}
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Zoek op onderwerp, raadsvoorstel, fractielid of notities..."
+                className="pl-9 text-xs h-9 rounded-xl bg-background"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Date filter dropdown */}
+            <div className="w-full md:w-56 shrink-0">
+              <Select value={meetingDateFilter} onValueChange={setMeetingDateFilter}>
+                <SelectTrigger className="h-9 text-xs rounded-xl bg-background">
+                  <Calendar className="w-3.5 h-3.5 mr-1.5 text-accent" />
+                  <SelectValue placeholder="Filter op vergaderdatum" />
+                </SelectTrigger>
+                <SelectContent className="text-xs">
+                  <SelectItem value="all">Alle vergaderingen</SelectItem>
+                  {uniqueDates.map((d) => (
+                    <SelectItem key={d} value={d}>
+                      {d}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Category Tabs */}
+          <div className="flex flex-wrap gap-1.5 pt-1 border-t border-border/50 text-xs">
+            {[
+              { id: "oordeelvorming", label: "Oordeelvorming - Bespreekstukken", icon: AlertCircle },
+              { id: "mine", label: "Aan Mij Toegewezen", icon: UserCheck },
+              { id: "unassigned", label: "Onverdeeld", icon: Layers },
+              { id: "all_active", label: "Alle Actieve Punten", icon: FileCheck },
+              { id: "archived", label: "Archief (> 7 dagen)", icon: Archive },
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const isActive = categoryFilter === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setCategoryFilter(tab.id)}
+                  className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1.5 transition-all ${
+                    isActive
+                      ? "bg-accent text-accent-foreground font-semibold shadow-xs"
+                      : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted"
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Main 2-Column Interface: Left List, Right Detail & Notes */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          
+          {/* Left Column: Agenda List (5 Cols) */}
+          <div className="lg:col-span-5 space-y-3">
+            <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground px-1">
+              <span>Gevonden onderwerpen ({filteredTopics.length})</span>
+              <span>Klik om stukken in te zien</span>
+            </div>
+
+            {loading ? (
+              <div className="p-12 text-center bg-card rounded-2xl border border-border">
+                <RefreshCw className="w-6 h-6 animate-spin mx-auto text-accent mb-2" />
+                <p className="text-xs text-muted-foreground">Vergaderstukken inladen...</p>
+              </div>
+            ) : filteredTopics.length === 0 ? (
+              <div className="p-12 text-center bg-card rounded-2xl border border-dashed border-border space-y-3">
+                <FileText className="w-8 h-8 text-muted-foreground mx-auto" />
+                <h3 className="font-display text-base text-foreground font-semibold">Geen onderwerpen gevonden</h3>
+                <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+                  Er zijn geen agendapunten gevonden voor deze selectie. Klik op 'Vergaderstukken Nu Ophalen' om de meest actuele raadsagenda te scrapen.
+                </p>
+                <Button onClick={handleTriggerScrape} size="sm" variant="outline" className="text-xs">
+                  <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                  Nu Scrapen
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-2.5 max-h-[720px] overflow-y-auto pr-1">
+                {filteredTopics.map((topic) => {
+                  const isSelected = selectedTopic?.id === topic.id;
+                  const isBespreek = topic.category === "Oordeelvorming - bespreekstukken";
+                  const totalDocs = topic.documents.length;
+                  const viewedDocsCount = topic.documents.filter((d) =>
+                    d.viewedBy?.some((v) => v.username === user?.username)
+                  ).length;
+                  const isFullyViewed = totalDocs > 0 && viewedDocsCount === totalDocs;
+
+                  return (
+                    <div
+                      key={topic.id}
+                      onClick={() => setSelectedTopicId(topic.id)}
+                      className={`p-4 rounded-2xl border text-left cursor-pointer transition-all duration-200 relative group ${
+                        isSelected
+                          ? "bg-accent/10 border-accent shadow-sm ring-1 ring-accent"
+                          : "bg-card hover:bg-muted/40 border-border"
+                      }`}
+                    >
+                      {/* Top labels */}
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {isBespreek ? (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                              Bespreekstuk
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted text-muted-foreground">
+                              {topic.category}
+                            </span>
+                          )}
+                          {topic.isArchived && (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted/80 text-muted-foreground">
+                              Archief
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10.5px] font-medium text-muted-foreground shrink-0">
+                          {topic.meetingDateDisplay || topic.meetingDate}
+                        </span>
+                      </div>
+
+                      {/* Title */}
+                      <h3 className="font-display font-bold text-sm text-foreground mb-2 line-clamp-2 leading-snug">
+                        {topic.title}
+                      </h3>
+
+                      {/* Footer Info: Assignment & Read Progress */}
+                      <div className="flex items-center justify-between pt-2.5 border-t border-border/50 text-[11px] gap-2">
+                        {/* Assignee */}
+                        <div className="flex items-center gap-1.5 truncate text-foreground/85">
+                          <UserCheck className="w-3.5 h-3.5 text-accent shrink-0" />
+                          <span className="truncate">
+                            {topic.assignedName ? (
+                              <span className="font-semibold text-accent">{topic.assignedName}</span>
+                            ) : (
+                              <span className="text-muted-foreground italic">Nog niet verdeeld</span>
+                            )}
+                          </span>
+                        </div>
+
+                        {/* Document read status */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          {totalDocs > 0 && (
+                            <span
+                              className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold ${
+                                isFullyViewed
+                                  ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                                  : viewedDocsCount > 0
+                                  ? "bg-amber-500/15 text-amber-600"
+                                  : "bg-muted text-muted-foreground"
+                              }`}
+                            >
+                              <FileCheck className="w-3 h-3" />
+                              <span>
+                                {viewedDocsCount}/{totalDocs}
+                              </span>
+                            </span>
+                          )}
+                          {topic.notes.length > 0 && (
+                            <span className="flex items-center gap-0.5 text-muted-foreground font-semibold">
+                              <MessageSquare className="w-3 h-3 text-accent" />
+                              <span>{topic.notes.length}</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Right Column: Topic Details, Document Viewer & Fractienotities (7 Cols) */}
+          <div className="lg:col-span-7 space-y-6">
+            {selectedTopic ? (
+              <div className="bg-card rounded-2xl border border-border p-6 shadow-sm space-y-6">
+                
+                {/* Header & Category info */}
+                <div className="border-b border-border/80 pb-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-accent/15 text-accent border border-accent/30">
+                        {selectedTopic.category}
+                      </span>
+                      {selectedTopic.meetingType && (
+                        <span className="text-xs text-muted-foreground">
+                          • {selectedTopic.meetingType}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Calendar className="w-3.5 h-3.5 text-accent" />
+                      {selectedTopic.meetingDateDisplay || selectedTopic.meetingDate}
+                    </span>
+                  </div>
+
+                  <h2 className="text-xl sm:text-2xl font-display font-bold text-foreground leading-snug">
+                    {selectedTopic.title}
+                  </h2>
+
+                  <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
+                    <span>Vergadering: {selectedTopic.meetingTitle}</span>
+                    {selectedTopic.sourceUrl && (
+                      <a
+                        href={selectedTopic.sourceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-accent hover:underline font-semibold"
+                      >
+                        Bronpagina <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                {/* Assignment Box */}
+                <div className="p-4 rounded-xl bg-muted/40 border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                      <UserCheck className="w-4 h-4 text-accent" />
+                      <span>Verantwoordelijk Fractielid:</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {selectedTopic.assignedName
+                        ? `Toegewezen aan ${selectedTopic.assignedName} (${selectedTopic.assignedTo})`
+                        : "Dit onderwerp is nog door niemand binnen de fractie geadopteerd."}
+                    </p>
+                  </div>
+
+                  {/* Toewijzen Dropdown (Admin of Zelf toewijzen) */}
+                  <div className="w-full sm:w-56 shrink-0">
+                    <Select
+                      value={selectedTopic.assignedTo || "none"}
+                      onValueChange={(val) => handleAssignTopic(selectedTopic.id, val)}
+                    >
+                      <SelectTrigger className="h-9 text-xs rounded-xl bg-background">
+                        <SelectValue placeholder="Kies fractielid..." />
+                      </SelectTrigger>
+                      <SelectContent className="text-xs">
+                        <SelectItem value="none">Geen (Onverdeeld)</SelectItem>
+                        {councilMembers.map((m) => (
+                          <SelectItem key={m.username} value={m.username}>
+                            {m.fullName} (@{m.username})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Documentenlijst (Direct te bekijken en af te vinken) */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-display font-bold text-base text-foreground flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-accent" />
+                      <span>Bijbehorende Vergaderstukken ({selectedTopic.documents.length})</span>
+                    </h3>
+                    <span className="text-xs text-muted-foreground">
+                      Vink aan zodra doorgenomen
+                    </span>
+                  </div>
+
+                  {selectedTopic.documents.length === 0 ? (
+                    <div className="p-4 rounded-xl bg-muted/20 border border-dashed border-border text-center text-xs text-muted-foreground">
+                      Geen afzonderlijke PDF bijlagen gekoppeld aan dit agendapunt.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {selectedTopic.documents.map((doc) => {
+                        const isViewedByMe = doc.viewedBy?.some((v) => v.username === user?.username);
+                        const otherViewers = (doc.viewedBy || []).filter((v) => v.username !== user?.username);
+
+                        return (
+                          <div
+                            key={doc.id}
+                            className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all ${
+                              isViewedByMe
+                                ? "bg-emerald-500/5 border-emerald-500/20"
+                                : "bg-card border-border/80 hover:border-accent/40"
+                            }`}
+                          >
+                            <div className="flex items-start gap-3 min-w-0">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleDocViewed(selectedTopic.id, doc.id, !!isViewedByMe)}
+                                className={`mt-0.5 p-1 rounded-lg transition-colors ${
+                                  isViewedByMe
+                                    ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400"
+                                    : "bg-muted text-muted-foreground hover:text-foreground"
+                                }`}
+                                title={isViewedByMe ? "Klik om op ongelezen te zetten" : "Klik om te markeren als bekeken"}
+                              >
+                                {isViewedByMe ? (
+                                  <CheckCircle2 className="w-4 h-4" />
+                                ) : (
+                                  <Circle className="w-4 h-4" />
+                                )}
+                              </button>
+
+                              <div className="min-w-0">
+                                <div className="font-semibold text-xs text-foreground truncate" title={doc.title}>
+                                  {doc.title}
+                                </div>
+                                <div className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
+                                  <span className="uppercase font-mono text-[10px] px-1.5 py-0.2 bg-muted rounded">
+                                    {doc.fileType || "PDF"}
+                                  </span>
+                                  {doc.viewedBy && doc.viewedBy.length > 0 && (
+                                    <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                                      Bekeken door: {doc.viewedBy.map((v) => v.fullName || v.username).join(", ")}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                              {/* Open in modal viewer */}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setActiveDoc({ doc, topic: selectedTopic })}
+                                className="h-8 text-xs px-3 border-accent/40 text-accent hover:bg-accent/10 rounded-lg"
+                              >
+                                <Eye className="w-3.5 h-3.5 mr-1" />
+                                Inzien
+                              </Button>
+
+                              {/* Direct download link */}
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                asChild
+                                className="h-8 text-xs px-2.5 text-muted-foreground hover:text-foreground rounded-lg"
+                              >
+                                <a href={doc.url} target="_blank" rel="noreferrer" title="Open originele link">
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                </a>
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Fractienotities & Interne Afstemming */}
+                <div className="pt-4 border-t border-border/80 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-display font-bold text-base text-foreground flex items-center gap-2">
+                      <MessageSquare className="w-4 h-4 text-accent" />
+                      <span>Fractienotities & Standpuntbepaling ({selectedTopic.notes.length})</span>
+                    </h3>
+                    <span className="text-xs text-muted-foreground">
+                      Zichtbaar voor de fractie
+                    </span>
+                  </div>
+
+                  {/* Bestaande notities */}
+                  {selectedTopic.notes.length === 0 ? (
+                    <div className="p-4 rounded-xl bg-muted/20 border border-dashed border-border text-center text-xs text-muted-foreground">
+                      Nog geen notities of vragen geplaatst bij dit raadsvoorstel.
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {selectedTopic.notes.map((note) => {
+                        const isAuthor = note.authorUsername === user?.username;
+                        const canDelete = isAuthor || user?.role === "admin";
+
+                        return (
+                          <div
+                            key={note.id}
+                            className="p-3.5 rounded-xl bg-muted/40 border border-border/70 space-y-1.5"
+                          >
+                            <div className="flex items-center justify-between text-xs">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-foreground">
+                                  {note.authorName || note.authorUsername}
+                                </span>
+                                {note.documentTitle && (
+                                  <span className="text-[10.5px] px-2 py-0.5 bg-accent/15 text-accent rounded-full font-medium truncate max-w-xs">
+                                    Bij stuk: {note.documentTitle}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-muted-foreground">
+                                  {new Date(note.createdAt).toLocaleString("nl-NL", {
+                                    day: "numeric",
+                                    month: "short",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </span>
+                                {canDelete && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteNote(selectedTopic.id, note.id)}
+                                    className="text-muted-foreground hover:text-destructive p-0.5 rounded transition-colors"
+                                    title="Notitie verwijderen"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            <p className="text-xs text-foreground/90 leading-relaxed whitespace-pre-wrap">
+                              {note.note}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Nieuwe notitie invoer */}
+                  <div className="p-4 rounded-xl bg-background border border-border/80 space-y-3 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <Plus className="w-3.5 h-3.5 text-accent" />
+                        <span>Notitie toevoegen voor de fractie</span>
+                      </label>
+
+                      {/* Optioneel koppelen aan document */}
+                      {selectedTopic.documents.length > 0 && (
+                        <div className="w-48">
+                          <Select
+                            value={noteTargetDocId || "none"}
+                            onValueChange={(v) => setNoteTargetDocId(v === "none" ? null : v)}
+                          >
+                            <SelectTrigger className="h-7 text-[11px] rounded-lg">
+                              <SelectValue placeholder="Koppel aan stuk..." />
+                            </SelectTrigger>
+                            <SelectContent className="text-xs">
+                              <SelectItem value="none">Algemeen agendapunt</SelectItem>
+                              {selectedTopic.documents.map((d) => (
+                                <SelectItem key={d.id} value={d.id}>
+                                  {d.title}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+
+                    <Textarea
+                      rows={3}
+                      value={newNoteText}
+                      onChange={(e) => setNewNoteText(e.target.value)}
+                      placeholder="Bijv. Vragen over financiële onderbouwing par. 3; fractiestandpunt: voorstel steunen onder voorwaarde van..."
+                      className="text-xs bg-muted/20"
+                    />
+
+                    <div className="flex justify-end">
+                      <Button
+                        size="sm"
+                        disabled={submittingNote || !newNoteText.trim()}
+                        onClick={() => handleAddNote(selectedTopic.id)}
+                        className="text-xs h-8 px-4 rounded-lg bg-accent text-accent-foreground font-semibold"
+                      >
+                        <Send className="w-3.5 h-3.5 mr-1.5" />
+                        {submittingNote ? "Opslaan..." : "Plaats Notitie"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="p-16 text-center bg-card rounded-2xl border border-dashed border-border space-y-2">
+                <FileText className="w-10 h-10 text-muted-foreground mx-auto" />
+                <h3 className="font-display text-lg text-foreground">Selecteer een agendapunt</h3>
+                <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                  Klik in de linkerlijst op een voorstel of bespreekstuk om de vergaderstukken en fractienotities in te zien.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Document Viewer Modal Dialog */}
+      {activeDoc && (
+        <Dialog open={!!activeDoc} onOpenChange={(open) => !open && setActiveDoc(null)}>
+          <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-6 rounded-2xl bg-card border-border">
+            <DialogHeader className="pb-3 border-b border-border/80">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <DialogTitle className="font-display text-lg text-foreground">
+                    {activeDoc.doc.title}
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                    {activeDoc.topic.meetingTitle} • {activeDoc.topic.meetingDateDisplay || activeDoc.topic.meetingDate}
+                  </DialogDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const isViewed = activeDoc.doc.viewedBy?.some((v) => v.username === user?.username);
+                      handleToggleDocViewed(activeDoc.topic.id, activeDoc.doc.id, !!isViewed);
+                    }}
+                    className="h-8 text-xs"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-emerald-500" />
+                    Gelezen markeren
+                  </Button>
+                  <Button size="sm" variant="secondary" asChild className="h-8 text-xs">
+                    <a href={activeDoc.doc.url} target="_blank" rel="noreferrer">
+                      <ExternalLink className="w-3.5 h-3.5 mr-1" />
+                      Origineel
+                    </a>
+                  </Button>
+                </div>
+              </div>
+            </DialogHeader>
+
+            {/* Document Iframe Viewer */}
+            <div className="flex-1 min-h-[500px] w-full bg-muted/30 rounded-xl overflow-hidden mt-3 border border-border relative">
+              <iframe
+                src={`/api/council/document-proxy?url=${encodeURIComponent(activeDoc.doc.url)}`}
+                className="w-full h-full min-h-[500px] border-0"
+                title={activeDoc.doc.title}
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>
+  );
+}

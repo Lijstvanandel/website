@@ -41,6 +41,10 @@ import {
   saveDbToSqlite,
   persistSqlite
 } from "./src/server/sqliteDatabase.js";
+import {
+  scrapeCouncilAgendas,
+  startDailyCouncilScraper
+} from "./src/server/councilScraperService.js";
 
 // Ensure .env is explicitly loaded from working directory in case of PM2 or systemd execution
 function ensureEnvLoaded() {
@@ -228,6 +232,7 @@ function getDb() {
   if (!db.newsletters) db.newsletters = [];
   if (!db.eventTickets) db.eventTickets = [];
   if (!db.eventCancellations) db.eventCancellations = [];
+  if (!db.councilAgendaTopics) db.councilAgendaTopics = [];
   if (!db.news || !Array.isArray(db.news) || db.news.length === 0) {
     db.news = [
       {
@@ -1188,6 +1193,13 @@ async function startServer() {
   const requireVolunteerOrAdmin = (req: any, res: any, next: any) => {
     if (req.user.role !== 'admin' && req.user.role !== 'vrijwilliger') {
       return res.status(403).json({ error: "Toegang geweigerd: beheerders- of vrijwilligersrechten vereist" });
+    }
+    next();
+  };
+
+  const requireCouncilOrAdmin = (req: any, res: any, next: any) => {
+    if (req.user.role !== 'admin' && req.user.role !== 'raadslid' && req.user.role !== 'fractielid') {
+      return res.status(403).json({ error: "Toegang geweigerd: alleen toegankelijk voor raadsleden, fractieleden of de beheerder." });
     }
     next();
   };
@@ -6919,6 +6931,7 @@ ${allUrls.map(u => `  <url>
 Allow: /
 Disallow: /admin
 Disallow: /dashboard
+Disallow: /raadspaneel
 Disallow: /login
 Disallow: /registreren
 Disallow: /api/
@@ -6930,6 +6943,245 @@ Sitemap: ${baseUrl}/sitemap.xml
 `;
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     return res.send(txt);
+  });
+
+  // ==========================================
+  // RAADSPANEEL API ROUTES
+  // ==========================================
+
+  // 1. Get all council agenda topics (and scraping status)
+  app.get("/api/council/topics", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const topics = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
+    const summary = db.councilScrapeSummary || {
+      lastScrapedAt: null,
+      totalMeetingsScraped: 0,
+      totalTopics: topics.length,
+      bespreekstukkenCount: topics.filter((t: any) => t.category === "Oordeelvorming - bespreekstukken" && !t.isArchived).length,
+      archivedCount: topics.filter((t: any) => t.isArchived).length,
+      status: "idle"
+    };
+
+    // Get list of council members / fractieleden / admins for assignment dropdown
+    const councilMembers = (db.users || [])
+      .filter((u: any) => u.role === "raadslid" || u.role === "admin" || u.role === "fractielid")
+      .map((u: any) => ({
+        id: u.id,
+        username: u.username,
+        fullName: u.fullName || u.username,
+        role: u.role
+      }));
+
+    return res.json({
+      topics,
+      summary,
+      councilMembers
+    });
+  });
+
+  // 2. Trigger manual scrape on demand
+  app.post("/api/council/scrape-now", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
+    try {
+      const summary = await scrapeCouncilAgendas();
+      return res.json({ success: true, message: "Agenda's en documenten succesvol gescraped!", summary });
+    } catch (err: any) {
+      console.error("[RAADSPANEEL SCRAPER FOUT]", err);
+      return res.status(500).json({ error: "Fout bij scrapen van vergaderstukken: " + err.message });
+    }
+  });
+
+  // 3. Assign topic to council member (Admin or self-assign)
+  app.patch("/api/council/topics/:topicId/assign", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    const { topicId } = req.params;
+    const { assignedTo } = req.body; // username or null
+    const db = getDb();
+
+    if (!Array.isArray(db.councilAgendaTopics)) {
+      db.councilAgendaTopics = [];
+    }
+
+    const topic = db.councilAgendaTopics.find((t: any) => t.id === topicId);
+    if (!topic) {
+      return res.status(404).json({ error: "Onderwerp niet gevonden" });
+    }
+
+    let assignedMemberName: string | null = null;
+    if (assignedTo) {
+      const user = (db.users || []).find((u: any) => u.username === assignedTo || u.id === assignedTo);
+      assignedMemberName = user ? (user.fullName || user.username) : assignedTo;
+      topic.assignedTo = user ? user.username : assignedTo;
+      topic.assignedName = assignedMemberName;
+      topic.assignedAt = new Date().toISOString();
+    } else {
+      topic.assignedTo = null;
+      topic.assignedName = null;
+      topic.assignedAt = null;
+    }
+
+    saveDb(db);
+    return res.json({
+      success: true,
+      topic,
+      message: assignedTo ? `Onderwerp succesvol toegewezen aan ${assignedMemberName}.` : "Toewijzing verwijderd."
+    });
+  });
+
+  // 4. Mark document as viewed (or toggle)
+  app.post("/api/council/topics/:topicId/documents/:docId/view", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    const { topicId, docId } = req.params;
+    const username = req.user.username;
+    const fullName = req.user.fullName || username;
+    const db = getDb();
+
+    if (!Array.isArray(db.councilAgendaTopics)) {
+      db.councilAgendaTopics = [];
+    }
+
+    const topic = db.councilAgendaTopics.find((t: any) => t.id === topicId);
+    if (!topic) {
+      return res.status(404).json({ error: "Onderwerp niet gevonden" });
+    }
+
+    const doc = (topic.documents || []).find((d: any) => d.id === docId);
+    if (!doc) {
+      return res.status(404).json({ error: "Document niet gevonden in dit agendapunt" });
+    }
+
+    if (!Array.isArray(doc.viewedBy)) {
+      doc.viewedBy = [];
+    }
+
+    const existingIdx = doc.viewedBy.findIndex((v: any) => v.username === username);
+    if (existingIdx >= 0) {
+      // Toggle off if already marked or update time
+      if (req.body.toggleOff) {
+        doc.viewedBy.splice(existingIdx, 1);
+      } else {
+        doc.viewedBy[existingIdx].viewedAt = new Date().toISOString();
+      }
+    } else {
+      doc.viewedBy.push({
+        username,
+        fullName,
+        viewedAt: new Date().toISOString()
+      });
+    }
+
+    saveDb(db);
+    return res.json({
+      success: true,
+      topic,
+      document: doc
+    });
+  });
+
+  // 5. Add note to a topic or document
+  app.post("/api/council/topics/:topicId/notes", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    const { topicId } = req.params;
+    const { note, documentId, documentTitle } = req.body;
+
+    if (!note || typeof note !== "string" || !note.trim()) {
+      return res.status(400).json({ error: "Notitie mag niet leeg zijn." });
+    }
+
+    const db = getDb();
+    if (!Array.isArray(db.councilAgendaTopics)) {
+      db.councilAgendaTopics = [];
+    }
+
+    const topic = db.councilAgendaTopics.find((t: any) => t.id === topicId);
+    if (!topic) {
+      return res.status(404).json({ error: "Onderwerp niet gevonden" });
+    }
+
+    if (!Array.isArray(topic.notes)) {
+      topic.notes = [];
+    }
+
+    const newNote = {
+      id: "note_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7),
+      authorUsername: req.user.username,
+      authorName: req.user.fullName || req.user.username,
+      documentId: documentId || null,
+      documentTitle: documentTitle || null,
+      note: note.trim(),
+      createdAt: new Date().toISOString()
+    };
+
+    topic.notes.push(newNote);
+    saveDb(db);
+
+    return res.json({
+      success: true,
+      topic,
+      note: newNote,
+      message: "Notitie succesvol toegevoegd."
+    });
+  });
+
+  // 6. Delete note
+  app.delete("/api/council/topics/:topicId/notes/:noteId", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    const { topicId, noteId } = req.params;
+    const db = getDb();
+
+    const topic = (db.councilAgendaTopics || []).find((t: any) => t.id === topicId);
+    if (!topic) {
+      return res.status(404).json({ error: "Onderwerp niet gevonden" });
+    }
+
+    if (!Array.isArray(topic.notes)) {
+      return res.status(404).json({ error: "Notitie niet gevonden" });
+    }
+
+    const noteIdx = topic.notes.findIndex((n: any) => n.id === noteId);
+    if (noteIdx < 0) {
+      return res.status(404).json({ error: "Notitie niet gevonden" });
+    }
+
+    const note = topic.notes[noteIdx];
+    // Only note author or admin can delete
+    if (note.authorUsername !== req.user.username && req.user.role !== "admin") {
+      return res.status(403).json({ error: "U kunt alleen uw eigen notities verwijderen." });
+    }
+
+    topic.notes.splice(noteIdx, 1);
+    saveDb(db);
+
+    return res.json({
+      success: true,
+      topic,
+      message: "Notitie succesvol verwijderd."
+    });
+  });
+
+  // 7. Proxy document to avoid iframe/CORS issues if Bestuurlijke Informatie blocks direct embedding
+  app.get("/api/council/document-proxy", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
+    const docUrl = req.query.url;
+    if (!docUrl || typeof docUrl !== "string") {
+      return res.status(400).json({ error: "Geen geldige document URL opgegeven" });
+    }
+
+    try {
+      const response = await fetch(docUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/1.0",
+        }
+      });
+
+      if (!response.ok) {
+        return res.status(response.status).send(`Fout bij ophalen document: ${response.statusText}`);
+      }
+
+      const contentType = response.headers.get("content-type") || "application/pdf";
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Content-Disposition", "inline");
+
+      const arrayBuffer = await response.arrayBuffer();
+      return res.send(Buffer.from(arrayBuffer));
+    } catch (err: any) {
+      console.error("[DOCUMENT PROXY FOUT]:", err.message);
+      return res.status(500).json({ error: "Kon document niet downloaden: " + err.message });
+    }
   });
 
   // Explicit 404 handler for unhandled /api requests so they NEVER fall through to Vite / SPA index.html
@@ -7023,6 +7275,8 @@ Sitemap: ${baseUrl}/sitemap.xml
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on port ${PORT}`);
+    // Start automated 24-hour council agenda scraper
+    startDailyCouncilScraper();
   });
 }
 

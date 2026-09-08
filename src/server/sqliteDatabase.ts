@@ -35,6 +35,7 @@ const TABLE_DEFINITIONS: { [table: string]: string } = {
   pushSubscriptions: "CREATE TABLE IF NOT EXISTS pushSubscriptions (id TEXT PRIMARY KEY, data TEXT)",
   pushLogs: "CREATE TABLE IF NOT EXISTS pushLogs (id TEXT PRIMARY KEY, data TEXT)",
   auditLogs: "CREATE TABLE IF NOT EXISTS auditLogs (id TEXT PRIMARY KEY, data TEXT)",
+  councilAgendaTopics: "CREATE TABLE IF NOT EXISTS councilAgendaTopics (id TEXT PRIMARY KEY, data TEXT)",
   systemSettings: "CREATE TABLE IF NOT EXISTS systemSettings (id TEXT PRIMARY KEY, data TEXT)",
   kv_store: "CREATE TABLE IF NOT EXISTS kv_store (key TEXT PRIMARY KEY, value TEXT)",
 };
@@ -225,6 +226,7 @@ export function getDbFromSqlite(): any {
     "pushSubscriptions",
     "pushLogs",
     "auditLogs",
+    "councilAgendaTopics",
   ];
 
   for (const table of listTables) {
