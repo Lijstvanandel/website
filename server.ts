@@ -42,7 +42,8 @@ import {
   initDatabase,
   getDbFromSqlite,
   saveDbToSqlite,
-  persistSqlite
+  persistSqlite,
+  getSqliteFilePath
 } from "./src/server/sqliteDatabase.js";
 import {
   scrapeCouncilAgendas,
@@ -6867,6 +6868,115 @@ async function startServer() {
           console.error("Fout bij uitvoeren van pm2 reload:", e);
         }
       }, 1500);
+    }
+  });
+
+  // =================================================================
+  // DATABASE BACKUPS & EXPORTS (Voor veilige productie back-ups)
+  // =================================================================
+
+  // Download raw database.sqlite binary file
+  app.get("/api/admin/system/backup/sqlite", requireAuth, requireAdmin, (req: any, res: any) => {
+    try {
+      persistSqlite();
+      const sqlitePath = getSqliteFilePath();
+      if (!fs.existsSync(sqlitePath)) {
+        return res.status(404).json({ error: "database.sqlite bestand niet gevonden" });
+      }
+      const dateStr = new Date().toISOString().slice(0, 10);
+      res.setHeader("Content-Disposition", `attachment; filename="lijst-van-andel-db-${dateStr}.sqlite"`);
+      res.setHeader("Content-Type", "application/x-sqlite3");
+      const fileStream = fs.createReadStream(sqlitePath);
+      fileStream.pipe(res);
+    } catch (err: any) {
+      console.error("Fout bij downloaden van sqlite backup:", err);
+      res.status(500).json({ error: "Fout bij downloaden van SQLite back-up: " + err.message });
+    }
+  });
+
+  // Download full JSON export of all database tables and content
+  app.get("/api/admin/system/backup/json", requireAuth, requireAdmin, (req: any, res: any) => {
+    try {
+      const db = getDb();
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const jsonContent = JSON.stringify(db, null, 2);
+      res.setHeader("Content-Disposition", `attachment; filename="lijst-van-andel-full-export-${dateStr}.json"`);
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.send(jsonContent);
+    } catch (err: any) {
+      console.error("Fout bij exporteren van JSON backup:", err);
+      res.status(500).json({ error: "Fout bij exporteren van JSON back-up: " + err.message });
+    }
+  });
+
+  // Maak direct een lokale snapshot back-up op de server in ./backups/
+  app.post("/api/admin/system/backup/snapshot", requireAuth, requireAdmin, async (req: any, res: any) => {
+    try {
+      persistSqlite();
+      const sqlitePath = getSqliteFilePath();
+      if (!fs.existsSync(sqlitePath)) {
+        return res.status(404).json({ error: "database.sqlite niet gevonden op schijf" });
+      }
+
+      const backupDir = path.join(process.cwd(), "backups");
+      if (!fs.existsSync(backupDir)) {
+        fs.mkdirSync(backupDir, { recursive: true });
+      }
+
+      const now = new Date();
+      const timestamp = now.toISOString().replace(/[:.]/g, "-");
+      const backupFile = path.join(backupDir, `db_snapshot_${timestamp}.sqlite`);
+
+      fs.copyFileSync(sqlitePath, backupFile);
+
+      // Lijst van recente server-backups ophalen
+      const existingFiles = fs.readdirSync(backupDir)
+        .filter(f => f.endsWith(".sqlite") || f.endsWith(".json"))
+        .map(f => {
+          const stats = fs.statSync(path.join(backupDir, f));
+          return {
+            filename: f,
+            sizeKb: Math.round(stats.size / 1024),
+            createdAt: stats.birthtime.toISOString()
+          };
+        })
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+      res.json({
+        success: true,
+        message: `Back-up succesvol op de server opgeslagen in ${backupFile}!`,
+        backupFile: path.basename(backupFile),
+        totalBackups: existingFiles.length,
+        backups: existingFiles.slice(0, 10)
+      });
+    } catch (err: any) {
+      console.error("Fout bij maken van server snapshot:", err);
+      res.status(500).json({ error: "Fout bij maken van snapshot: " + err.message });
+    }
+  });
+
+  // Haal lijst op van gemaakte server backups
+  app.get("/api/admin/system/backup/list", requireAuth, requireAdmin, (req: any, res: any) => {
+    try {
+      const backupDir = path.join(process.cwd(), "backups");
+      if (!fs.existsSync(backupDir)) {
+        return res.json({ backups: [] });
+      }
+      const files = fs.readdirSync(backupDir)
+        .filter(f => f.endsWith(".sqlite") || f.endsWith(".json"))
+        .map(f => {
+          const stats = fs.statSync(path.join(backupDir, f));
+          return {
+            filename: f,
+            sizeKb: Math.round(stats.size / 1024),
+            createdAt: stats.birthtime.toISOString()
+          };
+        })
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+      res.json({ backups: files.slice(0, 20) });
+    } catch (err: any) {
+      res.json({ backups: [] });
     }
   });
 

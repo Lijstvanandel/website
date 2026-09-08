@@ -328,3 +328,7 @@ export function saveDbToSqlite(data: any) {
     }
   }
 }
+
+export function getSqliteFilePath(): string {
+  return SQLITE_FILE;
+}

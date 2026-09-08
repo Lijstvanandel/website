@@ -15,10 +15,22 @@ import {
   ArrowDownCircle,
   Copy,
   Check,
-  RotateCcw
+  RotateCcw,
+  Database,
+  Download,
+  HardDrive,
+  FileJson,
+  ShieldCheck,
+  FolderArchive
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/api";
+
+interface ServerBackupItem {
+  filename: string;
+  sizeKb: number;
+  createdAt: string;
+}
 
 interface SystemStatus {
   isGitRepo: boolean;
@@ -90,11 +102,98 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ token }) => {
   const [logs, setLogs] = useState<string[]>([]);
   const [copiedLogs, setCopiedLogs] = useState<boolean>(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error" | "info"; message: string } | null>(null);
+  const [serverBackups, setServerBackups] = useState<ServerBackupItem[]>([]);
+  const [loadingBackups, setLoadingBackups] = useState<boolean>(false);
+  const [creatingSnapshot, setCreatingSnapshot] = useState<boolean>(false);
 
   const headers = useMemo(() => ({
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   }), [token]);
+
+  const fetchBackupsList = useCallback(async () => {
+    try {
+      setLoadingBackups(true);
+      const res = await fetchWithAuth("/api/admin/system/backup/list");
+      if (res.ok) {
+        const data = await res.json();
+        setServerBackups(data.backups || []);
+      }
+    } catch (e) {
+      console.error("Fout bij ophalen backups lijst:", e);
+    } finally {
+      setLoadingBackups(false);
+    }
+  }, []);
+
+  const handleDownloadSqlite = async () => {
+    try {
+      appendLog(`[${new Date().toLocaleTimeString()}] SQLite back-upbestand genereren en downloaden...`);
+      const res = await fetchWithAuth("/api/admin/system/backup/sqlite");
+      if (!res.ok) throw new Error("Kon database.sqlite niet downloaden van server");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `lijst-van-andel-db-${new Date().toISOString().slice(0, 10)}.sqlite`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      appendLog(`[${new Date().toLocaleTimeString()}] ✅ database.sqlite succesvol gedownload naar uw computer!`);
+      setFeedback({ type: "success", message: "Database bestand (.sqlite) succesvol gedownload naar uw computer!" });
+    } catch (err: any) {
+      appendLog(`[${new Date().toLocaleTimeString()}] ❌ Fout: ${err.message}`);
+      setFeedback({ type: "error", message: err.message });
+    }
+  };
+
+  const handleDownloadJson = async () => {
+    try {
+      appendLog(`[${new Date().toLocaleTimeString()}] Volledige JSON export genereren en downloaden...`);
+      const res = await fetchWithAuth("/api/admin/system/backup/json");
+      if (!res.ok) throw new Error("Kon JSON export niet downloaden");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `lijst-van-andel-export-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      appendLog(`[${new Date().toLocaleTimeString()}] ✅ Volledige JSON export succesvol gedownload!`);
+      setFeedback({ type: "success", message: "Volledige JSON back-up succesvol gedownload!" });
+    } catch (err: any) {
+      appendLog(`[${new Date().toLocaleTimeString()}] ❌ Fout: ${err.message}`);
+      setFeedback({ type: "error", message: err.message });
+    }
+  };
+
+  const handleCreateSnapshot = async () => {
+    try {
+      setCreatingSnapshot(true);
+      appendLog(`[${new Date().toLocaleTimeString()}] Lokale server-snapshot opslaan in ./backups/...`);
+      const res = await fetchWithAuth("/api/admin/system/backup/snapshot", { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        appendLog(`[${new Date().toLocaleTimeString()}] ✅ Snapshot aangemaakt op de server: ${data.backupFile}`);
+        setFeedback({ type: "success", message: data.message });
+        if (data.backups) {
+          setServerBackups(data.backups);
+        } else {
+          fetchBackupsList();
+        }
+      } else {
+        throw new Error(data.error || "Kon snapshot niet aanmaken");
+      }
+    } catch (err: any) {
+      appendLog(`[${new Date().toLocaleTimeString()}] ❌ Fout bij snapshot: ${err.message}`);
+      setFeedback({ type: "error", message: err.message });
+    } finally {
+      setCreatingSnapshot(false);
+    }
+  };
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -113,7 +212,8 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ token }) => {
 
   useEffect(() => {
     fetchStatus();
-  }, [fetchStatus]);
+    fetchBackupsList();
+  }, [fetchStatus, fetchBackupsList]);
 
   const appendLog = (line: string) => {
     setLogs((prev) => [...prev, line]);
@@ -625,6 +725,135 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ token }) => {
           )}
         </div>
       )}
+
+      {/* Database & Back-up Beheer Card */}
+      <div className="bg-card rounded-xl border border-border p-6 shadow-sm space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-border/80">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-accent/15 text-accent border border-accent/30">
+              <Database className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-display text-lg text-foreground flex items-center gap-2">
+                <span>Database & Back-up Beheer</span>
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
+                  Productie Beveiligd
+                </span>
+              </h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Download direct een kopie van al uw data of maak een snapshot op de server.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={fetchBackupsList}
+              disabled={loadingBackups}
+              className="text-xs h-9 border-border gap-1.5 cursor-pointer"
+            >
+              <RotateCcw className={`w-3.5 h-3.5 ${loadingBackups ? "animate-spin" : ""}`} />
+              <span>Verversen</span>
+            </Button>
+          </div>
+        </div>
+
+        {/* Snelle acties downloadknoppen */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Knop 1: Download SQLite file */}
+          <div className="bg-muted/30 border border-border/80 rounded-xl p-4.5 space-y-3 flex flex-col justify-between">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-foreground">
+                <HardDrive className="w-4 h-4 text-accent" />
+                <span>SQLite Database (.sqlite)</span>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Het ruwe binaire databasebestand met alle tabellen, gebruikers, peilingen en instellingen.
+              </p>
+            </div>
+            <Button
+              type="button"
+              onClick={handleDownloadSqlite}
+              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground text-xs h-9 gap-2 cursor-pointer shadow-xs font-semibold"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Download SQLite Bestand</span>
+            </Button>
+          </div>
+
+          {/* Knop 2: Download Full JSON export */}
+          <div className="bg-muted/30 border border-border/80 rounded-xl p-4.5 space-y-3 flex flex-col justify-between">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-foreground">
+                <FileJson className="w-4 h-4 text-accent" />
+                <span>Volledige JSON Export (.json)</span>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Menselijk leesbare complete dump van alle artikelen, afspraken, agenda en contactberichten.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleDownloadJson}
+              className="w-full text-xs h-9 gap-2 border-border cursor-pointer font-semibold"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Download JSON Export</span>
+            </Button>
+          </div>
+
+          {/* Knop 3: Maak Server Snapshot */}
+          <div className="bg-muted/30 border border-border/80 rounded-xl p-4.5 space-y-3 flex flex-col justify-between">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-foreground">
+                <ShieldCheck className="w-4 h-4 text-accent" />
+                <span>Lokale Server Snapshot</span>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Kopieert de database direct naar een veilige map <code className="text-foreground font-mono">./backups/</code> op de server.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleCreateSnapshot}
+              disabled={creatingSnapshot}
+              className="w-full text-xs h-9 gap-2 cursor-pointer font-semibold"
+            >
+              <FolderArchive className={`w-3.5 h-3.5 ${creatingSnapshot ? "animate-spin" : ""}`} />
+              <span>{creatingSnapshot ? "Snapshot maken..." : "Maak Server Snapshot"}</span>
+            </Button>
+          </div>
+        </div>
+
+        {/* Server snapshot overzicht */}
+        {serverBackups.length > 0 && (
+          <div className="space-y-2 pt-2 border-t border-border/60">
+            <div className="text-xs font-semibold text-foreground uppercase tracking-wider">
+              Recente Server Snapshots ({serverBackups.length}):
+            </div>
+            <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+              {serverBackups.map((b, i) => (
+                <div key={i} className="flex items-center justify-between p-2 rounded-lg bg-muted/40 text-xs border border-border/60">
+                  <div className="flex items-center gap-2 font-mono text-foreground font-medium">
+                    <Database className="w-3.5 h-3.5 text-accent" />
+                    <span>{b.filename}</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-muted-foreground text-[11px]">
+                    <span>{b.sizeKb} KB</span>
+                    <span>•</span>
+                    <span>{new Date(b.createdAt).toLocaleString("nl-NL")}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Live Terminal / Uitvoer Logboek */}
       <div className="bg-card rounded-xl border border-border p-6 shadow-sm space-y-4">
