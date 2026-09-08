@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useAuth } from "@/context/AuthContext";
 import type { DossierDocument } from "@/types/dossier";
 
 interface DossierDocumentViewerProps {
@@ -31,6 +32,7 @@ export const DossierDocumentViewer: React.FC<DossierDocumentViewerProps> = ({
   onClose,
   onDocumentUpdated,
 }) => {
+  const { token: authContextToken } = useAuth();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [uploading, setUploading] = useState(false);
 
@@ -40,12 +42,23 @@ export const DossierDocumentViewer: React.FC<DossierDocumentViewerProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (file.size > 28 * 1024 * 1024) {
+      toast.error(`Bestand '${file.name}' is groter dan 28 MB. Kies een kleiner bestand.`);
+      return;
+    }
+
     setUploading(true);
     try {
       const formData = new FormData();
       formData.append("files", file, document.bestandsnaam);
 
-      const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
+      const token =
+        authContextToken ||
+        localStorage.getItem("auth_token") ||
+        sessionStorage.getItem("auth_token") ||
+        localStorage.getItem("token") ||
+        sessionStorage.getItem("token");
+
       const res = await fetch("/api/council/dossiers/bulk-upload", {
         method: "POST",
         headers: {
@@ -54,8 +67,21 @@ export const DossierDocumentViewer: React.FC<DossierDocumentViewerProps> = ({
         body: formData,
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Uploaden mislukt");
+      const responseText = await res.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(responseText);
+      } catch (_jsonErr) {
+        if (res.status === 413 || responseText.includes("413") || responseText.toLowerCase().includes("too large")) {
+          throw new Error(`Het bestand '${file.name}' is te groot voor de server (maximaal 25 MB).`);
+        }
+        if (!res.ok) {
+          throw new Error(`Serverfout (${res.status}): upload kon niet worden verwerkt.`);
+        }
+        throw new Error("Ongeldig serverantwoord ontvangen.");
+      }
+
+      if (!res.ok) throw new Error(data?.error || "Uploaden mislukt");
 
       toast.success(`Bestand '${document.bestandsnaam}' succesvol gekoppeld!`);
       if (onDocumentUpdated) {
@@ -66,6 +92,7 @@ export const DossierDocumentViewer: React.FC<DossierDocumentViewerProps> = ({
         });
       }
     } catch (err: any) {
+      console.error("[DOCUMENT VIEWER UPLOAD ERROR]:", err);
       toast.error(err.message || "Fout bij uploaden van document");
     } finally {
       setUploading(false);

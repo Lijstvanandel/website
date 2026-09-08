@@ -14,11 +14,14 @@ import {
   Filter,
   RefreshCw,
   FolderOpen,
+  FolderEdit,
+  Edit3,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DossierBulkUploadModal } from "./DossierBulkUploadModal";
 import { CreateDossierModal } from "./CreateDossierModal";
+import { EditDossierModal } from "./EditDossierModal";
 import { DossierDetail } from "./DossierDetail";
 import type { Dossier } from "@/types/dossier";
 import { toast } from "sonner";
@@ -50,6 +53,8 @@ export const DossierOverview: React.FC = () => {
   // Modals
   const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false);
   const [isCreateDossierOpen, setIsCreateDossierOpen] = useState(false);
+  const [isEditDossierOpen, setIsEditDossierOpen] = useState(false);
+  const [editingDossier, setEditingDossier] = useState<Dossier | null>(null);
 
   const fetchDossiers = useCallback(async () => {
     setLoading(true);
@@ -333,11 +338,25 @@ export const DossierOverview: React.FC = () => {
                     <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-black/60 text-white backdrop-blur-xs border border-white/20">
                       {dossier.category}
                     </span>
-                    {dossier.isCustom && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-accent text-accent-foreground shadow-xs">
-                        Aangemaakt
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1.5">
+                      {dossier.isCustom && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-accent text-accent-foreground shadow-xs">
+                          Aangemaakt
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        title="Dossier bewerken"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingDossier(dossier);
+                          setIsEditDossierOpen(true);
+                        }}
+                        className="p-1.5 rounded-full bg-black/60 text-white hover:bg-accent hover:text-accent-foreground backdrop-blur-xs border border-white/20 transition-all opacity-80 group-hover:opacity-100"
+                      >
+                        <Edit3 className="w-3 h-3" />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-white text-xs">
@@ -398,9 +417,18 @@ export const DossierOverview: React.FC = () => {
 
               {/* Card Footer */}
               <div className="px-5 py-3 border-t border-border bg-muted/20 flex items-center justify-between text-xs">
-                <span className="text-[11px] text-muted-foreground font-medium">
-                  Bekijk tijdlijn & netwerk
-                </span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingDossier(dossier);
+                    setIsEditDossierOpen(true);
+                  }}
+                  className="text-[11px] text-muted-foreground hover:text-accent font-medium flex items-center gap-1 transition-colors"
+                >
+                  <FolderEdit className="w-3.5 h-3.5" />
+                  Bewerken
+                </button>
                 <span className="text-accent font-semibold flex items-center gap-1 group-hover:translate-x-1 transition-transform">
                   Open dossier
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -493,6 +521,22 @@ export const DossierOverview: React.FC = () => {
         onCreated={(newDossier) => {
           fetchDossiers();
           setActiveDossierSlug(newDossier.slug);
+        }}
+      />
+
+      {/* Edit Dossier Modal */}
+      <EditDossierModal
+        isOpen={isEditDossierOpen}
+        dossier={editingDossier}
+        onClose={() => {
+          setIsEditDossierOpen(false);
+          setEditingDossier(null);
+        }}
+        onUpdated={() => {
+          fetchDossiers();
+        }}
+        onDeleted={() => {
+          fetchDossiers();
         }}
       />
     </div>

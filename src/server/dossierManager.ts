@@ -207,7 +207,7 @@ export function checkFileExists(filename: string): { exists: boolean; fileUrl?: 
 }
 
 // Build complete list of Dossiers from metadata + SQLite custom dossiers
-export function getAllDossiers(customDossiers: Dossier[] = []): Dossier[] {
+export function getAllDossiers(customDossiers: Dossier[] = [], deletedSlugs: string[] = []): Dossier[] {
   const metadataList = getRawMetadata();
   const dossierMap = new Map<string, DossierDocument[]>();
 
@@ -242,7 +242,7 @@ export function getAllDossiers(customDossiers: Dossier[] = []): Dossier[] {
     dossierMap.get(rawDossier)!.push(doc);
   });
 
-  const dossiers: Dossier[] = [];
+  let dossiers: Dossier[] = [];
 
   // Transform grouped items into Dossier entities
   for (const [title, docs] of dossierMap.entries()) {
@@ -294,19 +294,84 @@ export function getAllDossiers(customDossiers: Dossier[] = []): Dossier[] {
     });
   }
 
-  // Merge custom dossiers
+  // Filter out deleted dossiers
+  if (Array.isArray(deletedSlugs) && deletedSlugs.length > 0) {
+    const deletedSet = new Set(deletedSlugs.map((s) => s.toLowerCase()));
+    dossiers = dossiers.filter((d) => !deletedSet.has(d.slug.toLowerCase()) && !deletedSet.has(d.id.toLowerCase()));
+  }
+
+  // Merge custom dossiers and overrides
   if (Array.isArray(customDossiers)) {
     customDossiers.forEach((custom) => {
-      const existingIdx = dossiers.findIndex((d) => d.id === custom.id || d.slug === custom.slug);
+      if (!custom || !custom.title) return;
+      const customSlug = custom.slug || slugify(custom.title);
+      if (Array.isArray(deletedSlugs) && deletedSlugs.some((s) => s.toLowerCase() === customSlug.toLowerCase())) {
+        return;
+      }
+
+      const existingIdx = dossiers.findIndex(
+        (d) => d.id === custom.id || d.slug === customSlug || d.title.toLowerCase() === custom.title.toLowerCase()
+      );
+
+      // Re-verify file existence for custom documents
+      const customDocs = Array.isArray(custom.documents)
+        ? custom.documents.map((d: DossierDocument) => {
+            const check = checkFileExists(d.bestandsnaam);
+            return {
+              ...d,
+              fileExists: check.exists,
+              fileUrl: check.fileUrl || d.fileUrl,
+              fileSize: check.fileSize || d.fileSize,
+            };
+          })
+        : undefined;
+
       if (existingIdx >= 0) {
-        // Merge custom overrides (like custom thumbnail or description)
+        // Replace or override with custom properties
+        const finalDocs = customDocs !== undefined ? customDocs : dossiers[existingIdx].documents;
+        const uploadedCount = finalDocs.filter((d) => d.fileExists).length;
+
+        const dates = finalDocs.map((d) => d.datum).filter(Boolean) as string[];
+        dates.sort();
+        const startDate = dates.length > 0 ? dates[0] : dossiers[existingIdx].dateRange.start;
+        const endDate = dates.length > 0 ? dates[dates.length - 1] : dossiers[existingIdx].dateRange.end;
+
         dossiers[existingIdx] = {
           ...dossiers[existingIdx],
           ...custom,
-          documents: [...dossiers[existingIdx].documents, ...(custom.documents || [])],
+          slug: customSlug,
+          documents: finalDocs,
+          documentCount: finalDocs.length,
+          uploadedCount,
+          dateRange: { start: startDate, end: endDate },
+          isCustom: true,
+          updatedAt: custom.updatedAt || new Date().toISOString(),
         };
       } else {
-        dossiers.push(custom);
+        const finalDocs = customDocs || [];
+        const uploadedCount = finalDocs.filter((d) => d.fileExists).length;
+        const dates = finalDocs.map((d) => d.datum).filter(Boolean) as string[];
+        dates.sort();
+
+        dossiers.push({
+          id: custom.id || `custom-${Date.now()}-${customSlug}`,
+          title: custom.title.trim(),
+          slug: customSlug,
+          description: custom.description || `Dossier ${custom.title.trim()}`,
+          category: custom.category || "Gemeenteraad & Beleid",
+          thumbnail: custom.thumbnail || DEFAULT_THUMBNAIL,
+          tags: Array.isArray(custom.tags) ? custom.tags : [],
+          documentCount: finalDocs.length,
+          uploadedCount,
+          dateRange: {
+            start: dates[0] || null,
+            end: dates[dates.length - 1] || null,
+          },
+          documents: finalDocs,
+          isCustom: true,
+          createdAt: custom.createdAt || new Date().toISOString(),
+          updatedAt: custom.updatedAt || new Date().toISOString(),
+        });
       }
     });
   }
@@ -318,8 +383,8 @@ export function getAllDossiers(customDossiers: Dossier[] = []): Dossier[] {
 }
 
 // Get subnetwork graph for a specific dossier
-export function getDossierGraph(dossierTitleOrSlug: string): NetworkGraphData {
-  const allDossiers = getAllDossiers();
+export function getDossierGraph(dossierTitleOrSlug: string, db?: any): NetworkGraphData {
+  const allDossiers = getAllDossiers(db?.customDossiers || [], db?.deletedDossierSlugs || []);
   const matchedDossier = allDossiers.find(
     (d) => d.id === dossierTitleOrSlug || d.slug === dossierTitleOrSlug || d.title.toLowerCase() === dossierTitleOrSlug.toLowerCase()
   );
@@ -332,45 +397,115 @@ export function getDossierGraph(dossierTitleOrSlug: string): NetworkGraphData {
   const dossierFileNames = new Set(matchedDossier.documents.map((d) => d.bestandsnaam));
   const relevantNodeIds = new Set<string>();
   const relevantEdges: GraphEdge[] = [];
+  const nodeMap = new Map<string, GraphNode>();
 
-  // Add document nodes
+  // Add all dossier documents as nodes
+  matchedDossier.documents.forEach((doc) => {
+    relevantNodeIds.add(doc.bestandsnaam);
+    nodeMap.set(doc.bestandsnaam, {
+      id: doc.bestandsnaam,
+      label: doc.titel || doc.bestandsnaam,
+      group: matchedDossier.title,
+      type: "Raadsstuk",
+      date: doc.datum || null,
+      dossier: matchedDossier.title,
+      bestandsnaam: doc.bestandsnaam,
+    });
+
+    // Add relations as connected nodes and edges
+    if (Array.isArray(doc.relaties)) {
+      doc.relaties.forEach((rel) => {
+        const cleanRel = rel.trim();
+        if (!cleanRel) return;
+        relevantNodeIds.add(cleanRel);
+        if (!nodeMap.has(cleanRel)) {
+          nodeMap.set(cleanRel, {
+            id: cleanRel,
+            label: cleanRel,
+            group: matchedDossier.title,
+            type: "Relatie",
+            date: null,
+            dossier: matchedDossier.title,
+          });
+        }
+        relevantEdges.push({
+          source: doc.bestandsnaam,
+          target: cleanRel,
+          label: "In relatie met",
+        });
+      });
+    }
+
+    // Add entities as connected nodes and edges if not already present
+    if (Array.isArray(doc.entiteiten)) {
+      doc.entiteiten.forEach((ent) => {
+        const cleanEnt = ent.trim();
+        if (!cleanEnt) return;
+        relevantNodeIds.add(cleanEnt);
+        if (!nodeMap.has(cleanEnt)) {
+          nodeMap.set(cleanEnt, {
+            id: cleanEnt,
+            label: cleanEnt,
+            group: matchedDossier.title,
+            type: "Entiteit",
+            date: null,
+            dossier: matchedDossier.title,
+          });
+        }
+        relevantEdges.push({
+          source: doc.bestandsnaam,
+          target: cleanEnt,
+          label: "Betreft",
+        });
+      });
+    }
+  });
+
+  // Also include original nodes and edges from metadata network_graph.json
   fullGraph.nodes.forEach((node) => {
     if (dossierFileNames.has(node.id) || node.group === matchedDossier.title) {
       relevantNodeIds.add(node.id);
+      if (!nodeMap.has(node.id)) {
+        nodeMap.set(node.id, {
+          ...node,
+          dossier: matchedDossier.title,
+        });
+      }
     }
   });
 
-  // Add connected edges and connected relation nodes
   fullGraph.edges.forEach((edge) => {
-    if (dossierFileNames.has(edge.source) || relevantNodeIds.has(edge.source)) {
+    if (dossierFileNames.has(edge.source) || dossierFileNames.has(edge.target)) {
       relevantEdges.push(edge);
       relevantNodeIds.add(edge.source);
       relevantNodeIds.add(edge.target);
-    } else if (dossierFileNames.has(edge.target) || relevantNodeIds.has(edge.target)) {
-      relevantEdges.push(edge);
-      relevantNodeIds.add(edge.source);
-      relevantNodeIds.add(edge.target);
+
+      // Ensure nodes exist for edge endpoints
+      if (!nodeMap.has(edge.source)) {
+        const origNode = fullGraph.nodes.find((n) => n.id === edge.source);
+        if (origNode) nodeMap.set(edge.source, origNode);
+      }
+      if (!nodeMap.has(edge.target)) {
+        const origNode = fullGraph.nodes.find((n) => n.id === edge.target);
+        if (origNode) nodeMap.set(edge.target, origNode);
+      }
     }
   });
 
-  // Filter nodes
-  const filteredNodes: GraphNode[] = fullGraph.nodes
-    .filter((node) => relevantNodeIds.has(node.id))
-    .map((node) => {
-      const isDoc = dossierFileNames.has(node.id) || node.type === "Raadsstuk";
-      const docMatch = matchedDossier.documents.find((d) => d.bestandsnaam === node.id);
-      return {
-        ...node,
-        bestandsnaam: isDoc ? node.id : undefined,
-        dossier: matchedDossier.title,
-        label: docMatch?.titel || node.label,
-        type: isDoc ? "Raadsstuk" : "Relatie",
-      };
-    });
+  // Deduplicate edges
+  const edgeKeySet = new Set<string>();
+  const uniqueEdges: GraphEdge[] = [];
+  relevantEdges.forEach((edge) => {
+    const key = `${edge.source}->${edge.target}`;
+    if (!edgeKeySet.has(key)) {
+      edgeKeySet.add(key);
+      uniqueEdges.push(edge);
+    }
+  });
 
   return {
-    nodes: filteredNodes,
-    edges: relevantEdges,
+    nodes: Array.from(nodeMap.values()),
+    edges: uniqueEdges,
   };
 }
 
@@ -383,6 +518,12 @@ export function createCustomDossier(
   if (!db.customDossiers) db.customDossiers = [];
   const slug = payload.slug || slugify(payload.title);
   const now = new Date().toISOString();
+
+  // If was previously marked as deleted, unmark it
+  if (Array.isArray(db.deletedDossierSlugs)) {
+    db.deletedDossierSlugs = db.deletedDossierSlugs.filter((s: string) => s !== slug && s !== payload.id);
+  }
+
   const newDossier: Dossier = {
     id: `custom-${Date.now()}-${slug}`,
     title: payload.title.trim(),
@@ -405,7 +546,7 @@ export function createCustomDossier(
   return newDossier;
 }
 
-// Update an existing dossier in SQLite db
+// Update an existing dossier in SQLite db (title, description, category, thumbnail, tags, etc.)
 export function updateDossier(
   idOrSlug: string,
   updates: Partial<Dossier>,
@@ -413,7 +554,7 @@ export function updateDossier(
   saveDbFn: (db: any) => void
 ): Dossier | null {
   if (!db.customDossiers) db.customDossiers = [];
-  const allDossiers = getAllDossiers(db.customDossiers);
+  const allDossiers = getAllDossiers(db.customDossiers, db.deletedDossierSlugs || []);
   const existing = allDossiers.find((d) => d.id === idOrSlug || d.slug === idOrSlug);
   if (!existing) return null;
 
@@ -421,9 +562,22 @@ export function updateDossier(
     (d: Dossier) => d.id === idOrSlug || d.slug === idOrSlug || d.title.toLowerCase() === existing.title.toLowerCase()
   );
 
+  const updatedDocs = Array.isArray(updates.documents) ? updates.documents : existing.documents;
+  const dates = updatedDocs.map((d) => d.datum).filter(Boolean) as string[];
+  dates.sort();
+
   const updated: Dossier = {
     ...existing,
     ...updates,
+    slug: updates.title && updates.title !== existing.title ? slugify(updates.title) : existing.slug,
+    documents: updatedDocs,
+    documentCount: updatedDocs.length,
+    uploadedCount: updatedDocs.filter((d) => d.fileExists).length,
+    dateRange: {
+      start: dates[0] || null,
+      end: dates[dates.length - 1] || null,
+    },
+    isCustom: true,
     updatedAt: new Date().toISOString(),
   };
 
@@ -435,6 +589,237 @@ export function updateDossier(
 
   saveDbFn(db);
   return updated;
+}
+
+// Delete a dossier (soft delete via deletedDossierSlugs + remove from customDossiers)
+export function deleteDossier(
+  idOrSlug: string,
+  db: any,
+  saveDbFn: (db: any) => void
+): boolean {
+  if (!db.deletedDossierSlugs) db.deletedDossierSlugs = [];
+  if (!db.customDossiers) db.customDossiers = [];
+
+  const allDossiers = getAllDossiers(db.customDossiers, db.deletedDossierSlugs);
+  const matched = allDossiers.find((d) => d.id === idOrSlug || d.slug === idOrSlug);
+  if (!matched) return false;
+
+  if (!db.deletedDossierSlugs.includes(matched.slug)) {
+    db.deletedDossierSlugs.push(matched.slug);
+  }
+  if (!db.deletedDossierSlugs.includes(matched.id)) {
+    db.deletedDossierSlugs.push(matched.id);
+  }
+
+  db.customDossiers = db.customDossiers.filter((d: Dossier) => d.id !== matched.id && d.slug !== matched.slug);
+  saveDbFn(db);
+  return true;
+}
+
+// Add a document manually to a dossier
+export function addDocumentToDossier(
+  idOrSlug: string,
+  docData: Partial<DossierDocument> & { titel: string; bestandsnaam: string },
+  db: any,
+  saveDbFn: (db: any) => void
+): { dossier: Dossier; document: DossierDocument } | null {
+  const allDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || []);
+  const dossier = allDossiers.find((d) => d.id === idOrSlug || d.slug === idOrSlug);
+  if (!dossier) return null;
+
+  const cleanFilename = path.basename(docData.bestandsnaam.trim());
+  const fileCheck = checkFileExists(cleanFilename);
+
+  const newDoc: DossierDocument = {
+    id: `doc-manual-${Date.now()}-${slugify(cleanFilename)}`,
+    bestandsnaam: cleanFilename,
+    titel: docData.titel.trim(),
+    dossier: dossier.title,
+    datum: docData.datum || new Date().toISOString().split("T")[0],
+    entiteiten: Array.isArray(docData.entiteiten)
+      ? docData.entiteiten
+      : typeof docData.entiteiten === "string"
+      ? (docData.entiteiten as string).split(",").map((s) => s.trim()).filter(Boolean)
+      : [],
+    relaties: Array.isArray(docData.relaties)
+      ? docData.relaties
+      : typeof docData.relaties === "string"
+      ? (docData.relaties as string).split(",").map((s) => s.trim()).filter(Boolean)
+      : [],
+    fileExists: fileCheck.exists,
+    fileUrl: fileCheck.fileUrl,
+    fileSize: fileCheck.fileSize,
+    uploadedAt: fileCheck.exists ? new Date().toISOString() : undefined,
+  };
+
+  // Avoid duplicates with same bestandsnaam; if exists, update it
+  const existingDocIdx = dossier.documents.findIndex((d) => d.bestandsnaam === cleanFilename);
+  const updatedDocuments = [...dossier.documents];
+
+  if (existingDocIdx >= 0) {
+    updatedDocuments[existingDocIdx] = {
+      ...updatedDocuments[existingDocIdx],
+      ...newDoc,
+    };
+  } else {
+    updatedDocuments.unshift(newDoc);
+  }
+
+  const updatedDossier = updateDossier(
+    idOrSlug,
+    {
+      documents: updatedDocuments,
+      updatedAt: new Date().toISOString(),
+    },
+    db,
+    saveDbFn
+  );
+
+  if (!updatedDossier) return null;
+  return { dossier: updatedDossier, document: newDoc };
+}
+
+// Update a specific document inside a dossier
+export function updateDocumentInDossier(
+  idOrSlug: string,
+  docIdOrFilename: string,
+  updates: Partial<DossierDocument>,
+  db: any,
+  saveDbFn: (db: any) => void
+): { dossier: Dossier; document: DossierDocument } | null {
+  const allDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || []);
+  const dossier = allDossiers.find((d) => d.id === idOrSlug || d.slug === idOrSlug);
+  if (!dossier) return null;
+
+  const docIdx = dossier.documents.findIndex(
+    (d) => d.id === docIdOrFilename || d.bestandsnaam === docIdOrFilename
+  );
+  if (docIdx < 0) return null;
+
+  const existingDoc = dossier.documents[docIdx];
+  const targetFilename = updates.bestandsnaam ? path.basename(updates.bestandsnaam.trim()) : existingDoc.bestandsnaam;
+  const fileCheck = checkFileExists(targetFilename);
+
+  const updatedDoc: DossierDocument = {
+    ...existingDoc,
+    ...updates,
+    bestandsnaam: targetFilename,
+    titel: updates.titel !== undefined ? updates.titel.trim() : existingDoc.titel,
+    datum: updates.datum !== undefined ? updates.datum : existingDoc.datum,
+    entiteiten: Array.isArray(updates.entiteiten)
+      ? updates.entiteiten
+      : typeof updates.entiteiten === "string"
+      ? (updates.entiteiten as string).split(",").map((s) => s.trim()).filter(Boolean)
+      : existingDoc.entiteiten,
+    relaties: Array.isArray(updates.relaties)
+      ? updates.relaties
+      : typeof updates.relaties === "string"
+      ? (updates.relaties as string).split(",").map((s) => s.trim()).filter(Boolean)
+      : existingDoc.relaties,
+    fileExists: fileCheck.exists,
+    fileUrl: fileCheck.fileUrl || existingDoc.fileUrl,
+    fileSize: fileCheck.fileSize || existingDoc.fileSize,
+  };
+
+  const updatedDocuments = [...dossier.documents];
+  updatedDocuments[docIdx] = updatedDoc;
+
+  const updatedDossier = updateDossier(
+    idOrSlug,
+    {
+      documents: updatedDocuments,
+      updatedAt: new Date().toISOString(),
+    },
+    db,
+    saveDbFn
+  );
+
+  if (!updatedDossier) return null;
+  return { dossier: updatedDossier, document: updatedDoc };
+}
+
+// Remove / unlink a document from a dossier
+export function removeDocumentFromDossier(
+  idOrSlug: string,
+  docIdOrFilename: string,
+  db: any,
+  saveDbFn: (db: any) => void
+): Dossier | null {
+  const allDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || []);
+  const dossier = allDossiers.find((d) => d.id === idOrSlug || d.slug === idOrSlug);
+  if (!dossier) return null;
+
+  const filteredDocuments = dossier.documents.filter(
+    (d) => d.id !== docIdOrFilename && d.bestandsnaam !== docIdOrFilename
+  );
+
+  return updateDossier(
+    idOrSlug,
+    {
+      documents: filteredDocuments,
+      updatedAt: new Date().toISOString(),
+    },
+    db,
+    saveDbFn
+  );
+}
+
+// Link multiple existing documents to a dossier (relaties versterken)
+export function linkDocumentsToDossier(
+  idOrSlug: string,
+  docsToLink: DossierDocument[],
+  db: any,
+  saveDbFn: (db: any) => void
+): Dossier | null {
+  const allDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || []);
+  const dossier = allDossiers.find((d) => d.id === idOrSlug || d.slug === idOrSlug);
+  if (!dossier) return null;
+
+  const currentMap = new Map<string, DossierDocument>();
+  dossier.documents.forEach((d) => currentMap.set(d.bestandsnaam, d));
+
+  docsToLink.forEach((d) => {
+    const check = checkFileExists(d.bestandsnaam);
+    currentMap.set(d.bestandsnaam, {
+      ...d,
+      dossier: dossier.title,
+      fileExists: check.exists,
+      fileUrl: check.fileUrl || d.fileUrl,
+      fileSize: check.fileSize || d.fileSize,
+    });
+  });
+
+  const updatedDocuments = Array.from(currentMap.values());
+  return updateDossier(
+    idOrSlug,
+    {
+      documents: updatedDocuments,
+      updatedAt: new Date().toISOString(),
+    },
+    db,
+    saveDbFn
+  );
+}
+
+// Catalog of all unique documents across all dossiers
+export function getAllCatalogDocuments(db: any): DossierDocument[] {
+  const allDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || []);
+  const map = new Map<string, DossierDocument>();
+
+  allDossiers.forEach((dossier) => {
+    dossier.documents.forEach((doc) => {
+      if (!map.has(doc.bestandsnaam)) {
+        map.set(doc.bestandsnaam, doc);
+      }
+    });
+  });
+
+  return Array.from(map.values()).sort((a, b) => {
+    if (!a.datum && !b.datum) return a.titel.localeCompare(b.titel);
+    if (!a.datum) return 1;
+    if (!b.datum) return -1;
+    return new Date(b.datum).getTime() - new Date(a.datum).getTime();
+  });
 }
 
 // Process bulk uploaded council documents
@@ -451,21 +836,41 @@ export function processUploadedCouncilDocuments(
   const metadataList = getRawMetadata();
   const metadataByFilename = new Map<string, RaadsstukMetadata>();
   metadataList.forEach((item) => {
-    metadataByFilename.set(item.bestandsnaam.toLowerCase().trim(), item);
+    const fn = (item.bestandsnaam || "").toLowerCase().trim();
+    if (fn) {
+      metadataByFilename.set(fn, item);
+      try {
+        metadataByFilename.set(decodeURIComponent(fn), item);
+      } catch (_e) {
+        // Fallback to non-decoded filename
+      }
+    }
   });
 
   const matchedDocuments: Array<{ filename: string; dossier: string; title: string }> = [];
   const unmatchedDocuments: string[] = [];
 
   uploadedFiles.forEach((file) => {
-    const rawName = file.originalname;
+    const rawName = file.originalname || file.filename || "onbekend.pdf";
     const lowerName = rawName.toLowerCase().trim();
 
     // Mirror to dist directory as well
     const pubPath = path.join(DOCUMENTS_DIR, rawName);
-    syncFileFn(pubPath);
+    try {
+      syncFileFn(pubPath);
+    } catch (syncErr) {
+      console.warn("Could not sync file to dist:", syncErr);
+    }
 
-    const match = metadataByFilename.get(lowerName);
+    let match = metadataByFilename.get(lowerName);
+    if (!match) {
+      try {
+        match = metadataByFilename.get(decodeURIComponent(lowerName));
+      } catch (_e) {
+        // Fallback to direct name
+      }
+    }
+
     if (match) {
       matchedDocuments.push({
         filename: rawName,

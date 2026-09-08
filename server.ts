@@ -55,6 +55,12 @@ import {
   getDossierGraph,
   createCustomDossier,
   updateDossier,
+  deleteDossier,
+  addDocumentToDossier,
+  updateDocumentInDossier,
+  removeDocumentFromDossier,
+  linkDocumentsToDossier,
+  getAllCatalogDocuments,
   processUploadedCouncilDocuments,
   getRawNetworkGraph
 } from "./src/server/dossierManager.js";
@@ -727,10 +733,35 @@ const dossierDocStorage = multer.diskStorage({
   },
   filename: function (req, file, cb) {
     // Preserve exact original filename to match raadsstukken metadata
-    cb(null, file.originalname);
+    let name = path.basename(file.originalname);
+    try {
+      const fixed = Buffer.from(name, "latin1").toString("utf8");
+      if (fixed && !fixed.includes("\ufffd")) {
+        name = fixed;
+      }
+    } catch (_e) {
+      // Fallback to raw basename
+    }
+    cb(null, name);
   }
 });
 const uploadDossierDocs = multer({ storage: dossierDocStorage, limits: { fileSize: 100 * 1024 * 1024 } });
+
+const dossierThumbnailStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const fullDir = path.join(process.cwd(), "public/uploads/thumbnails");
+    if (!fs.existsSync(fullDir)) {
+      fs.mkdirSync(fullDir, { recursive: true });
+    }
+    cb(null, fullDir);
+  },
+  filename: function (req, file, cb) {
+    const ext = path.extname(file.originalname) || ".jpg";
+    const name = `dossier-thumb-${Date.now()}-${Math.random().toString(36).substring(2, 7)}${ext}`;
+    cb(null, name);
+  },
+});
+const uploadDossierThumbnail = multer({ storage: dossierThumbnailStorage, limits: { fileSize: 15 * 1024 * 1024 } });
 
 function syncFileAcrossUploadDirs(relPathOrAbsPath: string) {
   try {
@@ -7630,7 +7661,7 @@ Sitemap: ${baseUrl}/sitemap.xml
   app.get("/api/council/dossiers", requireAuth, (req: any, res: any) => {
     try {
       const db = getDb();
-      const allDossiers = getAllDossiers(db.customDossiers || []);
+      const allDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || []);
 
       const search = (req.query.search || "").toString().toLowerCase().trim();
       const category = (req.query.category || "").toString().trim();
@@ -7696,19 +7727,31 @@ Sitemap: ${baseUrl}/sitemap.xml
     }
   });
 
+  // Catalog of all unique documents across all dossiers for linking
+  app.get("/api/council/catalog/all-documents", requireAuth, (req: any, res: any) => {
+    try {
+      const db = getDb();
+      const docs = getAllCatalogDocuments(db);
+      res.json({ documents: docs, total: docs.length });
+    } catch (err: any) {
+      console.error("[COUNCIL CATALOG ERROR]:", err);
+      res.status(500).json({ error: "Fout bij ophalen catalogus: " + err.message });
+    }
+  });
+
   // 2. Get single dossier detail with documents and its network graph
   app.get("/api/council/dossiers/:slug", requireAuth, (req: any, res: any) => {
     try {
       const slug = req.params.slug;
       const db = getDb();
-      const allDossiers = getAllDossiers(db.customDossiers || []);
+      const allDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || []);
       const dossier = allDossiers.find((d) => d.slug === slug || d.id === slug);
 
       if (!dossier) {
         return res.status(404).json({ error: `Dossier met kenmerk '${slug}' niet gevonden` });
       }
 
-      const graph = getDossierGraph(dossier.slug || dossier.id);
+      const graph = getDossierGraph(dossier.slug || dossier.id, db);
 
       res.json({
         dossier,
@@ -7766,15 +7809,248 @@ Sitemap: ${baseUrl}/sitemap.xml
     }
   });
 
+  // 5. Delete a dossier
+  app.delete("/api/council/dossiers/:slug", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    try {
+      const slug = req.params.slug;
+      const db = getDb();
+      const success = deleteDossier(slug, db, saveDb);
+
+      if (!success) {
+        return res.status(404).json({ error: `Dossier '${slug}' niet gevonden` });
+      }
+
+      res.json({ success: true, message: `Dossier '${slug}' is succesvol verwijderd` });
+    } catch (err: any) {
+      console.error("[COUNCIL DOSSIER DELETE ERROR]:", err);
+      res.status(500).json({ error: "Fout bij verwijderen dossier: " + err.message });
+    }
+  });
+
+  // 6. Add a document manually to a dossier (with optional file upload)
+  app.post(
+    "/api/council/dossiers/:slug/documents",
+    requireAuth,
+    requireCouncilOrAdmin,
+    (req: any, res: any, next: any) => {
+      uploadDossierDocs.single("file")(req, res, (err: any) => {
+        if (err) {
+          return res.status(400).json({ error: "Fout bij uploaden document: " + err.message });
+        }
+        next();
+      });
+    },
+    (req: any, res: any) => {
+      try {
+        const slug = req.params.slug;
+        const db = getDb();
+        const { titel, datum, entiteiten, relaties } = req.body;
+        let bestandsnaam = req.body.bestandsnaam;
+
+        if (req.file) {
+          bestandsnaam = req.file.originalname;
+          syncFileAcrossUploadDirs(req.file.path);
+        }
+
+        if (!titel || !titel.trim()) {
+          return res.status(400).json({ error: "Documenttitel is verplicht" });
+        }
+        if (!bestandsnaam || !bestandsnaam.trim()) {
+          bestandsnaam = `${titel.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pdf`;
+        }
+
+        const result = addDocumentToDossier(
+          slug,
+          {
+            titel: titel.trim(),
+            bestandsnaam: bestandsnaam.trim(),
+            datum: datum || new Date().toISOString().split("T")[0],
+            entiteiten,
+            relaties,
+          },
+          db,
+          saveDb
+        );
+
+        if (!result) {
+          return res.status(404).json({ error: `Dossier '${slug}' niet gevonden` });
+        }
+
+        res.status(201).json({
+          success: true,
+          dossier: result.dossier,
+          document: result.document,
+          message: `Document '${titel}' succesvol toegevoegd aan dossier`,
+        });
+      } catch (err: any) {
+        console.error("[COUNCIL ADD DOCUMENT ERROR]:", err);
+        res.status(500).json({ error: "Fout bij toevoegen document: " + err.message });
+      }
+    }
+  );
+
+  // 7. Update an existing document in a dossier (with optional replacement file)
+  app.put(
+    "/api/council/dossiers/:slug/documents/:docId",
+    requireAuth,
+    requireCouncilOrAdmin,
+    (req: any, res: any, next: any) => {
+      uploadDossierDocs.single("file")(req, res, (err: any) => {
+        if (err) {
+          return res.status(400).json({ error: "Fout bij uploaden vervangend bestand: " + err.message });
+        }
+        next();
+      });
+    },
+    (req: any, res: any) => {
+      try {
+        const { slug, docId } = req.params;
+        const db = getDb();
+        const updates: any = { ...req.body };
+
+        if (req.file) {
+          updates.bestandsnaam = req.file.originalname;
+          syncFileAcrossUploadDirs(req.file.path);
+        }
+
+        const result = updateDocumentInDossier(slug, docId, updates, db, saveDb);
+        if (!result) {
+          return res.status(404).json({ error: `Document of dossier niet gevonden` });
+        }
+
+        res.json({
+          success: true,
+          dossier: result.dossier,
+          document: result.document,
+          message: "Document succesvol bijgewerkt",
+        });
+      } catch (err: any) {
+        console.error("[COUNCIL UPDATE DOCUMENT ERROR]:", err);
+        res.status(500).json({ error: "Fout bij bijwerken document: " + err.message });
+      }
+    }
+  );
+
+  // 8. Delete / unlink document from a dossier
+  app.delete(
+    "/api/council/dossiers/:slug/documents/:docId",
+    requireAuth,
+    requireCouncilOrAdmin,
+    (req: any, res: any) => {
+      try {
+        const { slug, docId } = req.params;
+        const db = getDb();
+        const updatedDossier = removeDocumentFromDossier(slug, docId, db, saveDb);
+
+        if (!updatedDossier) {
+          return res.status(404).json({ error: `Dossier '${slug}' of document niet gevonden` });
+        }
+
+        res.json({
+          success: true,
+          dossier: updatedDossier,
+          message: "Document succesvol ontkoppeld uit dossier",
+        });
+      } catch (err: any) {
+        console.error("[COUNCIL DELETE DOCUMENT ERROR]:", err);
+        res.status(500).json({ error: "Fout bij verwijderen document: " + err.message });
+      }
+    }
+  );
+
+  // 9. Link existing documents into a dossier
+  app.post(
+    "/api/council/dossiers/:slug/link-documents",
+    requireAuth,
+    requireCouncilOrAdmin,
+    (req: any, res: any) => {
+      try {
+        const slug = req.params.slug;
+        const db = getDb();
+        const { documents } = req.body;
+
+        if (!Array.isArray(documents) || documents.length === 0) {
+          return res.status(400).json({ error: "Geen documenten aangeleverd om te koppelen" });
+        }
+
+        const updatedDossier = linkDocumentsToDossier(slug, documents, db, saveDb);
+        if (!updatedDossier) {
+          return res.status(404).json({ error: `Dossier '${slug}' niet gevonden` });
+        }
+
+        res.json({
+          success: true,
+          dossier: updatedDossier,
+          message: `${documents.length} document(en) succesvol in relatie gebracht met dit dossier`,
+        });
+      } catch (err: any) {
+        console.error("[COUNCIL LINK DOCUMENTS ERROR]:", err);
+        res.status(500).json({ error: "Fout bij koppelen documenten: " + err.message });
+      }
+    }
+  );
+
+  // 10. Upload custom thumbnail image for dossiers
+  app.post(
+    "/api/council/upload-thumbnail",
+    requireAuth,
+    requireCouncilOrAdmin,
+    (req: any, res: any, next: any) => {
+      uploadDossierThumbnail.single("thumbnail")(req, res, (err: any) => {
+        if (err) {
+          return res.status(400).json({ error: "Fout bij uploaden thumbnail: " + err.message });
+        }
+        next();
+      });
+    },
+    (req: any, res: any) => {
+      try {
+        if (!req.file) {
+          return res.status(400).json({ error: "Geen afbeeldingsbestand ontvangen" });
+        }
+
+        syncFileAcrossUploadDirs(req.file.path);
+        const relativeUrl = `/uploads/thumbnails/${req.file.filename}`;
+        res.json({
+          success: true,
+          url: relativeUrl,
+          filename: req.file.filename,
+        });
+      } catch (err: any) {
+        console.error("[COUNCIL THUMBNAIL UPLOAD ERROR]:", err);
+        res.status(500).json({ error: "Fout bij verwerken thumbnail: " + err.message });
+      }
+    }
+  );
+
   // 5. Bulk upload council documents (preserves exact filenames matching metadata)
   app.post(
     "/api/council/dossiers/bulk-upload",
     requireAuth,
     requireCouncilOrAdmin,
-    uploadDossierDocs.array("files", 250),
+    (req: any, res: any, next: any) => {
+      uploadDossierDocs.any()(req, res, (err: any) => {
+        if (err) {
+          console.error("[COUNCIL DOSSIER MULTER ERROR]:", err);
+          if (err.code === "LIMIT_FILE_SIZE") {
+            return res.status(413).json({ error: "Eén of meer bestanden overschrijden de maximale bestandsgrootte van 100 MB." });
+          }
+          return res.status(400).json({ error: "Fout bij inlezen van upload: " + (err.message || String(err)) });
+        }
+        next();
+      });
+    },
     (req: any, res: any) => {
       try {
-        const files = req.files as Express.Multer.File[];
+        let files: Express.Multer.File[] = [];
+        if (Array.isArray(req.files)) {
+          files = req.files;
+        } else if (req.files && typeof req.files === "object") {
+          files = Object.values(req.files).flat() as Express.Multer.File[];
+        } else if (req.file) {
+          files = [req.file];
+        }
+
         if (!files || files.length === 0) {
           return res.status(400).json({ error: "Geen bestanden ontvangen voor upload" });
         }

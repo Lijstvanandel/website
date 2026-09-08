@@ -8,9 +8,11 @@ import {
   FileText,
   Loader2,
   FolderSync,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useAuth } from "@/context/AuthContext";
 
 interface DossierBulkUploadModalProps {
   isOpen: boolean;
@@ -23,9 +25,11 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
   onClose,
   onUploadSuccess,
 }) => {
+  const { token: authContextToken } = useAuth();
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatusText, setUploadStatusText] = useState("");
   const [uploadResult, setUploadResult] = useState<{
     matchedCount: number;
     totalUploaded: number;
@@ -56,40 +60,138 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
     e.preventDefault();
   };
 
+  // Helper to partition files into safe batches (max 4 files or max 10MB per batch)
+  const createBatches = (files: File[]) => {
+    const batches: File[][] = [];
+    let currentBatch: File[] = [];
+    let currentBatchBytes = 0;
+    const MAX_BATCH_BYTES = 10 * 1024 * 1024; // 10MB per batch
+    const MAX_FILES_PER_BATCH = 4;
+
+    for (const file of files) {
+      if (
+        currentBatch.length > 0 &&
+        (currentBatchBytes + file.size > MAX_BATCH_BYTES || currentBatch.length >= MAX_FILES_PER_BATCH)
+      ) {
+        batches.push(currentBatch);
+        currentBatch = [];
+        currentBatchBytes = 0;
+      }
+      currentBatch.push(file);
+      currentBatchBytes += file.size;
+    }
+    if (currentBatch.length > 0) {
+      batches.push(currentBatch);
+    }
+    return batches;
+  };
+
   const handleUpload = async () => {
     if (selectedFiles.length === 0) return;
 
     setIsUploading(true);
-    setUploadProgress(15);
+    setUploadProgress(5);
+    setUploadStatusText(`Upload voorbereiden voor ${selectedFiles.length} bestanden...`);
+
+    const token =
+      authContextToken ||
+      localStorage.getItem("auth_token") ||
+      sessionStorage.getItem("auth_token") ||
+      localStorage.getItem("token") ||
+      sessionStorage.getItem("token");
+
+    const batches = createBatches(selectedFiles);
+    let completedFiles = 0;
+    let accumulatedMatchedCount = 0;
+    let accumulatedUnmatchedCount = 0;
+    const accumulatedMatchedDocs: Array<{ filename: string; dossier: string; title: string }> = [];
+    let hasErrors = false;
 
     try {
-      const formData = new FormData();
-      selectedFiles.forEach((file) => {
-        formData.append("files", file);
-      });
+      for (let i = 0; i < batches.length; i++) {
+        const batch = batches[i];
+        setUploadStatusText(
+          `Deel ${i + 1} van ${batches.length} verwerken: ${completedFiles} van de ${selectedFiles.length} bestanden gereed...`
+        );
 
-      setUploadProgress(45);
-      const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
-      const res = await fetch("/api/council/dossiers/bulk-upload", {
-        method: "POST",
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: formData,
-      });
+        const formData = new FormData();
+        batch.forEach((file) => {
+          formData.append("files", file);
+        });
 
-      setUploadProgress(85);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Fout bij verwerken van uploads");
+        const res = await fetch("/api/council/dossiers/bulk-upload", {
+          method: "POST",
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: formData,
+        });
+
+        const responseText = await res.text();
+        let data: any = null;
+        try {
+          data = JSON.parse(responseText);
+        } catch (_jsonErr) {
+          // If the server returned HTML (e.g. 413 Payload Too Large or 502/504)
+          if (res.status === 413 || responseText.includes("413") || responseText.toLowerCase().includes("too large")) {
+            throw new Error(
+              `Eén van de bestanden in deel ${i + 1} is te groot voor de server. Upload bestanden kleiner dan 25 MB per stuk.`
+            );
+          }
+          if (!res.ok) {
+            throw new Error(`Serverfout (${res.status}): het verzoek kon niet worden verwerkt.`);
+          }
+          throw new Error("Ongeldig antwoord van de server ontvangen.");
+        }
+
+        if (!res.ok) {
+          throw new Error(data?.error || `Uploaden van deel ${i + 1} mislukt (status ${res.status}).`);
+        }
+
+        completedFiles += batch.length;
+        accumulatedMatchedCount += data.matchedCount || 0;
+        accumulatedUnmatchedCount += data.unmatchedCount || 0;
+        if (Array.isArray(data.matchedDocuments)) {
+          accumulatedMatchedDocs.push(...data.matchedDocuments);
+        }
+
+        const calculatedProgress = Math.min(
+          98,
+          Math.round((completedFiles / selectedFiles.length) * 100)
+        );
+        setUploadProgress(calculatedProgress);
+      }
 
       setUploadProgress(100);
-      setUploadResult(data);
-      toast.success(data.message || "Documenten succesvol verwerkt!");
+      const finalResult = {
+        totalUploaded: completedFiles,
+        matchedCount: accumulatedMatchedCount,
+        unmatchedCount: accumulatedUnmatchedCount,
+        matchedDocuments: accumulatedMatchedDocs,
+      };
+
+      setUploadResult(finalResult);
+      toast.success(
+        `${accumulatedMatchedCount} van de ${completedFiles} bestanden direct herkend en gekoppeld aan dossiers!`
+      );
       onUploadSuccess();
     } catch (err: any) {
+      hasErrors = true;
+      console.error("[BULK UPLOAD CLIENT ERROR]:", err);
       toast.error(err.message || "Fout bij bulk upload");
+      // If some files succeeded before the failure, preserve partial results
+      if (completedFiles > 0) {
+        setUploadResult({
+          totalUploaded: completedFiles,
+          matchedCount: accumulatedMatchedCount,
+          unmatchedCount: accumulatedUnmatchedCount,
+          matchedDocuments: accumulatedMatchedDocs,
+        });
+        onUploadSuccess();
+      }
     } finally {
       setIsUploading(false);
+      setUploadStatusText("");
     }
   };
 
@@ -182,33 +284,44 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
                   </div>
 
                   <div className="max-h-48 overflow-y-auto rounded-xl border border-border p-2 bg-background space-y-1">
-                    {selectedFiles.map((file, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-muted/40 text-xs"
-                      >
-                        <div className="flex items-center gap-2 min-w-0 pr-2">
-                          <FileText className="w-3.5 h-3.5 text-accent shrink-0" />
-                          <span className="font-mono truncate">{file.name}</span>
+                    {selectedFiles.map((file, idx) => {
+                      const isLarge = file.size > 25 * 1024 * 1024;
+                      return (
+                        <div
+                          key={idx}
+                          className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs ${
+                            isLarge ? "bg-amber-500/10 border border-amber-500/30" : "bg-muted/40"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0 pr-2">
+                            <FileText className="w-3.5 h-3.5 text-accent shrink-0" />
+                            <span className="font-mono truncate">{file.name}</span>
+                            {isLarge && (
+                              <span className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 font-semibold px-1.5 py-0.5 rounded bg-amber-500/15 shrink-0">
+                                <AlertTriangle className="w-3 h-3" />
+                                Groot bestand
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[11px] text-muted-foreground shrink-0 font-medium">
+                            {(file.size / (1024 * 1024)).toFixed(2)} MB
+                          </span>
                         </div>
-                        <span className="text-[11px] text-muted-foreground shrink-0">
-                          {(file.size / (1024 * 1024)).toFixed(2)} MB
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
 
               {/* Progress Bar */}
               {isUploading && (
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1.5 font-medium">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin text-accent" />
-                      Bestanden opslaan en synchroniseren...
+                <div className="space-y-1.5 bg-accent/5 p-3 rounded-xl border border-accent/20">
+                  <div className="flex items-center justify-between text-xs text-foreground">
+                    <span className="flex items-center gap-1.5 font-medium text-accent truncate pr-2">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-accent shrink-0" />
+                      {uploadStatusText || "Bestanden opslaan en synchroniseren..."}
                     </span>
-                    <span>{uploadProgress}%</span>
+                    <span className="font-bold text-accent shrink-0">{uploadProgress}%</span>
                   </div>
                   <div className="h-2 rounded-full bg-muted overflow-hidden">
                     <div

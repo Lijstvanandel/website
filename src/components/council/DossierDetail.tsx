@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   ArrowLeft,
   Calendar,
@@ -16,11 +16,19 @@ import {
   ExternalLink,
   ChevronRight,
   ListFilter,
+  Edit3,
+  Plus,
+  Trash2,
+  FolderEdit,
+  Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DossierNetworkGraph } from "./DossierNetworkGraph";
 import { DossierDocumentViewer } from "./DossierDocumentViewer";
+import { EditDossierModal } from "./EditDossierModal";
+import { EditDocumentModal } from "./EditDocumentModal";
+import { AddDocumentModal } from "./AddDocumentModal";
 import type { Dossier, DossierDocument, GraphNode, GraphEdge } from "@/types/dossier";
 import { toast } from "sonner";
 
@@ -46,44 +54,42 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
   const [activeDocForViewer, setActiveDocForViewer] = useState<DossierDocument | null>(null);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
 
-  useEffect(() => {
-    let isMounted = true;
-    const fetchDossierData = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
-        const res = await fetch(`/api/council/dossiers/${encodeURIComponent(dossierSlug)}`, {
-          headers: {
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-        });
+  // Editing Modals State
+  const [isEditDossierOpen, setIsEditDossierOpen] = useState(false);
+  const [isAddDocOpen, setIsAddDocOpen] = useState(false);
+  const [addDocInitialMode, setAddDocInitialMode] = useState<"upload" | "link">("upload");
+  const [isEditDocOpen, setIsEditDocOpen] = useState(false);
+  const [activeDocForEdit, setActiveDocForEdit] = useState<DossierDocument | null>(null);
 
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || `Dossier '${dossierSlug}' kon niet worden ingeladen`);
-        }
+  const fetchDossierData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
+      const res = await fetch(`/api/council/dossiers/${encodeURIComponent(dossierSlug)}`, {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
 
-        const data = await res.json();
-        if (isMounted) {
-          setDossier(data.dossier);
-          setGraph(data.graph || { nodes: [], edges: [] });
-        }
-      } catch (err: any) {
-        if (isMounted) {
-          setError(err.message || "Fout bij ophalen van dossier");
-        }
-      } finally {
-        if (isMounted) setLoading(false);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Dossier '${dossierSlug}' kon niet worden ingeladen`);
       }
-    };
 
-    fetchDossierData();
-
-    return () => {
-      isMounted = false;
-    };
+      const data = await res.json();
+      setDossier(data.dossier);
+      setGraph(data.graph || { nodes: [], edges: [] });
+    } catch (err: any) {
+      setError(err.message || "Fout bij ophalen van dossier");
+    } finally {
+      setLoading(false);
+    }
   }, [dossierSlug]);
+
+  useEffect(() => {
+    fetchDossierData();
+  }, [fetchDossierData]);
 
   const openDocumentViewer = (doc: DossierDocument | { bestandsnaam: string; titel: string; dossier?: string }) => {
     // If partial node, match with full dossier documents or build fallback
@@ -101,6 +107,11 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
     setIsViewerOpen(true);
   };
 
+  const openDocumentEditor = (doc: DossierDocument) => {
+    setActiveDocForEdit(doc);
+    setIsEditDocOpen(true);
+  };
+
   const handleDocumentUpdated = (updatedDoc: DossierDocument) => {
     if (!dossier) return;
     setDossier({
@@ -108,9 +119,69 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
       documents: dossier.documents.map((d) =>
         d.bestandsnaam === updatedDoc.bestandsnaam ? updatedDoc : d
       ),
-      uploadedCount: dossier.uploadedCount + 1,
+      uploadedCount: updatedDoc.fileExists
+        ? Math.max(dossier.uploadedCount, dossier.documents.filter((d) => d.fileExists).length)
+        : dossier.uploadedCount,
     });
-    setActiveDocForViewer(updatedDoc);
+    if (activeDocForViewer?.bestandsnaam === updatedDoc.bestandsnaam) {
+      setActiveDocForViewer(updatedDoc);
+    }
+  };
+
+  const handleDocumentDeleted = (deletedDocId: string) => {
+    if (!dossier) return;
+    const remainingDocs = dossier.documents.filter(
+      (d) => d.id !== deletedDocId && d.bestandsnaam !== deletedDocId
+    );
+    setDossier({
+      ...dossier,
+      documents: remainingDocs,
+      documentCount: remainingDocs.length,
+      uploadedCount: remainingDocs.filter((d) => d.fileExists).length,
+    });
+    fetchDossierData();
+  };
+
+  const handleQuickUnlinkDoc = async (doc: DossierDocument) => {
+    if (!window.confirm(`Weet u zeker dat u '${doc.titel}' wilt ontkoppelen uit dit dossier?`)) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
+      const docIdentifier = doc.id || doc.bestandsnaam;
+      const res = await fetch(
+        `/api/council/dossiers/${encodeURIComponent(dossierSlug)}/documents/${encodeURIComponent(docIdentifier)}`,
+        {
+          method: "DELETE",
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        }
+      );
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Fout bij ontkoppelen document");
+
+      toast.success("Document ontkoppeld");
+      handleDocumentDeleted(docIdentifier);
+    } catch (err: any) {
+      toast.error(err.message || "Fout bij ontkoppelen document");
+    }
+  };
+
+  const handleDossierUpdated = (updatedDossier: Dossier) => {
+    setDossier(updatedDossier);
+    fetchDossierData();
+  };
+
+  const handleDossierDeleted = () => {
+    onBack();
+  };
+
+  const handleDocsAddedOrLinked = (updatedDossier: Dossier) => {
+    setDossier(updatedDossier);
+    fetchDossierData();
   };
 
   // Filtered documents list
@@ -166,7 +237,7 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
   return (
     <div id="dossier-detail-view" className="space-y-6">
       {/* Top Breadcrumbs & Back Navigation */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Button
           id="btn-back-to-dossiers"
           onClick={onBack}
@@ -178,7 +249,50 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
           Terug naar Dossiers
         </Button>
 
+        {/* Action button bar */}
         <div className="flex items-center gap-2">
+          {/* Dossier bewerken button */}
+          <Button
+            id="btn-edit-dossier"
+            variant="outline"
+            size="sm"
+            className="rounded-xl text-xs font-semibold h-9 text-accent hover:bg-accent/15 border-accent/30"
+            onClick={() => setIsEditDossierOpen(true)}
+          >
+            <FolderEdit className="w-3.5 h-3.5 mr-1.5" />
+            Dossier Bewerken
+          </Button>
+
+          {/* Document toevoegen button */}
+          <Button
+            id="btn-add-doc-header"
+            variant="outline"
+            size="sm"
+            className="rounded-xl text-xs font-semibold h-9"
+            onClick={() => {
+              setAddDocInitialMode("upload");
+              setIsAddDocOpen(true);
+            }}
+          >
+            <Plus className="w-3.5 h-3.5 mr-1.5" />
+            Document Toevoegen
+          </Button>
+
+          {/* Stukken in relatie brengen button */}
+          <Button
+            id="btn-link-docs-header"
+            variant="outline"
+            size="sm"
+            className="rounded-xl text-xs font-semibold h-9"
+            onClick={() => {
+              setAddDocInitialMode("link");
+              setIsAddDocOpen(true);
+            }}
+          >
+            <Link2 className="w-3.5 h-3.5 mr-1.5" />
+            Stukken Koppelen
+          </Button>
+
           <Button
             variant="ghost"
             size="sm"
@@ -201,7 +315,7 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
       >
         <div className="flex flex-col md:flex-row items-stretch">
           {/* Thumbnail */}
-          <div className="w-full md:w-80 h-52 md:h-auto shrink-0 relative overflow-hidden bg-muted">
+          <div className="w-full md:w-80 h-52 md:h-auto shrink-0 relative overflow-hidden bg-muted group">
             <img
               src={dossier.thumbnail}
               alt={dossier.title}
@@ -217,21 +331,43 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
                 {dossier.category}
               </span>
             </div>
+
+            {/* Quick edit thumbnail hover overlay */}
+            <button
+              onClick={() => setIsEditDossierOpen(true)}
+              className="absolute top-3 right-3 p-2 rounded-xl bg-black/60 text-white hover:bg-black/80 backdrop-blur-xs border border-white/20 opacity-0 group-hover:opacity-100 transition-opacity text-xs flex items-center gap-1 font-medium"
+              title="Omslag of dossier aanpassen"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              Thumbnail wijzigen
+            </button>
           </div>
 
           {/* Details Content */}
           <div className="p-6 md:p-8 flex-1 flex flex-col justify-between">
             <div>
-              <div className="flex flex-wrap items-center gap-2 mb-2">
-                <span className="text-xs font-bold text-accent uppercase tracking-wider">
-                  Raadsdossier
-                </span>
-                {dossier.dateRange.start && (
-                  <span className="text-xs text-muted-foreground flex items-center gap-1 font-medium">
-                    <Calendar className="w-3.5 h-3.5" />
-                    {dossier.dateRange.start} {dossier.dateRange.end && `– ${dossier.dateRange.end}`}
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-bold text-accent uppercase tracking-wider">
+                    Raadsdossier
                   </span>
-                )}
+                  {dossier.dateRange.start && (
+                    <span className="text-xs text-muted-foreground flex items-center gap-1 font-medium">
+                      <Calendar className="w-3.5 h-3.5" />
+                      {dossier.dateRange.start} {dossier.dateRange.end && `– ${dossier.dateRange.end}`}
+                    </span>
+                  )}
+                </div>
+
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setIsEditDossierOpen(true)}
+                  className="h-7 text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                >
+                  <FolderEdit className="w-3.5 h-3.5" />
+                  Dossier bewerken
+                </Button>
               </div>
 
               <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-foreground tracking-tight mb-3">
@@ -253,46 +389,70 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
                       #{tag}
                     </span>
                   ))}
+                  <button
+                    onClick={() => setIsEditDossierOpen(true)}
+                    className="px-2 py-0.5 rounded-lg text-xs text-accent hover:bg-accent/10 transition-colors"
+                  >
+                    + tags beheren
+                  </button>
                 </div>
               )}
             </div>
 
             {/* Metrics bar */}
-            <div className="pt-4 border-t border-border flex flex-wrap items-center gap-6 text-xs text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                  <FileText className="w-4 h-4" />
+            <div className="pt-4 border-t border-border flex flex-wrap items-center justify-between gap-4 text-xs text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-6">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                    <FileText className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-foreground text-sm block leading-none">
+                      {dossier.documentCount}
+                    </span>
+                    <span className="text-[11px]">Raadsstukken</span>
+                  </div>
                 </div>
-                <div>
-                  <span className="font-bold text-foreground text-sm block leading-none">
-                    {dossier.documentCount}
-                  </span>
-                  <span className="text-[11px]">Raadsstukken</span>
+
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-foreground text-sm block leading-none">
+                      {dossier.uploadedCount}
+                    </span>
+                    <span className="text-[11px]">PDF's Live op Server</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                    <Link2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-foreground text-sm block leading-none">
+                      {graph.edges.length}
+                    </span>
+                    <span className="text-[11px]">Gekoppelde Relaties</span>
+                  </div>
                 </div>
               </div>
 
+              {/* Fast action shortcut */}
               <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className="font-bold text-foreground text-sm block leading-none">
-                    {dossier.uploadedCount}
-                  </span>
-                  <span className="text-[11px]">PDF's Live op Server</span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                  <Link2 className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className="font-bold text-foreground text-sm block leading-none">
-                    {graph.edges.length}
-                  </span>
-                  <span className="text-[11px]">Gekoppelde Relaties</span>
-                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setAddDocInitialMode("upload");
+                    setIsAddDocOpen(true);
+                  }}
+                  className="rounded-xl text-xs h-8"
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1" />
+                  Stuk toevoegen
+                </Button>
               </div>
             </div>
           </div>
@@ -300,11 +460,11 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
       </div>
 
       {/* Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-border pb-1">
+      <div className="flex items-center gap-2 border-b border-border pb-1 overflow-x-auto">
         <button
           id="tab-btn-overview"
           onClick={() => setActiveTab("overview")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
             activeTab === "overview"
               ? "bg-accent/15 text-accent border border-accent/30 shadow-xs"
               : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
@@ -317,7 +477,7 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
         <button
           id="tab-btn-timeline"
           onClick={() => setActiveTab("timeline")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
             activeTab === "timeline"
               ? "bg-accent/15 text-accent border border-accent/30 shadow-xs"
               : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
@@ -330,14 +490,14 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
         <button
           id="tab-btn-documents"
           onClick={() => setActiveTab("documents")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
             activeTab === "documents"
               ? "bg-accent/15 text-accent border border-accent/30 shadow-xs"
               : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
           }`}
         >
           <FileText className="w-4 h-4" />
-          Documentenlijst & Viewer ({dossier.documents.length})
+          Documentenlijst & Beheer ({dossier.documents.length})
         </button>
       </div>
 
@@ -354,19 +514,51 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
 
           {/* Quick preview strip of documents */}
           <div className="bg-card border border-border rounded-2xl p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h4 className="text-sm font-bold text-foreground">
-                Documenten in dit dossier ({dossier.documents.length})
-              </h4>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-xs text-accent hover:text-accent/90"
-                onClick={() => setActiveTab("documents")}
-              >
-                Bekijk alle documenten in lijst
-                <ChevronRight className="w-3.5 h-3.5 ml-1" />
-              </Button>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <div>
+                <h4 className="text-sm font-bold text-foreground">
+                  Documenten in dit dossier ({dossier.documents.length})
+                </h4>
+                <p className="text-xs text-muted-foreground">
+                  Klik op een document om te bekijken, of pas documentgegevens aan
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-xl text-xs h-8"
+                  onClick={() => {
+                    setAddDocInitialMode("upload");
+                    setIsAddDocOpen(true);
+                  }}
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1" />
+                  Nieuw Document
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-xl text-xs h-8"
+                  onClick={() => {
+                    setAddDocInitialMode("link");
+                    setIsAddDocOpen(true);
+                  }}
+                >
+                  <Link2 className="w-3.5 h-3.5 mr-1" />
+                  Stukken Koppelen
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-accent hover:text-accent/90 h-8"
+                  onClick={() => setActiveTab("documents")}
+                >
+                  Alle ({dossier.documents.length})
+                  <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                </Button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -384,7 +576,10 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
                         {doc.datum || "—"}
                       </span>
                     </div>
-                    <h5 className="text-xs font-bold text-foreground line-clamp-2 mb-1">
+                    <h5
+                      className="text-xs font-bold text-foreground line-clamp-2 mb-1 cursor-pointer hover:text-accent"
+                      onClick={() => openDocumentViewer(doc)}
+                    >
                       {doc.titel}
                     </h5>
                     <p className="text-[11px] text-muted-foreground font-mono truncate">
@@ -402,16 +597,27 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
                     >
                       {doc.fileExists ? "Beschikbaar" : "Verwacht"}
                     </span>
-                    <Button
-                      id={`btn-quick-view-doc-${idx}`}
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 px-2 text-xs text-accent hover:bg-accent/15"
-                      onClick={() => openDocumentViewer(doc)}
-                    >
-                      <Eye className="w-3.5 h-3.5 mr-1" />
-                      Bekijk
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                        onClick={() => openDocumentEditor(doc)}
+                        title="Document bewerken"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button
+                        id={`btn-quick-view-doc-${idx}`}
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs text-accent hover:bg-accent/15"
+                        onClick={() => openDocumentViewer(doc)}
+                      >
+                        <Eye className="w-3.5 h-3.5 mr-1" />
+                        Bekijk
+                      </Button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -422,7 +628,32 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
 
       {/* TAB CONTENT 2: TIJDLIJN VAN BESTANDEN */}
       {activeTab === "timeline" && (
-        <div className="bg-card border border-border rounded-2xl p-6 sm:p-8">
+        <div className="bg-card border border-border rounded-2xl p-6 sm:p-8 space-y-6">
+          <div className="flex items-center justify-between pb-4 border-b border-border">
+            <div>
+              <h4 className="text-sm font-bold text-foreground">
+                Chronologische Dossiergeschiedenis
+              </h4>
+              <p className="text-xs text-muted-foreground">
+                Van recentste raadsvoorstellen tot de oudste onderliggende stukken
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-xl text-xs h-8"
+                onClick={() => {
+                  setAddDocInitialMode("upload");
+                  setIsAddDocOpen(true);
+                }}
+              >
+                <Plus className="w-3.5 h-3.5 mr-1" />
+                Document Toevoegen
+              </Button>
+            </div>
+          </div>
+
           <div className="max-w-3xl mx-auto space-y-8 relative before:absolute before:inset-0 before:left-3.5 before:w-0.5 before:bg-border">
             {timelineDocuments.map((doc, idx) => (
               <div key={idx} className="relative pl-10 group">
@@ -449,16 +680,28 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
                       )}
                     </div>
 
-                    <Button
-                      id={`btn-timeline-eye-${idx}`}
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-xs rounded-lg text-accent hover:bg-accent/15 border-accent/30"
-                      onClick={() => openDocumentViewer(doc)}
-                    >
-                      <Eye className="w-3.5 h-3.5 mr-1" />
-                      Bekijk in viewer
-                    </Button>
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs rounded-lg text-muted-foreground hover:text-foreground"
+                        onClick={() => openDocumentEditor(doc)}
+                        title="Document bewerken"
+                      >
+                        <Edit3 className="w-3.5 h-3.5 mr-1" />
+                        Bewerken
+                      </Button>
+                      <Button
+                        id={`btn-timeline-eye-${idx}`}
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs rounded-lg text-accent hover:bg-accent/15 border-accent/30"
+                        onClick={() => openDocumentViewer(doc)}
+                      >
+                        <Eye className="w-3.5 h-3.5 mr-1" />
+                        Bekijk in viewer
+                      </Button>
+                    </div>
                   </div>
 
                   <h4 className="text-sm font-bold text-foreground mb-1">
@@ -490,10 +733,10 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
         </div>
       )}
 
-      {/* TAB CONTENT 3: DOCUMENTENLIJST MET OOGJE */}
+      {/* TAB CONTENT 3: DOCUMENTENLIJST MET BEHEER, OOGJE EN CRUD */}
       {activeTab === "documents" && (
         <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-xs space-y-4 p-5">
-          {/* List Search Header */}
+          {/* List Search & Action Toolbar Header */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             <div className="relative flex-1 max-w-md">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -506,8 +749,37 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
               />
             </div>
 
-            <div className="text-xs text-muted-foreground">
-              {filteredDocuments.length} van de {dossier.documents.length} documenten
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-muted-foreground mr-2">
+                {filteredDocuments.length} van {dossier.documents.length} documenten
+              </span>
+
+              <Button
+                id="btn-add-doc-table"
+                size="sm"
+                variant="outline"
+                className="rounded-xl text-xs font-semibold h-9"
+                onClick={() => {
+                  setAddDocInitialMode("upload");
+                  setIsAddDocOpen(true);
+                }}
+              >
+                <Plus className="w-3.5 h-3.5 mr-1.5" />
+                Nieuw Document
+              </Button>
+
+              <Button
+                id="btn-link-docs-table"
+                size="sm"
+                className="bg-accent hover:bg-accent/90 text-accent-foreground rounded-xl text-xs font-semibold h-9 shadow-xs"
+                onClick={() => {
+                  setAddDocInitialMode("link");
+                  setIsAddDocOpen(true);
+                }}
+              >
+                <Link2 className="w-3.5 h-3.5 mr-1.5" />
+                Stukken Koppelen
+              </Button>
             </div>
           </div>
 
@@ -520,78 +792,115 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
                   <th className="py-3 px-4 w-32">Datum</th>
                   <th className="py-3 px-4 hidden md:table-cell">Relaties / Entiteiten</th>
                   <th className="py-3 px-4 w-28 text-center">Status</th>
-                  <th className="py-3 px-4 w-28 text-right">Bekijken</th>
+                  <th className="py-3 px-4 w-44 text-right">Acties</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filteredDocuments.map((doc, idx) => (
-                  <tr key={idx} className="hover:bg-muted/30 transition-colors">
-                    <td className="py-3 px-4">
-                      <div className="flex items-start gap-2.5">
-                        <FileText className="w-4 h-4 text-accent shrink-0 mt-0.5" />
-                        <div className="min-w-0">
-                          <span className="font-bold text-foreground block hover:text-accent cursor-pointer" onClick={() => openDocumentViewer(doc)}>
-                            {doc.titel}
-                          </span>
-                          <span className="text-[11px] font-mono text-muted-foreground truncate block">
-                            {doc.bestandsnaam}
-                          </span>
-                        </div>
-                      </div>
-                    </td>
-
-                    <td className="py-3 px-4 text-muted-foreground font-mono">
-                      {doc.datum || "—"}
-                    </td>
-
-                    <td className="py-3 px-4 hidden md:table-cell">
-                      <div className="flex flex-wrap gap-1 max-w-xs">
-                        {doc.entiteiten?.slice(0, 2).map((ent, i) => (
-                          <span key={i} className="px-1.5 py-0.5 rounded bg-muted text-[10px] text-foreground">
-                            {ent}
-                          </span>
-                        ))}
-                        {doc.relaties?.slice(0, 2).map((rel, i) => (
-                          <span key={i} className="px-1.5 py-0.5 rounded bg-amber-500/10 text-[10px] text-amber-600 dark:text-amber-400">
-                            {rel}
-                          </span>
-                        ))}
-                        {((doc.entiteiten?.length || 0) + (doc.relaties?.length || 0) > 4) && (
-                          <span className="text-[10px] text-muted-foreground">
-                            +meer
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    <td className="py-3 px-4 text-center">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                          doc.fileExists
-                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
-                            : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
-                        }`}
-                      >
-                        {doc.fileExists ? "Live" : "Verwacht"}
-                      </span>
-                    </td>
-
-                    <td className="py-3 px-4 text-right">
-                      {/* Oogje icon button to view document */}
-                      <Button
-                        id={`btn-table-eye-${idx}`}
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 px-2.5 rounded-lg text-accent hover:bg-accent/15 font-semibold text-xs inline-flex items-center gap-1.5"
-                        onClick={() => openDocumentViewer(doc)}
-                        title="Document bekijken in viewer"
-                      >
-                        <Eye className="w-4 h-4" />
-                        <span className="hidden sm:inline">Bekijk</span>
-                      </Button>
+                {filteredDocuments.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-muted-foreground">
+                      Geen documenten gevonden in dit dossier.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  filteredDocuments.map((doc, idx) => (
+                    <tr key={idx} className="hover:bg-muted/30 transition-colors">
+                      <td className="py-3 px-4">
+                        <div className="flex items-start gap-2.5">
+                          <FileText className="w-4 h-4 text-accent shrink-0 mt-0.5" />
+                          <div className="min-w-0">
+                            <span
+                              className="font-bold text-foreground block hover:text-accent cursor-pointer"
+                              onClick={() => openDocumentViewer(doc)}
+                            >
+                              {doc.titel}
+                            </span>
+                            <span className="text-[11px] font-mono text-muted-foreground truncate block">
+                              {doc.bestandsnaam}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="py-3 px-4 text-muted-foreground font-mono">
+                        {doc.datum || "—"}
+                      </td>
+
+                      <td className="py-3 px-4 hidden md:table-cell">
+                        <div className="flex flex-wrap gap-1 max-w-xs">
+                          {doc.entiteiten?.slice(0, 2).map((ent, i) => (
+                            <span key={i} className="px-1.5 py-0.5 rounded bg-muted text-[10px] text-foreground">
+                              {ent}
+                            </span>
+                          ))}
+                          {doc.relaties?.slice(0, 2).map((rel, i) => (
+                            <span key={i} className="px-1.5 py-0.5 rounded bg-amber-500/10 text-[10px] text-amber-600 dark:text-amber-400">
+                              {rel}
+                            </span>
+                          ))}
+                          {((doc.entiteiten?.length || 0) + (doc.relaties?.length || 0) > 4) && (
+                            <span className="text-[10px] text-muted-foreground">
+                              +meer
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      <td className="py-3 px-4 text-center">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                            doc.fileExists
+                              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                              : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                          }`}
+                        >
+                          {doc.fileExists ? "Live" : "Verwacht"}
+                        </span>
+                      </td>
+
+                      <td className="py-3 px-4 text-right">
+                        <div className="inline-flex items-center justify-end gap-1">
+                          {/* Bekijken Oogje */}
+                          <Button
+                            id={`btn-table-eye-${idx}`}
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2 rounded-lg text-accent hover:bg-accent/15 font-semibold text-xs inline-flex items-center gap-1"
+                            onClick={() => openDocumentViewer(doc)}
+                            title="Document bekijken in viewer"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Bekijk</span>
+                          </Button>
+
+                          {/* Bewerken Pen */}
+                          <Button
+                            id={`btn-table-edit-${idx}`}
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2 rounded-lg text-muted-foreground hover:text-foreground font-semibold text-xs inline-flex items-center gap-1"
+                            onClick={() => openDocumentEditor(doc)}
+                            title="Document metadata of bestand bewerken"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </Button>
+
+                          {/* Verwijderen / Ontkoppelen */}
+                          <Button
+                            id={`btn-table-delete-${idx}`}
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2 rounded-lg text-muted-foreground hover:text-destructive font-semibold text-xs inline-flex items-center gap-1"
+                            onClick={() => handleQuickUnlinkDoc(doc)}
+                            title="Document ontkoppelen uit dit dossier"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -605,6 +914,38 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
         onClose={() => setIsViewerOpen(false)}
         onDocumentUpdated={handleDocumentUpdated}
       />
+
+      {/* Dossier Bewerken Modal */}
+      <EditDossierModal
+        isOpen={isEditDossierOpen}
+        dossier={dossier}
+        onClose={() => setIsEditDossierOpen(false)}
+        onUpdated={handleDossierUpdated}
+        onDeleted={handleDossierDeleted}
+      />
+
+      {/* Document Bewerken Modal */}
+      <EditDocumentModal
+        isOpen={isEditDocOpen}
+        dossierSlug={dossierSlug}
+        document={activeDocForEdit}
+        onClose={() => {
+          setIsEditDocOpen(false);
+          setActiveDocForEdit(null);
+        }}
+        onDocumentUpdated={handleDocumentUpdated}
+        onDocumentDeleted={handleDocumentDeleted}
+      />
+
+      {/* Document Toevoegen & Stukken Koppelen Modal */}
+      <AddDocumentModal
+        isOpen={isAddDocOpen}
+        dossier={dossier}
+        initialMode={addDocInitialMode}
+        onClose={() => setIsAddDocOpen(false)}
+        onAdded={handleDocsAddedOrLinked}
+      />
     </div>
   );
 };
+
