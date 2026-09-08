@@ -21,6 +21,67 @@ const MONTH_MAP: Record<string, string> = {
 };
 
 /**
+ * Procedural agenda patterns that should be filtered out from the scraper
+ */
+export const PROCEDURAL_PATTERNS = [
+  "vaststelling besluitenlijst",
+  "vaststellen besluitenlijst",
+  "besluitenlijst",
+  "gelegenheid om vragen te stellen",
+  "gelegenheid tot het stellen van vragen",
+  "vragen stellen",
+  "sluiting",
+  "opening en mededelingen",
+  "opening van de vergadering",
+  "opening",
+  "vaststelling agenda",
+  "vaststellen agenda",
+  "spreekrecht voor niet-geagendeerde",
+  "spreekrecht burgers",
+  "spreekrecht",
+  "vragenhalfuurtje",
+  "vragenhalfuur",
+  "vragenkwartier",
+  "rondvraag",
+  "vaststelling van de notulen",
+  "vaststellen notulen",
+  "goedkeuring notulen",
+  "mededelingen van de voorzitter",
+  "mededelingen van het college",
+  "mededelingen van de burgemeester",
+  "mededelingen burgemeester",
+  "mededelingen",
+  "beëdiging",
+  "installatie",
+  "afscheid",
+];
+
+export function isProceduralTopic(rawTitle: string): boolean {
+  if (!rawTitle) return true;
+  const clean = rawTitle.toLowerCase().replace(/\s+/g, " ").trim();
+  
+  return PROCEDURAL_PATTERNS.some((pattern) => {
+    if (clean === pattern) return true;
+    if (clean.startsWith(pattern)) return true;
+    if (clean.includes(pattern)) {
+      if (pattern === "sluiting" || pattern === "opening") {
+        return (
+          clean === "sluiting" ||
+          clean === "opening" ||
+          clean.startsWith("sluiting van") ||
+          clean.startsWith("opening van") ||
+          clean.startsWith("opening en") ||
+          clean.includes("sluiting van de vergadering") ||
+          clean.includes("opening van de vergadering")
+        );
+      }
+      return true;
+    }
+    return false;
+  });
+}
+
+/**
  * Helper to parse Dutch date text like "dinsdag 8 december 2026" or "8 december 2026" into "2026-12-08"
  */
 export function parseDutchDate(text: string, defaultYear?: number): { dateIso: string; display: string } {
@@ -189,9 +250,12 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
               return;
             }
 
-            // Ignore pure navigation junk
+            // Ignore pure navigation junk and procedural topics (e.g. Besluitenlijst, Vragen stellen, Sluiting, Opening)
             if (JUNK_TITLES.has(lowerTitle)) return;
             if (/^(dinsdag|woensdag|donderdag|vrijdag|zaterdag|zondag|maandag)\s+\d{1,2}\s+[a-z]+\s+\d{4}$/i.test(rawTitle)) return;
+            if (isProceduralTopic(rawTitle)) {
+              return; // Skip procedural agenda items
+            }
 
             // Extract attached documents within this agenda item only
             const docLinks: CouncilDocument[] = [];
@@ -288,7 +352,7 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
     );
   }
 
-  // Purge any older junk entries that match junk titles or invalid patterns
+  // Purge any older junk entries or procedural items that match junk titles or invalid patterns
   for (const [id, topic] of existingTopicsMap.entries()) {
     const tLower = topic.title.toLowerCase().trim();
     if (
@@ -301,7 +365,8 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
       tLower === "de griffie" ||
       tLower === "ibabs vergadermanagement" ||
       tLower === "bijlagen" ||
-      /^(dinsdag|woensdag|donderdag|vrijdag|zaterdag|zondag|maandag)\s+\d{1,2}\s+[a-z]+\s+\d{4}$/i.test(topic.title)
+      /^(dinsdag|woensdag|donderdag|vrijdag|zaterdag|zondag|maandag)\s+\d{1,2}\s+[a-z]+\s+\d{4}$/i.test(topic.title) ||
+      isProceduralTopic(topic.title)
     ) {
       existingTopicsMap.delete(id);
     }

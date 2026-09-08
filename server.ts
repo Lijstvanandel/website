@@ -7183,27 +7183,76 @@ Sitemap: ${baseUrl}/sitemap.xml
     });
   });
 
-  // 7. Proxy document to avoid iframe/CORS issues if Bestuurlijke Informatie blocks direct embedding
+  // 7. Proxy document to avoid iframe/CORS issues and directly deliver pure PDF
   app.get("/api/council/document-proxy", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
-    const docUrl = req.query.url;
-    if (!docUrl || typeof docUrl !== "string") {
+    const rawDocUrl = req.query.url;
+    if (!rawDocUrl || typeof rawDocUrl !== "string") {
       return res.status(400).json({ error: "Geen geldige document URL opgegeven" });
     }
 
     try {
-      const response = await fetch(docUrl, {
+      let targetUrl = rawDocUrl.trim();
+      const BASE_STEENWIJK = "https://steenwijkerland.bestuurlijkeinformatie.nl";
+
+      if (targetUrl.startsWith("/")) {
+        targetUrl = `${BASE_STEENWIJK}${targetUrl}`;
+      }
+
+      // Automatically transform iBabs Agenda/Document URLs with documentId & agendaItemId to direct LoadAgendaItemDocument PDF endpoint
+      try {
+        const parsed = new URL(targetUrl);
+        const docId = parsed.searchParams.get("documentId");
+        const agendaItemId = parsed.searchParams.get("agendaItemId");
+        if (docId && agendaItemId && (parsed.pathname.includes("/Agenda/Document") || parsed.pathname.includes("/Document"))) {
+          targetUrl = `${BASE_STEENWIJK}/Document/LoadAgendaItemDocument/${docId}?agendaItemId=${agendaItemId}`;
+        }
+      } catch (_e) {}
+
+      let response = await fetch(targetUrl, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/1.0",
-        }
+          "Accept": "application/pdf,text/html,application/xhtml+xml,*/*",
+        },
       });
+
+      let contentType = response.headers.get("content-type") || "";
+
+      // If initial response returned HTML wrapper instead of direct PDF, extract the embedded document endpoint
+      if (response.ok && contentType.includes("text/html")) {
+        const htmlText = await response.text();
+        const cheerio = await import("cheerio");
+        const $ = cheerio.load(htmlText);
+
+        const directDocUrl =
+          $("[data-document-url]").first().attr("data-document-url") ||
+          $("a[href*='/Document/LoadAgendaItemDocument/']").first().attr("href");
+
+        if (directDocUrl) {
+          const resolvedPdfUrl = directDocUrl.startsWith("http")
+            ? directDocUrl
+            : `${BASE_STEENWIJK}${directDocUrl.startsWith("/") ? "" : "/"}${directDocUrl}`;
+
+          const pdfResponse = await fetch(resolvedPdfUrl, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/1.0",
+              "Accept": "application/pdf,*/*",
+            },
+          });
+          if (pdfResponse.ok) {
+            response = pdfResponse;
+            contentType = pdfResponse.headers.get("content-type") || "application/pdf";
+          }
+        }
+      }
 
       if (!response.ok) {
         return res.status(response.status).send(`Fout bij ophalen document: ${response.statusText}`);
       }
 
-      const contentType = response.headers.get("content-type") || "application/pdf";
-      res.setHeader("Content-Type", contentType);
-      res.setHeader("Content-Disposition", "inline");
+      const finalContentType = contentType.includes("pdf") ? "application/pdf" : (contentType || "application/pdf");
+      res.setHeader("Content-Type", finalContentType);
+      res.setHeader("Content-Disposition", 'inline; filename="raadstuk.pdf"');
+      res.setHeader("X-Content-Type-Options", "nosniff");
 
       const arrayBuffer = await response.arrayBuffer();
       return res.send(Buffer.from(arrayBuffer));

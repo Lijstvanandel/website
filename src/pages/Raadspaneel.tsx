@@ -55,6 +55,62 @@ import {
   CouncilMeetingScrapeSummary,
 } from "@/types/council";
 
+const PROCEDURAL_PATTERNS = [
+  "vaststelling besluitenlijst",
+  "vaststellen besluitenlijst",
+  "besluitenlijst",
+  "gelegenheid om vragen te stellen",
+  "gelegenheid tot het stellen van vragen",
+  "vragen stellen",
+  "sluiting",
+  "opening en mededelingen",
+  "opening van de vergadering",
+  "opening",
+  "vaststelling agenda",
+  "vaststellen agenda",
+  "spreekrecht voor niet-geagendeerde",
+  "spreekrecht burgers",
+  "spreekrecht",
+  "vragenhalfuurtje",
+  "vragenhalfuur",
+  "vragenkwartier",
+  "rondvraag",
+  "vaststelling van de notulen",
+  "vaststellen notulen",
+  "goedkeuring notulen",
+  "mededelingen van de voorzitter",
+  "mededelingen van het college",
+  "mededelingen van de burgemeester",
+  "mededelingen burgemeester",
+  "mededelingen",
+  "beëdiging",
+  "installatie",
+  "afscheid",
+];
+
+function isProceduralTopic(rawTitle: string): boolean {
+  if (!rawTitle) return true;
+  const clean = rawTitle.toLowerCase().replace(/\s+/g, " ").trim();
+  return PROCEDURAL_PATTERNS.some((pattern) => {
+    if (clean === pattern || clean.startsWith(pattern)) return true;
+    if (clean.includes(pattern)) {
+      if (pattern === "sluiting" || pattern === "opening") {
+        return (
+          clean === "sluiting" ||
+          clean === "opening" ||
+          clean.startsWith("sluiting van") ||
+          clean.startsWith("opening van") ||
+          clean.startsWith("opening en") ||
+          clean.includes("sluiting van de vergadering") ||
+          clean.includes("opening van de vergadering")
+        );
+      }
+      return true;
+    }
+    return false;
+  });
+}
+
 export default function Raadspaneel() {
   const { user, token, isAuthenticated } = useAuth();
 
@@ -321,14 +377,19 @@ export default function Raadspaneel() {
   const uniqueDates = useMemo(() => {
     const set = new Set<string>();
     topics.forEach((t) => {
-      if (t.meetingDate) set.add(t.meetingDate);
+      if (t.meetingDate && !isProceduralTopic(t.title)) set.add(t.meetingDate);
     });
     return Array.from(set).sort();
   }, [topics]);
 
-  // Filtered topics
+  // Filtered topics (excluding procedural items)
   const filteredTopics = useMemo(() => {
     return topics.filter((t) => {
+      // Exclude procedural items
+      if (isProceduralTopic(t.title)) {
+        return false;
+      }
+
       // Search
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -460,7 +521,7 @@ export default function Raadspaneel() {
               <AlertCircle className="w-4 h-4 text-amber-500" />
             </div>
             <div className="text-2xl font-bold text-foreground">
-              {topics.filter((t) => t.category === "Oordeelvorming - bespreekstukken" && !t.isArchived).length}
+              {topics.filter((t) => !isProceduralTopic(t.title) && t.category === "Oordeelvorming - bespreekstukken" && !t.isArchived).length}
             </div>
             <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
               Oordeelsvorming
@@ -473,7 +534,7 @@ export default function Raadspaneel() {
               <UserCheck className="w-4 h-4 text-accent" />
             </div>
             <div className="text-2xl font-bold text-accent">
-              {topics.filter((t) => !t.isArchived && t.assignedTo === user?.username).length}
+              {topics.filter((t) => !isProceduralTopic(t.title) && !t.isArchived && t.assignedTo === user?.username).length}
             </div>
             <span className="text-[11px] text-muted-foreground">
               Jouw agendapunten
@@ -486,7 +547,7 @@ export default function Raadspaneel() {
               <Layers className="w-4 h-4 text-sky-500" />
             </div>
             <div className="text-2xl font-bold text-foreground">
-              {topics.filter((t) => !t.isArchived && !t.assignedTo).length}
+              {topics.filter((t) => !isProceduralTopic(t.title) && !t.isArchived && !t.assignedTo).length}
             </div>
             <span className="text-[11px] text-muted-foreground">
               Kies een fractielid
@@ -499,7 +560,7 @@ export default function Raadspaneel() {
               <Archive className="w-4 h-4 text-muted-foreground" />
             </div>
             <div className="text-2xl font-bold text-foreground">
-              {topics.filter((t) => t.isArchived).length}
+              {topics.filter((t) => !isProceduralTopic(t.title) && t.isArchived).length}
             </div>
             <span className="text-[11px] text-muted-foreground">
               &gt; 7 dagen na vergadering
@@ -629,7 +690,7 @@ export default function Raadspaneel() {
                       <div className="flex items-center justify-between gap-2 mb-1.5">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           {isBespreek ? (
-                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
                               Bespreekstuk
                             </span>
                           ) : (
@@ -648,8 +709,8 @@ export default function Raadspaneel() {
                         </span>
                       </div>
 
-                      {/* Title */}
-                      <h3 className="font-display font-bold text-sm text-foreground mb-2 line-clamp-2 leading-snug">
+                      {/* Title (not bold) */}
+                      <h3 className="font-normal text-sm text-foreground mb-2 line-clamp-2 leading-snug">
                         {topic.title}
                       </h3>
 
@@ -660,7 +721,7 @@ export default function Raadspaneel() {
                           <UserCheck className="w-3.5 h-3.5 text-accent shrink-0" />
                           <span className="truncate">
                             {topic.assignedName ? (
-                              <span className="font-semibold text-accent">{topic.assignedName}</span>
+                              <span className="font-medium text-accent">{topic.assignedName}</span>
                             ) : (
                               <span className="text-muted-foreground italic">Nog niet verdeeld</span>
                             )}
