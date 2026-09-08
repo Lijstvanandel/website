@@ -79,4 +79,38 @@ export default defineConfig(({ mode }) => ({
     },
     dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
   },
+  build: {
+    target: "es2020",
+    cssCodeSplit: true,
+    chunkSizeWarningLimit: 800,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules")) {
+            if (id.includes("react-router-dom") || id.includes("react-dom") || id.includes("/react/")) {
+              return "vendor-react";
+            }
+            if (id.includes("@tanstack/react-query")) {
+              return "vendor-query";
+            }
+            if (id.includes("lucide-react")) {
+              return "vendor-icons";
+            }
+            if (id.includes("motion")) {
+              return "vendor-motion";
+            }
+            if (id.includes("@radix-ui")) {
+              return "vendor-ui";
+            }
+            if (id.includes("recharts") || id.includes("d3-")) {
+              return "vendor-charts";
+            }
+            if (id.includes("qrcode") || id.includes("canvas-confetti")) {
+              return "vendor-utils";
+            }
+          }
+        },
+      },
+    },
+  },
 }));

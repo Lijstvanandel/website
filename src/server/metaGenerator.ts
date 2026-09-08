@@ -34,7 +34,7 @@ function stripHtml(html?: string): string {
     .trim();
 }
 
-function truncate(text: string, maxLen = 160): string {
+function truncate(text: string, maxLen = 150): string {
   if (text.length <= maxLen) return text;
   const cut = text.substring(0, maxLen);
   const lastSpace = cut.lastIndexOf(" ");
@@ -70,7 +70,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
   if (cleanPath === "/" || cleanPath === "") {
     return {
       title: "Lijst van Andel | Voor de inwoners van Steenwijkerland",
-      description: "Lijst van Andel zet zich in voor nuchtere, transparante politiek, betaalbare woningbouw voor eigen inwoners en behoud van de dorpen en wijken in Steenwijkerland.",
+      description: "Lijst van Andel zet zich in voor nuchtere politiek, betaalbare woningbouw voor inwoners en behoud van dorpen en wijken in Steenwijkerland.",
       ogTitle: "Lijst van Andel - Onafhankelijke Lokale Politiek in Steenwijkerland",
       ogDescription: "Voorrang voor lokale woningzoekenden, behoud van voorzieningen in onze dorpen en een direct aanspreekbare fractie.",
       ogImage: DEFAULT_IMAGE,
@@ -934,6 +934,32 @@ export function injectMetadataIntoHtml(html: string, meta: PageMetadata): string
     const jsonLd = JSON.stringify(meta.structuredData);
     const jsonLdScript = `\n  <script type="application/ld+json">\n${jsonLd}\n  </script>\n`;
     modified = modified.replace("</head>", `${jsonLdScript}</head>`);
+  }
+
+  // Pre-render semantic content for LLM crawlers and SEO bots inside <div id="root">
+  const rootPlaceholder = '<div id="root">';
+  if (modified.includes('<div id="root"></div>')) {
+    const semanticContent = `
+    <header class="sr-only" style="opacity:0.01;height:1px;overflow:hidden;position:absolute;pointer-events:none;">
+      <h1>${escapeHtml(meta.title)}</h1>
+      <p>${escapeHtml(meta.description)}</p>
+    </header>
+    <main class="sr-only" style="opacity:0.01;height:1px;overflow:hidden;position:absolute;pointer-events:none;">
+      <article>
+        <h2>${escapeHtml(meta.ogTitle || meta.title)}</h2>
+        <p>${escapeHtml(meta.ogDescription || meta.description)}</p>
+        <p>Officiële website van politieke partij Lijst van Andel in Steenwijkerland. Actief voor betaalbare starterswoningen, sterke dorpen en nuchtere lokale politiek.</p>
+        <nav aria-label="Hoofdmenu">
+          <a href="/standpunten">Standpunten</a> | 
+          <a href="/raadsleden">Raadsleden</a> | 
+          <a href="/nieuws">Nieuws</a> | 
+          <a href="/agenda">Agenda</a> | 
+          <a href="/wijken-en-kernen">Wijken & Kernen</a> | 
+          <a href="/contact">Contact</a>
+        </nav>
+      </article>
+    </main>`;
+    modified = modified.replace('<div id="root"></div>', `<div id="root">${semanticContent}</div>`);
   }
 
   return modified;
