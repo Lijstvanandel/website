@@ -823,8 +823,10 @@ export default function Dashboard() {
                 </div>
               </section>
 
-              {/* ACTUELE RAADSONDERWERPEN & LEDEN INBRENG WIDGET */}
-              <MemberCouncilTopicsWidget token={token} currentUser={user} />
+              {/* ACTUELE RAADSONDERWERPEN & LEDEN INBRENG WIDGET (Alleen zichtbaar indien contributie voldaan) */}
+              {(user.billingStatus === "paid" || user.billingStatus === "exempt" || user.role === "admin" || user.role === "raadslid" || user.role === "bestuur") && (
+                <MemberCouncilTopicsWidget token={token} currentUser={user} />
+              )}
 
               {/* LIDMAATSCHAP & CONTRIBUTIE CARD */}
               <section className="bg-card rounded-2xl p-6 sm:p-8 border border-border shadow-sm relative overflow-hidden">

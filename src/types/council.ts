@@ -36,6 +36,9 @@ export interface CouncilAgendaTopic {
   description?: string;
   assignedTo?: string | null; // username of assigned council member/fractielid
   assignedName?: string | null; // full name of assigned member
+  assignedMemberAvatar?: string | null;
+  assignedMemberRole?: string | null;
+  assignedMemberId?: string | null;
   assignedAt?: string | null;
   documents: CouncilDocument[];
   notes: CouncilTopicNote[];

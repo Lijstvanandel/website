@@ -6960,10 +6960,54 @@ Sitemap: ${baseUrl}/sitemap.xml
   // RAADSPANEEL API ROUTES
   // ==========================================
 
+  // Helper to enrich council topic with fractielid profile image, role, and id
+  function enrichTopicWithMemberData(t: any, db: any) {
+    if (!t) return t;
+    const fractieleden = Array.isArray(db.fractieleden) ? db.fractieleden : [];
+    const users = Array.isArray(db.users) ? db.users : [];
+
+    let assignedMemberAvatar: string | null = null;
+    let assignedMemberRole: string | null = null;
+    let assignedMemberId: string | null = null;
+
+    if (t.assignedTo || t.assignedName) {
+      const user = users.find((u: any) => u.username === t.assignedTo || u.id === t.assignedTo);
+      const fullName = user?.fullName || t.assignedName || t.assignedTo;
+
+      const f = fractieleden.find((item: any) =>
+        (t.assignedTo && (item.linkedUserId === t.assignedTo || item.linkedUsername === t.assignedTo)) ||
+        (user && (item.linkedUserId === user.id || item.linkedUsername === user.username)) ||
+        (fullName && item.name && item.name.toLowerCase().trim() === fullName.toLowerCase().trim()) ||
+        (t.assignedTo && item.name && item.name.toLowerCase().trim() === t.assignedTo.toLowerCase().trim()) ||
+        (t.assignedName && item.name && item.name.toLowerCase().trim() === t.assignedName.toLowerCase().trim())
+      );
+
+      if (f) {
+        assignedMemberAvatar = f.imgUrl || f.img || null;
+        assignedMemberRole = f.role || (f.type === "burgerraadslid" ? "Burgerraadslid" : "Raadslid");
+        assignedMemberId = f.id || null;
+      } else if (user) {
+        assignedMemberAvatar = user.avatarUrl || user.photo || (user.fullName?.toLowerCase().includes("sammy") ? "/assets/sammy.png" : null);
+        assignedMemberRole = user.role === "admin" ? "Fractievoorzitter" : user.role === "raadslid" ? "Raadslid" : "Fractielid";
+      } else if (fullName?.toLowerCase().includes("sammy")) {
+        assignedMemberAvatar = "/assets/sammy.png";
+        assignedMemberRole = "Fractievoorzitter";
+      }
+    }
+
+    return {
+      ...t,
+      assignedMemberAvatar: assignedMemberAvatar || (t.assignedName?.toLowerCase().includes("sammy") ? "/assets/sammy.png" : null),
+      assignedMemberRole: assignedMemberRole || (t.assignedName?.toLowerCase().includes("sammy") ? "Fractievoorzitter" : (t.assignedTo ? "Fractielid" : null)),
+      assignedMemberId: assignedMemberId || null
+    };
+  }
+
   // 1. Get all council agenda topics (and scraping status)
   app.get("/api/council/topics", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
     const db = getDb();
-    const topics = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
+    const rawTopics = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
+    const topics = rawTopics.map((t: any) => enrichTopicWithMemberData(t, db));
     const summary = db.councilScrapeSummary || {
       lastScrapedAt: null,
       totalMeetingsScraped: 0,
@@ -7181,6 +7225,18 @@ Sitemap: ${baseUrl}/sitemap.xml
 
   // 4c. Member Dashboard: Get Active Council Topics for Members
   app.get("/api/council/member-topics", requireAuth, (req: any, res: any) => {
+    const user = req.user;
+    const isPaidMember = user?.role === "admin" || user?.role === "raadslid" || user?.role === "bestuur" || user?.billingStatus === "paid" || user?.billingStatus === "exempt";
+
+    // If membership dues are not paid/exempt, do not expose the council topics
+    if (!isPaidMember) {
+      return res.json({
+        topics: [],
+        requiresMembership: true,
+        message: "Onderwerpen en stukken zijn exclusief toegankelijk voor leden van wie de contributie is voldaan."
+      });
+    }
+
     const db = getDb();
     const allTopics = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
 
@@ -7188,27 +7244,31 @@ Sitemap: ${baseUrl}/sitemap.xml
     const memberTopics = allTopics
       .filter((t: any) => !t.isArchived)
       .map((t: any) => {
+        const enriched = enrichTopicWithMemberData(t, db);
         const memberNotesCount = (t.notes || []).filter((n: any) => n.source === "ledenfeedback").length;
         const fractieNotesCount = (t.notes || []).filter((n: any) => n.source !== "ledenfeedback").length;
         
         return {
-          id: t.id,
-          title: t.title,
-          description: t.description,
-          meetingDate: t.meetingDate,
-          meetingDateDisplay: t.meetingDateDisplay,
-          meetingTitle: t.meetingTitle,
-          category: t.category,
-          status: t.status || "in_behandeling",
-          assignedTo: t.assignedTo,
-          assignedName: t.assignedName,
-          documents: t.documents || [],
+          id: enriched.id,
+          title: enriched.title,
+          description: enriched.description,
+          meetingDate: enriched.meetingDate,
+          meetingDateDisplay: enriched.meetingDateDisplay,
+          meetingTitle: enriched.meetingTitle,
+          category: enriched.category,
+          status: enriched.status || "in_behandeling",
+          assignedTo: enriched.assignedTo,
+          assignedName: enriched.assignedName,
+          assignedMemberAvatar: enriched.assignedMemberAvatar,
+          assignedMemberRole: enriched.assignedMemberRole,
+          assignedMemberId: enriched.assignedMemberId,
+          documents: enriched.documents || [],
           memberNotesCount,
           fractieNotesCount,
-          hamerstukAfgehandeldAt: t.hamerstukAfgehandeldAt,
-          hamerstukAfgehandeldBy: t.hamerstukAfgehandeldBy,
+          hamerstukAfgehandeldAt: enriched.hamerstukAfgehandeldAt,
+          hamerstukAfgehandeldBy: enriched.hamerstukAfgehandeldBy,
           // Only show member's own submitted feedback notes
-          myFeedback: (t.notes || []).filter((n: any) => n.authorUsername === req.user.username && n.source === "ledenfeedback")
+          myFeedback: (enriched.notes || []).filter((n: any) => n.authorUsername === req.user.username && n.source === "ledenfeedback")
         };
       });
 
@@ -7370,7 +7430,9 @@ Sitemap: ${baseUrl}/sitemap.xml
         if (docId && agendaItemId && (parsed.pathname.includes("/Agenda/Document") || parsed.pathname.includes("/Document"))) {
           targetUrl = `${BASE_STEENWIJK}/Document/LoadAgendaItemDocument/${docId}?agendaItemId=${agendaItemId}`;
         }
-      } catch (_e) {}
+      } catch (_e) {
+        // Fallback to targetUrl as-is
+      }
 
       let response = await fetch(targetUrl, {
         headers: {

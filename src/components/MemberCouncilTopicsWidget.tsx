@@ -18,7 +18,9 @@ import {
   User,
   Shield,
   Layers,
+  ArrowRight,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,6 +53,9 @@ export interface MemberCouncilTopic {
   status?: string;
   assignedTo?: string | null;
   assignedName?: string | null;
+  assignedMemberAvatar?: string | null;
+  assignedMemberRole?: string | null;
+  assignedMemberId?: string | null;
   documents: CouncilDocument[];
   memberNotesCount?: number;
   fractieNotesCount?: number;
@@ -70,6 +75,13 @@ interface MemberCouncilTopicsWidgetProps {
 }
 
 export function MemberCouncilTopicsWidget({ token, currentUser }: MemberCouncilTopicsWidgetProps) {
+  const isPaidMember =
+    currentUser?.role === "admin" ||
+    currentUser?.role === "raadslid" ||
+    currentUser?.role === "bestuur" ||
+    currentUser?.billingStatus === "paid" ||
+    currentUser?.billingStatus === "exempt";
+
   const [topics, setTopics] = useState<MemberCouncilTopic[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -88,7 +100,10 @@ export function MemberCouncilTopicsWidget({ token, currentUser }: MemberCouncilT
   const [expandedTopicId, setExpandedTopicId] = useState<string | null>(null);
 
   const fetchTopics = async () => {
-    if (!token) return;
+    if (!token || !isPaidMember) {
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
       const res = await fetch("/api/council/member-topics", {
@@ -113,7 +128,7 @@ export function MemberCouncilTopicsWidget({ token, currentUser }: MemberCouncilT
 
   useEffect(() => {
     fetchTopics();
-  }, [token]);
+  }, [token, isPaidMember]);
 
   // Submit Feedback Handler
   const handleSubmitFeedback = async () => {
@@ -172,6 +187,10 @@ export function MemberCouncilTopicsWidget({ token, currentUser }: MemberCouncilT
       return true;
     });
   }, [topics, searchQuery, filterAssigned]);
+
+  if (!isPaidMember) {
+    return null;
+  }
 
   if (loading) {
     return (
@@ -298,23 +317,50 @@ export function MemberCouncilTopicsWidget({ token, currentUser }: MemberCouncilT
                       {topic.title}
                     </h3>
 
-                    {/* Who handles it badge */}
-                    <div className="flex items-center gap-2 pt-0.5 flex-wrap">
-                      <div className="inline-flex items-center gap-1.5 text-xs">
-                        <span className="text-muted-foreground font-medium">Behandeling fractie:</span>
-                        {hasAssigned ? (
-                          <span className="inline-flex items-center gap-1 font-bold text-foreground bg-accent/15 text-accent px-2.5 py-0.5 rounded-full text-xs border border-accent/30">
-                            <UserCheck className="w-3.5 h-3.5" />
+                    {/* Behandeling fractie - weergave conform /nieuws auteur stijl */}
+                    {hasAssigned ? (
+                      <div className="pt-2 border-t border-border/60 flex items-center justify-between gap-3 text-xs mt-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-7 h-7 rounded-full overflow-hidden bg-muted shrink-0 border border-accent/30">
+                            <img
+                              src={topic.assignedMemberAvatar || "/assets/sammy.png"}
+                              alt={topic.assignedName || topic.assignedTo || "Raadslid"}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = "/assets/sammy.png";
+                              }}
+                            />
+                          </div>
+                          <span className="font-medium text-foreground truncate">
                             {topic.assignedName || topic.assignedTo}
+                            <span className="text-muted-foreground ml-1.5 font-normal">
+                              • {topic.assignedMemberRole || "Fractielid"}
+                            </span>
                           </span>
-                        ) : (
-                          <span className="text-muted-foreground italic text-xs bg-muted px-2 py-0.5 rounded-full">
-                            Nog in fractieberaad (onverdeeld)
-                          </span>
-                        )}
+                        </div>
+                        <Link
+                          to="/raadsleden"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-accent flex items-center gap-1 shrink-0 text-xs font-semibold hover:translate-x-1 transition-transform"
+                        >
+                          Bekijk raadslid <ArrowRight className="w-3.5 h-3.5" />
+                        </Link>
                       </div>
-                      <span className="text-muted-foreground text-xs">• {topic.documents.length} bijlage(n)</span>
-                    </div>
+                    ) : (
+                      <div className="pt-2 border-t border-border/60 flex items-center justify-between gap-3 text-xs mt-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-7 h-7 rounded-full overflow-hidden bg-muted shrink-0 border border-border/70 flex items-center justify-center text-muted-foreground">
+                            <User className="w-3.5 h-3.5" />
+                          </div>
+                          <span className="text-muted-foreground italic truncate">
+                            Behandeling fractie: Nog in beraad (onverdeeld)
+                          </span>
+                        </div>
+                        <span className="text-muted-foreground text-[11px] shrink-0">
+                          {topic.documents.length} bijlage(n)
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Actions right */}

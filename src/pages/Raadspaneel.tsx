@@ -925,11 +925,30 @@ export default function Raadspaneel() {
                       <UserCheck className="w-4 h-4 text-accent" />
                       <span>Verantwoordelijk Fractielid:</span>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {selectedTopic.assignedName
-                        ? `Toegewezen aan ${selectedTopic.assignedName} (${selectedTopic.assignedTo})`
-                        : "Dit onderwerp is nog door niemand binnen de fractie geadopteerd."}
-                    </p>
+                    {selectedTopic.assignedName ? (
+                      <div className="flex items-center gap-2 mt-2">
+                        <div className="w-7 h-7 rounded-full overflow-hidden bg-muted shrink-0 border border-accent/30">
+                          <img
+                            src={selectedTopic.assignedMemberAvatar || "/assets/sammy.png"}
+                            alt={selectedTopic.assignedName}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = "/assets/sammy.png";
+                            }}
+                          />
+                        </div>
+                        <span className="text-xs font-medium text-foreground">
+                          {selectedTopic.assignedName}
+                          <span className="text-muted-foreground ml-1.5 font-normal">
+                            • {selectedTopic.assignedMemberRole || "Fractielid"}
+                          </span>
+                        </span>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground mt-1 italic">
+                        Dit onderwerp is nog door niemand binnen de fractie geadopteerd.
+                      </p>
+                    )}
                   </div>
 
                   {/* Toewijzen Dropdown (Admin of Zelf toewijzen) */}
