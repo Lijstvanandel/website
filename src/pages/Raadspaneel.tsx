@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { Navigate, Link } from "react-router-dom";
+import { Navigate, Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
+import { DossierOverview } from "@/components/council/DossierOverview";
 import {
   FileText,
   Calendar,
@@ -28,6 +29,7 @@ import {
   Plus,
   RotateCcw,
   AlertTriangle,
+  FolderArchive,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -159,6 +161,16 @@ function isInvalidOrJunkTopic(rawTitle: string): boolean {
 
 export default function Raadspaneel() {
   const { user, token, isAuthenticated } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activePanelTab = searchParams.get("tab") === "agenda" ? "agenda" : "dossiers";
+
+  const setActivePanelTab = (tab: "dossiers" | "agenda") => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("tab", tab);
+      return next;
+    });
+  };
 
   const [topics, setTopics] = useState<CouncilAgendaTopic[]>([]);
   const [summary, setSummary] = useState<CouncilMeetingScrapeSummary | null>(null);
@@ -627,8 +639,41 @@ export default function Raadspaneel() {
           </div>
         </div>
 
-        {/* KPI / Status Bar */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+        {/* Raadspaneel Main Modules Tab Navigation */}
+        <div className="flex items-center gap-2.5 mb-8 border-b border-border pb-3 overflow-x-auto">
+          <button
+            id="tab-btn-panel-dossiers"
+            onClick={() => setActivePanelTab("dossiers")}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all shrink-0 ${
+              activePanelTab === "dossiers"
+                ? "bg-accent text-accent-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground hover:bg-card border border-border/70"
+            }`}
+          >
+            <FolderArchive className="w-4 h-4" />
+            Dossiers & Raadsstukken Archief
+          </button>
+
+          <button
+            id="tab-btn-panel-agenda"
+            onClick={() => setActivePanelTab("agenda")}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all shrink-0 ${
+              activePanelTab === "agenda"
+                ? "bg-accent text-accent-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground hover:bg-card border border-border/70"
+            }`}
+          >
+            <Calendar className="w-4 h-4" />
+            Vergaderagenda & Bespreekstukken
+          </button>
+        </div>
+
+        {activePanelTab === "dossiers" ? (
+          <DossierOverview />
+        ) : (
+          <>
+            {/* KPI / Status Bar */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
           <div className="p-4 rounded-2xl bg-card border border-border shadow-xs">
             <div className="flex items-center justify-between text-muted-foreground mb-1">
               <span className="text-xs font-semibold">Bespreekstukken</span>
@@ -1291,6 +1336,8 @@ export default function Raadspaneel() {
             )}
           </div>
         </div>
+          </>
+        )}
       </div>
 
       {/* Document Viewer Modal Dialog met geïntegreerde Fractie-notities */}

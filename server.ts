@@ -50,6 +50,14 @@ import {
   clearUnassignedCouncilTopics,
   startDailyCouncilScraper
 } from "./src/server/councilScraperService.js";
+import {
+  getAllDossiers,
+  getDossierGraph,
+  createCustomDossier,
+  updateDossier,
+  processUploadedCouncilDocuments,
+  getRawNetworkGraph
+} from "./src/server/dossierManager.js";
 
 // Ensure .env is explicitly loaded from working directory in case of PM2 or systemd execution
 function ensureEnvLoaded() {
@@ -238,6 +246,7 @@ function getDb() {
   if (!db.eventTickets) db.eventTickets = [];
   if (!db.eventCancellations) db.eventCancellations = [];
   if (!db.councilAgendaTopics) db.councilAgendaTopics = [];
+  if (!db.customDossiers) db.customDossiers = [];
   if (!db.news || !Array.isArray(db.news) || db.news.length === 0) {
     db.news = [
       {
@@ -707,6 +716,21 @@ const storage = multer.diskStorage({
   }
 });
 const upload = multer({ storage: storage });
+
+const dossierDocStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const fullDir = path.join(process.cwd(), "public/uploads/documents");
+    if (!fs.existsSync(fullDir)) {
+      fs.mkdirSync(fullDir, { recursive: true });
+    }
+    cb(null, fullDir);
+  },
+  filename: function (req, file, cb) {
+    // Preserve exact original filename to match raadsstukken metadata
+    cb(null, file.originalname);
+  }
+});
+const uploadDossierDocs = multer({ storage: dossierDocStorage, limits: { fileSize: 100 * 1024 * 1024 } });
 
 function syncFileAcrossUploadDirs(relPathOrAbsPath: string) {
   try {
@@ -7595,6 +7619,187 @@ Sitemap: ${baseUrl}/sitemap.xml
     } catch (err: any) {
       console.error("[DOCUMENT PROXY FOUT]:", err.message);
       return res.status(500).json({ error: "Kon document niet downloaden: " + err.message });
+    }
+  });
+
+  // ==========================================
+  // DOSSIERSYSTEEM RAADSPANEEL API ROUTES
+  // ==========================================
+
+  // 1. Get all dossiers (with search, category filter, pagination and statistics)
+  app.get("/api/council/dossiers", requireAuth, (req: any, res: any) => {
+    try {
+      const db = getDb();
+      const allDossiers = getAllDossiers(db.customDossiers || []);
+
+      const search = (req.query.search || "").toString().toLowerCase().trim();
+      const category = (req.query.category || "").toString().trim();
+      const hasFilesOnly = req.query.hasFiles === "true";
+      const page = Math.max(1, parseInt(req.query.page || "1", 10));
+      const limit = Math.max(1, parseInt(req.query.limit || "12", 10));
+
+      // Extract unique categories
+      const categoriesSet = new Set<string>();
+      let totalDocuments = 0;
+      let totalUploadedFiles = 0;
+
+      allDossiers.forEach((d) => {
+        if (d.category) categoriesSet.add(d.category);
+        totalDocuments += d.documentCount;
+        totalUploadedFiles += d.uploadedCount;
+      });
+
+      // Filter
+      const filtered = allDossiers.filter((d) => {
+        if (category && d.category.toLowerCase() !== category.toLowerCase()) {
+          return false;
+        }
+        if (hasFilesOnly && d.uploadedCount === 0) {
+          return false;
+        }
+        if (search) {
+          const matchTitle = d.title.toLowerCase().includes(search);
+          const matchDesc = d.description.toLowerCase().includes(search);
+          const matchCat = d.category.toLowerCase().includes(search);
+          const matchTag = d.tags.some((t) => t.toLowerCase().includes(search));
+          const matchDoc = d.documents.some((doc) =>
+            doc.titel.toLowerCase().includes(search) || doc.bestandsnaam.toLowerCase().includes(search)
+          );
+          if (!matchTitle && !matchDesc && !matchCat && !matchTag && !matchDoc) {
+            return false;
+          }
+        }
+        return true;
+      });
+
+      const total = filtered.length;
+      const totalPages = Math.ceil(total / limit) || 1;
+      const startIndex = (page - 1) * limit;
+      const paginatedDossiers = filtered.slice(startIndex, startIndex + limit);
+
+      res.json({
+        dossiers: paginatedDossiers,
+        total,
+        page,
+        totalPages,
+        limit,
+        categories: Array.from(categoriesSet).sort(),
+        stats: {
+          totalDossiers: allDossiers.length,
+          totalDocuments,
+          totalUploadedFiles,
+        },
+      });
+    } catch (err: any) {
+      console.error("[COUNCIL DOSSIERS ERROR]:", err);
+      res.status(500).json({ error: "Fout bij ophalen dossiers: " + err.message });
+    }
+  });
+
+  // 2. Get single dossier detail with documents and its network graph
+  app.get("/api/council/dossiers/:slug", requireAuth, (req: any, res: any) => {
+    try {
+      const slug = req.params.slug;
+      const db = getDb();
+      const allDossiers = getAllDossiers(db.customDossiers || []);
+      const dossier = allDossiers.find((d) => d.slug === slug || d.id === slug);
+
+      if (!dossier) {
+        return res.status(404).json({ error: `Dossier met kenmerk '${slug}' niet gevonden` });
+      }
+
+      const graph = getDossierGraph(dossier.slug || dossier.id);
+
+      res.json({
+        dossier,
+        graph,
+      });
+    } catch (err: any) {
+      console.error("[COUNCIL DOSSIER DETAIL ERROR]:", err);
+      res.status(500).json({ error: "Fout bij ophalen dossier: " + err.message });
+    }
+  });
+
+  // 3. Create a custom dossier
+  app.post("/api/council/dossiers", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    try {
+      const { title, description, category, thumbnail, tags } = req.body;
+      if (!title || !title.trim()) {
+        return res.status(400).json({ error: "Titel is verplicht voor het aanmaken van een dossier" });
+      }
+
+      const db = getDb();
+      const created = createCustomDossier(
+        {
+          title,
+          description,
+          category,
+          thumbnail,
+          tags: Array.isArray(tags) ? tags : typeof tags === "string" ? tags.split(",").map((t: string) => t.trim()) : [],
+        },
+        db,
+        saveDb
+      );
+
+      res.status(201).json({ success: true, dossier: created });
+    } catch (err: any) {
+      console.error("[COUNCIL DOSSIER CREATE ERROR]:", err);
+      res.status(500).json({ error: "Fout bij aanmaken dossier: " + err.message });
+    }
+  });
+
+  // 4. Update an existing dossier
+  app.put("/api/council/dossiers/:slug", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    try {
+      const slug = req.params.slug;
+      const db = getDb();
+      const updated = updateDossier(slug, req.body, db, saveDb);
+
+      if (!updated) {
+        return res.status(404).json({ error: `Dossier '${slug}' niet gevonden` });
+      }
+
+      res.json({ success: true, dossier: updated });
+    } catch (err: any) {
+      console.error("[COUNCIL DOSSIER UPDATE ERROR]:", err);
+      res.status(500).json({ error: "Fout bij bijwerken dossier: " + err.message });
+    }
+  });
+
+  // 5. Bulk upload council documents (preserves exact filenames matching metadata)
+  app.post(
+    "/api/council/dossiers/bulk-upload",
+    requireAuth,
+    requireCouncilOrAdmin,
+    uploadDossierDocs.array("files", 250),
+    (req: any, res: any) => {
+      try {
+        const files = req.files as Express.Multer.File[];
+        if (!files || files.length === 0) {
+          return res.status(400).json({ error: "Geen bestanden ontvangen voor upload" });
+        }
+
+        const result = processUploadedCouncilDocuments(files, syncFileAcrossUploadDirs);
+        res.json({
+          success: true,
+          ...result,
+          message: `${result.matchedCount} van de ${result.totalUploaded} geüploade bestanden zijn direct herkend en gekoppeld aan de raadsdossiers!`,
+        });
+      } catch (err: any) {
+        console.error("[COUNCIL DOSSIER BULK UPLOAD ERROR]:", err);
+        res.status(500).json({ error: "Fout bij bulk upload: " + err.message });
+      }
+    }
+  );
+
+  // 6. Get overall network graph
+  app.get("/api/council/network-graph", requireAuth, (req: any, res: any) => {
+    try {
+      const graph = getRawNetworkGraph();
+      res.json(graph);
+    } catch (err: any) {
+      console.error("[COUNCIL NETWORK GRAPH ERROR]:", err);
+      res.status(500).json({ error: "Fout bij ophalen netwerkgrafiek: " + err.message });
     }
   });
 
