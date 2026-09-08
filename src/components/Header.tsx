@@ -233,15 +233,14 @@ export const Header = () => {
 
           {/* Right-side Actions & Authentication Controls */}
           <div className="flex items-center gap-1 sm:gap-1.5 lg:gap-1.5 xl:gap-2 shrink-0">
-            {/* 1. Lid worden Button (alleen als bezoeker nog niet is ingelogd) */}
+            {/* 1. Word lid Button (alleen als bezoeker nog niet is ingelogd) */}
             {!isAuthenticated && (
               <Link to="/registreren" className="hidden sm:inline-flex">
                 <Button
                   className="bg-primary hover:bg-primary/90 text-primary-foreground border border-accent/40 uppercase tracking-wider text-xs font-semibold px-2.5 xl:px-3 h-8 sm:h-9 whitespace-nowrap shrink-0 shadow-sm"
                 >
                   <UserPlus className="w-3.5 h-3.5 mr-1" />
-                  <span className="hidden 2xl:inline">Lid worden</span>
-                  <span className="2xl:hidden">Lid</span>
+                  <span>Word lid</span>
                 </Button>
               </Link>
             )}
@@ -277,7 +276,7 @@ export const Header = () => {
                   className="border border-accent/40 text-foreground hover:text-accent hover:bg-accent/10 uppercase tracking-wider text-xs font-semibold px-2.5 xl:px-3.5 h-8 sm:h-9 whitespace-nowrap"
                 >
                   <Lock className="w-3.5 h-3.5 mr-1 text-accent" />
-                  Inloggen
+                  Login
                 </Button>
               </Link>
             )}
@@ -552,7 +551,7 @@ export const Header = () => {
                       className="w-full bg-primary hover:bg-primary/90 text-primary-foreground border border-accent/40 uppercase tracking-wider text-xs font-semibold py-2.5 flex items-center justify-center gap-2 shadow-sm"
                     >
                       <UserPlus className="w-4 h-4" />
-                      <span>Lid worden</span>
+                      <span>Word lid</span>
                     </Button>
                   </Link>
                 )}
@@ -604,7 +603,7 @@ export const Header = () => {
                       variant="outline"
                       className="w-full border-accent text-accent hover:bg-accent hover:text-accent-foreground uppercase tracking-wider text-xs font-semibold justify-center"
                     >
-                      Inloggen
+                      Login
                     </Button>
                   </Link>
                 )}
