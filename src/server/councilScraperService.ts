@@ -62,6 +62,7 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
       console.log(`[RAADSPANEEL SCRAPER] Ophalen agenda index voor jaar ${year} van ${url}`);
       
       const res = await fetch(url, {
+        signal: AbortSignal.timeout(8000),
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/1.0",
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -118,6 +119,7 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
       const meetingId = meetingIdMatch ? meetingIdMatch[1] : Buffer.from(meeting.url).toString("hex").slice(0, 16);
 
       const res = await fetch(meeting.url, {
+        signal: AbortSignal.timeout(8000),
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/1.0",
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -138,40 +140,76 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
       // Determine date
       const parsedDate = parseDutchDate(meeting.dateDisplay || pageTitle, meeting.year);
 
-      // Parse agenda sections (look for "Oordeelvorming - bespreekstukken" or agenda items)
-      // Usually Bestuurlijke Informatie groups items in <li>, .list-group-item, or .agenda-item
-      const sectionElements = $("li.list-group-item, .agenda-item, .treeview-item, .agenda-point, tr");
+      // Junk / Navigation titles to ignore
+      const JUNK_TITLES = new Set([
+        "welkom",
+        "vergaderingen",
+        "overzichten",
+        "wie is wie",
+        "uw invloed",
+        "veel gestelde vragen",
+        "de griffie",
+        "ibabs vergadermanagement",
+        "bijlagen",
+        "inloggen",
+        "cookie",
+        "cookies",
+        "zoek",
+        "zoeken",
+        "privacy",
+        "contact",
+      ]);
 
-      // We track current category header if structured hierarchically
-      let currentSectionCategory = "Oordeelvorming - bespreekstukken";
+      // Category tracking
+      let currentSectionCategory = "Algemeen";
 
-      // Scan headings and items
-      $("h2, h3, h4, .agenda-category-header, .list-group-item-heading").each((_, headingEl) => {
-        const hText = $(headingEl).text().trim();
-        if (hText.toLowerCase().includes("bespreekstuk") || hText.toLowerCase().includes("oordeelvorming")) {
-          currentSectionCategory = "Oordeelvorming - bespreekstukken";
-        } else if (hText.toLowerCase().includes("hamerstuk")) {
-          currentSectionCategory = "Hamerstukken";
-        } else if (hText.toLowerCase().includes("informatief")) {
-          currentSectionCategory = "Informatief";
-        }
-      });
-
-      // Parse all agenda items / documents
-      $("li, div.agenda-row, tr").each((index, itemEl) => {
-        const itemText = $(itemEl).text().replace(/\s+/g, " ").trim();
-        const htmlContent = $(itemEl).html() || "";
+      // Scan actual .agenda-item panels
+      $(".panel.agenda-item, .agenda-item").each((index, itemEl) => {
+        const itemNumber = $(itemEl).find(".panel-id").first().text().trim() || `${index + 1}`;
+        const rawTitle = $(itemEl).find(".panel-title-label, .panel-title, h3, h4").first().text().replace(/\s+/g, " ").trim();
         
-        // Check if this item has document links or is an agenda point
+        if (!rawTitle) return;
+
+        const lowerTitle = rawTitle.toLowerCase();
+
+        // Check if this is a section category header
+        if (lowerTitle.includes("oordeelvorming - bespreekstukken") || (lowerTitle.includes("bespreekstukken") && !lowerTitle.includes("hamerstuk"))) {
+          currentSectionCategory = "Oordeelvorming - bespreekstukken";
+          return; // Skip category header row itself
+        } else if (lowerTitle.includes("oordeelvorming - hamerstukken") || lowerTitle.includes("hamerstukken")) {
+          currentSectionCategory = "Oordeelvorming - hamerstukken";
+          return; // Skip category header row itself
+        } else if (lowerTitle.includes("informatief")) {
+          currentSectionCategory = "Informatief";
+          return;
+        }
+
+        // Ignore pure navigation junk
+        if (JUNK_TITLES.has(lowerTitle)) return;
+        if (/^(dinsdag|woensdag|donderdag|vrijdag|zaterdag|zondag|maandag)\s+\d{1,2}\s+[a-z]+\s+\d{4}$/i.test(rawTitle)) return;
+
+        // Extract attached documents within this agenda item only
         const docLinks: CouncilDocument[] = [];
-        $(itemEl).find("a[href*='/Agenda/Document/'], a[href*='/Document/'], a[href*='.pdf']").each((_, docEl) => {
+        $(itemEl).find(".list-attachments a[href*='/Agenda/Document/'], a[href*='/Agenda/Document/'], a[href*='/Document/'], a[href*='.pdf']").each((_, docEl) => {
           const docHref = $(docEl).attr("href");
           if (!docHref) return;
-          
+
           const fullDocUrl = docHref.startsWith("http") ? docHref : `${BASE_URL}${docHref.startsWith("/") ? "" : "/"}${docHref}`;
-          const docTitle = $(docEl).text().replace(/\s+/g, " ").trim() || $(docEl).attr("title") || `Bijlage document`;
           
-          const docIdMatch = fullDocUrl.match(/Document\/([a-zA-Z0-9-]+)/i);
+          // Clone and remove badge/icon text for clean title
+          const clone = $(docEl).clone();
+          const badgeSize = clone.find(".badge").text().trim();
+          clone.find(".badge, .icon, .sr-only").remove();
+          let docTitle = clone.text().replace(/\s+/g, " ").trim();
+
+          if (!docTitle) {
+            docTitle = $(docEl).attr("title") || `Bijlage document`;
+          }
+          if (badgeSize && !docTitle.includes(badgeSize)) {
+            docTitle = `${docTitle} (${badgeSize})`;
+          }
+
+          const docIdMatch = fullDocUrl.match(/documentId=([a-zA-Z0-9-]+)/i) || fullDocUrl.match(/Document\/([a-zA-Z0-9-]+)/i);
           const docId = docIdMatch ? docIdMatch[1] : Buffer.from(fullDocUrl).toString("hex").slice(0, 16);
 
           if (!docLinks.some((d) => d.id === docId)) {
@@ -185,65 +223,80 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
           }
         });
 
-        // If it's a substantive item with a title and either document links or marked as bespreekstuk
-        const isBespreek = itemText.toLowerCase().includes("bespreekstuk") || 
-                           itemText.toLowerCase().includes("oordeelvorming") || 
-                           currentSectionCategory === "Oordeelvorming - bespreekstukken";
-
-        if (docLinks.length > 0 || (isBespreek && itemText.length > 5 && itemText.length < 300)) {
-          // Clean title
-          let topicTitle = $(itemEl).find(".agenda-item-title, h4, h5, strong, a").first().text().trim();
-          if (!topicTitle || topicTitle.length < 3) {
-            topicTitle = itemText.split("\n")[0].slice(0, 120);
-          }
-
-          if (topicTitle && topicTitle.length >= 3 && !topicTitle.toLowerCase().includes("cookie") && !topicTitle.toLowerCase().includes("inloggen")) {
-            const topicId = `topic_${meetingId}_${index}`;
-            const existing = existingTopicsMap.get(topicId);
-
-            // Merge viewedBy and notes from existing topic to never lose member progress
-            const mergedDocs = docLinks.map((newDoc) => {
-              const existingDoc = existing?.documents?.find((d) => d.id === newDoc.id);
-              return {
-                ...newDoc,
-                viewedBy: existingDoc?.viewedBy || [],
-              };
-            });
-
-            const category = isBespreek ? "Oordeelvorming - bespreekstukken" : "Overig";
-            if (category === "Oordeelvorming - bespreekstukken") {
-              bespreekstukkenFound++;
-            }
-
-            const updatedTopic: CouncilAgendaTopic = {
-              id: topicId,
-              meetingId,
-              meetingDate: parsedDate.dateIso,
-              meetingDateDisplay: parsedDate.display,
-              meetingTitle: pageTitle,
-              meetingType: pageTitle.includes("Oordeel") ? "Oordeelsvormend" : "Raadsvergadering",
-              agendaItemNumber: `${index + 1}`,
-              category,
-              title: topicTitle,
-              description: itemText.slice(0, 500),
-              assignedTo: existing?.assignedTo || null,
-              assignedName: existing?.assignedName || null,
-              assignedAt: existing?.assignedAt || null,
-              documents: mergedDocs,
-              notes: existing?.notes || [],
-              isArchived: existing?.isArchived || false,
-              archivedAt: existing?.archivedAt || null,
-              sourceUrl: meeting.url,
-              scrapedAt: new Date().toISOString(),
-            };
-
-            existingTopicsMap.set(topicId, updatedTopic);
-            totalNewOrUpdated++;
-          }
+        // Determine category & relevance
+        let topicCategory = currentSectionCategory;
+        if (lowerTitle.includes("bespreekstuk") || lowerTitle.includes("oordeelvorming")) {
+          topicCategory = "Oordeelvorming - bespreekstukken";
+        } else if (lowerTitle.includes("hamerstuk")) {
+          topicCategory = "Oordeelvorming - hamerstukken";
+        } else if (docLinks.length > 0 && topicCategory === "Algemeen") {
+          topicCategory = "Oordeelvorming - bespreekstukken";
         }
+
+        if (topicCategory === "Oordeelvorming - bespreekstukken") {
+          bespreekstukkenFound++;
+        }
+
+        const bodyDescription = $(itemEl).find(".panel-body .text").first().text().replace(/\s+/g, " ").trim() || "";
+        const topicId = `topic_${meetingId}_${itemNumber.replace(/[^a-zA-Z0-9]/g, "_")}`;
+        const existing = existingTopicsMap.get(topicId);
+
+        // Merge viewed status from existing topic
+        const mergedDocs = docLinks.map((newDoc) => {
+          const existingDoc = existing?.documents?.find((d) => d.id === newDoc.id);
+          return {
+            ...newDoc,
+            viewedBy: existingDoc?.viewedBy || [],
+          };
+        });
+
+        const updatedTopic: CouncilAgendaTopic = {
+          id: topicId,
+          meetingId,
+          meetingDate: parsedDate.dateIso,
+          meetingDateDisplay: parsedDate.display,
+          meetingTitle: pageTitle,
+          meetingType: pageTitle.includes("Oordeel") ? "Oordeelsvormend" : "Raadsvergadering",
+          agendaItemNumber: itemNumber,
+          category: topicCategory,
+          title: rawTitle,
+          description: bodyDescription.slice(0, 800),
+          assignedTo: existing?.assignedTo || null,
+          assignedName: existing?.assignedName || null,
+          assignedAt: existing?.assignedAt || null,
+          documents: mergedDocs,
+          notes: existing?.notes || [],
+          isArchived: existing?.isArchived || false,
+          archivedAt: existing?.archivedAt || null,
+          sourceUrl: meeting.url,
+          scrapedAt: new Date().toISOString(),
+        };
+
+        existingTopicsMap.set(topicId, updatedTopic);
+        totalNewOrUpdated++;
       });
-    } catch (meetingErr: any) {
-      console.error(`[RAADSPANEEL SCRAPER] Fout bij verwerken vergadering ${meeting.url}:`, meetingErr.message);
+    } catch (meetingErr: unknown) {
+      const error = meetingErr as Error;
+      console.error(`[RAADSPANEEL SCRAPER] Fout bij verwerken vergadering ${meeting.url}:`, error?.message);
+    }
+  }
+
+  // Purge any older junk entries that match junk titles or invalid patterns
+  for (const [id, topic] of existingTopicsMap.entries()) {
+    const tLower = topic.title.toLowerCase().trim();
+    if (
+      tLower === "welkom" ||
+      tLower === "vergaderingen" ||
+      tLower === "overzichten" ||
+      tLower === "wie is wie" ||
+      tLower === "uw invloed" ||
+      tLower === "veel gestelde vragen" ||
+      tLower === "de griffie" ||
+      tLower === "ibabs vergadermanagement" ||
+      tLower === "bijlagen" ||
+      /^(dinsdag|woensdag|donderdag|vrijdag|zaterdag|zondag|maandag)\s+\d{1,2}\s+[a-z]+\s+\d{4}$/i.test(topic.title)
+    ) {
+      existingTopicsMap.delete(id);
     }
   }
 

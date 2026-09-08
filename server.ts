@@ -1126,10 +1126,17 @@ async function startServer() {
   // Middleware for checking auth & admin
   const requireAuth = (req: any, res: any, next: any) => {
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.toLowerCase().startsWith("bearer ")) {
+    let token: string | undefined;
+
+    if (authHeader && authHeader.toLowerCase().startsWith("bearer ")) {
+      token = authHeader.slice(7).trim();
+    } else if (req.query && typeof req.query.token === "string" && req.query.token.trim()) {
+      token = req.query.token.trim();
+    }
+
+    if (!token) {
       return res.status(401).json({ error: "Niet geautoriseerd: geen sessietoken gevonden. Log alstublieft opnieuw in.", code: "NO_TOKEN" });
     }
-    let token = authHeader.slice(7).trim();
     if ((token.startsWith('"') && token.endsWith('"')) || (token.startsWith("'") && token.endsWith("'"))) {
       token = token.slice(1, -1).trim();
     }

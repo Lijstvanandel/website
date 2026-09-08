@@ -68,6 +68,9 @@ export default function Raadspaneel() {
 
   // Document modal viewer
   const [activeDoc, setActiveDoc] = useState<{ doc: CouncilDocument; topic: CouncilAgendaTopic } | null>(null);
+  const [modalNoteText, setModalNoteText] = useState("");
+  const [submittingModalNote, setSubmittingModalNote] = useState(false);
+  const [showModalNotes, setShowModalNotes] = useState(true);
 
   // Active topic for note dialog or details
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
@@ -215,6 +218,37 @@ export default function Raadspaneel() {
       toast.error(err.message || "Fout bij notitie toevoegen");
     } finally {
       setSubmittingNote(false);
+    }
+  };
+
+  // Add modal note handler
+  const handleAddModalNote = async () => {
+    if (!activeDoc || !modalNoteText.trim() || !token) return;
+    setSubmittingModalNote(true);
+    try {
+      const res = await fetch(`/api/council/topics/${activeDoc.topic.id}/notes`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          note: modalNoteText.trim(),
+          documentId: activeDoc.doc.id,
+          documentTitle: activeDoc.doc.title,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Kon opmerking niet opslaan");
+
+      setTopics((prev) => prev.map((t) => (t.id === activeDoc.topic.id ? data.topic : t)));
+      setActiveDoc((prev) => (prev ? { ...prev, topic: data.topic } : null));
+      setModalNoteText("");
+      toast.success("Opmerking bij dit document geplaatst!");
+    } catch (err: any) {
+      toast.error(err.message || "Fout bij opmerking plaatsen");
+    } finally {
+      setSubmittingModalNote(false);
     }
   };
 
@@ -919,54 +953,218 @@ export default function Raadspaneel() {
         </div>
       </div>
 
-      {/* Document Viewer Modal Dialog */}
-      {activeDoc && (
-        <Dialog open={!!activeDoc} onOpenChange={(open) => !open && setActiveDoc(null)}>
-          <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-6 rounded-2xl bg-card border-border">
-            <DialogHeader className="pb-3 border-b border-border/80">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <DialogTitle className="font-display text-lg text-foreground">
-                    {activeDoc.doc.title}
-                  </DialogTitle>
-                  <DialogDescription className="text-xs text-muted-foreground mt-0.5">
-                    {activeDoc.topic.meetingTitle} • {activeDoc.topic.meetingDateDisplay || activeDoc.topic.meetingDate}
-                  </DialogDescription>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      const isViewed = activeDoc.doc.viewedBy?.some((v) => v.username === user?.username);
-                      handleToggleDocViewed(activeDoc.topic.id, activeDoc.doc.id, !!isViewed);
-                    }}
-                    className="h-8 text-xs"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-emerald-500" />
-                    Gelezen markeren
-                  </Button>
-                  <Button size="sm" variant="secondary" asChild className="h-8 text-xs">
-                    <a href={activeDoc.doc.url} target="_blank" rel="noreferrer">
-                      <ExternalLink className="w-3.5 h-3.5 mr-1" />
-                      Origineel
-                    </a>
-                  </Button>
-                </div>
-              </div>
-            </DialogHeader>
+      {/* Document Viewer Modal Dialog met geïntegreerde Fractie-notities */}
+      {activeDoc && (() => {
+        const currentModalTopic = topics.find((t) => t.id === activeDoc.topic.id) || activeDoc.topic;
+        const currentModalDoc = currentModalTopic.documents.find((d) => d.id === activeDoc.doc.id) || activeDoc.doc;
+        const isDocViewedByMe = currentModalDoc.viewedBy?.some((v) => v.username === user?.username);
+        const docNotes = currentModalTopic.notes?.filter((n) => n.documentId === currentModalDoc.id) || [];
+        const generalNotes = currentModalTopic.notes?.filter((n) => !n.documentId) || [];
+        const proxyUrl = `/api/council/document-proxy?url=${encodeURIComponent(currentModalDoc.url)}${token ? `&token=${encodeURIComponent(token)}` : ""}`;
 
-            {/* Document Iframe Viewer */}
-            <div className="flex-1 min-h-[500px] w-full bg-muted/30 rounded-xl overflow-hidden mt-3 border border-border relative">
-              <iframe
-                src={`/api/council/document-proxy?url=${encodeURIComponent(activeDoc.doc.url)}`}
-                className="w-full h-full min-h-[500px] border-0"
-                title={activeDoc.doc.title}
-              />
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
+        return (
+          <Dialog open={!!activeDoc} onOpenChange={(open) => !open && setActiveDoc(null)}>
+            <DialogContent className="max-w-6xl w-[96vw] h-[92vh] max-h-[95vh] flex flex-col p-4 sm:p-6 rounded-2xl bg-card border-border">
+              <DialogHeader className="pb-3 border-b border-border/80 shrink-0">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="px-2 py-0.5 rounded text-[10.5px] font-bold uppercase tracking-wider bg-accent/20 text-accent border border-accent/40">
+                        {currentModalDoc.fileType}
+                      </span>
+                      <span className="text-xs text-muted-foreground truncate">
+                        {currentModalTopic.meetingTitle} • {currentModalTopic.meetingDateDisplay || currentModalTopic.meetingDate}
+                      </span>
+                    </div>
+                    <DialogTitle className="font-display text-base sm:text-lg text-foreground truncate" title={currentModalDoc.title}>
+                      {currentModalDoc.title}
+                    </DialogTitle>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      variant={isDocViewedByMe ? "default" : "outline"}
+                      onClick={() => handleToggleDocViewed(currentModalTopic.id, currentModalDoc.id, !!isDocViewedByMe)}
+                      className={`h-8 text-xs font-semibold ${
+                        isDocViewedByMe
+                          ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600"
+                          : "border-accent/40 text-accent hover:bg-accent/15"
+                      }`}
+                    >
+                      {isDocViewedByMe ? (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                          Gelezen
+                        </>
+                      ) : (
+                        <>
+                          <Circle className="w-3.5 h-3.5 mr-1 text-muted-foreground" />
+                          Gelezen markeren
+                        </>
+                      )}
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowModalNotes(!showModalNotes)}
+                      className="h-8 text-xs relative"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5 mr-1 text-accent" />
+                      <span>Notities ({docNotes.length})</span>
+                      {docNotes.length > 0 && (
+                        <span className="ml-1.5 px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-accent text-accent-foreground">
+                          {docNotes.length}
+                        </span>
+                      )}
+                    </Button>
+
+                    <Button size="sm" variant="secondary" asChild className="h-8 text-xs">
+                      <a href={currentModalDoc.url} target="_blank" rel="noreferrer">
+                        <ExternalLink className="w-3.5 h-3.5 mr-1" />
+                        Origineel
+                      </a>
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Gelezen door badge indicator */}
+                {currentModalDoc.viewedBy && currentModalDoc.viewedBy.length > 0 && (
+                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground pt-1.5">
+                    <Eye className="w-3 h-3 text-emerald-500" />
+                    <span>Gelezen door fractieleden:</span>
+                    <span className="font-medium text-foreground">
+                      {currentModalDoc.viewedBy.map((v) => v.fullName || v.username).join(", ")}
+                    </span>
+                  </div>
+                )}
+              </DialogHeader>
+
+              {/* Hoofdsectie: Documentviewer + Notities Paneel */}
+              <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-4 mt-3 overflow-hidden">
+                {/* Linkerzijde: Document Iframe */}
+                <div className="flex-1 min-h-[350px] h-full bg-muted/30 rounded-xl overflow-hidden border border-border relative flex flex-col">
+                  <div className="px-3 py-1.5 bg-background/80 border-b border-border text-[11px] text-muted-foreground flex items-center justify-between">
+                    <span className="truncate">Beveiligde viewer • Steenwijkerland Raadsstuk</span>
+                    <a
+                      href={currentModalDoc.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-accent hover:underline inline-flex items-center gap-1 font-semibold shrink-0 ml-2"
+                    >
+                      Direct downloaden <Download className="w-3 h-3" />
+                    </a>
+                  </div>
+                  <iframe
+                    src={proxyUrl}
+                    className="w-full flex-1 border-0 bg-white"
+                    title={currentModalDoc.title}
+                  />
+                </div>
+
+                {/* Rechterzijde: Direct Notities & Opmerkingen achterlaten */}
+                {showModalNotes && (
+                  <div className="w-full lg:w-84 xl:w-96 flex flex-col h-full bg-background rounded-xl border border-border p-3.5 space-y-3 shrink-0 overflow-hidden shadow-2xs">
+                    <div className="flex items-center justify-between border-b border-border pb-2 shrink-0">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                        <MessageSquare className="w-3.5 h-3.5 text-accent" />
+                        <span>Opmerkingen bij dit stuk ({docNotes.length})</span>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground">Fractie intern</span>
+                    </div>
+
+                    {/* Scrollable list of notes */}
+                    <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1">
+                      {docNotes.length === 0 ? (
+                        <div className="p-4 rounded-xl bg-muted/20 border border-dashed border-border text-center text-xs text-muted-foreground">
+                          Nog geen notities bij dit specifieke document. Typ hieronder een opmerking of vraag om met de fractie af te stemmen.
+                        </div>
+                      ) : (
+                        docNotes.map((note) => {
+                          const isAuthor = note.authorUsername === user?.username;
+                          const canDelete = isAuthor || user?.role === "admin";
+                          return (
+                            <div
+                              key={note.id}
+                              className="p-2.5 rounded-xl bg-muted/40 border border-border text-xs space-y-1 relative group"
+                            >
+                              <div className="flex items-center justify-between text-[10.5px] text-muted-foreground">
+                                <span className="font-semibold text-foreground">
+                                  {note.authorName || note.authorUsername}
+                                </span>
+                                <div className="flex items-center gap-1">
+                                  <span>{new Date(note.createdAt).toLocaleDateString("nl-NL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                                  {canDelete && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteNote(currentModalTopic.id, note.id)}
+                                      className="text-muted-foreground hover:text-destructive opacity-80 hover:opacity-100 p-0.5"
+                                      title="Verwijder notitie"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              <p className="text-foreground/90 whitespace-pre-wrap leading-relaxed text-[11.5px]">
+                                {note.note}
+                              </p>
+                            </div>
+                          );
+                        })
+                      )}
+
+                      {/* Algemene notities van het hoofdonderwerp */}
+                      {generalNotes.length > 0 && (
+                        <div className="pt-2 border-t border-border/60">
+                          <span className="text-[10.5px] font-semibold text-muted-foreground block mb-1.5">
+                            Algemene agendapunt-notities ({generalNotes.length})
+                          </span>
+                          <div className="space-y-1.5">
+                            {generalNotes.map((gn) => (
+                              <div key={gn.id} className="p-2 rounded-lg bg-muted/20 border border-border/60 text-[11px]">
+                                <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-0.5">
+                                  <span className="font-medium text-foreground">{gn.authorName}</span>
+                                  <span>{new Date(gn.createdAt).toLocaleDateString("nl-NL", { day: "numeric", month: "short" })}</span>
+                                </div>
+                                <p className="text-foreground/80">{gn.note}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Nieuwe notitie invoer bij dit document */}
+                    <div className="pt-2 border-t border-border shrink-0 space-y-2">
+                      <Textarea
+                        rows={3}
+                        value={modalNoteText}
+                        onChange={(e) => setModalNoteText(e.target.value)}
+                        placeholder="Schrijf een opmerking, vraag of stemadvies bij dit stuk..."
+                        className="text-xs bg-muted/20 resize-none"
+                      />
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-muted-foreground">Koppeling: Dit document</span>
+                        <Button
+                          size="sm"
+                          disabled={submittingModalNote || !modalNoteText.trim()}
+                          onClick={handleAddModalNote}
+                          className="text-xs h-7 px-3 rounded-lg bg-accent text-accent-foreground font-semibold"
+                        >
+                          <Send className="w-3 h-3 mr-1" />
+                          {submittingModalNote ? "Opslaan..." : "Plaats Notitie"}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
     </div>
   );
 }
