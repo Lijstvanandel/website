@@ -35,6 +35,7 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
 
   // Document upload state
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [skippedDuplicatesCount, setSkippedDuplicatesCount] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatusText, setUploadStatusText] = useState("");
@@ -67,14 +68,34 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
     localStorage.getItem("token") ||
     sessionStorage.getItem("token");
 
-  // Add files incrementally without losing previously selected files
+  // Add files incrementally without losing previously selected files, and filter out duplicates
   const addFiles = (newFiles: FileList | File[]) => {
     const fileArr = Array.from(newFiles);
+    let duplicatesDetected = 0;
+
     setSelectedFiles((prev) => {
       const existingNames = new Set(prev.map((f) => f.name.toLowerCase()));
-      const uniqueNew = fileArr.filter((f) => !existingNames.has(f.name.toLowerCase()));
+      const uniqueNew: File[] = [];
+
+      for (const file of fileArr) {
+        const lower = file.name.toLowerCase();
+        if (existingNames.has(lower)) {
+          duplicatesDetected++;
+        } else {
+          existingNames.add(lower);
+          uniqueNew.push(file);
+        }
+      }
+
       return [...prev, ...uniqueNew];
     });
+
+    if (duplicatesDetected > 0) {
+      setSkippedDuplicatesCount((prev) => prev + duplicatesDetected);
+      toast.info(
+        `${duplicatesDetected} dubbele bestand(en) automatisch overgeslagen (worden niet dubbel toegevoegd).`
+      );
+    }
     setUploadResult(null);
   };
 
@@ -364,6 +385,10 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
                     <p className="text-xs text-muted-foreground mt-1">
                       Ondersteunt honderden bestanden tegelijk (wordt automatisch in veilige delen verwerkt)
                     </p>
+                    <p className="text-[11px] text-accent/90 mt-1.5 font-medium flex items-center justify-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-accent" />
+                      Duplicaten worden direct automatisch herkend en uitgefilterd
+                    </p>
                   </div>
                   <input
                     id="bulk-upload-file-input"
@@ -380,14 +405,22 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
                 {selectedFiles.length > 0 && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span className="font-semibold text-foreground">
-                        Geselecteerd voor upload ({selectedFiles.length} bestanden,{" "}
-                        {(
-                          selectedFiles.reduce((acc, f) => acc + f.size, 0) /
-                          (1024 * 1024)
-                        ).toFixed(1)}{" "}
-                        MB)
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-foreground">
+                          Geselecteerd voor upload ({selectedFiles.length} bestanden,{" "}
+                          {(
+                            selectedFiles.reduce((acc, f) => acc + f.size, 0) /
+                            (1024 * 1024)
+                          ).toFixed(1)}{" "}
+                          MB)
+                        </span>
+                        {skippedDuplicatesCount > 0 && (
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" />
+                            {skippedDuplicatesCount} dubbelen overgeslagen
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-2">
                         <Button
                           variant="outline"
@@ -401,7 +434,10 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
                           variant="ghost"
                           size="sm"
                           className="h-6 text-[11px] text-destructive hover:text-destructive"
-                          onClick={() => setSelectedFiles([])}
+                          onClick={() => {
+                            setSelectedFiles([]);
+                            setSkippedDuplicatesCount(0);
+                          }}
                         >
                           Alles wissen
                         </Button>

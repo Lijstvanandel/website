@@ -972,11 +972,18 @@ export function parseMetadataCsv(csvContent: string): RaadsstukMetadata[] {
   const relatiesIdx = header.findIndex((h) => h === "relaties" || h === "relations" || h === "referenties");
   const wijkIdx = header.findIndex((h) => h === "wijk_of_kern" || h === "wijk" || h === "kern");
 
-  const items: RaadsstukMetadata[] = [];
+  const itemMap = new Map<string, RaadsstukMetadata>();
+  let duplicateCount = 0;
+
   for (let i = 1; i < lines.length; i++) {
     const cols = parseLine(lines[i]);
-    const bestandsnaam = cols[bestandsnaamIdx >= 0 ? bestandsnaamIdx : 0] || "";
+    const bestandsnaam = (cols[bestandsnaamIdx >= 0 ? bestandsnaamIdx : 0] || "").trim();
     if (!bestandsnaam) continue;
+
+    const key = bestandsnaam.toLowerCase();
+    if (itemMap.has(key)) {
+      duplicateCount++;
+    }
 
     const item: RaadsstukMetadata = {
       bestandsnaam,
@@ -990,9 +997,10 @@ export function parseMetadataCsv(csvContent: string): RaadsstukMetadata[] {
     if (wijkIdx >= 0 && cols[wijkIdx]) {
       item.wijk_of_kern = cols[wijkIdx];
     }
-    items.push(item);
+    itemMap.set(key, item);
   }
 
+  const items = Array.from(itemMap.values());
   return items;
 }
 
