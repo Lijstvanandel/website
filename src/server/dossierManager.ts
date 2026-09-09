@@ -407,7 +407,7 @@ export function getAllDossiers(customDossiers: Dossier[] = [], deletedSlugs: str
   return dossiers;
 }
 
-// Get subnetwork graph for a specific dossier
+// Get subnetwork graph for a specific dossier - ONLY documents connected to each other
 export function getDossierGraph(dossierTitleOrSlug: string, db?: any): NetworkGraphData {
   const allDossiers = getAllDossiers(db?.customDossiers || [], db?.deletedDossierSlugs || []);
   const matchedDossier = allDossiers.find(
@@ -415,122 +415,129 @@ export function getDossierGraph(dossierTitleOrSlug: string, db?: any): NetworkGr
   );
 
   const fullGraph = getRawNetworkGraph();
-  if (!matchedDossier) {
+  if (!matchedDossier || !matchedDossier.documents || matchedDossier.documents.length === 0) {
     return { nodes: [], edges: [] };
   }
 
-  const dossierFileNames = new Set(matchedDossier.documents.map((d) => d.bestandsnaam));
-  const relevantNodeIds = new Set<string>();
-  const relevantEdges: GraphEdge[] = [];
-  const nodeMap = new Map<string, GraphNode>();
+  const docs = matchedDossier.documents;
+  const docFileNames = new Set(docs.map((d) => d.bestandsnaam));
+  const docEdgesMap = new Map<string, { source: string; target: string; reasons: string[] }>();
 
-  // Add all dossier documents as nodes
-  matchedDossier.documents.forEach((doc) => {
-    relevantNodeIds.add(doc.bestandsnaam);
-    nodeMap.set(doc.bestandsnaam, {
-      id: doc.bestandsnaam,
-      label: doc.titel || doc.bestandsnaam,
+  // Map intermediary targets (legislation, references, relations) to documents in this dossier
+  const targetToDocs = new Map<string, Set<string>>();
+  fullGraph.edges.forEach((e) => {
+    if (docFileNames.has(e.source)) {
+      if (!targetToDocs.has(e.target)) targetToDocs.set(e.target, new Set());
+      targetToDocs.get(e.target)!.add(e.source);
+    }
+  });
+
+  // 1. Connect documents that share references, legislation, or joint schemes
+  for (const [target, docSet] of targetToDocs.entries()) {
+    const matchingDocs = Array.from(docSet);
+    if (matchingDocs.length > 1) {
+      for (let i = 0; i < matchingDocs.length; i++) {
+        for (let j = i + 1; j < matchingDocs.length; j++) {
+          const key = [matchingDocs[i], matchingDocs[j]].sort().join("|||");
+          if (!docEdgesMap.has(key)) {
+            docEdgesMap.set(key, { source: matchingDocs[i], target: matchingDocs[j], reasons: [] });
+          }
+          docEdgesMap.get(key)!.reasons.push(target);
+        }
+      }
+    }
+  }
+
+  // 2. Connect documents via direct mentions in relaties
+  docs.forEach((docA) => {
+    const relStr = Array.isArray(docA.relaties)
+      ? docA.relaties.join(" ")
+      : typeof docA.relaties === "string"
+      ? docA.relaties
+      : "";
+    docs.forEach((docB) => {
+      if (docA.bestandsnaam !== docB.bestandsnaam) {
+        if (relStr && (relStr.includes(docB.bestandsnaam) || (docB.titel && relStr.includes(docB.titel)))) {
+          const key = [docA.bestandsnaam, docB.bestandsnaam].sort().join("|||");
+          if (!docEdgesMap.has(key)) {
+            docEdgesMap.set(key, { source: docA.bestandsnaam, target: docB.bestandsnaam, reasons: [] });
+          }
+          docEdgesMap.get(key)!.reasons.push("Directe verwijzing");
+        }
+      }
+    });
+  });
+
+  // 3. Connect documents that share significant entities/topics
+  docs.forEach((docA, idxA) => {
+    const entA = (Array.isArray(docA.entiteiten) ? docA.entiteiten : [])
+      .map((s) => s.trim().toLowerCase())
+      .filter((s) => s.length > 3);
+    for (let idxB = idxA + 1; idxB < docs.length; idxB++) {
+      const docB = docs[idxB];
+      const entB = (Array.isArray(docB.entiteiten) ? docB.entiteiten : [])
+        .map((s) => s.trim().toLowerCase())
+        .filter((s) => s.length > 3);
+      const common = entA.filter((e) => entB.includes(e));
+      if (common.length > 0) {
+        const key = [docA.bestandsnaam, docB.bestandsnaam].sort().join("|||");
+        if (!docEdgesMap.has(key)) {
+          docEdgesMap.set(key, { source: docA.bestandsnaam, target: docB.bestandsnaam, reasons: [] });
+        }
+        docEdgesMap.get(key)!.reasons.push(`Gedeeld onderwerp: ${common.slice(0, 2).join(", ")}`);
+      }
+    }
+  });
+
+  // 4. If multiple documents exist in this dossier and some have no connections, link sequentially in procedural order
+  if (docs.length > 1) {
+    for (let i = 0; i < docs.length - 1; i++) {
+      const key = [docs[i].bestandsnaam, docs[i + 1].bestandsnaam].sort().join("|||");
+      if (!docEdgesMap.has(key)) {
+        docEdgesMap.set(key, {
+          source: docs[i].bestandsnaam,
+          target: docs[i + 1].bestandsnaam,
+          reasons: ["Procedurele opvolging"],
+        });
+      }
+    }
+  }
+
+  // Format edges with clean descriptive labels
+  const formattedEdges: GraphEdge[] = Array.from(docEdgesMap.values()).map((e) => {
+    const uniqueReasons = Array.from(new Set(e.reasons));
+    const primary = uniqueReasons[0] || "Verbonden document";
+    return {
+      source: e.source,
+      target: e.target,
+      label: uniqueReasons.length > 1 ? `${primary} (+${uniqueReasons.length - 1})` : primary,
+      reasons: uniqueReasons,
+    };
+  });
+
+  // Determine connected document IDs
+  const connectedDocIds = new Set<string>();
+  formattedEdges.forEach((e) => {
+    connectedDocIds.add(e.source);
+    connectedDocIds.add(e.target);
+  });
+
+  // Return ONLY documents that are connected to each other (or single document if dossier only has 1 document)
+  const finalDocNodes: GraphNode[] = docs
+    .filter((d) => connectedDocIds.has(d.bestandsnaam) || docs.length === 1)
+    .map((d) => ({
+      id: d.bestandsnaam,
+      label: d.titel || d.bestandsnaam,
       group: matchedDossier.title,
       type: "Raadsstuk",
-      date: doc.datum || null,
+      date: d.datum || null,
       dossier: matchedDossier.title,
-      bestandsnaam: doc.bestandsnaam,
-    });
-
-    // Add relations as connected nodes and edges
-    if (Array.isArray(doc.relaties)) {
-      doc.relaties.forEach((rel) => {
-        const cleanRel = rel.trim();
-        if (!cleanRel) return;
-        relevantNodeIds.add(cleanRel);
-        if (!nodeMap.has(cleanRel)) {
-          nodeMap.set(cleanRel, {
-            id: cleanRel,
-            label: cleanRel,
-            group: matchedDossier.title,
-            type: "Relatie",
-            date: null,
-            dossier: matchedDossier.title,
-          });
-        }
-        relevantEdges.push({
-          source: doc.bestandsnaam,
-          target: cleanRel,
-          label: "In relatie met",
-        });
-      });
-    }
-
-    // Add entities as connected nodes and edges if not already present
-    if (Array.isArray(doc.entiteiten)) {
-      doc.entiteiten.forEach((ent) => {
-        const cleanEnt = ent.trim();
-        if (!cleanEnt) return;
-        relevantNodeIds.add(cleanEnt);
-        if (!nodeMap.has(cleanEnt)) {
-          nodeMap.set(cleanEnt, {
-            id: cleanEnt,
-            label: cleanEnt,
-            group: matchedDossier.title,
-            type: "Entiteit",
-            date: null,
-            dossier: matchedDossier.title,
-          });
-        }
-        relevantEdges.push({
-          source: doc.bestandsnaam,
-          target: cleanEnt,
-          label: "Betreft",
-        });
-      });
-    }
-  });
-
-  // Also include original nodes and edges from metadata network_graph.json
-  fullGraph.nodes.forEach((node) => {
-    if (dossierFileNames.has(node.id) || node.group === matchedDossier.title) {
-      relevantNodeIds.add(node.id);
-      if (!nodeMap.has(node.id)) {
-        nodeMap.set(node.id, {
-          ...node,
-          dossier: matchedDossier.title,
-        });
-      }
-    }
-  });
-
-  fullGraph.edges.forEach((edge) => {
-    if (dossierFileNames.has(edge.source) || dossierFileNames.has(edge.target)) {
-      relevantEdges.push(edge);
-      relevantNodeIds.add(edge.source);
-      relevantNodeIds.add(edge.target);
-
-      // Ensure nodes exist for edge endpoints
-      if (!nodeMap.has(edge.source)) {
-        const origNode = fullGraph.nodes.find((n) => n.id === edge.source);
-        if (origNode) nodeMap.set(edge.source, origNode);
-      }
-      if (!nodeMap.has(edge.target)) {
-        const origNode = fullGraph.nodes.find((n) => n.id === edge.target);
-        if (origNode) nodeMap.set(edge.target, origNode);
-      }
-    }
-  });
-
-  // Deduplicate edges
-  const edgeKeySet = new Set<string>();
-  const uniqueEdges: GraphEdge[] = [];
-  relevantEdges.forEach((edge) => {
-    const key = `${edge.source}->${edge.target}`;
-    if (!edgeKeySet.has(key)) {
-      edgeKeySet.add(key);
-      uniqueEdges.push(edge);
-    }
-  });
+      bestandsnaam: d.bestandsnaam,
+    }));
 
   return {
-    nodes: Array.from(nodeMap.values()),
-    edges: uniqueEdges,
+    nodes: finalDocNodes,
+    edges: formattedEdges,
   };
 }
 

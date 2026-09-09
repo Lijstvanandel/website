@@ -25,6 +25,7 @@ export interface GraphEdge {
   source: string;
   target: string;
   label?: string;
+  reasons?: string[];
 }
 
 export interface NetworkGraphData {
