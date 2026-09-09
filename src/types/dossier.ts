@@ -69,3 +69,49 @@ export interface Dossier {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface DocumentFavorite {
+  id: string;
+  userId: string;
+  filename: string;
+  title: string;
+  dossier: string;
+  date: string | null;
+  createdAt: string;
+  fileExists?: boolean;
+  fileUrl?: string;
+  fileSize?: number;
+}
+
+export interface SearchHit {
+  type: "dossier" | "document";
+  id: string;
+  title: string;
+  dossierName?: string;
+  dossierSlug?: string;
+  filename?: string;
+  date?: string | null;
+  category?: string;
+  description?: string;
+  matchField: "title" | "filename" | "content" | "description" | "entities" | "relations" | "dossier";
+  snippet?: string;
+  score: number;
+  fileExists?: boolean;
+  fileUrl?: string;
+  isFavorite?: boolean;
+  documentCount?: number;
+  uploadedCount?: number;
+}
+
+export interface CouncilSearchResponse {
+  query: string;
+  exactPhrase: boolean;
+  tookMs: number;
+  totalHits: number;
+  totalDossiers: number;
+  totalDocuments: number;
+  hits: SearchHit[];
+  dossiers: Dossier[];
+  documents: DossierDocument[];
+}
+

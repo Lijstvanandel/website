@@ -36,6 +36,7 @@ const TABLE_DEFINITIONS: { [table: string]: string } = {
   pushLogs: "CREATE TABLE IF NOT EXISTS pushLogs (id TEXT PRIMARY KEY, data TEXT)",
   auditLogs: "CREATE TABLE IF NOT EXISTS auditLogs (id TEXT PRIMARY KEY, data TEXT)",
   councilAgendaTopics: "CREATE TABLE IF NOT EXISTS councilAgendaTopics (id TEXT PRIMARY KEY, data TEXT)",
+  documentFavorites: "CREATE TABLE IF NOT EXISTS documentFavorites (id TEXT PRIMARY KEY, data TEXT)",
   systemSettings: "CREATE TABLE IF NOT EXISTS systemSettings (id TEXT PRIMARY KEY, data TEXT)",
   kv_store: "CREATE TABLE IF NOT EXISTS kv_store (key TEXT PRIMARY KEY, value TEXT)",
 };
@@ -231,6 +232,7 @@ export function getDbFromSqlite(): any {
     "pushLogs",
     "auditLogs",
     "councilAgendaTopics",
+    "documentFavorites",
   ];
 
   for (const table of listTables) {
@@ -332,3 +334,102 @@ export function saveDbToSqlite(data: any) {
 export function getSqliteFilePath(): string {
   return SQLITE_FILE;
 }
+
+/**
+ * Get all favorited documents for a specific user
+ */
+export function getUserDocumentFavorites(userId: string): any[] {
+  if (!sqliteDb || !userId) return [];
+  try {
+    const rows = sqliteDb.exec("SELECT data FROM documentFavorites");
+    if (rows.length > 0 && rows[0].values) {
+      return rows[0].values
+        .map((v: any) => {
+          try {
+            return JSON.parse(v[0]);
+          } catch {
+            return null;
+          }
+        })
+        .filter((item: any) => item && String(item.userId) === String(userId))
+        .sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    }
+  } catch (e) {
+    console.warn("[SQLITE] Could not query documentFavorites:", e);
+  }
+  return [];
+}
+
+/**
+ * Get set of lowercase filenames favorited by a user
+ */
+export function getUserFavoriteFilenames(userId: string): Set<string> {
+  const set = new Set<string>();
+  if (!userId) return set;
+  const list = getUserDocumentFavorites(userId);
+  for (const item of list) {
+    if (item.filename) {
+      set.add(item.filename.toLowerCase().trim());
+    }
+  }
+  return set;
+}
+
+/**
+ * Toggle favorite status of a document for a user
+ */
+export function toggleUserDocumentFavorite(
+  userId: string,
+  doc: {
+    filename: string;
+    title?: string;
+    dossier?: string;
+    date?: string | null;
+    fileExists?: boolean;
+    fileUrl?: string;
+    fileSize?: number;
+  }
+): { isFavorite: boolean; favorites: any[] } {
+  if (!sqliteDb || !userId || !doc?.filename) {
+    return { isFavorite: false, favorites: [] };
+  }
+
+  const cleanFn = doc.filename.trim();
+  const id = `${String(userId)}_${cleanFn.toLowerCase()}`;
+
+  let isFavorite = false;
+  try {
+    const existing = sqliteDb.exec("SELECT id FROM documentFavorites WHERE id = ?", [id]);
+    if (existing.length > 0 && existing[0].values && existing[0].values.length > 0) {
+      // Unfavorite
+      sqliteDb.run("DELETE FROM documentFavorites WHERE id = ?", [id]);
+      isFavorite = false;
+    } else {
+      // Favorite
+      const record = {
+        id,
+        userId: String(userId),
+        filename: cleanFn,
+        title: doc.title || cleanFn.replace(/\.pdf$/i, ""),
+        dossier: doc.dossier || "Overig",
+        date: doc.date || null,
+        fileExists: doc.fileExists ?? true,
+        fileUrl: doc.fileUrl || `/uploads/documents/${encodeURIComponent(cleanFn)}`,
+        fileSize: doc.fileSize,
+        createdAt: new Date().toISOString(),
+      };
+      sqliteDb.run("INSERT OR REPLACE INTO documentFavorites (id, data) VALUES (?, ?)", [
+        id,
+        JSON.stringify(record),
+      ]);
+      isFavorite = true;
+    }
+    schedulePersist();
+  } catch (err) {
+    console.error("[SQLITE] Error toggling document favorite:", err);
+  }
+
+  const favorites = getUserDocumentFavorites(userId);
+  return { isFavorite, favorites };
+}
+

@@ -22,6 +22,7 @@ import {
   FolderEdit,
   Upload,
   MapPin,
+  Star,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -94,9 +95,99 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
     }
   }, [dossierSlug]);
 
+  const [favoritesSet, setFavoritesSet] = useState<Set<string>>(new Set());
+
+  const fetchFavorites = useCallback(async () => {
+    if (!user) return;
+    const token =
+      localStorage.getItem("auth_token") ||
+      sessionStorage.getItem("auth_token") ||
+      localStorage.getItem("token") ||
+      sessionStorage.getItem("token");
+    if (!token) return;
+
+    try {
+      const res = await fetch("/api/council/documents/favorites", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const set = new Set<string>();
+        for (const item of data.favorites || []) {
+          if (item.filename) set.add(item.filename.toLowerCase().trim());
+        }
+        setFavoritesSet(set);
+      }
+    } catch {
+      // Ignore background fetch error
+    }
+  }, [user]);
+
+  const handleToggleFavorite = async (
+    doc: DossierDocument | { bestandsnaam: string; titel: string; dossier?: string; datum?: string | null; fileExists?: boolean; fileUrl?: string; fileSize?: number },
+    e: React.MouseEvent
+  ) => {
+    e.stopPropagation();
+    if (!user) {
+      toast.error("Log in om raadsstukken als favoriet te bewaren.");
+      return;
+    }
+    const token =
+      localStorage.getItem("auth_token") ||
+      sessionStorage.getItem("auth_token") ||
+      localStorage.getItem("token") ||
+      sessionStorage.getItem("token");
+    if (!token) return;
+
+    const fnKey = doc.bestandsnaam.toLowerCase().trim();
+    const willBeFavorite = !favoritesSet.has(fnKey);
+
+    // Optimistic update
+    setFavoritesSet((prev) => {
+      const next = new Set(prev);
+      if (willBeFavorite) next.add(fnKey);
+      else next.delete(fnKey);
+      return next;
+    });
+
+    try {
+      const res = await fetch("/api/council/documents/favorites/toggle", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          filename: doc.bestandsnaam,
+          title: doc.titel,
+          dossier: doc.dossier || dossier?.title,
+          date: (doc as any).datum,
+          fileExists: doc.fileExists,
+          fileUrl: (doc as any).fileUrl,
+          fileSize: (doc as any).fileSize,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        toast.success(
+          data.isFavorite
+            ? `'${doc.titel || doc.bestandsnaam}' toegevoegd aan favorieten carrousel`
+            : `'${doc.titel || doc.bestandsnaam}' verwijderd uit favorieten`
+        );
+      } else {
+        fetchFavorites();
+      }
+    } catch {
+      fetchFavorites();
+      toast.error("Fout bij bijwerken favoriet");
+    }
+  };
+
   useEffect(() => {
     fetchDossierData();
-  }, [fetchDossierData]);
+    fetchFavorites();
+  }, [fetchDossierData, fetchFavorites]);
 
   const openDocumentViewer = (doc: DossierDocument | { bestandsnaam: string; titel: string; dossier?: string }) => {
     // If partial node, match with full dossier documents or build fallback
@@ -623,6 +714,28 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
                       {doc.fileExists ? "Beschikbaar" : "Verwacht"}
                     </span>
                     <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={(e) => handleToggleFavorite(doc, e)}
+                        className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
+                          favoritesSet.has(doc.bestandsnaam.toLowerCase().trim())
+                            ? "bg-amber-500/20 text-amber-500"
+                            : "hover:bg-muted text-muted-foreground hover:text-foreground"
+                        }`}
+                        title={
+                          favoritesSet.has(doc.bestandsnaam.toLowerCase().trim())
+                            ? "Verwijder uit favorieten"
+                            : "Vastpinnen als favoriet"
+                        }
+                      >
+                        <Star
+                          className={`w-3.5 h-3.5 ${
+                            favoritesSet.has(doc.bestandsnaam.toLowerCase().trim())
+                              ? "fill-amber-500 text-amber-500"
+                              : ""
+                          }`}
+                        />
+                      </button>
                       {isCouncilOrAdmin && (
                         <Button
                           variant="ghost"
@@ -887,6 +1000,30 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
 
                       <td className="py-3 px-4 text-right">
                         <div className="inline-flex items-center justify-end gap-1">
+                          {/* Favoriet Ster */}
+                          <button
+                            type="button"
+                            onClick={(e) => handleToggleFavorite(doc, e)}
+                            className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
+                              favoritesSet.has(doc.bestandsnaam.toLowerCase().trim())
+                                ? "bg-amber-500/20 text-amber-500"
+                                : "hover:bg-muted text-muted-foreground hover:text-foreground"
+                            }`}
+                            title={
+                              favoritesSet.has(doc.bestandsnaam.toLowerCase().trim())
+                                ? "Verwijder uit favorieten"
+                                : "Vastpinnen als favoriet"
+                            }
+                          >
+                            <Star
+                              className={`w-3.5 h-3.5 ${
+                                favoritesSet.has(doc.bestandsnaam.toLowerCase().trim())
+                                  ? "fill-amber-500 text-amber-500"
+                                  : ""
+                              }`}
+                            />
+                          </button>
+
                           {/* Bekijken Oogje */}
                           <Button
                             id={`btn-table-eye-${idx}`}

@@ -43,8 +43,12 @@ import {
   getDbFromSqlite,
   saveDbToSqlite,
   persistSqlite,
-  getSqliteFilePath
+  getSqliteFilePath,
+  getUserDocumentFavorites,
+  toggleUserDocumentFavorite
 } from "./src/server/sqliteDatabase.js";
+import { executeCouncilSearch } from "./src/server/councilSearchService.js";
+import { indexUploadedFile } from "./src/server/documentTextExtractor.js";
 import {
   scrapeCouncilAgendas,
   clearUnassignedCouncilTopics,
@@ -8104,6 +8108,14 @@ Sitemap: ${baseUrl}/sitemap.xml
         }
 
         const result = processUploadedCouncilDocuments(files, syncFileAcrossUploadDirs);
+
+        // Background extract and index text for instant full-text search
+        for (const file of files) {
+          indexUploadedFile(file.originalname || file.filename, file.path).catch((idxErr) => {
+            console.warn("[BACKGROUND INDEX ERR]:", idxErr);
+          });
+        }
+
         res.json({
           success: true,
           ...result,
@@ -8184,6 +8196,91 @@ Sitemap: ${baseUrl}/sitemap.xml
       }
     }
   );
+
+  // 8. Get favorited documents for logged-in user
+  app.get("/api/council/documents/favorites", requireAuth, (req: any, res: any) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "Niet ingelogd" });
+      }
+      const favorites = getUserDocumentFavorites(userId);
+      res.json({ success: true, favorites });
+    } catch (err: any) {
+      console.error("[COUNCIL FAVORITES ERROR]:", err);
+      res.status(500).json({ error: "Fout bij ophalen favorieten: " + err.message });
+    }
+  });
+
+  // 9. Toggle document favorite for logged-in user
+  app.post("/api/council/documents/favorites/toggle", requireAuth, (req: any, res: any) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "Niet ingelogd" });
+      }
+      const { filename, title, dossier, date, fileExists, fileUrl, fileSize } = req.body || {};
+      if (!filename || typeof filename !== "string") {
+        return res.status(400).json({ error: "Bestandsnaam ontbreekt" });
+      }
+
+      const outcome = toggleUserDocumentFavorite(userId, {
+        filename,
+        title,
+        dossier,
+        date,
+        fileExists,
+        fileUrl,
+        fileSize,
+      });
+
+      res.json({
+        success: true,
+        isFavorite: outcome.isFavorite,
+        favorites: outcome.favorites,
+        message: outcome.isFavorite
+          ? "Document toegevoegd aan favorieten"
+          : "Document verwijderd uit favorieten",
+      });
+    } catch (err: any) {
+      console.error("[COUNCIL FAVORITES TOGGLE ERROR]:", err);
+      res.status(500).json({ error: "Fout bij wijzigen favoriet: " + err.message });
+    }
+  });
+
+  // 10. High-speed exact full-text Meilisearch across dossiers and documents
+  app.get("/api/council/search", optionalAuth, async (req: any, res: any) => {
+    try {
+      const query = typeof req.query.q === "string" ? req.query.q : "";
+      const exactPhrase = req.query.exact !== "false";
+      const startDate = typeof req.query.startDate === "string" ? req.query.startDate : undefined;
+      const endDate = typeof req.query.endDate === "string" ? req.query.endDate : undefined;
+      const minFiles = req.query.minFiles !== undefined ? parseInt(String(req.query.minFiles), 10) : undefined;
+      const maxFiles = req.query.maxFiles !== undefined ? parseInt(String(req.query.maxFiles), 10) : undefined;
+      const category = typeof req.query.category === "string" ? req.query.category : undefined;
+      const hasFiles = req.query.hasFiles === "true";
+      const type = (req.query.type as "all" | "dossiers" | "documents") || "all";
+      const userId = req.user?.id;
+
+      const result = await executeCouncilSearch({
+        query,
+        exactPhrase,
+        startDate,
+        endDate,
+        minFiles: isNaN(minFiles as any) ? undefined : minFiles,
+        maxFiles: isNaN(maxFiles as any) ? undefined : maxFiles,
+        category,
+        hasFiles,
+        type,
+        userId,
+      });
+
+      res.json(result);
+    } catch (err: any) {
+      console.error("[COUNCIL MEILISEARCH ERROR]:", err);
+      res.status(500).json({ error: "Fout bij doorzoeken dossiers: " + err.message });
+    }
+  });
 
   // Explicit 404 handler for unhandled /api requests so they NEVER fall through to Vite / SPA index.html
   app.use("/api", (req, res) => {

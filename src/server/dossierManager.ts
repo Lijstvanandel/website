@@ -232,13 +232,20 @@ export function checkFileExists(filename: string): { exists: boolean; fileUrl?: 
 // Build complete list of Dossiers from metadata + SQLite custom dossiers
 export function getAllDossiers(customDossiers: Dossier[] = [], deletedSlugs: string[] = []): Dossier[] {
   const metadataList = getRawMetadata();
-  const dossierMap = new Map<string, DossierDocument[]>();
+  const dossierMap = new Map<string, { title: string; docs: DossierDocument[] }>();
 
-  // Group metadata by dossier name
+  // Group metadata by canonical slug so case differences don't create duplicate dossiers
   metadataList.forEach((item, index) => {
     const rawDossier = (item.dossier || "Overig").trim();
-    if (!dossierMap.has(rawDossier)) {
-      dossierMap.set(rawDossier, []);
+    const slug = slugify(rawDossier) || "overig";
+    if (!dossierMap.has(slug)) {
+      dossierMap.set(slug, { title: rawDossier, docs: [] });
+    } else {
+      // Keep nicer title (prefer capital letters / Title Case)
+      const existing = dossierMap.get(slug)!;
+      if (rawDossier !== existing.title && /[A-Z]/.test(rawDossier) && !/[A-Z]/.test(existing.title)) {
+        existing.title = rawDossier;
+      }
     }
 
     const fileCheck = checkFileExists(item.bestandsnaam);
@@ -262,13 +269,16 @@ export function getAllDossiers(customDossiers: Dossier[] = [], deletedSlugs: str
       fileSize: fileCheck.fileSize,
     };
 
-    dossierMap.get(rawDossier)!.push(doc);
+    dossierMap.get(slug)!.docs.push(doc);
   });
 
   let dossiers: Dossier[] = [];
 
   // Transform grouped items into Dossier entities
-  for (const [title, docs] of dossierMap.entries()) {
+  for (const [slug, group] of dossierMap.entries()) {
+    const title = group.title;
+    const docs = group.docs;
+
     // Sort documents chronologically (newest first, null dates at end)
     docs.sort((a, b) => {
       if (!a.datum && !b.datum) return 0;
@@ -282,7 +292,10 @@ export function getAllDossiers(customDossiers: Dossier[] = [], deletedSlugs: str
     const startDate = dates.length > 0 ? dates[0] : null;
     const endDate = dates.length > 0 ? dates[dates.length - 1] : null;
 
-    const preset = DOSSIER_PRESETS[title] || {
+    const presetKey = Object.keys(DOSSIER_PRESETS).find(
+      (k) => k.toLowerCase() === title.toLowerCase() || slugify(k) === slug
+    );
+    const preset = (presetKey ? DOSSIER_PRESETS[presetKey] : undefined) || {
       category: "Gemeenteraad & Beleid",
       thumbnail: DEFAULT_THUMBNAIL,
       description: `Officieel raadsdossier '${title}' met ${docs.length} gerelateerde raadsstukken en besluiten.`,
@@ -297,9 +310,9 @@ export function getAllDossiers(customDossiers: Dossier[] = [], deletedSlugs: str
     const uploadedCount = docs.filter((d) => d.fileExists).length;
 
     dossiers.push({
-      id: slugify(title),
+      id: slug,
       title: title,
-      slug: slugify(title),
+      slug: slug,
       description: preset.description,
       category: preset.category,
       thumbnail: preset.thumbnail,

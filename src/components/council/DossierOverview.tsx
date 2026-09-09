@@ -25,7 +25,11 @@ import { DossierBulkUploadModal } from "./DossierBulkUploadModal";
 import { CreateDossierModal } from "./CreateDossierModal";
 import { EditDossierModal } from "./EditDossierModal";
 import { DossierDetail } from "./DossierDetail";
-import type { Dossier } from "@/types/dossier";
+import { FavoritesCarousel } from "./FavoritesCarousel";
+import { MeiliSearchBar, type SearchFilterState } from "./MeiliSearchBar";
+import { SearchResultsView } from "./SearchResultsView";
+import { DossierDocumentViewer } from "./DossierDocumentViewer";
+import type { Dossier, DossierDocument, SearchHit, CouncilSearchResponse, DocumentFavorite } from "@/types/dossier";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 
@@ -64,6 +68,41 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+
+  // Meilisearch & advanced filter state
+  const [searchFilters, setSearchFilters] = useState<SearchFilterState>({
+    query: "",
+    exactPhrase: true,
+    startDate: "",
+    endDate: "",
+    minFiles: 0,
+    maxFiles: 35,
+    category: "all",
+    hasFilesOnly: false,
+    type: "all",
+  });
+  const [searchResponse, setSearchResponse] = useState<CouncilSearchResponse | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+
+  // Favorites carousel sync state
+  const [favoritesRefresh, setFavoritesRefresh] = useState(0);
+  const [favoritesSet, setFavoritesSet] = useState<Set<string>>(new Set());
+
+  // Document viewer modal
+  const [activeViewerDoc, setActiveViewerDoc] = useState<DossierDocument | null>(null);
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
+
+  // Check if search or custom filters are currently active
+  const isSearchActive = Boolean(
+    searchFilters.query.trim() ||
+      searchFilters.startDate ||
+      searchFilters.endDate ||
+      searchFilters.minFiles > 0 ||
+      searchFilters.maxFiles < 35 ||
+      searchFilters.category !== "all" ||
+      searchFilters.hasFilesOnly ||
+      searchFilters.type !== "all"
+  );
 
   // Selected dossier for drill-down view (from query param or prop)
   const urlDossier = searchParams.get("dossier") || initialDossierSlug || null;
@@ -152,6 +191,208 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
   const handleCategoryChange = (cat: string) => {
     setSelectedCategory(cat);
     setPage(1);
+  };
+
+  // Fetch user favorites list to populate favoritesSet
+  const fetchFavorites = useCallback(async () => {
+    if (!user) {
+      setFavoritesSet(new Set());
+      return;
+    }
+    const token =
+      localStorage.getItem("auth_token") ||
+      sessionStorage.getItem("auth_token") ||
+      localStorage.getItem("token") ||
+      sessionStorage.getItem("token");
+    if (!token) return;
+
+    try {
+      const res = await fetch("/api/council/documents/favorites", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const set = new Set<string>();
+        for (const item of data.favorites || []) {
+          if (item.filename) set.add(item.filename.toLowerCase().trim());
+        }
+        setFavoritesSet(set);
+      }
+    } catch {
+      // Ignore background error
+    }
+  }, [user]);
+
+  useEffect(() => {
+    fetchFavorites();
+  }, [fetchFavorites, favoritesRefresh]);
+
+  // Execute search when searchFilters change
+  useEffect(() => {
+    if (!isSearchActive) {
+      setSearchResponse(null);
+      setSearchLoading(false);
+      return;
+    }
+
+    setSearchLoading(true);
+    const timeoutId = setTimeout(async () => {
+      try {
+        const token =
+          localStorage.getItem("auth_token") ||
+          sessionStorage.getItem("auth_token") ||
+          localStorage.getItem("token") ||
+          sessionStorage.getItem("token");
+
+        const params = new URLSearchParams({
+          q: searchFilters.query,
+          exact: searchFilters.exactPhrase ? "true" : "false",
+          startDate: searchFilters.startDate,
+          endDate: searchFilters.endDate,
+          minFiles: searchFilters.minFiles.toString(),
+          maxFiles: searchFilters.maxFiles.toString(),
+          category: searchFilters.category,
+          hasFiles: searchFilters.hasFilesOnly ? "true" : "false",
+          type: searchFilters.type,
+        });
+
+        const res = await fetch(`/api/council/search?${params.toString()}`, {
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        });
+
+        if (res.ok) {
+          const data: CouncilSearchResponse = await res.json();
+          setSearchResponse(data);
+        } else {
+          setSearchResponse(null);
+        }
+      } catch (err) {
+        console.error("Search error:", err);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 200);
+
+    return () => clearTimeout(timeoutId);
+  }, [
+    isSearchActive,
+    searchFilters.query,
+    searchFilters.exactPhrase,
+    searchFilters.startDate,
+    searchFilters.endDate,
+    searchFilters.minFiles,
+    searchFilters.maxFiles,
+    searchFilters.category,
+    searchFilters.hasFilesOnly,
+    searchFilters.type,
+  ]);
+
+  const handleOpenDocument = (doc: {
+    bestandsnaam: string;
+    titel: string;
+    dossier?: string;
+    datum?: string | null;
+    fileExists?: boolean;
+    fileUrl?: string;
+    fileSize?: number;
+  }) => {
+    setActiveViewerDoc({
+      bestandsnaam: doc.bestandsnaam,
+      titel: doc.titel,
+      dossier: doc.dossier || "Dossier",
+      datum: doc.datum || undefined,
+      fileExists: doc.fileExists ?? true,
+      fileUrl: doc.fileUrl,
+      fileSize: doc.fileSize,
+    });
+    setIsViewerOpen(true);
+  };
+
+  const handleToggleFavorite = async (doc: {
+    bestandsnaam: string;
+    titel: string;
+    dossier?: string;
+    datum?: string | null;
+    fileExists?: boolean;
+    fileUrl?: string;
+    fileSize?: number;
+  }) => {
+    if (!user) {
+      toast.error("Log in om raadsstukken als favoriet te bewaren.");
+      return;
+    }
+    const token =
+      localStorage.getItem("auth_token") ||
+      sessionStorage.getItem("auth_token") ||
+      localStorage.getItem("token") ||
+      sessionStorage.getItem("token");
+    if (!token) return;
+
+    const fnKey = doc.bestandsnaam.toLowerCase().trim();
+    const willBeFav = !favoritesSet.has(fnKey);
+
+    // Optimistic state
+    setFavoritesSet((prev) => {
+      const next = new Set(prev);
+      if (willBeFav) next.add(fnKey);
+      else next.delete(fnKey);
+      return next;
+    });
+
+    try {
+      const res = await fetch("/api/council/documents/favorites/toggle", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          filename: doc.bestandsnaam,
+          title: doc.titel,
+          dossier: doc.dossier,
+          date: doc.datum,
+          fileExists: doc.fileExists,
+          fileUrl: doc.fileUrl,
+          fileSize: doc.fileSize,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setFavoritesRefresh((r) => r + 1);
+        toast.success(
+          data.isFavorite
+            ? `'${doc.titel || doc.bestandsnaam}' toegevoegd aan favorieten carrousel`
+            : `'${doc.titel || doc.bestandsnaam}' verwijderd uit favorieten`
+        );
+      } else {
+        fetchFavorites();
+      }
+    } catch {
+      fetchFavorites();
+      toast.error("Fout bij bijwerken favoriet");
+    }
+  };
+
+  const handleFilterChange = useCallback((updated: Partial<SearchFilterState>) => {
+    setSearchFilters((prev) => ({ ...prev, ...updated }));
+  }, []);
+
+  const handleResetSearch = () => {
+    setSearchFilters({
+      query: "",
+      exactPhrase: true,
+      startDate: "",
+      endDate: "",
+      minFiles: 0,
+      maxFiles: 35,
+      category: "all",
+      hasFilesOnly: false,
+      type: "all",
+    });
+    setSearchResponse(null);
   };
 
   if (activeDossierSlug) {
@@ -250,85 +491,53 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
         </div>
       </div>
 
-      {/* Search and Category Filter Bar */}
-      <div className="bg-card border border-border p-4 rounded-2xl shadow-xs space-y-3">
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-          {/* Search bar */}
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              id="search-dossiers-input"
-              value={search}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              placeholder="Zoek in dossiers op titel, beleidsonderwerp, tags of specifieke raadsstukken..."
-              className="pl-9 h-9 text-xs rounded-xl bg-background"
-            />
-            {search && (
-              <button
-                onClick={() => handleSearchChange("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
-              >
-                Wis
-              </button>
-            )}
-          </div>
+      {/* 1. Favorites Carousel (positioned directly above the search bar as requested) */}
+      <FavoritesCarousel
+        key={`fav-carousel-${favoritesRefresh}`}
+        onOpenDocument={handleOpenDocument}
+        onSelectDossier={handleSelectDossier}
+      />
 
-          {/* Filter options */}
-          <div className="flex items-center gap-2 shrink-0">
-            <label className="flex items-center gap-2 cursor-pointer text-xs text-muted-foreground hover:text-foreground px-3 py-1.5 rounded-xl border border-border bg-background select-none">
-              <input
-                type="checkbox"
-                checked={hasFilesOnly}
-                onChange={(e) => {
-                  setHasFilesOnly(e.target.checked);
-                  setPage(1);
-                }}
-                className="rounded text-accent focus:ring-accent w-3.5 h-3.5"
-              />
-              <span>Alleen met live bestanden</span>
-            </label>
+      {/* 2. MeiliSearch & Advanced Filters Bar */}
+      <MeiliSearchBar
+        filters={searchFilters}
+        categories={categories}
+        onFilterChange={handleFilterChange}
+        onChange={handleFilterChange}
+        onResetFilters={handleResetSearch}
+        onReset={handleResetSearch}
+        onRefreshAll={() => {
+          fetchDossiers();
+          fetchFavorites();
+        }}
+        isSearching={searchLoading}
+        searchStats={
+          searchResponse
+            ? {
+                tookMs: searchResponse.tookMs,
+                totalHits: searchResponse.totalHits,
+                documentsCount: searchResponse.totalDocuments ?? searchResponse.documents?.length ?? 0,
+                dossiersCount: searchResponse.totalDossiers ?? searchResponse.dossiers?.length ?? 0,
+              }
+            : undefined
+        }
+      />
 
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={fetchDossiers}
-              className="h-9 px-2.5 text-xs text-muted-foreground hover:text-foreground"
-              title="Vernieuwen"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-            </Button>
-          </div>
-        </div>
-
-        {/* Category Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
-          <button
-            onClick={() => handleCategoryChange("all")}
-            className={`px-3 py-1 rounded-xl font-medium transition-colors shrink-0 ${
-              selectedCategory === "all"
-                ? "bg-accent text-accent-foreground font-semibold"
-                : "bg-muted/50 text-muted-foreground hover:text-foreground border border-border"
-            }`}
-          >
-            Alle Categorieën ({stats.totalDossiers})
-          </button>
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => handleCategoryChange(cat)}
-              className={`px-3 py-1 rounded-xl font-medium transition-colors shrink-0 ${
-                selectedCategory === cat
-                  ? "bg-accent text-accent-foreground font-semibold"
-                  : "bg-muted/50 text-muted-foreground hover:text-foreground border border-border"
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Dossier Tiles Grid */}
+      {/* 3. Search Results OR Standard Dossier Grid */}
+      {isSearchActive ? (
+        <SearchResultsView
+          response={searchResponse}
+          isLoading={searchLoading}
+          query={searchFilters.query}
+          favoritesSet={favoritesSet}
+          onOpenDocument={handleOpenDocument}
+          onSelectDossier={handleSelectDossier}
+          onToggleFavorite={handleToggleFavorite}
+          onClearSearch={handleResetSearch}
+        />
+      ) : (
+        <>
+          {/* Dossier Tiles Grid */}
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 py-8">
           {[...Array(6)].map((_, i) => (
@@ -561,6 +770,18 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
           </div>
         </div>
       )}
+        </>
+      )}
+
+      {/* Document Viewer Modal */}
+      <DossierDocumentViewer
+        document={activeViewerDoc}
+        isOpen={isViewerOpen}
+        onClose={() => {
+          setIsViewerOpen(false);
+          setActiveViewerDoc(null);
+        }}
+      />
 
       {/* Bulk Upload Modal */}
       <DossierBulkUploadModal
