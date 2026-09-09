@@ -45,7 +45,13 @@ import {
   persistSqlite,
   getSqliteFilePath,
   getUserDocumentFavorites,
-  toggleUserDocumentFavorite
+  toggleUserDocumentFavorite,
+  recordCouncilSearchLog,
+  recordCouncilDocumentView,
+  getCouncilSearchLogs,
+  getCouncilDocumentViews,
+  clearCouncilSearchLogs,
+  clearCouncilDocumentViews
 } from "./src/server/sqliteDatabase.js";
 import { executeCouncilSearch } from "./src/server/councilSearchService.js";
 import { indexUploadedFile } from "./src/server/documentTextExtractor.js";
@@ -7753,6 +7759,25 @@ Sitemap: ${baseUrl}/sitemap.xml
         return true;
       });
 
+      // Sort dossiers based on requested sortBy parameter
+      const sortBy = (req.query.sortBy || "az").toString();
+      filtered.sort((a, b) => {
+        if (sortBy === "za") {
+          return b.title.localeCompare(a.title, "nl");
+        } else if (sortBy === "date_desc") {
+          const dateA = a.lastModified ? new Date(a.lastModified).getTime() : 0;
+          const dateB = b.lastModified ? new Date(b.lastModified).getTime() : 0;
+          return dateB - dateA;
+        } else if (sortBy === "date_asc") {
+          const dateA = a.lastModified ? new Date(a.lastModified).getTime() : 0;
+          const dateB = b.lastModified ? new Date(b.lastModified).getTime() : 0;
+          return dateA - dateB;
+        } else {
+          // Default A - Z
+          return a.title.localeCompare(b.title, "nl");
+        }
+      });
+
       const total = filtered.length;
       const totalPages = Math.ceil(total / limit) || 1;
       const startIndex = (page - 1) * limit;
@@ -8275,10 +8300,221 @@ Sitemap: ${baseUrl}/sitemap.xml
         userId,
       });
 
+      // Audit log: record council search queries
+      const trimmedQ = (query || "").trim();
+      const hasActiveFilters = category || startDate || endDate || (minFiles && minFiles > 0) || (maxFiles && maxFiles < 35);
+      if (trimmedQ.length >= 2 || hasActiveFilters) {
+        try {
+          recordCouncilSearchLog({
+            query: trimmedQ || (category ? `[Categorie: ${category}]` : "[Gefilterd zoeken]"),
+            userId: req.user?.id ? String(req.user.id) : null,
+            userName: req.user?.fullName || req.user?.name || req.user?.username || "Anoniem",
+            userEmail: req.user?.email || null,
+            userRole: req.user?.role || "Gast / Bezoeker",
+            isAnonymous: !req.user,
+            totalHits: result.totalHits,
+            documentsCount: result.totalDocuments,
+            dossiersCount: result.totalDossiers,
+            tookMs: result.tookMs,
+            filters: {
+              exactPhrase,
+              startDate,
+              endDate,
+              category,
+              minFiles,
+              maxFiles,
+              hasFiles,
+              type,
+            },
+            ip: String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || req.ip || "Onbekend").split(",")[0].trim(),
+            userAgent: req.headers["user-agent"] || "",
+          });
+        } catch (logErr) {
+          console.error("Fout bij loggen zoekopdracht:", logErr);
+        }
+      }
+
       res.json(result);
     } catch (err: any) {
       console.error("[COUNCIL MEILISEARCH ERROR]:", err);
       res.status(500).json({ error: "Fout bij doorzoeken dossiers: " + err.message });
+    }
+  });
+
+  // 11. Record council document view (audit log)
+  app.post("/api/council/audit/document-view", optionalAuth, (req: any, res: any) => {
+    try {
+      const { filename, title, dossierName, documentId, source } = req.body || {};
+      if (!filename) {
+        return res.status(400).json({ error: "Bestandsnaam ontbreekt" });
+      }
+      const user = req.user;
+      const entry = recordCouncilDocumentView({
+        filename: String(filename).trim(),
+        title: String(title || filename).trim(),
+        dossierName: dossierName ? String(dossierName).trim() : undefined,
+        documentId: documentId ? String(documentId) : null,
+        userId: user?.id ? String(user.id) : null,
+        userName: user?.fullName || user?.name || user?.username || "Anoniem",
+        userEmail: user?.email || null,
+        userRole: user?.role || "Gast / Bezoeker",
+        isAnonymous: !user,
+        source: source ? String(source) : "viewer",
+        ip: String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || req.ip || "Onbekend").split(",")[0].trim(),
+        userAgent: req.headers["user-agent"] || "",
+      });
+      res.json({ success: true, entry });
+    } catch (err: any) {
+      console.error("[COUNCIL DOCUMENT VIEW LOG ERROR]:", err);
+      res.status(500).json({ error: "Kon documentweergave niet registreren" });
+    }
+  });
+
+  // 12. Council preferences: get and persist personal pagination and sorting preferences
+  app.get("/api/council/preferences", optionalAuth, (req: any, res: any) => {
+    try {
+      const defaultPrefs = { pageSize: 10, sortBy: "relevance" };
+      if (!req.user) {
+        return res.json(defaultPrefs);
+      }
+      const db = getDb();
+      const user = db.users?.find((u: any) => String(u.id) === String(req.user.id));
+      res.json(user?.councilPreferences || defaultPrefs);
+    } catch (err: any) {
+      res.status(500).json({ error: "Kon voorkeuren niet ophalen" });
+    }
+  });
+
+  app.post("/api/council/preferences", optionalAuth, (req: any, res: any) => {
+    try {
+      const { pageSize, sortBy } = req.body || {};
+      const validSizes = [10, 20, 50];
+      const validSorts = ["relevance", "az", "za", "date_desc", "date_asc"];
+
+      const cleanPageSize = validSizes.includes(Number(pageSize)) ? Number(pageSize) : 10;
+      const cleanSortBy = validSorts.includes(String(sortBy)) ? String(sortBy) : "relevance";
+
+      const preferences = { pageSize: cleanPageSize, sortBy: cleanSortBy };
+
+      if (req.user) {
+        const db = getDb();
+        const userIndex = db.users?.findIndex((u: any) => String(u.id) === String(req.user.id));
+        if (userIndex !== undefined && userIndex >= 0) {
+          db.users[userIndex].councilPreferences = preferences;
+          saveDb(db);
+        }
+      }
+
+      res.json({ success: true, preferences });
+    } catch (err: any) {
+      res.status(500).json({ error: "Kon voorkeuren niet opslaan" });
+    }
+  });
+
+  // 13. Admin Audit: Search logs
+  app.get("/api/admin/council-audit/search-logs", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    try {
+      const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit || "500", 10)));
+      const logs = getCouncilSearchLogs(limit);
+      res.json({ logs, total: logs.length });
+    } catch (err: any) {
+      res.status(500).json({ error: "Fout bij ophalen zoeklogs: " + err.message });
+    }
+  });
+
+  app.delete("/api/admin/council-audit/search-logs", requireAuth, requireAdmin, (req: any, res: any) => {
+    try {
+      clearCouncilSearchLogs();
+      res.json({ success: true, message: "Zoeklogs succesvol gewist" });
+    } catch (err: any) {
+      res.status(500).json({ error: "Fout bij wissen zoeklogs: " + err.message });
+    }
+  });
+
+  // 14. Admin Audit: Document view logs
+  app.get("/api/admin/council-audit/document-views", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    try {
+      const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit || "500", 10)));
+      const views = getCouncilDocumentViews(limit);
+      res.json({ views, total: views.length });
+    } catch (err: any) {
+      res.status(500).json({ error: "Fout bij ophalen documentlogs: " + err.message });
+    }
+  });
+
+  app.delete("/api/admin/council-audit/document-views", requireAuth, requireAdmin, (req: any, res: any) => {
+    try {
+      clearCouncilDocumentViews();
+      res.json({ success: true, message: "Documentweergavelogs succesvol gewist" });
+    } catch (err: any) {
+      res.status(500).json({ error: "Fout bij wissen documentlogs: " + err.message });
+    }
+  });
+
+  // 15. Admin Audit: Aggregated statistics
+  app.get("/api/admin/council-audit/stats", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    try {
+      const searchLogs = getCouncilSearchLogs(1000);
+      const docViews = getCouncilDocumentViews(1000);
+
+      const todayStr = new Date().toISOString().slice(0, 10);
+
+      const searchesToday = searchLogs.filter((s) => s.timestamp?.startsWith(todayStr)).length;
+      const viewsToday = docViews.filter((v) => v.timestamp?.startsWith(todayStr)).length;
+
+      const anonSearches = searchLogs.filter((s) => s.isAnonymous).length;
+      const userSearches = searchLogs.length - anonSearches;
+
+      const anonViews = docViews.filter((v) => v.isAnonymous).length;
+      const userViews = docViews.length - anonViews;
+
+      // Count top search terms
+      const queryCountMap: Record<string, number> = {};
+      searchLogs.forEach((s) => {
+        const q = (s.query || "").trim().toLowerCase();
+        if (q && q.length > 1 && !q.startsWith("[")) {
+          queryCountMap[q] = (queryCountMap[q] || 0) + 1;
+        }
+      });
+      const topQueries = Object.entries(queryCountMap)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8)
+        .map(([query, count]) => ({ query, count }));
+
+      // Count top viewed documents
+      const docCountMap: Record<string, { title: string; filename: string; dossierName?: string; count: number }> = {};
+      docViews.forEach((v) => {
+        const key = v.filename || v.title;
+        if (key) {
+          if (!docCountMap[key]) {
+            docCountMap[key] = {
+              title: v.title || v.filename,
+              filename: v.filename,
+              dossierName: v.dossierName,
+              count: 0,
+            };
+          }
+          docCountMap[key].count += 1;
+        }
+      });
+      const topDocuments = Object.values(docCountMap)
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 8);
+
+      res.json({
+        totalSearches: searchLogs.length,
+        searchesToday,
+        anonSearches,
+        userSearches,
+        totalViews: docViews.length,
+        viewsToday,
+        anonViews,
+        userViews,
+        topQueries,
+        topDocuments,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "Fout bij berekenen audit statistieken: " + err.message });
     }
   });
 

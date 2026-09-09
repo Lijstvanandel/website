@@ -32,6 +32,11 @@ import { DossierDocumentViewer } from "./DossierDocumentViewer";
 import type { Dossier, DossierDocument, SearchHit, CouncilSearchResponse, DocumentFavorite } from "@/types/dossier";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
+import {
+  useCouncilPreferences,
+  type SortByOption,
+  type PageSizeOption,
+} from "@/lib/councilPreferences";
 
 interface DossierOverviewProps {
   initialDossierSlug?: string | null;
@@ -48,6 +53,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
   );
 
   const [searchParams, setSearchParams] = useSearchParams();
+  const { pageSize, sortBy, setPageSize, setSortBy } = useCouncilPreferences();
 
   const [dossiers, setDossiers] = useState<Dossier[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -146,7 +152,8 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
       const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
       const params = new URLSearchParams({
         page: page.toString(),
-        limit: "12",
+        limit: pageSize.toString(),
+        sortBy: sortBy,
         search,
         category: selectedCategory === "all" ? "" : selectedCategory,
         hasFiles: hasFilesOnly ? "true" : "false",
@@ -176,7 +183,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [page, search, selectedCategory, hasFilesOnly]);
+  }, [page, pageSize, sortBy, search, selectedCategory, hasFilesOnly]);
 
   useEffect(() => {
     fetchDossiers();
@@ -537,6 +544,61 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
         />
       ) : (
         <>
+          {/* Controls Bar for Dossier Grid: Counts, Sorting & Page Size */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-2xl bg-card border border-border/80 shadow-xs text-xs mb-4">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-semibold text-foreground">
+                {totalCount} dossiers
+              </span>
+              <span className="text-muted-foreground/60">•</span>
+              <span className="text-muted-foreground">
+                Toont {(page - 1) * pageSize + 1} t/m {Math.min(page * pageSize, totalCount)}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2.5 flex-wrap self-end sm:self-auto">
+              <div className="flex items-center gap-1.5">
+                <span className="text-muted-foreground text-[11px]">Sorteer:</span>
+                <select
+                  id="select-dossiers-sort"
+                  value={sortBy}
+                  onChange={(e) => {
+                    setSortBy(e.target.value as SortByOption);
+                    setPage(1);
+                  }}
+                  className="h-8 px-2.5 rounded-xl bg-background border border-border text-foreground text-xs font-medium focus:outline-hidden focus:ring-1 focus:ring-accent cursor-pointer"
+                >
+                  <option value="az">Titel (A tot Z)</option>
+                  <option value="za">Titel (Z tot A)</option>
+                  <option value="date_desc">Datum (Nieuw naar oud)</option>
+                  <option value="date_asc">Datum (Oud naar nieuw)</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-1 bg-muted/50 p-0.5 rounded-xl border border-border/60">
+                <span className="text-[11px] text-muted-foreground pl-2 pr-1">Per pagina:</span>
+                {([10, 20, 50] as PageSizeOption[]).map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    onClick={() => {
+                      setPageSize(size);
+                      setPage(1);
+                    }}
+                    className={`h-7 px-2.5 rounded-lg text-xs font-bold transition-all ${
+                      pageSize === size
+                        ? "bg-accent text-accent-foreground shadow-xs"
+                        : "text-muted-foreground hover:text-foreground hover:bg-background/80"
+                    }`}
+                    title={`Toon ${size} dossiers per pagina`}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
           {/* Dossier Tiles Grid */}
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 py-8">
@@ -709,7 +771,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
       {totalPages > 1 && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-border text-xs text-muted-foreground">
           <div>
-            Toont {(page - 1) * 12 + 1} t/m {Math.min(page * 12, totalCount)} van de {totalCount} dossiers
+            Toont {(page - 1) * pageSize + 1} t/m {Math.min(page * pageSize, totalCount)} van de {totalCount} dossiers
           </div>
 
           <div className="flex items-center gap-1.5">

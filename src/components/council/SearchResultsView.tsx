@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   FileText,
   Folder,
@@ -8,11 +8,21 @@ import {
   Layers,
   FileSearch,
   RotateCcw,
+  ChevronLeft,
+  ChevronRight,
+  ArrowUpDown,
+  Check,
+  Bookmark,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { SearchHit, DossierDocument, CouncilSearchResponse } from "@/types/dossier";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
+import {
+  useCouncilPreferences,
+  SortByOption,
+  PageSizeOption,
+} from "@/lib/councilPreferences";
 
 export interface SearchResultsViewProps {
   response?: CouncilSearchResponse | null;
@@ -27,6 +37,41 @@ export interface SearchResultsViewProps {
   onFavoriteToggled?: () => void;
   onClearSearch?: () => void;
   favoritesSet: Set<string>;
+}
+
+/**
+ * Robust date parser for Dutch/ISO council dates
+ */
+function parseCouncilDate(dateStr?: string | null): number {
+  if (!dateStr) return 0;
+  const trimmed = String(dateStr).trim();
+  if (!trimmed) return 0;
+
+  // ISO: YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+    const t = new Date(trimmed).getTime();
+    if (!isNaN(t)) return t;
+  }
+
+  // DD-MM-YYYY or DD/MM/YYYY
+  const ddmmyyyy = trimmed.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+  if (ddmmyyyy) {
+    const d = new Date(
+      parseInt(ddmmyyyy[3], 10),
+      parseInt(ddmmyyyy[2], 10) - 1,
+      parseInt(ddmmyyyy[1], 10)
+    ).getTime();
+    if (!isNaN(d)) return d;
+  }
+
+  // Year only: 2024
+  const yearOnly = trimmed.match(/\b(20\d\d|19\d\d)\b/);
+  if (yearOnly) {
+    return new Date(parseInt(yearOnly[1], 10), 0, 1).getTime();
+  }
+
+  const parsed = Date.parse(trimmed);
+  return isNaN(parsed) ? 0 : parsed;
 }
 
 export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
@@ -44,10 +89,97 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
   favoritesSet,
 }) => {
   const { user } = useAuth();
+  const { pageSize, sortBy, setPageSize, setSortBy } = useCouncilPreferences();
+
+  const [page, setPage] = useState(1);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const hits = response?.hits || rawHits || [];
-  const totalHits = response?.totalHits ?? rawTotalHits ?? hits.length;
   const tookMs = response?.tookMs ?? rawTookMs;
+
+  // Reset to page 1 whenever query, hits array, or pageSize changes
+  useEffect(() => {
+    setPage(1);
+  }, [query, hits.length, pageSize, sortBy]);
+
+  // Sort hits based on user selection
+  const sortedHits = useMemo(() => {
+    const list = [...hits];
+
+    switch (sortBy) {
+      case "az":
+        return list.sort((a, b) => {
+          const titleA = (a.title || a.filename || "").toLowerCase();
+          const titleB = (b.title || b.filename || "").toLowerCase();
+          return titleA.localeCompare(titleB, "nl");
+        });
+
+      case "za":
+        return list.sort((a, b) => {
+          const titleA = (a.title || a.filename || "").toLowerCase();
+          const titleB = (b.title || b.filename || "").toLowerCase();
+          return titleB.localeCompare(titleA, "nl");
+        });
+
+      case "date_desc":
+        return list.sort((a, b) => {
+          const dateA = parseCouncilDate(a.date);
+          const dateB = parseCouncilDate(b.date);
+          if (dateA === 0 && dateB > 0) return 1;
+          if (dateB === 0 && dateA > 0) return -1;
+          if (dateB !== dateA) return dateB - dateA;
+          return b.score - a.score;
+        });
+
+      case "date_asc":
+        return list.sort((a, b) => {
+          const dateA = parseCouncilDate(a.date);
+          const dateB = parseCouncilDate(b.date);
+          if (dateA === 0 && dateB > 0) return 1;
+          if (dateB === 0 && dateA > 0) return -1;
+          if (dateA !== dateB) return dateA - dateB;
+          return b.score - a.score;
+        });
+
+      case "relevance":
+      default:
+        // Default ranking: highest score first
+        return list.sort((a, b) => b.score - a.score);
+    }
+  }, [hits, sortBy]);
+
+  // Pagination calculations
+  const totalItems = sortedHits.length;
+  const totalPages = Math.ceil(totalItems / pageSize) || 1;
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const startIndex = (safePage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalItems);
+  const currentHits = sortedHits.slice(startIndex, endIndex);
+
+  const handlePageChange = (newPage: number) => {
+    const targetPage = Math.min(totalPages, Math.max(1, newPage));
+    setPage(targetPage);
+    if (containerRef.current) {
+      containerRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
+  const handlePageSizeChange = (newSize: PageSizeOption) => {
+    setPageSize(newSize);
+    toast.success(`Persoonlijke voorkeur opgeslagen: ${newSize} per pagina`);
+  };
+
+  const handleSortChange = (newSort: SortByOption) => {
+    setSortBy(newSort);
+    const labels: Record<SortByOption, string> = {
+      relevance: "Relevantie",
+      az: "A tot Z",
+      za: "Z tot A",
+      date_desc: "Datum: Nieuw naar oud",
+      date_asc: "Datum: Oud naar nieuw",
+    };
+    toast.success(`Sortering gewijzigd naar: ${labels[newSort]}`);
+  };
 
   const handleDocumentClick = (hit: SearchHit) => {
     if (!hit.filename) return;
@@ -206,21 +338,72 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
     );
   }
 
-  // Results list
   return (
-    <div id="council-search-results-list" className="space-y-3">
-      {/* Results Subheader */}
-      <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
-        <span>
-          <strong className="text-foreground">{totalHits}</strong> resultaten gevonden
-          {tookMs !== undefined && <span> in {tookMs}ms</span>}
-        </span>
-        <span className="text-[11px]">Gerangschikt op relevantie</span>
+    <div ref={containerRef} id="council-search-results-list" className="space-y-3">
+      {/* Controls Bar: Results Count, Sorting & Items Per Page Selection */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-2xl bg-card border border-border/80 shadow-xs text-xs">
+        {/* Left: Counts and timing */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-semibold text-foreground">
+            {totalItems} resultaten gevonden
+          </span>
+          {tookMs !== undefined && (
+            <span className="text-[11px] text-muted-foreground">({tookMs}ms)</span>
+          )}
+          <span className="text-muted-foreground/60">•</span>
+          <span className="text-muted-foreground">
+            Toont {startIndex + 1} t/m {endIndex}
+          </span>
+        </div>
+
+        {/* Right: Sortering en Paginagrootte selector */}
+        <div className="flex items-center gap-2.5 flex-wrap self-end sm:self-auto">
+          {/* Sortering */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground text-[11px] flex items-center gap-1">
+              <ArrowUpDown className="w-3 h-3 text-accent" />
+              Sorteer:
+            </span>
+            <select
+              id="select-council-search-sort"
+              value={sortBy}
+              onChange={(e) => handleSortChange(e.target.value as SortByOption)}
+              className="h-8 px-2.5 rounded-xl bg-background border border-border text-foreground text-xs font-medium focus:outline-hidden focus:ring-1 focus:ring-accent cursor-pointer"
+            >
+              <option value="relevance">Relevantie</option>
+              <option value="az">Titel (A tot Z)</option>
+              <option value="za">Titel (Z tot A)</option>
+              <option value="date_desc">Datum (Nieuw naar oud)</option>
+              <option value="date_asc">Datum (Oud naar nieuw)</option>
+            </select>
+          </div>
+
+          {/* Paginagrootte (10, 20, 50) */}
+          <div className="flex items-center gap-1 bg-muted/50 p-0.5 rounded-xl border border-border/60">
+            <span className="text-[11px] text-muted-foreground pl-2 pr-1">Per pagina:</span>
+            {([10, 20, 50] as PageSizeOption[]).map((size) => (
+              <button
+                key={size}
+                id={`btn-pagesize-${size}`}
+                type="button"
+                onClick={() => handlePageSizeChange(size)}
+                className={`h-7 px-2.5 rounded-lg text-xs font-bold transition-all ${
+                  pageSize === size
+                    ? "bg-accent text-accent-foreground shadow-xs"
+                    : "text-muted-foreground hover:text-foreground hover:bg-background/80"
+                }`}
+                title={`Toon ${size} resultaten per pagina (opgeslagen in persoonlijke instellingen)`}
+              >
+                {size}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Results List */}
       <div className="grid grid-cols-1 gap-2.5">
-        {hits.map((hit, index) => {
+        {currentHits.map((hit, index) => {
           const isDoc = hit.type === "document";
           const matchMeta = getMatchLabel(hit.matchField);
           const isFav = isDoc && hit.filename ? favoritesSet.has(hit.filename.toLowerCase().trim()) : false;
@@ -347,6 +530,77 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
           );
         })}
       </div>
+
+      {/* Pagination Footer */}
+      {totalPages > 1 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-border text-xs text-muted-foreground">
+          <div>
+            Pagina <strong className="text-foreground">{safePage}</strong> van{" "}
+            <strong className="text-foreground">{totalPages}</strong> (
+            {totalItems} items in totaal)
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <Button
+              id="btn-search-pagination-prev"
+              variant="outline"
+              size="sm"
+              disabled={safePage <= 1}
+              onClick={() => handlePageChange(safePage - 1)}
+              className="h-8 px-2.5 text-xs rounded-xl"
+            >
+              <ChevronLeft className="w-3.5 h-3.5 mr-1" />
+              Vorige
+            </Button>
+
+            {/* Windowed Page Number Buttons */}
+            <div className="flex items-center gap-1">
+              {[...Array(totalPages)].map((_, i) => {
+                const pNum = i + 1;
+                if (
+                  pNum === 1 ||
+                  pNum === totalPages ||
+                  (pNum >= safePage - 2 && pNum <= safePage + 2)
+                ) {
+                  return (
+                    <button
+                      key={pNum}
+                      onClick={() => handlePageChange(pNum)}
+                      className={`h-8 w-8 rounded-xl text-xs font-semibold transition-colors ${
+                        safePage === pNum
+                          ? "bg-accent text-accent-foreground shadow-xs"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                      }`}
+                    >
+                      {pNum}
+                    </button>
+                  );
+                }
+                if (pNum === safePage - 3 || pNum === safePage + 3) {
+                  return (
+                    <span key={pNum} className="px-1 text-muted-foreground">
+                      ...
+                    </span>
+                  );
+                }
+                return null;
+              })}
+            </div>
+
+            <Button
+              id="btn-search-pagination-next"
+              variant="outline"
+              size="sm"
+              disabled={safePage >= totalPages}
+              onClick={() => handlePageChange(safePage + 1)}
+              className="h-8 px-2.5 text-xs rounded-xl"
+            >
+              Volgende
+              <ChevronRight className="w-3.5 h-3.5 ml-1" />
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

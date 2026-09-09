@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   X,
   FileText,
@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import type { DossierDocument } from "@/types/dossier";
+import { logDocumentView } from "@/lib/councilAuditLogger";
 
 interface DossierDocumentViewerProps {
   document: DossierDocument | null;
@@ -35,6 +36,18 @@ export const DossierDocumentViewer: React.FC<DossierDocumentViewerProps> = ({
   const { token: authContextToken } = useAuth();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && document?.bestandsnaam) {
+      logDocumentView({
+        filename: document.bestandsnaam,
+        title: document.titel || document.bestandsnaam,
+        dossierName: document.dossier,
+        documentId: document.id,
+        source: "modal_viewer",
+      });
+    }
+  }, [isOpen, document?.bestandsnaam, document?.id]);
 
   if (!isOpen || !document) return null;
 

@@ -50,6 +50,7 @@ import {
   UserX,
   TrendingDown,
   ThumbsUp,
+  FileSearch,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VideoPlayer } from "@/components/VideoPlayer";
@@ -65,6 +66,7 @@ import { StemgedragManager } from "@/components/StemgedragManager";
 import { SystemManager } from "@/components/SystemManager";
 import NewsletterManager from "@/components/admin/NewsletterManager";
 import { StellingenManager } from "@/components/admin/StellingenManager";
+import { CouncilAuditManager } from "@/components/admin/CouncilAuditManager";
 import { WIJKEN_EN_KERNEN } from "@/data/wijken";
 import { NewsItem } from "@/data/news";
 import { hoofdstukken } from "@/data/partijprogramma";
@@ -1150,6 +1152,9 @@ export default function AdminDashboard() {
           </TabsTrigger>
           <TabsTrigger value="newsletter" className="gap-2 text-xs text-accent">
             <Mail className="w-4 h-4 text-accent" /> Nieuwsbrief & Mailings
+          </TabsTrigger>
+          <TabsTrigger value="council-audit" className="gap-2 text-xs text-accent">
+            <FileSearch className="w-4 h-4 text-accent" /> Raadsarchief Auditlogs
           </TabsTrigger>
           <TabsTrigger value="system" className="gap-2 text-xs text-accent">
             <Server className="w-4 h-4" /> Systeem & Updates
@@ -3613,6 +3618,11 @@ export default function AdminDashboard() {
         {/* NIEUWSBRIEF & MAILINGS */}
         <TabsContent value="newsletter">
           <NewsletterManager token={token || effectiveToken} />
+        </TabsContent>
+
+        {/* RAADSARCHIEF AUDIT & GEBRUIKSLOGS */}
+        <TabsContent value="council-audit">
+          <CouncilAuditManager />
         </TabsContent>
 
         {/* SYSTEEM, CACHE & GITHUB UPDATES */}

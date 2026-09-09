@@ -37,6 +37,8 @@ const TABLE_DEFINITIONS: { [table: string]: string } = {
   auditLogs: "CREATE TABLE IF NOT EXISTS auditLogs (id TEXT PRIMARY KEY, data TEXT)",
   councilAgendaTopics: "CREATE TABLE IF NOT EXISTS councilAgendaTopics (id TEXT PRIMARY KEY, data TEXT)",
   documentFavorites: "CREATE TABLE IF NOT EXISTS documentFavorites (id TEXT PRIMARY KEY, data TEXT)",
+  councilSearchLogs: "CREATE TABLE IF NOT EXISTS councilSearchLogs (id TEXT PRIMARY KEY, data TEXT)",
+  councilDocumentViews: "CREATE TABLE IF NOT EXISTS councilDocumentViews (id TEXT PRIMARY KEY, data TEXT)",
   systemSettings: "CREATE TABLE IF NOT EXISTS systemSettings (id TEXT PRIMARY KEY, data TEXT)",
   kv_store: "CREATE TABLE IF NOT EXISTS kv_store (key TEXT PRIMARY KEY, value TEXT)",
 };
@@ -233,6 +235,8 @@ export function getDbFromSqlite(): any {
     "auditLogs",
     "councilAgendaTopics",
     "documentFavorites",
+    "councilSearchLogs",
+    "councilDocumentViews",
   ];
 
   for (const table of listTables) {
@@ -432,4 +436,170 @@ export function toggleUserDocumentFavorite(
   const favorites = getUserDocumentFavorites(userId);
   return { isFavorite, favorites };
 }
+
+// ---------------------------------------------------------
+// Council Search & Document Views Audit Logging
+// ---------------------------------------------------------
+
+export interface CouncilSearchLogEntry {
+  id: string;
+  query: string;
+  userId?: string | null;
+  userName?: string;
+  userEmail?: string | null;
+  userRole?: string;
+  isAnonymous: boolean;
+  totalHits: number;
+  documentsCount: number;
+  dossiersCount: number;
+  tookMs?: number;
+  filters?: any;
+  ip?: string;
+  userAgent?: string;
+  timestamp: string;
+}
+
+export interface CouncilDocumentViewEntry {
+  id: string;
+  filename: string;
+  title: string;
+  dossierName?: string;
+  documentId?: string | null;
+  userId?: string | null;
+  userName?: string;
+  userEmail?: string | null;
+  userRole?: string;
+  isAnonymous: boolean;
+  source?: string;
+  ip?: string;
+  userAgent?: string;
+  timestamp: string;
+}
+
+/**
+ * Record a council search event to SQLite audit logs
+ */
+export function recordCouncilSearchLog(entry: Omit<CouncilSearchLogEntry, "id" | "timestamp">): CouncilSearchLogEntry | null {
+  if (!sqliteDb) return null;
+  try {
+    const id = `srch_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const logItem: CouncilSearchLogEntry = {
+      id,
+      ...entry,
+      timestamp: new Date().toISOString(),
+    };
+    sqliteDb.run("INSERT INTO councilSearchLogs (id, data) VALUES (?, ?)", [
+      id,
+      JSON.stringify(logItem),
+    ]);
+    schedulePersist();
+    return logItem;
+  } catch (err) {
+    console.error("[SQLITE] Error recording council search log:", err);
+    return null;
+  }
+}
+
+/**
+ * Record a council document view/open event to SQLite audit logs
+ */
+export function recordCouncilDocumentView(entry: Omit<CouncilDocumentViewEntry, "id" | "timestamp">): CouncilDocumentViewEntry | null {
+  if (!sqliteDb) return null;
+  try {
+    const id = `view_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const logItem: CouncilDocumentViewEntry = {
+      id,
+      ...entry,
+      timestamp: new Date().toISOString(),
+    };
+    sqliteDb.run("INSERT INTO councilDocumentViews (id, data) VALUES (?, ?)", [
+      id,
+      JSON.stringify(logItem),
+    ]);
+    schedulePersist();
+    return logItem;
+  } catch (err) {
+    console.error("[SQLITE] Error recording council document view log:", err);
+    return null;
+  }
+}
+
+/**
+ * Retrieve council search logs with limit
+ */
+export function getCouncilSearchLogs(limit = 500): CouncilSearchLogEntry[] {
+  if (!sqliteDb) return [];
+  try {
+    const rows = sqliteDb.exec(`SELECT data FROM councilSearchLogs ORDER BY id DESC LIMIT ${limit}`);
+    if (rows.length > 0 && rows[0].values) {
+      return rows[0].values
+        .map((v: any) => {
+          try {
+            return JSON.parse(v[0]);
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean);
+    }
+  } catch (err) {
+    console.error("[SQLITE] Error retrieving council search logs:", err);
+  }
+  return [];
+}
+
+/**
+ * Retrieve council document view logs with limit
+ */
+export function getCouncilDocumentViews(limit = 500): CouncilDocumentViewEntry[] {
+  if (!sqliteDb) return [];
+  try {
+    const rows = sqliteDb.exec(`SELECT data FROM councilDocumentViews ORDER BY id DESC LIMIT ${limit}`);
+    if (rows.length > 0 && rows[0].values) {
+      return rows[0].values
+        .map((v: any) => {
+          try {
+            return JSON.parse(v[0]);
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean);
+    }
+  } catch (err) {
+    console.error("[SQLITE] Error retrieving council document views:", err);
+  }
+  return [];
+}
+
+/**
+ * Clear all council search logs
+ */
+export function clearCouncilSearchLogs(): boolean {
+  if (!sqliteDb) return false;
+  try {
+    sqliteDb.run("DELETE FROM councilSearchLogs");
+    schedulePersist();
+    return true;
+  } catch (err) {
+    console.error("[SQLITE] Error clearing council search logs:", err);
+    return false;
+  }
+}
+
+/**
+ * Clear all council document views
+ */
+export function clearCouncilDocumentViews(): boolean {
+  if (!sqliteDb) return false;
+  try {
+    sqliteDb.run("DELETE FROM councilDocumentViews");
+    schedulePersist();
+    return true;
+  } catch (err) {
+    console.error("[SQLITE] Error clearing council document views:", err);
+    return false;
+  }
+}
+
 
