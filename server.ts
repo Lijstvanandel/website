@@ -1271,6 +1271,28 @@ async function startServer() {
     next();
   };
 
+  const optionalAuth = (req: any, res: any, next: any) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      req.user = null;
+      return next();
+    }
+    const token = authHeader.split(" ")[1];
+    if (!token) {
+      req.user = null;
+      return next();
+    }
+    try {
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      const db = getDb();
+      const user = (db.users || []).find((u: any) => u.id === decoded.id || u.username === decoded.username);
+      req.user = user || decoded;
+    } catch (_err) {
+      req.user = null;
+    }
+    next();
+  };
+
   // Rate Limiting: Max 3 belafspraken per IP per uur ter voorkoming van spam / abuse
   const belafspraakLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 uur
@@ -3748,10 +3770,23 @@ async function startServer() {
   app.get("/api/news", (req, res) => {
     const db = getDb();
     let newsList = db.news || [];
-    const { wijkSlug, category } = req.query;
+    const { wijkSlug, category, includeAll } = req.query;
+
     if (wijkSlug) {
-      newsList = newsList.filter((n: any) => n.wijkSlug === wijkSlug);
+      const ws = String(wijkSlug).toLowerCase().trim();
+      newsList = newsList.filter(
+        (n: any) =>
+          (n.wijkSlug && n.wijkSlug.toLowerCase() === ws) ||
+          (n.wijkNaam && n.wijkNaam.toLowerCase() === ws)
+      );
+    } else if (includeAll !== "true") {
+      // If no specific wijk is requested and not admin includeAll: only show general news
+      // News articles coupled to a specific wijk/kern are shown exclusively at that wijk/kern
+      newsList = newsList.filter(
+        (n: any) => !n.wijkSlug || n.wijkSlug === "" || n.wijkSlug === "algemeen" || n.wijkSlug === "geen"
+      );
     }
+
     if (category) {
       newsList = newsList.filter((n: any) => n.category?.toLowerCase() === String(category).toLowerCase());
     }
@@ -7573,7 +7608,7 @@ Sitemap: ${baseUrl}/sitemap.xml
   });
 
   // 7. Proxy document to avoid iframe/CORS issues and directly deliver pure PDF
-  app.get("/api/council/document-proxy", requireAuth, async (req: any, res: any) => {
+  app.get("/api/council/document-proxy", optionalAuth, async (req: any, res: any) => {
     const rawDocUrl = req.query.url;
     if (!rawDocUrl || typeof rawDocUrl !== "string") {
       return res.status(400).json({ error: "Geen geldige document URL opgegeven" });
@@ -7658,13 +7693,14 @@ Sitemap: ${baseUrl}/sitemap.xml
   // ==========================================
 
   // 1. Get all dossiers (with search, category filter, pagination and statistics)
-  app.get("/api/council/dossiers", requireAuth, (req: any, res: any) => {
+  app.get("/api/council/dossiers", optionalAuth, (req: any, res: any) => {
     try {
       const db = getDb();
       const allDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || []);
 
       const search = (req.query.search || "").toString().toLowerCase().trim();
       const category = (req.query.category || "").toString().trim();
+      const wijkSlug = (req.query.wijkSlug || "").toString().toLowerCase().trim();
       const hasFilesOnly = req.query.hasFiles === "true";
       const page = Math.max(1, parseInt(req.query.page || "1", 10));
       const limit = Math.max(1, parseInt(req.query.limit || "12", 10));
@@ -7682,6 +7718,14 @@ Sitemap: ${baseUrl}/sitemap.xml
 
       // Filter
       const filtered = allDossiers.filter((d) => {
+        if (wijkSlug) {
+          const matchWijk =
+            (d.wijkSlug && d.wijkSlug.toLowerCase() === wijkSlug) ||
+            (d.wijkNaam && d.wijkNaam.toLowerCase() === wijkSlug);
+          if (!matchWijk) {
+            return false;
+          }
+        }
         if (category && d.category.toLowerCase() !== category.toLowerCase()) {
           return false;
         }
@@ -7692,11 +7736,12 @@ Sitemap: ${baseUrl}/sitemap.xml
           const matchTitle = d.title.toLowerCase().includes(search);
           const matchDesc = d.description.toLowerCase().includes(search);
           const matchCat = d.category.toLowerCase().includes(search);
+          const matchWijk = (d.wijkNaam || "").toLowerCase().includes(search);
           const matchTag = d.tags.some((t) => t.toLowerCase().includes(search));
           const matchDoc = d.documents.some((doc) =>
             doc.titel.toLowerCase().includes(search) || doc.bestandsnaam.toLowerCase().includes(search)
           );
-          if (!matchTitle && !matchDesc && !matchCat && !matchTag && !matchDoc) {
+          if (!matchTitle && !matchDesc && !matchCat && !matchTag && !matchDoc && !matchWijk) {
             return false;
           }
         }
@@ -7728,7 +7773,7 @@ Sitemap: ${baseUrl}/sitemap.xml
   });
 
   // Catalog of all unique documents across all dossiers for linking
-  app.get("/api/council/catalog/all-documents", requireAuth, (req: any, res: any) => {
+  app.get("/api/council/catalog/all-documents", optionalAuth, (req: any, res: any) => {
     try {
       const db = getDb();
       const docs = getAllCatalogDocuments(db);
@@ -7740,7 +7785,7 @@ Sitemap: ${baseUrl}/sitemap.xml
   });
 
   // 2. Get single dossier detail with documents and its network graph
-  app.get("/api/council/dossiers/:slug", requireAuth, (req: any, res: any) => {
+  app.get("/api/council/dossiers/:slug", optionalAuth, (req: any, res: any) => {
     try {
       const slug = req.params.slug;
       const db = getDb();
@@ -7766,7 +7811,7 @@ Sitemap: ${baseUrl}/sitemap.xml
   // 3. Create a custom dossier
   app.post("/api/council/dossiers", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
     try {
-      const { title, description, category, thumbnail, tags } = req.body;
+      const { title, description, category, thumbnail, tags, wijkSlug, wijkNaam } = req.body;
       if (!title || !title.trim()) {
         return res.status(400).json({ error: "Titel is verplicht voor het aanmaken van een dossier" });
       }
@@ -7779,6 +7824,8 @@ Sitemap: ${baseUrl}/sitemap.xml
           category,
           thumbnail,
           tags: Array.isArray(tags) ? tags : typeof tags === "string" ? tags.split(",").map((t: string) => t.trim()) : [],
+          wijkSlug: wijkSlug || "",
+          wijkNaam: wijkNaam || "",
         },
         db,
         saveDb
@@ -8069,7 +8116,7 @@ Sitemap: ${baseUrl}/sitemap.xml
   );
 
   // 6. Get overall network graph
-  app.get("/api/council/network-graph", requireAuth, (req: any, res: any) => {
+  app.get("/api/council/network-graph", optionalAuth, (req: any, res: any) => {
     try {
       const graph = getRawNetworkGraph();
       res.json(graph);

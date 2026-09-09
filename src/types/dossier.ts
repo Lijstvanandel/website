@@ -63,6 +63,8 @@ export interface Dossier {
   };
   documents: DossierDocument[];
   isCustom?: boolean;
+  wijkSlug?: string;
+  wijkNaam?: string;
   createdAt: string;
   updatedAt: string;
 }

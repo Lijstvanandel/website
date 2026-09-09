@@ -16,7 +16,9 @@ import {
   FolderOpen,
   FolderEdit,
   Edit3,
+  MapPin,
 } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DossierBulkUploadModal } from "./DossierBulkUploadModal";
@@ -25,8 +27,24 @@ import { EditDossierModal } from "./EditDossierModal";
 import { DossierDetail } from "./DossierDetail";
 import type { Dossier } from "@/types/dossier";
 import { toast } from "sonner";
+import { useAuth } from "@/context/AuthContext";
 
-export const DossierOverview: React.FC = () => {
+interface DossierOverviewProps {
+  initialDossierSlug?: string | null;
+  initialWijkSlug?: string | null;
+}
+
+export const DossierOverview: React.FC<DossierOverviewProps> = ({
+  initialDossierSlug,
+  initialWijkSlug,
+}) => {
+  const { user } = useAuth();
+  const isCouncilOrAdmin = Boolean(
+    user && (user.role === "admin" || user.role === "raadslid" || user.role === "fractielid")
+  );
+
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const [dossiers, setDossiers] = useState<Dossier[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [stats, setStats] = useState<{
@@ -47,8 +65,35 @@ export const DossierOverview: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
-  // Selected dossier for drill-down view
-  const [activeDossierSlug, setActiveDossierSlug] = useState<string | null>(null);
+  // Selected dossier for drill-down view (from query param or prop)
+  const urlDossier = searchParams.get("dossier") || initialDossierSlug || null;
+  const [activeDossierSlug, setActiveDossierSlug] = useState<string | null>(urlDossier);
+
+  useEffect(() => {
+    const qDossier = searchParams.get("dossier") || initialDossierSlug || null;
+    if (qDossier && qDossier !== activeDossierSlug) {
+      setActiveDossierSlug(qDossier);
+    }
+  }, [searchParams, initialDossierSlug]);
+
+  const handleSelectDossier = (slug: string) => {
+    setActiveDossierSlug(slug);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("dossier", slug);
+      return next;
+    });
+  };
+
+  const handleBackToOverview = () => {
+    setActiveDossierSlug(null);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete("dossier");
+      return next;
+    });
+    fetchDossiers();
+  };
 
   // Modals
   const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false);
@@ -113,7 +158,7 @@ export const DossierOverview: React.FC = () => {
     return (
       <DossierDetail
         dossierSlug={activeDossierSlug}
-        onBack={() => setActiveDossierSlug(null)}
+        onBack={handleBackToOverview}
       />
     );
   }
@@ -125,38 +170,42 @@ export const DossierOverview: React.FC = () => {
         <div>
           <div className="flex items-center gap-2 text-accent font-bold text-xs uppercase tracking-wider mb-1">
             <FolderOpen className="w-4 h-4" />
-            Raadspaneel Dossiersysteem
+            {isCouncilOrAdmin ? "Raadspaneel Dossiersysteem" : "Openbaar Dossierarchief"}
           </div>
           <h2 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">
             Raadsdossiers & Stukkenarchief
           </h2>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1 max-w-2xl">
-            Interactief netwerk van gemeentelijke dossiers, besluitvormingslijnen en gekoppelde raadsstukken uit de Steenwijkerlandse raad.
+            {isCouncilOrAdmin
+              ? "Interactief netwerk van gemeentelijke dossiers, besluitvormingslijnen en gekoppelde raadsstukken uit de Steenwijkerlandse raad."
+              : "Bekijk gemeentelijke dossiers, besluitvorming, tijdlijnen en officiële raadsstukken van Steenwijkerland en haar wijken en kernen."}
           </p>
         </div>
 
         {/* Global Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-          <Button
-            id="btn-open-bulk-upload"
-            onClick={() => setIsBulkUploadOpen(true)}
-            variant="outline"
-            className="border-accent/40 text-accent hover:bg-accent/15 text-xs font-semibold h-9 rounded-xl shadow-xs"
-            title="Upload alle bestanden herkenbaar door de metadata in één keer"
-          >
-            <Upload className="w-3.5 h-3.5 mr-1.5" />
-            Documenten Bulk-Uploaden
-          </Button>
+        {isCouncilOrAdmin && (
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            <Button
+              id="btn-open-bulk-upload"
+              onClick={() => setIsBulkUploadOpen(true)}
+              variant="outline"
+              className="border-accent/40 text-accent hover:bg-accent/15 text-xs font-semibold h-9 rounded-xl shadow-xs"
+              title="Upload alle bestanden herkenbaar door de metadata in één keer"
+            >
+              <Upload className="w-3.5 h-3.5 mr-1.5" />
+              Documenten Bulk-Uploaden
+            </Button>
 
-          <Button
-            id="btn-open-create-dossier"
-            onClick={() => setIsCreateDossierOpen(true)}
-            className="bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-semibold h-9 rounded-xl shadow-xs"
-          >
-            <FolderPlus className="w-3.5 h-3.5 mr-1.5" />
-            Dossier Aanmaken
-          </Button>
-        </div>
+            <Button
+              id="btn-open-create-dossier"
+              onClick={() => setIsCreateDossierOpen(true)}
+              className="bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-semibold h-9 rounded-xl shadow-xs"
+            >
+              <FolderPlus className="w-3.5 h-3.5 mr-1.5" />
+              Dossier Aanmaken
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* KPI Stats Strip */}
@@ -315,7 +364,7 @@ export const DossierOverview: React.FC = () => {
             <div
               key={dossier.id}
               id={`dossier-card-${dossier.slug}`}
-              onClick={() => setActiveDossierSlug(dossier.slug)}
+              onClick={() => handleSelectDossier(dossier.slug)}
               className="group bg-card border border-border rounded-3xl overflow-hidden hover:border-accent/50 hover:shadow-md transition-all duration-200 flex flex-col justify-between cursor-pointer"
             >
               <div>
@@ -339,23 +388,31 @@ export const DossierOverview: React.FC = () => {
                       {dossier.category}
                     </span>
                     <div className="flex items-center gap-1.5">
+                      {dossier.wijkNaam && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-accent/90 text-accent-foreground flex items-center gap-1 shadow-xs">
+                          <MapPin className="w-2.5 h-2.5" />
+                          {dossier.wijkNaam}
+                        </span>
+                      )}
                       {dossier.isCustom && (
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-accent text-accent-foreground shadow-xs">
                           Aangemaakt
                         </span>
                       )}
-                      <button
-                        type="button"
-                        title="Dossier bewerken"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingDossier(dossier);
-                          setIsEditDossierOpen(true);
-                        }}
-                        className="p-1.5 rounded-full bg-black/60 text-white hover:bg-accent hover:text-accent-foreground backdrop-blur-xs border border-white/20 transition-all opacity-80 group-hover:opacity-100"
-                      >
-                        <Edit3 className="w-3 h-3" />
-                      </button>
+                      {isCouncilOrAdmin && (
+                        <button
+                          type="button"
+                          title="Dossier bewerken"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingDossier(dossier);
+                            setIsEditDossierOpen(true);
+                          }}
+                          className="p-1.5 rounded-full bg-black/60 text-white hover:bg-accent hover:text-accent-foreground backdrop-blur-xs border border-white/20 transition-all opacity-80 group-hover:opacity-100"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                        </button>
+                      )}
                     </div>
                   </div>
 

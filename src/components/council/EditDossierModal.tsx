@@ -10,12 +10,14 @@ import {
   AlertTriangle,
   FolderEdit,
   ExternalLink,
+  MapPin,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import type { Dossier } from "@/types/dossier";
+import { WIJKEN_EN_KERNEN } from "@/data/wijken";
 
 interface EditDossierModalProps {
   isOpen: boolean;
@@ -82,6 +84,7 @@ export const EditDossierModal: React.FC<EditDossierModalProps> = ({
   // Tags management
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
+  const [wijkSlug, setWijkSlug] = useState("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -94,6 +97,7 @@ export const EditDossierModal: React.FC<EditDossierModalProps> = ({
       setCategory(dossier.category || "Gemeenteraad & Beleid");
       setThumbnail(dossier.thumbnail || PRESET_THUMBNAILS[0].url);
       setTags(Array.isArray(dossier.tags) ? [...dossier.tags] : []);
+      setWijkSlug(dossier.wijkSlug || "");
       setShowDeleteConfirm(false);
     }
   }, [dossier]);
@@ -156,6 +160,7 @@ export const EditDossierModal: React.FC<EditDossierModalProps> = ({
 
     setIsSubmitting(true);
     try {
+      const selectedWijk = WIJKEN_EN_KERNEN.find((w) => w.slug === wijkSlug);
       const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
       const res = await fetch(`/api/council/dossiers/${encodeURIComponent(dossier.slug || dossier.id)}`, {
         method: "PUT",
@@ -169,6 +174,8 @@ export const EditDossierModal: React.FC<EditDossierModalProps> = ({
           category,
           thumbnail,
           tags,
+          wijkSlug: wijkSlug || "",
+          wijkNaam: selectedWijk ? selectedWijk.naam : "",
         }),
       });
 
@@ -281,6 +288,39 @@ export const EditDossierModal: React.FC<EditDossierModalProps> = ({
                   {cat}
                 </option>
               ))}
+            </select>
+          </div>
+
+          {/* Koppel aan Wijk of Kern */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-foreground flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-accent" />
+                Koppel aan Wijk of Kern (Optioneel)
+              </span>
+              <span className="text-[10px] text-muted-foreground font-normal">Voor wijkpagina</span>
+            </label>
+            <select
+              id="edit-dossier-wijk"
+              value={wijkSlug}
+              onChange={(e) => setWijkSlug(e.target.value)}
+              className="w-full h-9 rounded-xl border border-input bg-background px-3 text-xs text-foreground focus:outline-hidden focus:ring-1 focus:ring-ring"
+            >
+              <option value="">Geen / Gemeentebreed (Algemeen)</option>
+              <optgroup label="Stadswijken Steenwijk">
+                {WIJKEN_EN_KERNEN.filter((w) => w.type === "Wijk").map((w) => (
+                  <option key={w.slug} value={w.slug}>
+                    {w.naam}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Kernen & Dorpen">
+                {WIJKEN_EN_KERNEN.filter((w) => w.type === "Kern").map((w) => (
+                  <option key={w.slug} value={w.slug}>
+                    {w.naam}
+                  </option>
+                ))}
+              </optgroup>
             </select>
           </div>
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { Navigate, Link, useSearchParams } from "react-router-dom";
+import { Navigate, Link, useSearchParams, useParams } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { DossierOverview } from "@/components/council/DossierOverview";
 import {
@@ -161,8 +161,15 @@ function isInvalidOrJunkTopic(rawTitle: string): boolean {
 
 export default function Raadspaneel() {
   const { user, token, isAuthenticated } = useAuth();
+  const { slug } = useParams<{ slug?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const activePanelTab = searchParams.get("tab") === "agenda" ? "agenda" : "dossiers";
+
+  const isCouncilOrAdmin = Boolean(
+    user && (user.role === "admin" || user.role === "raadslid" || user.role === "fractielid")
+  );
+
+  const initialDossierSlug = slug || searchParams.get("dossier") || null;
+  const activePanelTab = (!isCouncilOrAdmin || searchParams.get("tab") !== "agenda") ? "dossiers" : "agenda";
 
   const setActivePanelTab = (tab: "dossiers" | "agenda") => {
     setSearchParams((prev) => {
@@ -203,8 +210,6 @@ export default function Raadspaneel() {
   const [newNoteText, setNewNoteText] = useState("");
   const [submittingNote, setSubmittingNote] = useState(false);
   const [noteTargetDocId, setNoteTargetDocId] = useState<string | null>(null);
-
-  const isCouncilOrAdmin = user && (user.role === "admin" || user.role === "raadslid" || user.role === "fractielid");
 
   // Safe JSON parser for API responses to prevent HTML syntax errors
   const parseApiResponse = async (res: Response) => {
@@ -561,30 +566,6 @@ export default function Raadspaneel() {
     return topics.find((t) => t.id === selectedTopicId) || filteredTopics[0] || null;
   }, [topics, selectedTopicId, filteredTopics]);
 
-  // Access control
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
-
-  if (!isCouncilOrAdmin) {
-    return (
-      <div className="pt-32 pb-24 min-h-screen bg-background flex items-center justify-center">
-        <div className="max-w-md mx-auto p-8 rounded-2xl bg-card border border-border text-center shadow-lg">
-          <div className="w-14 h-14 rounded-full bg-destructive/15 text-destructive flex items-center justify-center mx-auto mb-4">
-            <Shield className="w-7 h-7" />
-          </div>
-          <h2 className="text-2xl font-display text-foreground mb-2">Toegang Geweigerd</h2>
-          <p className="text-sm text-muted-foreground mb-6">
-            Het Raadspaneel is exclusief toegankelijk voor fractieleden, raadsleden en beheerders van Lijst van Andel.
-          </p>
-          <Link to="/dashboard">
-            <Button className="w-full">Terug naar Mijn Dashboard</Button>
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="pt-28 pb-24 min-h-screen bg-background text-foreground">
       <div className="container mx-auto px-4 sm:px-6 max-w-7xl">
@@ -595,47 +576,61 @@ export default function Raadspaneel() {
             <div className="flex items-center gap-2.5 mb-1.5">
               <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-accent/20 text-accent border border-accent/40 flex items-center gap-1">
                 <Shield className="w-3.5 h-3.5" />
-                Interne Fractietool
+                {isCouncilOrAdmin ? "Interne Fractietool" : "Openbare Raadsinformatie"}
               </span>
               <span className="text-xs text-muted-foreground flex items-center gap-1">
                 <Clock className="w-3.5 h-3.5 text-accent" />
-                Elke 24u gescraped van Bestuurlijke Informatie
+                Gemeenteraad Steenwijkerland
               </span>
             </div>
             <h1 className="text-3xl sm:text-4xl font-display text-primary font-bold">
-              Raadspaneel Steenwijkerland
+              {isCouncilOrAdmin ? "Raadspaneel Steenwijkerland" : "Gemeentelijke Dossiers & Raadsstukken"}
             </h1>
             <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-              Vergaderstukken, bespreekstukken en voorbereiding voor de gemeenteraadsfractie. Verdeel onderwerpen onder fractieleden, markeer gelezen documenten en deel interne notities.
+              {isCouncilOrAdmin
+                ? "Vergaderstukken, bespreekstukken en voorbereiding voor de gemeenteraadsfractie. Verdeel onderwerpen onder fractieleden, markeer gelezen documenten en deel interne notities."
+                : "Openbaar inzicht in alle gemeentelijke beleidsdossiers, raadsstukken en besluitvorming van Steenwijkerland en haar wijken en kernen."}
             </p>
           </div>
 
           {/* Action buttons */}
           <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-            <Button
-              onClick={() => setShowClearConfirm(true)}
-              disabled={isClearing || isScraping}
-              variant="outline"
-              className="border-destructive/40 text-destructive hover:bg-destructive/10 text-xs font-semibold h-9 rounded-xl shadow-xs"
-              title="Wis alle binnengehaalde onverdeelde stukken en behoud toegewezen stukken"
-            >
-              <RotateCcw className={`w-3.5 h-3.5 mr-1.5 ${isClearing ? "animate-spin" : ""}`} />
-              {isClearing ? "Wissen..." : "Onverdeelde Stukken Wissen"}
-            </Button>
-            <Button
-              onClick={handleTriggerScrape}
-              disabled={isScraping || isClearing}
-              variant="outline"
-              className="border-accent/40 text-accent hover:bg-accent/15 text-xs font-semibold h-9 rounded-xl shadow-xs"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isScraping ? "animate-spin" : ""}`} />
-              {isScraping ? "Scrapen..." : "Vergaderstukken Nu Ophalen"}
-            </Button>
-            <Link to="/dashboard">
-              <Button variant="ghost" className="text-xs h-9 text-muted-foreground hover:text-foreground">
-                Mijn Dashboard
-              </Button>
-            </Link>
+            {isCouncilOrAdmin && (
+              <>
+                <Button
+                  onClick={() => setShowClearConfirm(true)}
+                  disabled={isClearing || isScraping}
+                  variant="outline"
+                  className="border-destructive/40 text-destructive hover:bg-destructive/10 text-xs font-semibold h-9 rounded-xl shadow-xs"
+                  title="Wis alle binnengehaalde onverdeelde stukken en behoud toegewezen stukken"
+                >
+                  <RotateCcw className={`w-3.5 h-3.5 mr-1.5 ${isClearing ? "animate-spin" : ""}`} />
+                  {isClearing ? "Wissen..." : "Onverdeelde Stukken Wissen"}
+                </Button>
+                <Button
+                  onClick={handleTriggerScrape}
+                  disabled={isScraping || isClearing}
+                  variant="outline"
+                  className="border-accent/40 text-accent hover:bg-accent/15 text-xs font-semibold h-9 rounded-xl shadow-xs"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isScraping ? "animate-spin" : ""}`} />
+                  {isScraping ? "Scrapen..." : "Vergaderstukken Nu Ophalen"}
+                </Button>
+              </>
+            )}
+            {isAuthenticated ? (
+              <Link to="/dashboard">
+                <Button variant="ghost" className="text-xs h-9 text-muted-foreground hover:text-foreground">
+                  Mijn Dashboard
+                </Button>
+              </Link>
+            ) : (
+              <Link to="/login">
+                <Button variant="outline" className="text-xs h-9 border-accent/40 text-accent hover:bg-accent hover:text-accent-foreground">
+                  Inloggen als Raadslid
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
 
@@ -654,23 +649,25 @@ export default function Raadspaneel() {
             Dossiers & Raadsstukken Archief
           </button>
 
-          <button
-            id="tab-btn-panel-agenda"
-            onClick={() => setActivePanelTab("agenda")}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all shrink-0 ${
-              activePanelTab === "agenda"
-                ? "bg-accent text-accent-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground hover:bg-card border border-border/70"
-            }`}
-          >
-            <Calendar className="w-4 h-4" />
-            Vergaderagenda & Bespreekstukken
-          </button>
+          {isCouncilOrAdmin && (
+            <button
+              id="tab-btn-panel-agenda"
+              onClick={() => setActivePanelTab("agenda")}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all shrink-0 ${
+                activePanelTab === "agenda"
+                  ? "bg-accent text-accent-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-card border border-border/70"
+              }`}
+            >
+              <Calendar className="w-4 h-4" />
+              Vergaderagenda & Bespreekstukken
+            </button>
+          )}
         </div>
 
         {activePanelTab === "dossiers" ? (
-          <DossierOverview />
-        ) : (
+          <DossierOverview initialDossierSlug={initialDossierSlug} />
+        ) : isCouncilOrAdmin ? (
           <>
             {/* KPI / Status Bar */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
@@ -1337,6 +1334,19 @@ export default function Raadspaneel() {
           </div>
         </div>
           </>
+        ) : (
+          <div className="py-16 text-center max-w-md mx-auto">
+            <div className="w-12 h-12 rounded-full bg-accent/15 text-accent flex items-center justify-center mx-auto mb-3">
+              <Shield className="w-6 h-6" />
+            </div>
+            <h3 className="text-xl font-display font-bold mb-2">Toegang Vergaderagenda</h3>
+            <p className="text-xs text-muted-foreground mb-4">
+              De interne bespreekstukken en agendaplanning zijn voorbehouden aan raads- en fractieleden. U kunt wel alle dossiers en raadsstukken inzien.
+            </p>
+            <Button onClick={() => setActivePanelTab("dossiers")} className="text-xs">
+              Bekijk Dossiers
+            </Button>
+          </div>
         )}
       </div>
 

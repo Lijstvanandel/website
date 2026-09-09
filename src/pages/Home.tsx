@@ -13,7 +13,19 @@ import { nl } from "date-fns/locale";
 
 const Home = () => {
   const [belOpen, setBelOpen] = useState(false);
+  const [homeNews, setHomeNews] = useState<any[]>(() => news.filter((n: any) => !n.wijkSlug));
   const navigate = useNavigate();
+
+  useEffect(() => {
+    fetch("/api/news")
+      .then((res) => (res.ok ? res.json().catch(() => []) : []))
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setHomeNews(data);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const slugify = (s: string) =>
@@ -217,7 +229,7 @@ const Home = () => {
           </Link>
         </div>
         <div className="grid md:grid-cols-2 gap-6">
-          {news.slice(0, 2).map((n) => (
+          {homeNews.slice(0, 2).map((n) => (
             <Link
               key={n.id}
               to={`/nieuws/${n.id}`}

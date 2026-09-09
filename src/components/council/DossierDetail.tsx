@@ -21,6 +21,7 @@ import {
   Trash2,
   FolderEdit,
   Upload,
+  MapPin,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +32,7 @@ import { EditDocumentModal } from "./EditDocumentModal";
 import { AddDocumentModal } from "./AddDocumentModal";
 import type { Dossier, DossierDocument, GraphNode, GraphEdge } from "@/types/dossier";
 import { toast } from "sonner";
+import { useAuth } from "@/context/AuthContext";
 
 interface DossierDetailProps {
   dossierSlug: string;
@@ -38,6 +40,11 @@ interface DossierDetailProps {
 }
 
 export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBack }) => {
+  const { user } = useAuth();
+  const isCouncilOrAdmin = Boolean(
+    user && (user.role === "admin" || user.role === "raadslid" || user.role === "fractielid")
+  );
+
   const [dossier, setDossier] = useState<Dossier | null>(null);
   const [graph, setGraph] = useState<{ nodes: GraphNode[]; edges: GraphEdge[] }>({
     nodes: [],
@@ -251,47 +258,51 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
 
         {/* Action button bar */}
         <div className="flex items-center gap-2">
-          {/* Dossier bewerken button */}
-          <Button
-            id="btn-edit-dossier"
-            variant="outline"
-            size="sm"
-            className="rounded-xl text-xs font-semibold h-9 text-accent hover:bg-accent/15 border-accent/30"
-            onClick={() => setIsEditDossierOpen(true)}
-          >
-            <FolderEdit className="w-3.5 h-3.5 mr-1.5" />
-            Dossier Bewerken
-          </Button>
+          {isCouncilOrAdmin && (
+            <>
+              {/* Dossier bewerken button */}
+              <Button
+                id="btn-edit-dossier"
+                variant="outline"
+                size="sm"
+                className="rounded-xl text-xs font-semibold h-9 text-accent hover:bg-accent/15 border-accent/30"
+                onClick={() => setIsEditDossierOpen(true)}
+              >
+                <FolderEdit className="w-3.5 h-3.5 mr-1.5" />
+                Dossier Bewerken
+              </Button>
 
-          {/* Document toevoegen button */}
-          <Button
-            id="btn-add-doc-header"
-            variant="outline"
-            size="sm"
-            className="rounded-xl text-xs font-semibold h-9"
-            onClick={() => {
-              setAddDocInitialMode("upload");
-              setIsAddDocOpen(true);
-            }}
-          >
-            <Plus className="w-3.5 h-3.5 mr-1.5" />
-            Document Toevoegen
-          </Button>
+              {/* Document toevoegen button */}
+              <Button
+                id="btn-add-doc-header"
+                variant="outline"
+                size="sm"
+                className="rounded-xl text-xs font-semibold h-9"
+                onClick={() => {
+                  setAddDocInitialMode("upload");
+                  setIsAddDocOpen(true);
+                }}
+              >
+                <Plus className="w-3.5 h-3.5 mr-1.5" />
+                Document Toevoegen
+              </Button>
 
-          {/* Stukken in relatie brengen button */}
-          <Button
-            id="btn-link-docs-header"
-            variant="outline"
-            size="sm"
-            className="rounded-xl text-xs font-semibold h-9"
-            onClick={() => {
-              setAddDocInitialMode("link");
-              setIsAddDocOpen(true);
-            }}
-          >
-            <Link2 className="w-3.5 h-3.5 mr-1.5" />
-            Stukken Koppelen
-          </Button>
+              {/* Stukken in relatie brengen button */}
+              <Button
+                id="btn-link-docs-header"
+                variant="outline"
+                size="sm"
+                className="rounded-xl text-xs font-semibold h-9"
+                onClick={() => {
+                  setAddDocInitialMode("link");
+                  setIsAddDocOpen(true);
+                }}
+              >
+                <Link2 className="w-3.5 h-3.5 mr-1.5" />
+                Stukken Koppelen
+              </Button>
+            </>
+          )}
 
           <Button
             variant="ghost"
@@ -333,14 +344,16 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
             </div>
 
             {/* Quick edit thumbnail hover overlay */}
-            <button
-              onClick={() => setIsEditDossierOpen(true)}
-              className="absolute top-3 right-3 p-2 rounded-xl bg-black/60 text-white hover:bg-black/80 backdrop-blur-xs border border-white/20 opacity-0 group-hover:opacity-100 transition-opacity text-xs flex items-center gap-1 font-medium"
-              title="Omslag of dossier aanpassen"
-            >
-              <Edit3 className="w-3.5 h-3.5" />
-              Thumbnail wijzigen
-            </button>
+            {isCouncilOrAdmin && (
+              <button
+                onClick={() => setIsEditDossierOpen(true)}
+                className="absolute top-3 right-3 p-2 rounded-xl bg-black/60 text-white hover:bg-black/80 backdrop-blur-xs border border-white/20 opacity-0 group-hover:opacity-100 transition-opacity text-xs flex items-center gap-1 font-medium"
+                title="Omslag of dossier aanpassen"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                Thumbnail wijzigen
+              </button>
+            )}
           </div>
 
           {/* Details Content */}
@@ -351,6 +364,12 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
                   <span className="text-xs font-bold text-accent uppercase tracking-wider">
                     Raadsdossier
                   </span>
+                  {dossier.wijkNaam && (
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/30 flex items-center gap-1">
+                      <MapPin className="w-3 h-3" />
+                      {dossier.wijkNaam}
+                    </span>
+                  )}
                   {dossier.dateRange.start && (
                     <span className="text-xs text-muted-foreground flex items-center gap-1 font-medium">
                       <Calendar className="w-3.5 h-3.5" />
@@ -359,15 +378,17 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
                   )}
                 </div>
 
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setIsEditDossierOpen(true)}
-                  className="h-7 text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-                >
-                  <FolderEdit className="w-3.5 h-3.5" />
-                  Dossier bewerken
-                </Button>
+                {isCouncilOrAdmin && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setIsEditDossierOpen(true)}
+                    className="h-7 text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                  >
+                    <FolderEdit className="w-3.5 h-3.5" />
+                    Dossier bewerken
+                  </Button>
+                )}
               </div>
 
               <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-foreground tracking-tight mb-3">
@@ -525,30 +546,34 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
               </div>
 
               <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="rounded-xl text-xs h-8"
-                  onClick={() => {
-                    setAddDocInitialMode("upload");
-                    setIsAddDocOpen(true);
-                  }}
-                >
-                  <Plus className="w-3.5 h-3.5 mr-1" />
-                  Nieuw Document
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="rounded-xl text-xs h-8"
-                  onClick={() => {
-                    setAddDocInitialMode("link");
-                    setIsAddDocOpen(true);
-                  }}
-                >
-                  <Link2 className="w-3.5 h-3.5 mr-1" />
-                  Stukken Koppelen
-                </Button>
+                {isCouncilOrAdmin && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl text-xs h-8"
+                      onClick={() => {
+                        setAddDocInitialMode("upload");
+                        setIsAddDocOpen(true);
+                      }}
+                    >
+                      <Plus className="w-3.5 h-3.5 mr-1" />
+                      Nieuw Document
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl text-xs h-8"
+                      onClick={() => {
+                        setAddDocInitialMode("link");
+                        setIsAddDocOpen(true);
+                      }}
+                    >
+                      <Link2 className="w-3.5 h-3.5 mr-1" />
+                      Stukken Koppelen
+                    </Button>
+                  </>
+                )}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -598,15 +623,17 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
                       {doc.fileExists ? "Beschikbaar" : "Verwacht"}
                     </span>
                     <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-                        onClick={() => openDocumentEditor(doc)}
-                        title="Document bewerken"
-                      >
-                        <Edit3 className="w-3.5 h-3.5" />
-                      </Button>
+                      {isCouncilOrAdmin && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                          onClick={() => openDocumentEditor(doc)}
+                          title="Document bewerken"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
                       <Button
                         id={`btn-quick-view-doc-${idx}`}
                         variant="ghost"
@@ -874,28 +901,32 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({ dossierSlug, onBac
                           </Button>
 
                           {/* Bewerken Pen */}
-                          <Button
-                            id={`btn-table-edit-${idx}`}
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 px-2 rounded-lg text-muted-foreground hover:text-foreground font-semibold text-xs inline-flex items-center gap-1"
-                            onClick={() => openDocumentEditor(doc)}
-                            title="Document metadata of bestand bewerken"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </Button>
+                          {isCouncilOrAdmin && (
+                            <>
+                              <Button
+                                id={`btn-table-edit-${idx}`}
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 px-2 rounded-lg text-muted-foreground hover:text-foreground font-semibold text-xs inline-flex items-center gap-1"
+                                onClick={() => openDocumentEditor(doc)}
+                                title="Document metadata of bestand bewerken"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </Button>
 
-                          {/* Verwijderen / Ontkoppelen */}
-                          <Button
-                            id={`btn-table-delete-${idx}`}
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 px-2 rounded-lg text-muted-foreground hover:text-destructive font-semibold text-xs inline-flex items-center gap-1"
-                            onClick={() => handleQuickUnlinkDoc(doc)}
-                            title="Document ontkoppelen uit dit dossier"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
+                              {/* Verwijderen / Ontkoppelen */}
+                              <Button
+                                id={`btn-table-delete-${idx}`}
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 px-2 rounded-lg text-muted-foreground hover:text-destructive font-semibold text-xs inline-flex items-center gap-1"
+                                onClick={() => handleQuickUnlinkDoc(doc)}
+                                title="Document ontkoppelen uit dit dossier"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>

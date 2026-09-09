@@ -408,7 +408,7 @@ export default function AdminDashboard() {
   }, []);
 
   const fetchNews = useCallback(() => {
-    fetch("/api/news")
+    fetch("/api/news?includeAll=true")
       .then((r) => (r.ok ? r.json().catch(() => []) : []))
       .then((data: NewsItem[]) => {
         if (Array.isArray(data)) setNews(data);

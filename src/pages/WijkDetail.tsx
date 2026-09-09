@@ -20,6 +20,8 @@ import {
   MapPin,
   RefreshCw,
   HeartHandshake,
+  CheckCircle2,
+  Calendar as CalIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,8 +33,9 @@ import {
 } from "@/components/ui/carousel";
 import { BelafspraakDialog } from "@/components/BelafspraakDialog";
 import { VideoPlayer } from "@/components/VideoPlayer";
-import { news } from "@/data/news";
+import { NewsItem } from "@/data/news";
 import { WijkItem } from "@/types/wijk";
+import { Dossier } from "@/types/dossier";
 import { useAuth } from "@/context/AuthContext";
 
 function formatSocialUrl(platform: string, value?: string): string | undefined {
@@ -91,6 +94,8 @@ const WijkDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [videos, setVideos] = useState<WijkVideo[]>([]);
+  const [wijkNews, setWijkNews] = useState<NewsItem[]>([]);
+  const [wijkDossiers, setWijkDossiers] = useState<Dossier[]>([]);
 
   const handleHelpClick = () => {
     if (!wijk) return;
@@ -131,6 +136,29 @@ const WijkDetail = () => {
       .then((res) => (res.ok ? res.json().catch(() => []) : []))
       .then(setVideos)
       .catch(() => setVideos([]));
+
+    // Fetch news exclusively linked to this wijk
+    fetch(`/api/news?wijkSlug=${slug}`)
+      .then((res) => (res.ok ? res.json().catch(() => []) : []))
+      .then((data) => {
+        if (Array.isArray(data)) setWijkNews(data);
+      })
+      .catch(() => setWijkNews([]));
+
+    // Fetch dossiers linked to this wijk
+    const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
+    fetch(`/api/council/dossiers?wijkSlug=${slug}&limit=50`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    })
+      .then((res) => (res.ok ? res.json().catch(() => ({ dossiers: [] })) : { dossiers: [] }))
+      .then((data) => {
+        if (data && Array.isArray(data.dossiers)) {
+          setWijkDossiers(data.dossiers);
+        }
+      })
+      .catch(() => setWijkDossiers([]));
   }, [slug]);
 
   if (loading) {
@@ -492,63 +520,177 @@ const WijkDetail = () => {
         )}
 
         {/* ========================================================
-            NIEUWS UIT DE GEMEENTE
+            NIEUWS UIT DEZE WIJK / KERN
             ======================================================== */}
-        <CarouselSection
-          icon={<Newspaper className="w-3.5 h-3.5" />}
-          eyebrow="Wat speelt er"
-          title="Nieuws & Actualiteiten"
-          ctaHref="/nieuws"
-        >
-          {news.map((n) => (
-            <CarouselItem key={n.id} className="md:basis-1/2 lg:basis-1/3">
-              <Link
-                to={`/nieuws/${n.id}`}
-                className="block bg-card border border-border h-full flex flex-col hover-lift overflow-hidden rounded-lg"
-              >
-                <div className="aspect-[16/10] overflow-hidden bg-muted">
-                  <img
-                    src={n.image}
-                    alt={n.title}
-                    loading="lazy"
-                    className="w-full h-full object-cover transition-transform duration-700 hover:scale-105"
-                  />
-                </div>
-                <div className="p-5 flex flex-col flex-1">
-                  <div className="text-[10px] uppercase tracking-widest text-accent mb-2">
-                    {n.category}
+        {wijkNews.length > 0 ? (
+          <CarouselSection
+            icon={<Newspaper className="w-3.5 h-3.5" />}
+            eyebrow="Wat speelt er"
+            title={`Nieuws uit ${wijk.naam}`}
+            ctaHref="/nieuws"
+          >
+            {wijkNews.map((n) => (
+              <CarouselItem key={n.id} className="md:basis-1/2 lg:basis-1/3">
+                <Link
+                  to={`/nieuws/${n.id}`}
+                  className="block bg-card border border-border h-full flex flex-col hover-lift overflow-hidden rounded-lg"
+                >
+                  <div className="aspect-[16/10] overflow-hidden bg-muted">
+                    <img
+                      src={n.image}
+                      alt={n.title}
+                      loading="lazy"
+                      className="w-full h-full object-cover transition-transform duration-700 hover:scale-105"
+                    />
                   </div>
-                  <h3 className="font-display text-lg mb-2 leading-snug">{n.title}</h3>
-                  <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
-                    {n.excerpt}
-                  </p>
+                  <div className="p-5 flex flex-col flex-1">
+                    <div className="text-[10px] uppercase tracking-widest text-accent mb-2">
+                      {n.category}
+                    </div>
+                    <h3 className="font-display text-lg mb-2 leading-snug">{n.title}</h3>
+                    <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+                      {n.excerpt}
+                    </p>
+                  </div>
+                </Link>
+              </CarouselItem>
+            ))}
+          </CarouselSection>
+        ) : (
+          <section className="space-y-4">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.3em] text-accent mb-2 flex items-center gap-2">
+                  <Newspaper className="w-3.5 h-3.5" /> Wat speelt er
                 </div>
-              </Link>
-            </CarouselItem>
-          ))}
-        </CarouselSection>
+                <h2 className="font-display text-4xl md:text-5xl border-gold-line pb-4">
+                  Nieuws uit {wijk.naam}
+                </h2>
+              </div>
+              <Button
+                asChild
+                variant="outline"
+                className="border-accent/40 text-accent hover:bg-accent hover:text-accent-foreground uppercase tracking-wider text-xs font-semibold"
+              >
+                <Link to="/nieuws">
+                  Algemeen nieuws <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                </Link>
+              </Button>
+            </div>
+            <div className="bg-card/60 border border-dashed border-border rounded-2xl p-8 text-center">
+              <Newspaper className="w-8 h-8 mx-auto text-accent/60 mb-3" />
+              <h3 className="font-display text-xl mb-1 text-foreground">Geen specifiek wijkverslag</h3>
+              <p className="text-xs text-muted-foreground max-w-md mx-auto mb-4">
+                Er zijn momenteel geen nieuwsartikelen specifiek gekoppeld aan {wijk.naam}. Algemene gemeente-updates en fractiestandpunten vindt u in het nieuwsoverzicht.
+              </p>
+              <Button asChild variant="outline" size="sm" className="text-xs border-accent text-accent hover:bg-accent hover:text-accent-foreground">
+                <Link to="/nieuws">Bekijk Algemeen Nieuws</Link>
+              </Button>
+            </div>
+          </section>
+        )}
 
         {/* ========================================================
-            DOSSIERS
+            DOSSIERS IN DEZE WIJK / KERN (MET THUMBNAILS)
             ======================================================== */}
-        <CarouselSection
-          icon={<FileText className="w-3.5 h-3.5" />}
-          eyebrow="Lopende zaken"
-          title={`Dossiers in ${wijk.naam}`}
-          ctaHref="#"
-        >
-          {DEFAULT_DOSSIERS.map((d, i) => (
-            <CarouselItem key={i} className="md:basis-1/2 lg:basis-1/3">
-              <div className="bg-card border border-border p-6 h-full flex flex-col hover-lift rounded-lg">
-                <div className="text-[10px] uppercase tracking-widest text-accent mb-3 font-semibold">
-                  {d.status}
+        {wijkDossiers.length > 0 ? (
+          <CarouselSection
+            icon={<FileText className="w-3.5 h-3.5" />}
+            eyebrow="Lopende zaken"
+            title={`Dossiers in ${wijk.naam}`}
+            ctaHref="/raadspaneel?tab=dossiers"
+          >
+            {wijkDossiers.map((d) => (
+              <CarouselItem key={d.id || d.slug} className="md:basis-1/2 lg:basis-1/3">
+                <Link
+                  to={`/raadspaneel?tab=dossiers&dossier=${encodeURIComponent(d.slug || d.id)}`}
+                  className="block group bg-card border border-border h-full flex flex-col hover-lift overflow-hidden rounded-2xl transition-all shadow-xs"
+                >
+                  <div className="relative aspect-[16/10] overflow-hidden bg-muted">
+                    <img
+                      src={d.thumbnail}
+                      alt={d.title}
+                      loading="lazy"
+                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src =
+                          "https://images.unsplash.com/photo-1541872703-74c5e44368f9?w=800&auto=format&fit=crop&q=80";
+                      }}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                    <div className="absolute top-3 left-3">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-black/60 text-white backdrop-blur-xs border border-white/20">
+                        {d.category}
+                      </span>
+                    </div>
+                    <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-white text-xs">
+                      <span className="flex items-center gap-1.5 font-medium drop-shadow-xs">
+                        <FileText className="w-3 h-3 text-accent" />
+                        {d.documentCount} {d.documentCount === 1 ? "stuk" : "stukken"}
+                      </span>
+                      {d.uploadedCount > 0 && (
+                        <span className="flex items-center gap-1 font-semibold text-emerald-300 drop-shadow-xs text-[11px]">
+                          <CheckCircle2 className="w-3 h-3" />
+                          {d.uploadedCount} PDF's
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="p-5 flex flex-col flex-1">
+                    {d.dateRange?.start && (
+                      <div className="flex items-center gap-1 text-[10px] text-muted-foreground mb-1.5 font-medium">
+                        <CalIcon className="w-3 h-3" />
+                        {d.dateRange.start} {d.dateRange.end && `– ${d.dateRange.end}`}
+                      </div>
+                    )}
+                    <h3 className="font-display text-lg mb-2 leading-snug group-hover:text-accent transition-colors">
+                      {d.title}
+                    </h3>
+                    <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 mb-4 flex-1">
+                      {d.description || "Geen beschrijving opgegeven."}
+                    </p>
+                    <div className="flex items-center text-xs font-semibold text-accent gap-1 pt-2 border-t border-border/60">
+                      <span>Bekijk dossier & netwerkgraaf</span>
+                      <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                    </div>
+                  </div>
+                </Link>
+              </CarouselItem>
+            ))}
+          </CarouselSection>
+        ) : (
+          <section className="space-y-4">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.3em] text-accent mb-2 flex items-center gap-2">
+                  <FileText className="w-3.5 h-3.5" /> Lopende zaken
                 </div>
-                <h3 className="font-display text-xl mb-3 leading-snug">{d.titel}</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">{d.samenvatting}</p>
+                <h2 className="font-display text-4xl md:text-5xl border-gold-line pb-4">
+                  Dossiers in {wijk.naam}
+                </h2>
               </div>
-            </CarouselItem>
-          ))}
-        </CarouselSection>
+              <Button
+                asChild
+                variant="outline"
+                className="border-accent/40 text-accent hover:bg-accent hover:text-accent-foreground uppercase tracking-wider text-xs font-semibold"
+              >
+                <Link to="/raadspaneel?tab=dossiers">
+                  Alle dossiers <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                </Link>
+              </Button>
+            </div>
+            <div className="bg-card/60 border border-dashed border-border rounded-2xl p-8 text-center">
+              <FileText className="w-8 h-8 mx-auto text-accent/60 mb-3" />
+              <h3 className="font-display text-xl mb-1 text-foreground">Nog geen gekoppelde dossiers</h3>
+              <p className="text-xs text-muted-foreground max-w-md mx-auto mb-4">
+                Er zijn momenteel geen specifieke dossiers gekoppeld aan {wijk.naam}. Bekijk de gemeentebrede dossiers met netwerkgrafen en raadsstukken in het archief.
+              </p>
+              <Button asChild variant="outline" size="sm" className="text-xs border-accent text-accent hover:bg-accent hover:text-accent-foreground">
+                <Link to="/raadspaneel?tab=dossiers">Bekijk Dossierarchief</Link>
+              </Button>
+            </div>
+          </section>
+        )}
       </div>
 
       <BelafspraakDialog

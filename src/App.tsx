@@ -93,6 +93,8 @@ const App = () => (
                     <Route path="/polls" element={<Polls />} />
                     <Route path="/admin" element={<AdminDashboard />} />
                     <Route path="/raadspaneel" element={<Raadspaneel />} />
+                    <Route path="/dossiers" element={<Raadspaneel />} />
+                    <Route path="/dossiers/:slug" element={<Raadspaneel />} />
                     <Route path="/nieuwsbrief/afmelden" element={<NieuwsbriefAfmelden />} />
                   </Route>
                   <Route path="*" element={<NotFound />} />

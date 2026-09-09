@@ -1,10 +1,11 @@
 import React, { useState } from "react";
-import { X, FolderPlus, Image, Tag, Sparkles, Layers } from "lucide-react";
+import { X, FolderPlus, Image, Tag, Sparkles, Layers, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import type { Dossier } from "@/types/dossier";
+import { WIJKEN_EN_KERNEN } from "@/data/wijken";
 
 interface CreateDossierModalProps {
   isOpen: boolean;
@@ -58,6 +59,7 @@ export const CreateDossierModal: React.FC<CreateDossierModalProps> = ({
   const [category, setCategory] = useState("Gemeenteraad & Beleid");
   const [thumbnail, setThumbnail] = useState(PRESET_THUMBNAILS[0].url);
   const [tags, setTags] = useState("");
+  const [wijkSlug, setWijkSlug] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
@@ -71,6 +73,7 @@ export const CreateDossierModal: React.FC<CreateDossierModalProps> = ({
 
     setIsSubmitting(true);
     try {
+      const selectedWijk = WIJKEN_EN_KERNEN.find((w) => w.slug === wijkSlug);
       const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
       const res = await fetch("/api/council/dossiers", {
         method: "POST",
@@ -83,6 +86,8 @@ export const CreateDossierModal: React.FC<CreateDossierModalProps> = ({
           description: description.trim(),
           category,
           thumbnail,
+          wijkSlug: wijkSlug || "",
+          wijkNaam: selectedWijk ? selectedWijk.naam : "",
           tags: tags
             .split(",")
             .map((t) => t.trim())
@@ -100,6 +105,7 @@ export const CreateDossierModal: React.FC<CreateDossierModalProps> = ({
       setTitle("");
       setDescription("");
       setTags("");
+      setWijkSlug("");
     } catch (err: any) {
       toast.error(err.message || "Fout bij aanmaken dossier");
     } finally {
@@ -175,6 +181,38 @@ export const CreateDossierModal: React.FC<CreateDossierModalProps> = ({
                   {cat}
                 </option>
               ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-foreground block mb-1.5 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-accent" />
+                Koppel aan Wijk of Kern (Optioneel)
+              </span>
+              <span className="text-[10px] text-muted-foreground font-normal">Voor wijkpagina</span>
+            </label>
+            <select
+              id="select-dossier-wijk"
+              value={wijkSlug}
+              onChange={(e) => setWijkSlug(e.target.value)}
+              className="w-full text-xs h-9 px-3 rounded-xl bg-background border border-border text-foreground focus:outline-hidden focus:ring-2 focus:ring-accent"
+            >
+              <option value="">Geen / Gemeentebreed (Algemeen)</option>
+              <optgroup label="Stadswijken Steenwijk">
+                {WIJKEN_EN_KERNEN.filter((w) => w.type === "Wijk").map((w) => (
+                  <option key={w.slug} value={w.slug}>
+                    {w.naam}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Kernen & Dorpen">
+                {WIJKEN_EN_KERNEN.filter((w) => w.type === "Kern").map((w) => (
+                  <option key={w.slug} value={w.slug}>
+                    {w.naam}
+                  </option>
+                ))}
+              </optgroup>
             </select>
           </div>
 

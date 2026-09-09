@@ -20,7 +20,16 @@ export function slugify(text: string): string {
 }
 
 // Category and image presets for dossiers
-const DOSSIER_PRESETS: Record<string, { category: string; thumbnail: string; description: string }> = {
+const DOSSIER_PRESETS: Record<
+  string,
+  {
+    category: string;
+    thumbnail: string;
+    description: string;
+    wijkSlug?: string;
+    wijkNaam?: string;
+  }
+> = {
   "Wijziging gemeenschappelijke regelingen": {
     category: "Bestuur & Regelingen",
     thumbnail: "https://images.unsplash.com/photo-1450133064473-71024230f91b?w=800&auto=format&fit=crop&q=80",
@@ -44,12 +53,16 @@ const DOSSIER_PRESETS: Record<string, { category: string; thumbnail: string; des
   "Nieuw museum": {
     category: "Cultuur & Erfgoed",
     thumbnail: "https://images.unsplash.com/photo-1566127444979-b3d2b654e3d7?w=800&auto=format&fit=crop&q=80",
-    description: "Masterplan en stichtingskosten voor het nieuwe museum Steenwijkerland en de Spijkervetstallen."
+    description: "Masterplan en stichtingskosten voor het nieuwe museum Steenwijkerland en de Spijkervetstallen.",
+    wijkSlug: "centrum-steenwijk",
+    wijkNaam: "Centrum Steenwijk"
   },
   "Handhaving en Vergunningplicht IceBear": {
     category: "Milieu & Handhaving",
     thumbnail: "https://images.unsplash.com/photo-1532996122724-e3c354a0b15b?w=800&auto=format&fit=crop&q=80",
-    description: "Handhavingsverzoeken, geur- en emissiemetingen, GGD-gezondheidsadviezen en collegebesluiten aangaande IceBear Steenwijk."
+    description: "Handhavingsverzoeken, geur- en emissiemetingen, GGD-gezondheidsadviezen en collegebesluiten aangaande IceBear Steenwijk.",
+    wijkSlug: "groot-verlaat",
+    wijkNaam: "Groot Verlaat"
   },
   "Jeugdzorg (RSJ IJsselland)": {
     category: "Sociaal Domein & Jeugd",
@@ -74,17 +87,23 @@ const DOSSIER_PRESETS: Record<string, { category: string; thumbnail: string; des
   "Windenergie": {
     category: "Energie & Duurzaamheid",
     thumbnail: "https://images.unsplash.com/photo-1466611653911-95081537e5b7?w=800&auto=format&fit=crop&q=80",
-    description: "Programmeringsafspraken met de provincie Overijssel en locatieonderzoeken voor windturbines (o.a. Groot Verlaat)."
+    description: "Programmeringsafspraken met de provincie Overijssel en locatieonderzoeken voor windturbines (o.a. Groot Verlaat).",
+    wijkSlug: "groot-verlaat",
+    wijkNaam: "Groot Verlaat"
   },
   "Zonne-energie": {
     category: "Energie & Duurzaamheid",
     thumbnail: "https://images.unsplash.com/photo-1509391365360-2e959784a276?w=800&auto=format&fit=crop&q=80",
-    description: "Aanvragen en inpassing van zonneparken (o.a. De Hoop Blokzijl en Eeserwold) inclusief participatie en landschapsplannen."
+    description: "Aanvragen en inpassing van zonneparken (o.a. De Hoop Blokzijl en Eeserwold) inclusief participatie en landschapsplannen.",
+    wijkSlug: "blokzijl",
+    wijkNaam: "Blokzijl"
   },
   "Gebiedsontwikkeling": {
     category: "Ruimte & Wonen",
     thumbnail: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=800&auto=format&fit=crop&q=80",
-    description: "Ambitiedocument Spoorzone Steenwijk 2040, Gebiedsvisie Steenwijk Oost ('Het Vrije Veld') en centrumontwikkeling."
+    description: "Ambitiedocument Spoorzone Steenwijk 2040, Gebiedsvisie Steenwijk Oost ('Het Vrije Veld') en centrumontwikkeling.",
+    wijkSlug: "oostermeenthe",
+    wijkNaam: "Oostermeenthe"
   },
   "Huiselijk Geweld en Kindermishandeling": {
     category: "Sociaal Domein & Zorg",
@@ -104,12 +123,16 @@ const DOSSIER_PRESETS: Record<string, { category: string; thumbnail: string; des
   "Bestemmingsplan": {
     category: "Ruimtelijke Ordening",
     thumbnail: "https://images.unsplash.com/photo-1524813686514-a57563d77d61?w=800&auto=format&fit=crop&q=80",
-    description: "Bestemmingsplannen voor kernen en buitengebied (o.a. Willemsoord, Giethoorn, Sint Jansklooster en Zuidveen)."
+    description: "Bestemmingsplannen voor kernen en buitengebied (o.a. Willemsoord, Giethoorn, Sint Jansklooster en Zuidveen).",
+    wijkSlug: "giethoorn",
+    wijkNaam: "Giethoorn"
   },
   "Openbare ruimte": {
     category: "Beheer & Infrastructuur",
     thumbnail: "https://images.unsplash.com/photo-1477959858617-67f30bc75b82?w=800&auto=format&fit=crop&q=80",
-    description: "Beschoeiing Belt-Schutsloot, parkeerbeleid bezoekerscentrum Natuurmonumenten en onderhoud van de fysieke leefomgeving."
+    description: "Beschoeiing Belt-Schutsloot, parkeerbeleid bezoekerscentrum Natuurmonumenten en onderhoud van de fysieke leefomgeving.",
+    wijkSlug: "belt-schutsloot",
+    wijkNaam: "Belt-Schutsloot"
   },
   "Wegen en Infrastructuur": {
     category: "Verkeer & Vervoer",
@@ -289,6 +312,8 @@ export function getAllDossiers(customDossiers: Dossier[] = [], deletedSlugs: str
       },
       documents: docs,
       isCustom: false,
+      wijkSlug: preset.wijkSlug,
+      wijkNaam: preset.wijkNaam,
       createdAt: docs[docs.length - 1]?.datum || new Date().toISOString(),
       updatedAt: docs[0]?.datum || new Date().toISOString(),
     });
@@ -537,6 +562,8 @@ export function createCustomDossier(
     dateRange: payload.dateRange || { start: null, end: null },
     documents: payload.documents || [],
     isCustom: true,
+    wijkSlug: payload.wijkSlug,
+    wijkNaam: payload.wijkNaam,
     createdAt: now,
     updatedAt: now,
   };
