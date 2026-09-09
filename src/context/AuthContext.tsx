@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import { toast } from "sonner";
+import { safeLocalStorage, safeSessionStorage } from "@/lib/safeStorage";
 
 export interface User {
   id: string;
@@ -49,9 +50,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Check if user is logged in on mount (from localStorage or sessionStorage)
     const storedToken =
-      localStorage.getItem("auth_token") || sessionStorage.getItem("auth_token");
+      safeLocalStorage.getItem("auth_token") || safeSessionStorage.getItem("auth_token");
     const storedUser =
-      localStorage.getItem("auth_user") || sessionStorage.getItem("auth_user");
+      safeLocalStorage.getItem("auth_user") || safeSessionStorage.getItem("auth_user");
     
     if (
       storedToken &&
@@ -74,20 +75,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               if (res.status === 401) {
                 // Token is ongeldig of verlopen na bijv. een server herstart
                 console.warn("[Auth] Sessietoken is verlopen of ongeldig, sessie gewist.");
-                localStorage.removeItem("auth_token");
-                localStorage.removeItem("auth_user");
-                sessionStorage.removeItem("auth_token");
-                sessionStorage.removeItem("auth_user");
+                safeLocalStorage.removeItem("auth_token");
+                safeLocalStorage.removeItem("auth_user");
+                safeSessionStorage.removeItem("auth_token");
+                safeSessionStorage.removeItem("auth_user");
                 setToken(null);
                 setUser(null);
               } else if (res.ok) {
                 return res.json().then((freshData) => {
                   if (freshData?.user) {
                     setUser(freshData.user);
-                    if (localStorage.getItem("auth_remember") === "true" || localStorage.getItem("auth_token")) {
-                      localStorage.setItem("auth_user", JSON.stringify(freshData.user));
+                    if (safeLocalStorage.getItem("auth_remember") === "true" || safeLocalStorage.getItem("auth_token")) {
+                      safeLocalStorage.setItem("auth_user", JSON.stringify(freshData.user));
                     } else {
-                      sessionStorage.setItem("auth_user", JSON.stringify(freshData.user));
+                      safeSessionStorage.setItem("auth_user", JSON.stringify(freshData.user));
                     }
                   }
                 });
@@ -102,16 +103,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error("Ongeldige gebruiker");
         }
       } catch (_error) {
-        localStorage.removeItem("auth_token");
-        localStorage.removeItem("auth_user");
-        sessionStorage.removeItem("auth_token");
-        sessionStorage.removeItem("auth_user");
+        safeLocalStorage.removeItem("auth_token");
+        safeLocalStorage.removeItem("auth_user");
+        safeSessionStorage.removeItem("auth_token");
+        safeSessionStorage.removeItem("auth_user");
       }
     } else if (storedToken === "undefined" || storedToken === "null") {
-      localStorage.removeItem("auth_token");
-      localStorage.removeItem("auth_user");
-      sessionStorage.removeItem("auth_token");
-      sessionStorage.removeItem("auth_user");
+      safeLocalStorage.removeItem("auth_token");
+      safeLocalStorage.removeItem("auth_user");
+      safeSessionStorage.removeItem("auth_token");
+      safeSessionStorage.removeItem("auth_user");
     }
     setLoading(false);
   }, []);
@@ -121,17 +122,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(authToken);
 
     if (rememberMe) {
-      localStorage.setItem("auth_user", JSON.stringify(userData));
-      localStorage.setItem("auth_token", authToken);
-      localStorage.setItem("auth_remember", "true");
-      sessionStorage.removeItem("auth_user");
-      sessionStorage.removeItem("auth_token");
+      safeLocalStorage.setItem("auth_user", JSON.stringify(userData));
+      safeLocalStorage.setItem("auth_token", authToken);
+      safeLocalStorage.setItem("auth_remember", "true");
+      safeSessionStorage.removeItem("auth_user");
+      safeSessionStorage.removeItem("auth_token");
     } else {
-      sessionStorage.setItem("auth_user", JSON.stringify(userData));
-      sessionStorage.setItem("auth_token", authToken);
-      localStorage.removeItem("auth_remember");
-      localStorage.removeItem("auth_user");
-      localStorage.removeItem("auth_token");
+      safeSessionStorage.setItem("auth_user", JSON.stringify(userData));
+      safeSessionStorage.setItem("auth_token", authToken);
+      safeLocalStorage.removeItem("auth_remember");
+      safeLocalStorage.removeItem("auth_user");
+      safeLocalStorage.removeItem("auth_token");
     }
   }, []);
 
@@ -139,19 +140,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser((prev) => {
       if (!prev) return null;
       const updated = { ...prev, ...partialUser };
-      if (localStorage.getItem("auth_token")) {
-        localStorage.setItem("auth_user", JSON.stringify(updated));
+      if (safeLocalStorage.getItem("auth_token")) {
+        safeLocalStorage.setItem("auth_user", JSON.stringify(updated));
       } else {
-        sessionStorage.setItem("auth_user", JSON.stringify(updated));
+        safeSessionStorage.setItem("auth_user", JSON.stringify(updated));
       }
       return updated;
     });
     if (newToken) {
       setToken(newToken);
-      if (localStorage.getItem("auth_token")) {
-        localStorage.setItem("auth_token", newToken);
+      if (safeLocalStorage.getItem("auth_token")) {
+        safeLocalStorage.setItem("auth_token", newToken);
       } else {
-        sessionStorage.setItem("auth_token", newToken);
+        safeSessionStorage.setItem("auth_token", newToken);
       }
     }
   }, []);
@@ -159,11 +160,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     setUser(null);
     setToken(null);
-    localStorage.removeItem("auth_user");
-    localStorage.removeItem("auth_token");
-    localStorage.removeItem("auth_remember");
-    sessionStorage.removeItem("auth_user");
-    sessionStorage.removeItem("auth_token");
+    safeLocalStorage.removeItem("auth_user");
+    safeLocalStorage.removeItem("auth_token");
+    safeLocalStorage.removeItem("auth_remember");
+    safeSessionStorage.removeItem("auth_user");
+    safeSessionStorage.removeItem("auth_token");
     toast.success("U bent uitgelogd.");
   }, []);
 

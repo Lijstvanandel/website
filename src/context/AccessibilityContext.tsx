@@ -1,5 +1,6 @@
 import React, { createContext, useEffect, useState, ReactNode } from "react";
 import { toast } from "sonner";
+import { safeLocalStorage } from "@/lib/safeStorage";
 
 export type ContrastMode = "normal" | "high";
 export type ColorBlindMode = "none" | "deuteranopia" | "protanopia" | "tritanopia" | "monochrome";
@@ -28,7 +29,7 @@ const STORAGE_KEY_COLORBLIND = "lva-colorblind-mode";
 export const AccessibilityProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [fontSize, setFontSizeState] = useState<number>(() => {
     if (typeof window === "undefined") return 100;
-    const stored = localStorage.getItem(STORAGE_KEY_FONT_SIZE);
+    const stored = safeLocalStorage.getItem(STORAGE_KEY_FONT_SIZE);
     if (stored) {
       const parsed = parseInt(stored, 10);
       if (!isNaN(parsed) && parsed >= 70 && parsed <= 160) {
@@ -40,13 +41,13 @@ export const AccessibilityProvider: React.FC<{ children: ReactNode }> = ({ child
 
   const [contrastMode, setContrastModeState] = useState<ContrastMode>(() => {
     if (typeof window === "undefined") return "normal";
-    const stored = localStorage.getItem(STORAGE_KEY_CONTRAST);
+    const stored = safeLocalStorage.getItem(STORAGE_KEY_CONTRAST);
     return stored === "high" ? "high" : "normal";
   });
 
   const [colorBlindMode, setColorBlindModeState] = useState<ColorBlindMode>(() => {
     if (typeof window === "undefined") return "none";
-    const stored = localStorage.getItem(STORAGE_KEY_COLORBLIND);
+    const stored = safeLocalStorage.getItem(STORAGE_KEY_COLORBLIND);
     if (
       stored === "deuteranopia" ||
       stored === "protanopia" ||
@@ -66,7 +67,7 @@ export const AccessibilityProvider: React.FC<{ children: ReactNode }> = ({ child
     } else {
       root.style.fontSize = `${fontSize}%`;
     }
-    localStorage.setItem(STORAGE_KEY_FONT_SIZE, fontSize.toString());
+    safeLocalStorage.setItem(STORAGE_KEY_FONT_SIZE, fontSize.toString());
   }, [fontSize]);
 
   // Apply contrast mode and colorblind classes to document.documentElement and root element
@@ -77,7 +78,7 @@ export const AccessibilityProvider: React.FC<{ children: ReactNode }> = ({ child
     // High contrast class
     docEl.classList.toggle("contrast-high", contrastMode === "high");
     docEl.setAttribute("data-contrast", contrastMode);
-    localStorage.setItem(STORAGE_KEY_CONTRAST, contrastMode);
+    safeLocalStorage.setItem(STORAGE_KEY_CONTRAST, contrastMode);
 
     // Colorblind classes
     docEl.classList.remove("cb-deuteranopia", "cb-protanopia", "cb-tritanopia", "cb-monochrome");
@@ -85,7 +86,7 @@ export const AccessibilityProvider: React.FC<{ children: ReactNode }> = ({ child
       docEl.classList.add(`cb-${colorBlindMode}`);
     }
     docEl.setAttribute("data-colorblind", colorBlindMode);
-    localStorage.setItem(STORAGE_KEY_COLORBLIND, colorBlindMode);
+    safeLocalStorage.setItem(STORAGE_KEY_COLORBLIND, colorBlindMode);
 
     // Build filter string directly applied to #root
     let filterString = "";

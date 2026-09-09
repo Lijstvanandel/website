@@ -10,6 +10,7 @@ import { AuthProvider } from "./context/AuthContext";
 import { AccessibilityProvider } from "./context/AccessibilityContext";
 import { PWARedirectHandler } from "./components/PWARedirectHandler";
 import { ScrollToTop } from "./components/ScrollToTop";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 // Eager load primary landing page for instant FCP / LCP
 import Home from "./pages/Home";
@@ -56,51 +57,53 @@ const App = () => (
           <TooltipProvider>
             <Toaster />
             <Sonner />
-            <BrowserRouter>
-              <ScrollToTop />
-              <PWARedirectHandler />
-              <Suspense fallback={<PageLoadingFallback />}>
-                <Routes>
-                  <Route element={<Layout />}>
-                    <Route path="/" element={<Home />} />
-                    <Route path="/fractie" element={<Raadsleden />} />
-                    <Route path="/fractie/:id/videos" element={<FractielidVideos />} />
-                    <Route path="/raadsleden/:id/videos" element={<FractielidVideos />} />
-                    <Route path="/video/:id" element={<VideoRedirect />} />
-                    <Route path="/videos/:id" element={<VideoRedirect />} />
-                    <Route path="/bestuur" element={<Bestuur />} />
-                    <Route path="/steunfractie" element={<Steunfractie />} />
-                    <Route path="/raadsleden" element={<Raadsleden />} />
-                    <Route path="/standpunten" element={<Standpunten />} />
-                    <Route path="/agenda" element={<Agenda />} />
-                    <Route path="/agenda/:id" element={<AgendaDetail />} />
-                    <Route path="/ticket/:code" element={<TicketView />} />
-                    <Route path="/nieuws" element={<Nieuws />} />
-                    <Route path="/nieuws/:id" element={<NieuwsDetail />} />
-                    <Route path="/wijken-en-kernen" element={<WijkenEnKernen />} />
-                    <Route path="/wijken-en-kernen/:slug" element={<WijkDetail />} />
-                    <Route path="/wijken-en/kernen" element={<WijkenEnKernen />} />
-                    <Route path="/wijken-en/kernen/:slug" element={<WijkDetail />} />
-                    <Route path="/contact" element={<Contact />} />
-                    <Route path="/doneren" element={<Doneren />} />
-                    <Route path="/doneren/*" element={<Doneren />} />
-                    <Route path="/doneer" element={<Doneren />} />
-                    <Route path="/reset-wachtwoord" element={<ResetPassword />} />
-                    <Route path="/login" element={<Login />} />
-                    <Route path="/registreren" element={<Register />} />
-                    <Route path="/dashboard" element={<Dashboard />} />
-                    <Route path="/peilingen" element={<Polls />} />
-                    <Route path="/polls" element={<Polls />} />
-                    <Route path="/admin" element={<AdminDashboard />} />
-                    <Route path="/raadspaneel" element={<Raadspaneel />} />
-                    <Route path="/dossiers" element={<Raadspaneel />} />
-                    <Route path="/dossiers/:slug" element={<Raadspaneel />} />
-                    <Route path="/nieuwsbrief/afmelden" element={<NieuwsbriefAfmelden />} />
-                  </Route>
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-              </Suspense>
-            </BrowserRouter>
+            <ErrorBoundary>
+              <BrowserRouter>
+                <ScrollToTop />
+                <PWARedirectHandler />
+                <Suspense fallback={<PageLoadingFallback />}>
+                  <Routes>
+                    <Route element={<Layout />}>
+                      <Route path="/" element={<Home />} />
+                      <Route path="/fractie" element={<Raadsleden />} />
+                      <Route path="/fractie/:id/videos" element={<FractielidVideos />} />
+                      <Route path="/raadsleden/:id/videos" element={<FractielidVideos />} />
+                      <Route path="/video/:id" element={<VideoRedirect />} />
+                      <Route path="/videos/:id" element={<VideoRedirect />} />
+                      <Route path="/bestuur" element={<Bestuur />} />
+                      <Route path="/steunfractie" element={<Steunfractie />} />
+                      <Route path="/raadsleden" element={<Raadsleden />} />
+                      <Route path="/standpunten" element={<Standpunten />} />
+                      <Route path="/agenda" element={<Agenda />} />
+                      <Route path="/agenda/:id" element={<AgendaDetail />} />
+                      <Route path="/ticket/:code" element={<TicketView />} />
+                      <Route path="/nieuws" element={<Nieuws />} />
+                      <Route path="/nieuws/:id" element={<NieuwsDetail />} />
+                      <Route path="/wijken-en-kernen" element={<WijkenEnKernen />} />
+                      <Route path="/wijken-en-kernen/:slug" element={<WijkDetail />} />
+                      <Route path="/wijken-en/kernen" element={<WijkenEnKernen />} />
+                      <Route path="/wijken-en/kernen/:slug" element={<WijkDetail />} />
+                      <Route path="/contact" element={<Contact />} />
+                      <Route path="/doneren" element={<Doneren />} />
+                      <Route path="/doneren/*" element={<Doneren />} />
+                      <Route path="/doneer" element={<Doneren />} />
+                      <Route path="/reset-wachtwoord" element={<ResetPassword />} />
+                      <Route path="/login" element={<Login />} />
+                      <Route path="/registreren" element={<Register />} />
+                      <Route path="/dashboard" element={<Dashboard />} />
+                      <Route path="/peilingen" element={<Polls />} />
+                      <Route path="/polls" element={<Polls />} />
+                      <Route path="/admin" element={<AdminDashboard />} />
+                      <Route path="/raadspaneel" element={<Raadspaneel />} />
+                      <Route path="/dossiers" element={<Raadspaneel />} />
+                      <Route path="/dossiers/:slug" element={<Raadspaneel />} />
+                      <Route path="/nieuwsbrief/afmelden" element={<NieuwsbriefAfmelden />} />
+                    </Route>
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </Suspense>
+              </BrowserRouter>
+            </ErrorBoundary>
           </TooltipProvider>
         </AuthProvider>
       </AccessibilityProvider>

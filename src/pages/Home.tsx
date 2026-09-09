@@ -11,6 +11,16 @@ import { news } from "@/data/news";
 import { format, parseISO } from "date-fns";
 import { nl } from "date-fns/locale";
 
+const formatDateSafe = (dateStr?: string) => {
+  if (!dateStr) return "";
+  try {
+    const parsed = parseISO(dateStr);
+    return isNaN(parsed.getTime()) ? dateStr : format(parsed, "d MMM yyyy", { locale: nl });
+  } catch {
+    return dateStr;
+  }
+};
+
 const Home = () => {
   const [belOpen, setBelOpen] = useState(false);
   const [homeNews, setHomeNews] = useState<any[]>(() => news.filter((n: any) => !n.wijkSlug));
@@ -235,18 +245,19 @@ const Home = () => {
               to={`/nieuws/${n.id}`}
               className="group bg-card border border-border hover-lift overflow-hidden flex flex-col"
             >
-              <div className="aspect-[16/9] overflow-hidden">
+              <div className="aspect-[16/9] overflow-hidden bg-muted">
                 <img
-                  src={n.image}
-                  alt={n.title}
+                  src={n.image || n.thumbnailUrl || n.headerUrl || heroBanner}
+                  alt={n.title || "Nieuwsbericht"}
                   className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  loading="lazy"
                 />
               </div>
               <div className="p-6 flex flex-col flex-1">
                 <div className="flex items-center gap-3 text-[10px] uppercase tracking-widest text-accent mb-3">
-                  <span>{n.category}</span>
+                  <span>{n.category || "Nieuws"}</span>
                   <span className="text-muted-foreground flex items-center gap-1">
-                    <CalIcon className="w-3 h-3" /> {format(parseISO(n.date), "d MMM yyyy", { locale: nl })}
+                    <CalIcon className="w-3 h-3" /> {formatDateSafe(n.date || n.createdAt)}
                   </span>
                 </div>
                 <h3 className="font-display text-2xl mb-2 leading-tight">{n.title}</h3>
