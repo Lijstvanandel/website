@@ -9,6 +9,11 @@ import {
   Loader2,
   FolderSync,
   AlertTriangle,
+  FileSpreadsheet,
+  Network,
+  Trash2,
+  Plus,
+  Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -26,6 +31,9 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
   onUploadSuccess,
 }) => {
   const { token: authContextToken } = useAuth();
+  const [activeTab, setActiveTab] = useState<"documents" | "metadata">("documents");
+
+  // Document upload state
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -37,22 +45,54 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
     matchedDocuments: Array<{ filename: string; dossier: string; title: string }>;
   } | null>(null);
 
+  // Metadata upload state
+  const [selectedMetaFile, setSelectedMetaFile] = useState<File | null>(null);
+  const [isUploadingMeta, setIsUploadingMeta] = useState(false);
+  const [metaResult, setMetaResult] = useState<{
+    itemsCount?: number;
+    nodesCount?: number;
+    edgesCount?: number;
+    message: string;
+  } | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const metaFileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
+  const getToken = () =>
+    authContextToken ||
+    localStorage.getItem("auth_token") ||
+    sessionStorage.getItem("auth_token") ||
+    localStorage.getItem("token") ||
+    sessionStorage.getItem("token");
+
+  // Add files incrementally without losing previously selected files
+  const addFiles = (newFiles: FileList | File[]) => {
+    const fileArr = Array.from(newFiles);
+    setSelectedFiles((prev) => {
+      const existingNames = new Set(prev.map((f) => f.name.toLowerCase()));
+      const uniqueNew = fileArr.filter((f) => !existingNames.has(f.name.toLowerCase()));
+      return [...prev, ...uniqueNew];
+    });
+    setUploadResult(null);
+  };
+
+  const removeFile = (index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      setSelectedFiles(Array.from(e.target.files));
-      setUploadResult(null);
+      addFiles(e.target.files);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      setSelectedFiles(Array.from(e.dataTransfer.files));
-      setUploadResult(null);
+      addFiles(e.dataTransfer.files);
     }
   };
 
@@ -93,19 +133,12 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
     setUploadProgress(5);
     setUploadStatusText(`Upload voorbereiden voor ${selectedFiles.length} bestanden...`);
 
-    const token =
-      authContextToken ||
-      localStorage.getItem("auth_token") ||
-      sessionStorage.getItem("auth_token") ||
-      localStorage.getItem("token") ||
-      sessionStorage.getItem("token");
-
+    const token = getToken();
     const batches = createBatches(selectedFiles);
     let completedFiles = 0;
     let accumulatedMatchedCount = 0;
     let accumulatedUnmatchedCount = 0;
     const accumulatedMatchedDocs: Array<{ filename: string; dossier: string; title: string }> = [];
-    let hasErrors = false;
 
     try {
       for (let i = 0; i < batches.length; i++) {
@@ -132,7 +165,6 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
         try {
           data = JSON.parse(responseText);
         } catch (_jsonErr) {
-          // If the server returned HTML (e.g. 413 Payload Too Large or 502/504)
           if (res.status === 413 || responseText.includes("413") || responseText.toLowerCase().includes("too large")) {
             throw new Error(
               `Eén van de bestanden in deel ${i + 1} is te groot voor de server. Upload bestanden kleiner dan 25 MB per stuk.`
@@ -176,10 +208,8 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
       );
       onUploadSuccess();
     } catch (err: any) {
-      hasErrors = true;
       console.error("[BULK UPLOAD CLIENT ERROR]:", err);
       toast.error(err.message || "Fout bij bulk upload");
-      // If some files succeeded before the failure, preserve partial results
       if (completedFiles > 0) {
         setUploadResult({
           totalUploaded: completedFiles,
@@ -192,6 +222,41 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
     } finally {
       setIsUploading(false);
       setUploadStatusText("");
+    }
+  };
+
+  // Upload metadata CSV or network_graph JSON
+  const handleUploadMetadata = async () => {
+    if (!selectedMetaFile) return;
+
+    setIsUploadingMeta(true);
+    const token = getToken();
+
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedMetaFile);
+
+      const res = await fetch("/api/council/metadata/upload", {
+        method: "POST",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || "Fout bij verwerken van metadata.");
+      }
+
+      setMetaResult(data);
+      toast.success(data.message || "Metadata succesvol bijgewerkt!");
+      onUploadSuccess();
+    } catch (err: any) {
+      console.error("[METADATA UPLOAD ERROR]:", err);
+      toast.error(err.message || "Fout bij uploaden van metadata");
+    } finally {
+      setIsUploadingMeta(false);
     }
   };
 
@@ -214,10 +279,10 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-bold text-foreground">
-                Documenten Bulk-Uploaden naar Dossiers
+                Documenten & Dossiers Beheer
               </h3>
               <p className="text-xs text-muted-foreground">
-                Sleep alle raadsstukken hierheen. Bestanden worden automatisch gekoppeld aan de metadata.
+                Bulk-upload van PDF raadsstukken of update van metadata & relaties.
               </p>
             </div>
           </div>
@@ -232,167 +297,369 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
           </Button>
         </div>
 
+        {/* Tab Switcher */}
+        <div className="flex border-b border-border bg-muted/20 px-5 pt-2 gap-2 text-xs">
+          <button
+            onClick={() => setActiveTab("documents")}
+            className={`pb-2.5 px-3 font-semibold transition-all border-b-2 flex items-center gap-2 ${
+              activeTab === "documents"
+                ? "border-accent text-accent"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <FileText className="w-4 h-4" />
+            PDF Raadsstukken Bulk-Upload
+            {selectedFiles.length > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full bg-accent text-accent-foreground text-[10px]">
+                {selectedFiles.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab("metadata")}
+            className={`pb-2.5 px-3 font-semibold transition-all border-b-2 flex items-center gap-2 ${
+              activeTab === "metadata"
+                ? "border-accent text-accent"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            Metadata & Netwerkgraaf (CSV / JSON)
+          </button>
+        </div>
+
         {/* Modal Body */}
         <div className="p-5 overflow-y-auto space-y-4">
-          {!uploadResult ? (
-            <>
-              {/* Dropzone */}
-              <div
-                id="bulk-upload-dropzone"
-                onDrop={handleDrop}
-                onDragOver={handleDragOver}
-                onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-accent/40 hover:border-accent hover:bg-accent/5 transition-colors rounded-2xl p-8 text-center cursor-pointer flex flex-col items-center justify-center gap-3"
-              >
-                <div className="w-14 h-14 rounded-2xl bg-accent/10 flex items-center justify-center text-accent">
-                  <Upload className="w-7 h-7" />
+          {activeTab === "documents" ? (
+            !uploadResult ? (
+              <>
+                {/* Active database info callout */}
+                <div className="flex items-start gap-2.5 p-3 rounded-xl bg-accent/5 border border-accent/20 text-xs">
+                  <Info className="w-4 h-4 text-accent shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-semibold text-foreground">
+                      406 raadsstukken geregistreerd in 226 dossiers.
+                    </span>{" "}
+                    <span className="text-muted-foreground">
+                      Upload hieronder de PDF-bestanden. Bestanden worden automatisch herkend aan de hand van de bestandsnaam en gekoppeld aan het bijbehorende dossier en de netwerkgrafiek.
+                    </span>
+                  </div>
+                </div>
+
+                {/* Dropzone */}
+                <div
+                  id="bulk-upload-dropzone"
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-2 border-dashed border-accent/40 hover:border-accent hover:bg-accent/5 transition-colors rounded-2xl p-7 text-center cursor-pointer flex flex-col items-center justify-center gap-3"
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-accent/10 flex items-center justify-center text-accent">
+                    <Upload className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">
+                      Sleep PDF raadsstukken hierheen of klik om te selecteren
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Ondersteunt honderden bestanden tegelijk (wordt automatisch in veilige delen verwerkt)
+                    </p>
+                  </div>
+                  <input
+                    id="bulk-upload-file-input"
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept=".pdf,.doc,.docx"
+                    className="hidden"
+                    onChange={handleFileChange}
+                  />
+                </div>
+
+                {/* Selected Files Preview List */}
+                {selectedFiles.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span className="font-semibold text-foreground">
+                        Geselecteerd voor upload ({selectedFiles.length} bestanden,{" "}
+                        {(
+                          selectedFiles.reduce((acc, f) => acc + f.size, 0) /
+                          (1024 * 1024)
+                        ).toFixed(1)}{" "}
+                        MB)
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 text-[11px] gap-1"
+                          onClick={() => fileInputRef.current?.click()}
+                        >
+                          <Plus className="w-3 h-3" /> Meer toevoegen
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-[11px] text-destructive hover:text-destructive"
+                          onClick={() => setSelectedFiles([])}
+                        >
+                          Alles wissen
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="max-h-48 overflow-y-auto rounded-xl border border-border p-2 bg-background space-y-1">
+                      {selectedFiles.map((file, idx) => {
+                        const isLarge = file.size > 25 * 1024 * 1024;
+                        return (
+                          <div
+                            key={idx}
+                            className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs ${
+                              isLarge ? "bg-amber-500/10 border border-amber-500/30" : "bg-muted/40"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0 pr-2">
+                              <FileText className="w-3.5 h-3.5 text-accent shrink-0" />
+                              <span className="font-mono truncate">{file.name}</span>
+                              {isLarge && (
+                                <span className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 font-semibold px-1.5 py-0.5 rounded bg-amber-500/15 shrink-0">
+                                  <AlertTriangle className="w-3 h-3" />
+                                  Groot bestand
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-[11px] text-muted-foreground font-medium">
+                                {(file.size / (1024 * 1024)).toFixed(2)} MB
+                              </span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeFile(idx);
+                                }}
+                                className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-muted"
+                                title="Bestand verwijderen"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Progress Bar */}
+                {isUploading && (
+                  <div className="space-y-1.5 bg-accent/5 p-3 rounded-xl border border-accent/20">
+                    <div className="flex items-center justify-between text-xs text-foreground">
+                      <span className="flex items-center gap-1.5 font-medium text-accent truncate pr-2">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-accent shrink-0" />
+                        {uploadStatusText || "Bestanden opslaan en synchroniseren..."}
+                      </span>
+                      <span className="font-bold text-accent shrink-0">{uploadProgress}%</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full bg-accent transition-all duration-300"
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              /* Upload Complete Feedback Summary */
+              <div className="space-y-4 text-center py-4">
+                <div className="w-14 h-14 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
+                  <CheckCircle2 className="w-8 h-8" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-foreground">
-                    Sleep bestanden hierheen of klik om te bladeren
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Ondersteunt honderden PDF's tegelijk (tot 250 bestanden per batch)
+                  <h4 className="text-base font-bold text-foreground">
+                    Bulk Upload Succesvol Afgerond!
+                  </h4>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
+                    De documenten zijn fysiek opgeslagen in de server-infrastructuur en gekoppeld aan de dossiers en netwerkgrafiek.
                   </p>
                 </div>
-                <input
-                  id="bulk-upload-file-input"
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept=".pdf,.doc,.docx"
-                  className="hidden"
-                  onChange={handleFileChange}
-                />
-              </div>
 
-              {/* Selected Files Preview List */}
-              {selectedFiles.length > 0 && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span className="font-semibold text-foreground">
-                      Geselecteerde bestanden ({selectedFiles.length})
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 text-[11px] text-destructive hover:text-destructive"
-                      onClick={() => setSelectedFiles([])}
-                    >
-                      Alles wissen
-                    </Button>
+                <div className="grid grid-cols-3 gap-3 max-w-md mx-auto text-center">
+                  <div className="p-3 rounded-xl bg-muted/40 border border-border">
+                    <div className="text-lg font-bold text-foreground">
+                      {uploadResult.totalUploaded}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">Geüpload</div>
                   </div>
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                    <div className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+                      {uploadResult.matchedCount}
+                    </div>
+                    <div className="text-[11px] text-emerald-700 dark:text-emerald-300">
+                      Herkend in Dossiers
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-xl bg-muted/40 border border-border">
+                    <div className="text-lg font-bold text-muted-foreground">
+                      {uploadResult.unmatchedCount}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">Nieuw / Overig</div>
+                  </div>
+                </div>
 
-                  <div className="max-h-48 overflow-y-auto rounded-xl border border-border p-2 bg-background space-y-1">
-                    {selectedFiles.map((file, idx) => {
-                      const isLarge = file.size > 25 * 1024 * 1024;
-                      return (
+                {uploadResult.matchedDocuments.length > 0 && (
+                  <div className="text-left space-y-1.5 mt-4">
+                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">
+                      Gekoppelde Stukken:
+                    </span>
+                    <div className="max-h-40 overflow-y-auto rounded-xl border border-border p-2 bg-background space-y-1 text-xs">
+                      {uploadResult.matchedDocuments.slice(0, 50).map((doc, idx) => (
                         <div
                           key={idx}
-                          className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs ${
-                            isLarge ? "bg-amber-500/10 border border-amber-500/30" : "bg-muted/40"
-                          }`}
+                          className="flex items-center justify-between p-1.5 rounded-md bg-muted/30 text-xs"
                         >
-                          <div className="flex items-center gap-2 min-w-0 pr-2">
-                            <FileText className="w-3.5 h-3.5 text-accent shrink-0" />
-                            <span className="font-mono truncate">{file.name}</span>
-                            {isLarge && (
-                              <span className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 font-semibold px-1.5 py-0.5 rounded bg-amber-500/15 shrink-0">
-                                <AlertTriangle className="w-3 h-3" />
-                                Groot bestand
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-[11px] text-muted-foreground shrink-0 font-medium">
-                            {(file.size / (1024 * 1024)).toFixed(2)} MB
+                          <span className="font-mono text-[11px] truncate pr-2">{doc.filename}</span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-accent/15 text-accent shrink-0">
+                            {doc.dossier}
                           </span>
                         </div>
-                      );
-                    })}
+                      ))}
+                      {uploadResult.matchedDocuments.length > 50 && (
+                        <div className="text-[11px] text-center text-muted-foreground py-1">
+                          ...en nog {uploadResult.matchedDocuments.length - 50} andere stukken
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
-
-              {/* Progress Bar */}
-              {isUploading && (
-                <div className="space-y-1.5 bg-accent/5 p-3 rounded-xl border border-accent/20">
-                  <div className="flex items-center justify-between text-xs text-foreground">
-                    <span className="flex items-center gap-1.5 font-medium text-accent truncate pr-2">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin text-accent shrink-0" />
-                      {uploadStatusText || "Bestanden opslaan en synchroniseren..."}
-                    </span>
-                    <span className="font-bold text-accent shrink-0">{uploadProgress}%</span>
-                  </div>
-                  <div className="h-2 rounded-full bg-muted overflow-hidden">
-                    <div
-                      className="h-full bg-accent transition-all duration-300"
-                      style={{ width: `${uploadProgress}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-            </>
-          ) : (
-            /* Upload Complete Feedback Summary */
-            <div className="space-y-4 text-center py-4">
-              <div className="w-14 h-14 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
-                <CheckCircle2 className="w-8 h-8" />
+                )}
               </div>
-              <div>
-                <h4 className="text-base font-bold text-foreground">
-                  Bulk Upload Succesvol Afgerond!
-                </h4>
-                <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
-                  De documenten zijn fysiek opgeslagen in de server-infrastructuur en gekoppeld aan de dossiers en netwerkgrafiek.
+            )
+          ) : (
+            /* Metadata & Network Graph Tab */
+            <div className="space-y-4">
+              <div className="p-3 rounded-xl bg-accent/5 border border-accent/20 text-xs text-muted-foreground space-y-1">
+                <p className="font-semibold text-foreground flex items-center gap-1.5">
+                  <Network className="w-4 h-4 text-accent" />
+                  Update Raadsstukken Metadata & Netwerkgraaf
+                </p>
+                <p>
+                  Upload een nieuw <code className="text-accent">raadsstukken_metadata_tussentijds.csv</code> bestand of een geüpdatete <code className="text-accent">network_graph.json</code>. De site verwerkt alle rijen, hercalculeert alle relaties en bouwt de netwerkgrafiek direct automatisch op.
                 </p>
               </div>
 
-              <div className="grid grid-cols-3 gap-3 max-w-md mx-auto text-center">
-                <div className="p-3 rounded-xl bg-muted/40 border border-border">
-                  <div className="text-lg font-bold text-foreground">
-                    {uploadResult.totalUploaded}
+              {!metaResult ? (
+                <>
+                  <div
+                    onClick={() => metaFileInputRef.current?.click()}
+                    className="border-2 border-dashed border-accent/40 hover:border-accent hover:bg-accent/5 transition-colors rounded-2xl p-7 text-center cursor-pointer flex flex-col items-center justify-center gap-3"
+                  >
+                    <div className="w-12 h-12 rounded-2xl bg-accent/10 flex items-center justify-center text-accent">
+                      <FileSpreadsheet className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">
+                        Selecteer CSV of JSON bestand
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Bijvoorbeeld <span className="font-mono">raadsstukken_metadata_tussentijds.csv</span> of <span className="font-mono">network_graph.json</span>
+                      </p>
+                    </div>
+                    <input
+                      ref={metaFileInputRef}
+                      type="file"
+                      accept=".csv,.json"
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files.length > 0) {
+                          setSelectedMetaFile(e.target.files[0]);
+                        }
+                      }}
+                    />
                   </div>
-                  <div className="text-[11px] text-muted-foreground">Geüpload</div>
-                </div>
-                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-                  <div className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
-                    {uploadResult.matchedCount}
-                  </div>
-                  <div className="text-[11px] text-emerald-700 dark:text-emerald-300">
-                    Herkend in Dossiers
-                  </div>
-                </div>
-                <div className="p-3 rounded-xl bg-muted/40 border border-border">
-                  <div className="text-lg font-bold text-muted-foreground">
-                    {uploadResult.unmatchedCount}
-                  </div>
-                  <div className="text-[11px] text-muted-foreground">Nieuw / Overig</div>
-                </div>
-              </div>
 
-              {uploadResult.matchedDocuments.length > 0 && (
-                <div className="text-left space-y-1.5 mt-4">
-                  <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">
-                    Gekoppelde Stukken:
-                  </span>
-                  <div className="max-h-40 overflow-y-auto rounded-xl border border-border p-2 bg-background space-y-1 text-xs">
-                    {uploadResult.matchedDocuments.slice(0, 50).map((doc, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between p-1.5 rounded-md bg-muted/30 text-xs"
-                      >
-                        <span className="font-mono text-[11px] truncate pr-2">{doc.filename}</span>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-accent/15 text-accent shrink-0">
-                          {doc.dossier}
+                  {selectedMetaFile && (
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-muted/40 border border-border text-xs">
+                      <div className="flex items-center gap-2 min-w-0 pr-2">
+                        <FileSpreadsheet className="w-4 h-4 text-accent shrink-0" />
+                        <span className="font-mono font-semibold truncate">{selectedMetaFile.name}</span>
+                        <span className="text-muted-foreground">
+                          ({(selectedMetaFile.size / 1024).toFixed(1)} KB)
                         </span>
                       </div>
-                    ))}
-                    {uploadResult.matchedDocuments.length > 50 && (
-                      <div className="text-[11px] text-center text-muted-foreground py-1">
-                        ...en nog {uploadResult.matchedDocuments.length - 50} andere stukken
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                        onClick={() => setSelectedMetaFile(null)}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  )}
+
+                  {selectedMetaFile && (
+                    <Button
+                      disabled={isUploadingMeta}
+                      onClick={handleUploadMetadata}
+                      className="w-full bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-xs rounded-xl h-10"
+                    >
+                      {isUploadingMeta ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Metadata inlezen & netwerkgraaf genereren...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-4 h-4 mr-2" />
+                          Metadata Bijwerken & Netwerkgraaf Herbouwen
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <div className="space-y-4 text-center py-4">
+                  <div className="w-14 h-14 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
+                    <CheckCircle2 className="w-8 h-8" />
+                  </div>
+                  <div>
+                    <h4 className="text-base font-bold text-foreground">
+                      Metadata Succesvol Bijgewerkt!
+                    </h4>
+                    <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
+                      {metaResult.message}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 max-w-sm mx-auto text-center">
+                    {metaResult.itemsCount !== undefined && (
+                      <div className="p-3 rounded-xl bg-muted/40 border border-border">
+                        <div className="text-lg font-bold text-foreground">
+                          {metaResult.itemsCount}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground">Raadsstukken</div>
+                      </div>
+                    )}
+                    {metaResult.nodesCount !== undefined && (
+                      <div className="p-3 rounded-xl bg-accent/10 border border-accent/20">
+                        <div className="text-lg font-bold text-accent">
+                          {metaResult.nodesCount}
+                        </div>
+                        <div className="text-[11px] text-accent">Netwerkknooppunten</div>
                       </div>
                     )}
                   </div>
+
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setSelectedMetaFile(null);
+                      setMetaResult(null);
+                    }}
+                    className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-xs rounded-xl"
+                  >
+                    Nog een bestand verwerken
+                  </Button>
                 </div>
               )}
             </div>
@@ -408,42 +675,43 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
             onClick={onClose}
             className="text-xs rounded-xl"
           >
-            {uploadResult ? "Sluiten" : "Annuleren"}
+            {uploadResult || metaResult ? "Sluiten" : "Annuleren"}
           </Button>
 
-          {!uploadResult ? (
-            <Button
-              id="btn-execute-bulk-upload"
-              size="sm"
-              disabled={selectedFiles.length === 0 || isUploading}
-              onClick={handleUpload}
-              className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-xs rounded-xl"
-            >
-              {isUploading ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                  Verwerken ({selectedFiles.length})...
-                </>
-              ) : (
-                <>
-                  <Upload className="w-3.5 h-3.5 mr-1.5" />
-                  Upload {selectedFiles.length} Bestanden
-                </>
-              )}
-            </Button>
-          ) : (
-            <Button
-              id="btn-upload-more"
-              size="sm"
-              onClick={() => {
-                setSelectedFiles([]);
-                setUploadResult(null);
-              }}
-              className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-xs rounded-xl"
-            >
-              Nog meer bestanden uploaden
-            </Button>
-          )}
+          {activeTab === "documents" &&
+            (!uploadResult ? (
+              <Button
+                id="btn-execute-bulk-upload"
+                size="sm"
+                disabled={selectedFiles.length === 0 || isUploading}
+                onClick={handleUpload}
+                className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-xs rounded-xl"
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                    Verwerken ({selectedFiles.length})...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-3.5 h-3.5 mr-1.5" />
+                    Upload {selectedFiles.length} Bestanden
+                  </>
+                )}
+              </Button>
+            ) : (
+              <Button
+                id="btn-upload-more"
+                size="sm"
+                onClick={() => {
+                  setSelectedFiles([]);
+                  setUploadResult(null);
+                }}
+                className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-xs rounded-xl"
+              >
+                Nog meer bestanden uploaden
+              </Button>
+            ))}
         </div>
       </div>
     </div>

@@ -925,3 +925,232 @@ export function processUploadedCouncilDocuments(
   };
 }
 
+const METADATA_CSV_PATH = path.join(process.cwd(), "public", "data", "raadsstukken_metadata_tussentijds.csv");
+const DIST_DATA_DIR = path.join(process.cwd(), "dist", "data");
+const DIST_METADATA_PATH = path.join(DIST_DATA_DIR, "raadsstukken_metadata_tussentijds.json");
+const DIST_GRAPH_PATH = path.join(DIST_DATA_DIR, "network_graph.json");
+
+// Helper to parse CSV lines with quote support
+export function parseMetadataCsv(csvContent: string): RaadsstukMetadata[] {
+  const lines = csvContent.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return [];
+
+  // Detect delimiter: semicolon or comma
+  const firstLine = lines[0];
+  const delimiter = firstLine.includes(";") ? ";" : ",";
+
+  function parseLine(line: string): string[] {
+    const result: string[] = [];
+    let cur = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (c === delimiter && !inQuotes) {
+        result.push(cur.trim());
+        cur = "";
+      } else {
+        cur += c;
+      }
+    }
+    result.push(cur.trim());
+    return result;
+  }
+
+  const header = parseLine(lines[0]).map((h) => h.toLowerCase().replace(/["']/g, "").trim());
+  const bestandsnaamIdx = header.findIndex((h) => h === "bestandsnaam" || h === "bestand" || h === "filename");
+  const titelIdx = header.findIndex((h) => h === "titel" || h === "title");
+  const dossierIdx = header.findIndex((h) => h === "dossier" || h === "onderwerp" || h === "thema");
+  const datumIdx = header.findIndex((h) => h === "datum" || h === "date");
+  const entiteitenIdx = header.findIndex((h) => h === "entiteiten" || h === "entities" || h === "tags");
+  const relatiesIdx = header.findIndex((h) => h === "relaties" || h === "relations" || h === "referenties");
+  const wijkIdx = header.findIndex((h) => h === "wijk_of_kern" || h === "wijk" || h === "kern");
+
+  const items: RaadsstukMetadata[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseLine(lines[i]);
+    const bestandsnaam = cols[bestandsnaamIdx >= 0 ? bestandsnaamIdx : 0] || "";
+    if (!bestandsnaam) continue;
+
+    const item: RaadsstukMetadata = {
+      bestandsnaam,
+      titel: cols[titelIdx >= 0 ? titelIdx : 1] || bestandsnaam.replace(/\.pdf$/i, ""),
+      dossier: cols[dossierIdx >= 0 ? dossierIdx : 2] || "Algemeen",
+      datum: cols[datumIdx >= 0 ? datumIdx : 3] || null,
+      entiteiten: cols[entiteitenIdx >= 0 ? entiteitenIdx : 4] || "",
+      relaties: cols[relatiesIdx >= 0 ? relatiesIdx : 5] || "",
+    };
+
+    if (wijkIdx >= 0 && cols[wijkIdx]) {
+      item.wijk_of_kern = cols[wijkIdx];
+    }
+    items.push(item);
+  }
+
+  return items;
+}
+
+// Rebuild network graph from metadata items
+export function rebuildNetworkGraph(items: RaadsstukMetadata[]): NetworkGraphData {
+  const nodes: GraphNode[] = [];
+  const edges: GraphEdge[] = [];
+  const nodeIds = new Set<string>();
+
+  items.forEach((item) => {
+    const fn = (item.bestandsnaam || "").trim();
+    if (!fn) return;
+
+    if (!nodeIds.has(fn)) {
+      nodes.push({
+        id: fn,
+        label: (item.titel || fn).trim(),
+        group: (item.dossier || "Algemeen").trim(),
+        type: "Raadsstuk",
+        date: item.datum || null,
+      });
+      nodeIds.add(fn);
+    }
+
+    const rels = item.relaties || "";
+    if (rels) {
+      const parts = rels.split(",").map((r) => r.trim()).filter(Boolean);
+      parts.forEach((r) => {
+        if (!nodeIds.has(r)) {
+          nodes.push({
+            id: r,
+            label: r,
+            group: "Referentie",
+            type: "Relatie",
+            date: null,
+          });
+          nodeIds.add(r);
+        }
+        edges.push({
+          source: fn,
+          target: r,
+        });
+      });
+    }
+  });
+
+  const graph: NetworkGraphData = { nodes, edges };
+
+  // Write to public/data/network_graph.json
+  try {
+    fs.writeFileSync(GRAPH_PATH, JSON.stringify(graph, null, 2), "utf-8");
+    if (!fs.existsSync(DIST_DATA_DIR)) {
+      fs.mkdirSync(DIST_DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(DIST_GRAPH_PATH, JSON.stringify(graph, null, 2), "utf-8");
+  } catch (err) {
+    console.error("Error saving updated network graph:", err);
+  }
+
+  return graph;
+}
+
+// Process updated metadata or graph file upload
+export function processMetadataOrGraphUpload(
+  fileContent: string,
+  filename: string
+): { success: boolean; type: "csv" | "metadata-json" | "network-graph"; itemsCount?: number; nodesCount?: number; edgesCount?: number; message: string } {
+  const lowerName = filename.toLowerCase();
+
+  if (lowerName.endsWith(".csv")) {
+    const items = parseMetadataCsv(fileContent);
+    if (items.length === 0) {
+      throw new Error("Geen geldige raadsstukken rijen gevonden in de geüploade CSV.");
+    }
+
+    // Save CSV
+    fs.writeFileSync(METADATA_CSV_PATH, fileContent, "utf-8");
+    if (!fs.existsSync(DIST_DATA_DIR)) {
+      fs.mkdirSync(DIST_DATA_DIR, { recursive: true });
+    }
+    try {
+      fs.writeFileSync(path.join(DIST_DATA_DIR, path.basename(METADATA_CSV_PATH)), fileContent, "utf-8");
+    } catch (e) {
+      console.warn("Could not write CSV to dist:", e);
+    }
+
+    // Save JSON
+    fs.writeFileSync(METADATA_PATH, JSON.stringify(items, null, 2), "utf-8");
+    try {
+      fs.writeFileSync(DIST_METADATA_PATH, JSON.stringify(items, null, 2), "utf-8");
+    } catch (e) {
+      console.warn("Could not write JSON to dist:", e);
+    }
+
+    // Rebuild network graph automatically
+    const graph = rebuildNetworkGraph(items);
+
+    return {
+      success: true,
+      type: "csv",
+      itemsCount: items.length,
+      nodesCount: graph.nodes.length,
+      edgesCount: graph.edges.length,
+      message: `${items.length} documenten ingelezen en opgeslagen. Netwerkgraaf automatisch bijgewerkt met ${graph.nodes.length} knooppunten en ${graph.edges.length} relaties.`,
+    };
+  } else if (lowerName.includes("network_graph") || lowerName.includes("graph")) {
+    // Network graph JSON
+    const parsed = JSON.parse(fileContent);
+    if (!Array.isArray(parsed.nodes) || !Array.isArray(parsed.edges)) {
+      throw new Error("Ongeldig network_graph.json formaat: 'nodes' en 'edges' arrays ontbreken.");
+    }
+
+    fs.writeFileSync(GRAPH_PATH, JSON.stringify(parsed, null, 2), "utf-8");
+    if (!fs.existsSync(DIST_DATA_DIR)) {
+      fs.mkdirSync(DIST_DATA_DIR, { recursive: true });
+    }
+    try {
+      fs.writeFileSync(DIST_GRAPH_PATH, JSON.stringify(parsed, null, 2), "utf-8");
+    } catch (e) {
+      console.warn("Could not write graph to dist:", e);
+    }
+
+    return {
+      success: true,
+      type: "network-graph",
+      nodesCount: parsed.nodes.length,
+      edgesCount: parsed.edges.length,
+      message: `Netwerkgraaf succesvol bijgewerkt met ${parsed.nodes.length} knooppunten en ${parsed.edges.length} relaties.`,
+    };
+  } else {
+    // Metadata JSON
+    const parsed = JSON.parse(fileContent);
+    const items: RaadsstukMetadata[] = Array.isArray(parsed) ? parsed : parsed.items || [];
+    if (items.length === 0) {
+      throw new Error("Ongeldig metadata JSON formaat: geen document array gevonden.");
+    }
+
+    fs.writeFileSync(METADATA_PATH, JSON.stringify(items, null, 2), "utf-8");
+    if (!fs.existsSync(DIST_DATA_DIR)) {
+      fs.mkdirSync(DIST_DATA_DIR, { recursive: true });
+    }
+    try {
+      fs.writeFileSync(DIST_METADATA_PATH, JSON.stringify(items, null, 2), "utf-8");
+    } catch (e) {
+      console.warn("Could not write metadata JSON to dist:", e);
+    }
+
+    const graph = rebuildNetworkGraph(items);
+
+    return {
+      success: true,
+      type: "metadata-json",
+      itemsCount: items.length,
+      nodesCount: graph.nodes.length,
+      edgesCount: graph.edges.length,
+      message: `${items.length} documenten bijgewerkt via metadata JSON. Netwerkgraaf gesynchroniseerd.`,
+    };
+  }
+}
+
+

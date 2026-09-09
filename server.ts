@@ -62,7 +62,8 @@ import {
   linkDocumentsToDossier,
   getAllCatalogDocuments,
   processUploadedCouncilDocuments,
-  getRawNetworkGraph
+  getRawNetworkGraph,
+  processMetadataOrGraphUpload
 } from "./src/server/dossierManager.js";
 
 // Ensure .env is explicitly loaded from working directory in case of PM2 or systemd execution
@@ -8125,6 +8126,64 @@ Sitemap: ${baseUrl}/sitemap.xml
       res.status(500).json({ error: "Fout bij ophalen netwerkgrafiek: " + err.message });
     }
   });
+
+  // 7. Upload & update metadata CSV/JSON or network_graph.json
+  app.post(
+    "/api/council/metadata/upload",
+    requireAuth,
+    requireCouncilOrAdmin,
+    (req: any, res: any, next: any) => {
+      uploadDossierDocs.any()(req, res, (err: any) => {
+        if (err) {
+          return res.status(400).json({ error: "Fout bij inlezen van metadata bestand: " + (err.message || String(err)) });
+        }
+        next();
+      });
+    },
+    (req: any, res: any) => {
+      try {
+        let content = "";
+        let filename = "raadsstukken_metadata_tussentijds.csv";
+
+        let files: Express.Multer.File[] = [];
+        if (Array.isArray(req.files)) {
+          files = req.files;
+        } else if (req.files && typeof req.files === "object") {
+          files = Object.values(req.files).flat() as Express.Multer.File[];
+        } else if (req.file) {
+          files = [req.file];
+        }
+
+        if (files && files.length > 0) {
+          const file = files[0];
+          filename = file.originalname || file.filename || "upload.csv";
+          if (file.path && fs.existsSync(file.path)) {
+            content = fs.readFileSync(file.path, "utf-8");
+            try {
+              fs.unlinkSync(file.path);
+            } catch (unlinkErr) {
+              console.warn("Could not remove temp upload file:", unlinkErr);
+            }
+          } else if (file.buffer) {
+            content = file.buffer.toString("utf-8");
+          }
+        } else if (req.body && req.body.content) {
+          content = req.body.content;
+          filename = req.body.filename || "raadsstukken_metadata_tussentijds.csv";
+        }
+
+        if (!content || !content.trim()) {
+          return res.status(400).json({ error: "Geen geldige bestandsinhoud ontvangen." });
+        }
+
+        const result = processMetadataOrGraphUpload(content, filename);
+        res.json(result);
+      } catch (err: any) {
+        console.error("[COUNCIL METADATA UPLOAD ERROR]:", err);
+        res.status(500).json({ error: "Fout bij verwerken metadata: " + err.message });
+      }
+    }
+  );
 
   // Explicit 404 handler for unhandled /api requests so they NEVER fall through to Vite / SPA index.html
   app.use("/api", (req, res) => {
