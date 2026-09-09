@@ -1017,6 +1017,22 @@ async function startServer() {
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', 'inline');
       }
+      try {
+        recordCouncilDocumentView({
+          filename: req.params.filename,
+          title: req.params.filename,
+          dossierName: "Dossier Documenten",
+          documentId: null,
+          userId: null,
+          userName: "Anoniem",
+          userEmail: null,
+          userRole: "Gast / Bezoeker",
+          isAnonymous: true,
+          source: "direct_access",
+          ip: String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || req.ip || "Onbekend").split(",")[0].trim(),
+          userAgent: req.headers["user-agent"] || "",
+        });
+      } catch (_e) {}
       return res.sendFile(filePath);
     }
     const fallbackPath = path.join(uploadsPath, "stemgedrag", req.params.filename);
@@ -2921,12 +2937,22 @@ async function startServer() {
   // Admin: Link a registered user to a fractielid / burgerraadslid
   app.post("/api/admin/fractieleden/:id/link-user", requireAuth, requireAdmin, (req: any, res: any) => {
     const db = getDb();
-    const lid = (db.fractieleden || []).find((f: any) => f.id === req.params.id);
+    const lid = (db.fractieleden || []).find((f: any) => String(f.id) === String(req.params.id));
     if (!lid) return res.status(404).json({ error: "Fractielid niet gevonden" });
 
-    const { userId } = req.body;
-    if (userId) {
-      const targetUser = (db.users || []).find((u: any) => u.id === userId);
+    // Safely parse body if sent as string or if body parser was bypassed
+    let body = req.body;
+    if (typeof body === "string") {
+      try {
+        body = JSON.parse(body);
+      } catch {
+        body = {};
+      }
+    }
+    const { userId } = body || {};
+
+    if (userId && userId !== "none") {
+      const targetUser = (db.users || []).find((u: any) => String(u.id) === String(userId));
       if (!targetUser) return res.status(404).json({ error: "Gekozen gebruiker niet gevonden" });
       lid.linkedUserId = targetUser.id;
       lid.linkedUsername = targetUser.username;
@@ -2938,7 +2964,7 @@ async function startServer() {
     // Synchronize existing belafspraken for this fractielid
     if (db.belafspraken && Array.isArray(db.belafspraken)) {
       db.belafspraken.forEach((b: any) => {
-        if (b.fractielidId === lid.id) {
+        if (String(b.fractielidId) === String(lid.id)) {
           b.linkedUserId = lid.linkedUserId;
           b.linkedUsername = lid.linkedUsername;
         }
@@ -7629,6 +7655,26 @@ Sitemap: ${baseUrl}/sitemap.xml
       let targetUrl = rawDocUrl.trim();
       const BASE_STEENWIJK = "https://steenwijkerland.bestuurlijkeinformatie.nl";
 
+      // Record document view audit log
+      const docTitle = req.query.title ? String(req.query.title) : undefined;
+      const docFilename = req.query.filename ? String(req.query.filename) : (targetUrl.split("/").pop() || "Document");
+      try {
+        recordCouncilDocumentView({
+          filename: docFilename,
+          title: docTitle || docFilename,
+          dossierName: req.query.dossier ? String(req.query.dossier) : "Raadsinformatie",
+          documentId: req.query.documentId ? String(req.query.documentId) : null,
+          userId: req.user?.id ? String(req.user.id) : null,
+          userName: req.user?.fullName || req.user?.name || req.user?.username || "Anoniem",
+          userEmail: req.user?.email || null,
+          userRole: req.user?.role || "Gast / Bezoeker",
+          isAnonymous: !req.user,
+          source: "proxy_viewer",
+          ip: String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || req.ip || "Onbekend").split(",")[0].trim(),
+          userAgent: req.headers["user-agent"] || "",
+        });
+      } catch (_e) {}
+
       if (targetUrl.startsWith("/")) {
         targetUrl = `${BASE_STEENWIJK}${targetUrl}`;
       }
@@ -7782,6 +7828,26 @@ Sitemap: ${baseUrl}/sitemap.xml
       const totalPages = Math.ceil(total / limit) || 1;
       const startIndex = (page - 1) * limit;
       const paginatedDossiers = filtered.slice(startIndex, startIndex + limit);
+
+      if (search && search.length >= 1) {
+        try {
+          recordCouncilSearchLog({
+            query: search,
+            userId: req.user?.id ? String(req.user.id) : null,
+            userName: req.user?.fullName || req.user?.name || req.user?.username || "Anoniem",
+            userEmail: req.user?.email || null,
+            userRole: req.user?.role || "Gast / Bezoeker",
+            isAnonymous: !req.user,
+            totalHits: total,
+            documentsCount: 0,
+            dossiersCount: total,
+            tookMs: 1,
+            filters: { category, wijkSlug, hasFilesOnly, sortBy },
+            ip: String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || req.ip || "Onbekend").split(",")[0].trim(),
+            userAgent: req.headers["user-agent"] || "",
+          });
+        } catch (_err) {}
+      }
 
       res.json({
         dossiers: paginatedDossiers,
@@ -8303,7 +8369,7 @@ Sitemap: ${baseUrl}/sitemap.xml
       // Audit log: record council search queries
       const trimmedQ = (query || "").trim();
       const hasActiveFilters = category || startDate || endDate || (minFiles && minFiles > 0) || (maxFiles && maxFiles < 35);
-      if (trimmedQ.length >= 2 || hasActiveFilters) {
+      if (trimmedQ.length >= 1 || hasActiveFilters) {
         try {
           recordCouncilSearchLog({
             query: trimmedQ || (category ? `[Categorie: ${category}]` : "[Gefilterd zoeken]"),
@@ -8341,17 +8407,49 @@ Sitemap: ${baseUrl}/sitemap.xml
     }
   });
 
+  // 10b. Explicitly record council search query (audit log)
+  app.post("/api/council/audit/search", optionalAuth, (req: any, res: any) => {
+    try {
+      const { query, resultsCount, totalHits, tookMs, filters } = req.body || {};
+      const trimmedQ = String(query || "").trim();
+      if (!trimmedQ) {
+        return res.status(400).json({ error: "Zoekopdracht ontbreekt" });
+      }
+      const user = req.user;
+      const entry = recordCouncilSearchLog({
+        query: trimmedQ,
+        userId: user?.id ? String(user.id) : null,
+        userName: user?.fullName || user?.name || user?.username || "Anoniem",
+        userEmail: user?.email || null,
+        userRole: user?.role || "Gast / Bezoeker",
+        isAnonymous: !user,
+        totalHits: Number(totalHits ?? resultsCount ?? 0),
+        documentsCount: 0,
+        dossiersCount: 0,
+        tookMs: Number(tookMs || 0),
+        filters: filters || {},
+        ip: String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || req.ip || "Onbekend").split(",")[0].trim(),
+        userAgent: req.headers["user-agent"] || "",
+      });
+      res.json({ success: true, entry });
+    } catch (err: any) {
+      console.error("[COUNCIL SEARCH LOG ERROR]:", err);
+      res.status(500).json({ error: "Kon zoekopdracht niet registreren" });
+    }
+  });
+
   // 11. Record council document view (audit log)
   app.post("/api/council/audit/document-view", optionalAuth, (req: any, res: any) => {
     try {
-      const { filename, title, dossierName, documentId, source } = req.body || {};
-      if (!filename) {
+      const { filename, title, documentTitle, dossierName, documentId, source } = req.body || {};
+      const finalFilename = String(filename || "").trim();
+      if (!finalFilename) {
         return res.status(400).json({ error: "Bestandsnaam ontbreekt" });
       }
       const user = req.user;
       const entry = recordCouncilDocumentView({
-        filename: String(filename).trim(),
-        title: String(title || filename).trim(),
+        filename: finalFilename,
+        title: String(title || documentTitle || finalFilename).trim(),
         dossierName: dossierName ? String(dossierName).trim() : undefined,
         documentId: documentId ? String(documentId) : null,
         userId: user?.id ? String(user.id) : null,
@@ -8411,45 +8509,84 @@ Sitemap: ${baseUrl}/sitemap.xml
     }
   });
 
-  // 13. Admin Audit: Search logs
-  app.get("/api/admin/council-audit/search-logs", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+  // 13. Admin Audit: Search logs (supports /search-logs and /searches)
+  const handleGetCouncilSearchLogs = (req: any, res: any) => {
     try {
       const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit || "500", 10)));
-      const logs = getCouncilSearchLogs(limit);
-      res.json({ logs, total: logs.length });
+      const rawLogs = getCouncilSearchLogs(limit);
+      const mappedLogs = rawLogs.map((item: any) => ({
+        ...item,
+        username: item.userName || item.username || "Anoniem",
+        userName: item.userName || item.username || "Anoniem",
+        resultsCount: item.totalHits ?? item.resultsCount ?? 0,
+        totalHits: item.totalHits ?? item.resultsCount ?? 0,
+        createdAt: item.timestamp || item.createdAt || new Date().toISOString(),
+        timestamp: item.timestamp || item.createdAt || new Date().toISOString(),
+        ipAddress: item.ip || item.ipAddress || "—",
+        ip: item.ip || item.ipAddress || "—",
+        filtersJson: typeof item.filters === "string" ? item.filters : JSON.stringify(item.filters || {}),
+      }));
+      res.json({ logs: mappedLogs, searches: mappedLogs, total: mappedLogs.length });
     } catch (err: any) {
       res.status(500).json({ error: "Fout bij ophalen zoeklogs: " + err.message });
     }
-  });
+  };
 
-  app.delete("/api/admin/council-audit/search-logs", requireAuth, requireAdmin, (req: any, res: any) => {
+  app.get("/api/admin/council-audit/search-logs", requireAuth, requireCouncilOrAdmin, handleGetCouncilSearchLogs);
+  app.get("/api/admin/council-audit/searches", requireAuth, requireCouncilOrAdmin, handleGetCouncilSearchLogs);
+
+  const handleDeleteCouncilSearchLogs = (req: any, res: any) => {
     try {
       clearCouncilSearchLogs();
       res.json({ success: true, message: "Zoeklogs succesvol gewist" });
     } catch (err: any) {
       res.status(500).json({ error: "Fout bij wissen zoeklogs: " + err.message });
     }
-  });
+  };
 
-  // 14. Admin Audit: Document view logs
-  app.get("/api/admin/council-audit/document-views", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+  app.delete("/api/admin/council-audit/search-logs", requireAuth, requireAdmin, handleDeleteCouncilSearchLogs);
+  app.delete("/api/admin/council-audit/search-logs/clear", requireAuth, requireAdmin, handleDeleteCouncilSearchLogs);
+  app.delete("/api/admin/council-audit/searches", requireAuth, requireAdmin, handleDeleteCouncilSearchLogs);
+  app.delete("/api/admin/council-audit/searches/clear", requireAuth, requireAdmin, handleDeleteCouncilSearchLogs);
+
+  // 14. Admin Audit: Document view logs (supports /document-views and /views)
+  const handleGetCouncilDocumentViews = (req: any, res: any) => {
     try {
       const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit || "500", 10)));
-      const views = getCouncilDocumentViews(limit);
-      res.json({ views, total: views.length });
+      const rawViews = getCouncilDocumentViews(limit);
+      const mappedViews = rawViews.map((item: any) => ({
+        ...item,
+        username: item.userName || item.username || "Anoniem",
+        userName: item.userName || item.username || "Anoniem",
+        documentTitle: item.title || item.documentTitle || item.filename,
+        title: item.title || item.documentTitle || item.filename,
+        createdAt: item.timestamp || item.createdAt || new Date().toISOString(),
+        timestamp: item.timestamp || item.createdAt || new Date().toISOString(),
+        ipAddress: item.ip || item.ipAddress || "—",
+        ip: item.ip || item.ipAddress || "—",
+      }));
+      res.json({ logs: mappedViews, views: mappedViews, total: mappedViews.length });
     } catch (err: any) {
       res.status(500).json({ error: "Fout bij ophalen documentlogs: " + err.message });
     }
-  });
+  };
 
-  app.delete("/api/admin/council-audit/document-views", requireAuth, requireAdmin, (req: any, res: any) => {
+  app.get("/api/admin/council-audit/document-views", requireAuth, requireCouncilOrAdmin, handleGetCouncilDocumentViews);
+  app.get("/api/admin/council-audit/views", requireAuth, requireCouncilOrAdmin, handleGetCouncilDocumentViews);
+
+  const handleDeleteCouncilDocumentViews = (req: any, res: any) => {
     try {
       clearCouncilDocumentViews();
       res.json({ success: true, message: "Documentweergavelogs succesvol gewist" });
     } catch (err: any) {
       res.status(500).json({ error: "Fout bij wissen documentlogs: " + err.message });
     }
-  });
+  };
+
+  app.delete("/api/admin/council-audit/document-views", requireAuth, requireAdmin, handleDeleteCouncilDocumentViews);
+  app.delete("/api/admin/council-audit/document-views/clear", requireAuth, requireAdmin, handleDeleteCouncilDocumentViews);
+  app.delete("/api/admin/council-audit/views", requireAuth, requireAdmin, handleDeleteCouncilDocumentViews);
+  app.delete("/api/admin/council-audit/views/clear", requireAuth, requireAdmin, handleDeleteCouncilDocumentViews);
 
   // 15. Admin Audit: Aggregated statistics
   app.get("/api/admin/council-audit/stats", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {

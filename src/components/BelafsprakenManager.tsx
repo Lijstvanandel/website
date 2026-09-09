@@ -92,11 +92,32 @@ export function BelafsprakenManager({ token, headers }: Props) {
   const [isLinking, setIsLinking] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  const effectiveAuthToken =
+    token ||
+    (typeof window !== "undefined"
+      ? localStorage.getItem("auth_token") ||
+        sessionStorage.getItem("auth_token") ||
+        localStorage.getItem("token") ||
+        sessionStorage.getItem("token")
+      : null);
+
+  const jsonHeaders: Record<string, string> = {
+    ...headers,
+    ...(effectiveAuthToken ? { Authorization: `Bearer ${effectiveAuthToken}` } : {}),
+    "Content-Type": "application/json",
+  };
+
+  const authHeadersOnly: Record<string, string> = {
+    ...headers,
+    ...(effectiveAuthToken ? { Authorization: `Bearer ${effectiveAuthToken}` } : {}),
+  };
+
   const fetchData = useCallback(async () => {
-    if (!token) return;
+    const activeToken = effectiveAuthToken;
+    if (!activeToken) return;
     setLoading(true);
     try {
-      const authHeaders = { Authorization: `Bearer ${token}` };
+      const authHeaders = { Authorization: `Bearer ${activeToken}` };
       const [appRes, fracRes, usersRes] = await Promise.all([
         fetch("/api/admin/belafspraken", { headers: authHeaders }),
         fetch("/api/fractieleden"),
@@ -132,7 +153,7 @@ export function BelafsprakenManager({ token, headers }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [effectiveAuthToken]);
 
   useEffect(() => {
     fetchData();
@@ -148,15 +169,20 @@ export function BelafsprakenManager({ token, headers }: Props) {
 
   // Handle linking registered user to fractielid
   const handleSaveUserLink = async (fractielidId: string) => {
-    const targetUserId = selectedUserPerLid[fractielidId];
+    const currentLid = fractieleden.find(f => f.id === fractielidId);
+    let targetUserId = selectedUserPerLid[fractielidId];
+    if (targetUserId === undefined) {
+      targetUserId = currentLid?.linkedUserId || "none";
+    }
+
     setIsLinking(fractielidId);
 
     try {
       const res = await fetch(`/api/admin/fractieleden/${fractielidId}/link-user`, {
         method: "POST",
-        headers,
+        headers: jsonHeaders,
         body: JSON.stringify({
-          userId: targetUserId === "none" ? null : targetUserId
+          userId: targetUserId === "none" || !targetUserId ? null : targetUserId
         })
       });
 
@@ -178,7 +204,7 @@ export function BelafsprakenManager({ token, headers }: Props) {
     try {
       const res = await fetch(`/api/admin/users/${userId}/role`, {
         method: "PATCH",
-        headers,
+        headers: jsonHeaders,
         body: JSON.stringify({ role: "raadslid" })
       });
 
@@ -200,7 +226,7 @@ export function BelafsprakenManager({ token, headers }: Props) {
     try {
       const res = await fetch(`/api/admin/belafspraken/${id}`, {
         method: "PATCH",
-        headers,
+        headers: jsonHeaders,
         body: JSON.stringify({ status: newStatus })
       });
 
@@ -228,7 +254,7 @@ export function BelafsprakenManager({ token, headers }: Props) {
     try {
       const res = await fetch(`/api/admin/belafspraken/${editingNoteId}`, {
         method: "PATCH",
-        headers,
+        headers: jsonHeaders,
         body: JSON.stringify({ notitie: noteText.trim() })
       });
 
@@ -257,7 +283,7 @@ export function BelafsprakenManager({ token, headers }: Props) {
     try {
       const res = await fetch(`/api/admin/belafspraken/${id}`, {
         method: "DELETE",
-        headers
+        headers: authHeadersOnly
       });
 
       if (!res.ok) throw new Error("Kon afspraak niet verwijderen");

@@ -24,30 +24,38 @@ import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 
 interface SearchLog {
-  id: number;
+  id: string | number;
   userId?: string | null;
   username?: string | null;
+  userName?: string | null;
   userRole?: string | null;
   query: string;
   filtersJson?: string | null;
   resultsCount: number;
+  totalHits?: number;
   tookMs?: number | null;
   ipAddress?: string | null;
+  ip?: string | null;
   createdAt: string;
+  timestamp?: string;
 }
 
 interface DocumentViewLog {
-  id: number;
+  id: string | number;
   userId?: string | null;
   username?: string | null;
+  userName?: string | null;
   userRole?: string | null;
   filename: string;
   documentTitle?: string | null;
+  title?: string;
   dossierName?: string | null;
   documentId?: string | null;
   source?: string | null;
   ipAddress?: string | null;
+  ip?: string | null;
   createdAt: string;
+  timestamp?: string;
 }
 
 export const CouncilAuditManager: React.FC = () => {
@@ -90,11 +98,29 @@ export const CouncilAuditManager: React.FC = () => {
 
       if (searchRes.ok) {
         const data = await searchRes.json();
-        setSearchLogs(data.logs || []);
+        const raw = data.logs || data.searches || [];
+        const normalized: SearchLog[] = raw.map((item: any) => ({
+          ...item,
+          id: item.id,
+          username: item.username || item.userName || "Anoniem",
+          resultsCount: item.resultsCount ?? item.totalHits ?? 0,
+          createdAt: item.createdAt || item.timestamp || new Date().toISOString(),
+          ipAddress: item.ipAddress || item.ip || "—",
+        }));
+        setSearchLogs(normalized);
       }
       if (viewRes.ok) {
         const data = await viewRes.json();
-        setViewLogs(data.logs || []);
+        const raw = data.logs || data.views || [];
+        const normalized: DocumentViewLog[] = raw.map((item: any) => ({
+          ...item,
+          id: item.id,
+          username: item.username || item.userName || "Anoniem",
+          documentTitle: item.documentTitle || item.title || item.filename,
+          createdAt: item.createdAt || item.timestamp || new Date().toISOString(),
+          ipAddress: item.ipAddress || item.ip || "—",
+        }));
+        setViewLogs(normalized);
       }
     } catch (err: any) {
       console.error(err);

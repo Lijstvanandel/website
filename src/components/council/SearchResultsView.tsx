@@ -23,6 +23,7 @@ import {
   SortByOption,
   PageSizeOption,
 } from "@/lib/councilPreferences";
+import { logDocumentView } from "@/lib/councilAuditLogger";
 
 export interface SearchResultsViewProps {
   response?: CouncilSearchResponse | null;
@@ -194,6 +195,15 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
       fileExists: hit.fileExists ?? true,
       fileUrl: hit.fileUrl || `/uploads/documents/${encodeURIComponent(hit.filename)}`,
     };
+
+    logDocumentView({
+      filename: hit.filename,
+      title: hit.title || hit.filename,
+      dossierName: hit.dossierName || "Overig",
+      documentId: hit.id,
+      source: "search_result_click",
+    });
+
     onOpenDocument(doc);
   };
 

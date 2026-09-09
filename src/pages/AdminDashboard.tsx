@@ -3602,7 +3602,7 @@ export default function AdminDashboard() {
 
         {/* BELAFSPRAKEN OVERZICHT & RAADSLEDEN KOPPELING */}
         <TabsContent value="belafspraken">
-          <BelafsprakenManager token={token} headers={headers} />
+          <BelafsprakenManager token={token || effectiveToken} headers={headers} />
         </TabsContent>
 
         {/* STEMGEDRAG & MOTIES BEHEER */}

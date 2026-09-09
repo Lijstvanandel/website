@@ -38,16 +38,19 @@ export const DossierDocumentViewer: React.FC<DossierDocumentViewerProps> = ({
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
-    if (isOpen && document?.bestandsnaam) {
-      logDocumentView({
-        filename: document.bestandsnaam,
-        title: document.titel || document.bestandsnaam,
-        dossierName: document.dossier,
-        documentId: document.id,
-        source: "modal_viewer",
-      });
+    if (isOpen && document) {
+      const bestandsnaam = (document.bestandsnaam || document.titel || `document_${document.id || "onbekend"}`).trim();
+      if (bestandsnaam) {
+        logDocumentView({
+          filename: bestandsnaam,
+          title: document.titel || bestandsnaam,
+          dossierName: document.dossier,
+          documentId: document.id,
+          source: "modal_viewer",
+        });
+      }
     }
-  }, [isOpen, document?.bestandsnaam, document?.id]);
+  }, [isOpen, document?.bestandsnaam, document?.id, document?.titel]);
 
   if (!isOpen || !document) return null;
 
