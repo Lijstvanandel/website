@@ -1032,7 +1032,9 @@ async function startServer() {
           ip: String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || req.ip || "Onbekend").split(",")[0].trim(),
           userAgent: req.headers["user-agent"] || "",
         });
-      } catch (_e) {}
+      } catch (_e) {
+        // Ignore audit logging error on direct file access
+      }
       return res.sendFile(filePath);
     }
     const fallbackPath = path.join(uploadsPath, "stemgedrag", req.params.filename);
@@ -7673,7 +7675,9 @@ Sitemap: ${baseUrl}/sitemap.xml
           ip: String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || req.ip || "Onbekend").split(",")[0].trim(),
           userAgent: req.headers["user-agent"] || "",
         });
-      } catch (_e) {}
+      } catch (_e) {
+        // Ignore audit logging error on proxy viewer
+      }
 
       if (targetUrl.startsWith("/")) {
         targetUrl = `${BASE_STEENWIJK}${targetUrl}`;
@@ -7846,7 +7850,9 @@ Sitemap: ${baseUrl}/sitemap.xml
             ip: String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || req.ip || "Onbekend").split(",")[0].trim(),
             userAgent: req.headers["user-agent"] || "",
           });
-        } catch (_err) {}
+        } catch (_err) {
+          // Ignore audit logging error on search
+        }
       }
 
       res.json({

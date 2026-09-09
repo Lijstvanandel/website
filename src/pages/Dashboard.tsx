@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Navigate, Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { 
@@ -84,7 +84,7 @@ export interface PositionItem {
 }
 
 export default function Dashboard() {
-  const { user, logout, token, updateUser } = useAuth();
+  const { user, logout, token, updateUser, loading } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   
   const [attendingEvents, setAttendingEvents] = useState<EventItem[]>([]);
@@ -338,8 +338,16 @@ export default function Dashboard() {
     }
   }, [searchParams, setSearchParams, updateUser]);
 
+  if (loading) {
+    return (
+      <div className="min-h-[50vh] flex items-center justify-center p-8">
+        <div className="w-8 h-8 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
   if (!user) {
-    return <Navigate to="/login" />;
+    return <Navigate to="/login" replace />;
   }
 
   // Handle Profile Update Submission
