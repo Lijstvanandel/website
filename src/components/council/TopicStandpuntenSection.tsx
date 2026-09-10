@@ -229,26 +229,26 @@ export function TopicStandpuntenSection({
       className="p-4 sm:p-5 rounded-2xl bg-card border border-border shadow-xs space-y-4"
     >
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border/70">
-        <div className="space-y-0.5">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-accent/10 text-accent">
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 pb-3 border-b border-border/70">
+        <div className="space-y-1 min-w-0 max-w-full">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="p-1.5 rounded-lg bg-accent/10 text-accent shrink-0">
               <BookOpen className="w-4 h-4" />
             </div>
-            <h3 className="font-semibold text-sm sm:text-base text-foreground flex items-center gap-2">
-              <span>Partijprogramma & Standpunten Analyse</span>
+            <h3 className="font-semibold text-sm sm:text-base text-foreground flex items-center gap-2 flex-wrap">
+              <span>Partijprogramma & Standpunten</span>
               <span className="text-xs px-2 py-0.5 rounded-full bg-accent/15 text-accent font-mono font-medium">
                 {matched.length} gekoppeld
               </span>
             </h3>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Direct inzicht in welke standpunten van <strong className="font-medium text-foreground">Lijst van Andel</strong> positief, negatief of genuanceerd staan t.a.v. dit onderwerp en de vergaderstukken.
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Direct inzicht in welke standpunten van <strong className="font-medium text-foreground">Lijst van Andel</strong> positief, negatief of genuanceerd aansluiten op dit onderwerp en de vergaderstukken.
           </p>
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-2 flex-wrap shrink-0">
+        <div className="flex items-center gap-2 flex-wrap shrink-0 max-w-full">
           <Button
             type="button"
             size="sm"
@@ -256,7 +256,7 @@ export function TopicStandpuntenSection({
             onClick={handleRunAiAnalysis}
             disabled={isAiAnalyzing}
             className="h-8 text-xs px-2.5 border-accent/40 text-accent hover:bg-accent/10 rounded-lg gap-1.5"
-            title="Scan alle raadsstukken en koppel alle relevante standpunten van Lijst van Andel (meerdere standpunten mogelijk via Gemini)"
+            title="Scan alle raadsstukken en koppel alle relevante standpunten van Lijst van Andel (meerdere standpunten tegelijk via Gemini)"
           >
             {isAiAnalyzing ? (
               <RefreshCw className="w-3 h-3 animate-spin" />
@@ -272,9 +272,10 @@ export function TopicStandpuntenSection({
             variant="outline"
             onClick={() => setIsAddModalOpen(true)}
             className="h-8 text-xs px-2.5 rounded-lg gap-1 border-border text-foreground hover:bg-muted"
+            title="Handmatig een partijstandpunt toevoegen of koppelen"
           >
             <Plus className="w-3 h-3" />
-            <span>Standpunt Koppelen</span>
+            <span>Koppelen</span>
           </Button>
 
           <Button
@@ -282,11 +283,12 @@ export function TopicStandpuntenSection({
             size="sm"
             variant="ghost"
             asChild
-            className="h-8 text-xs px-2 text-muted-foreground hover:text-foreground rounded-lg"
+            className="h-8 text-xs px-2.5 text-muted-foreground hover:text-foreground rounded-lg border border-border/50 hover:bg-muted/60 gap-1.5"
           >
-            <Link to="/standpunten" target="_blank" title="Bekijk het complete partijprogramma">
-              <span className="hidden sm:inline mr-1">Naar /standpunten</span>
-              <ExternalLink className="w-3.5 h-3.5" />
+            <Link to="/standpunten" target="_blank" title="Bekijk het volledige verkiezingsprogramma van Lijst van Andel">
+              <BookOpen className="w-3.5 h-3.5 text-accent" />
+              <span>Standpunten</span>
+              <ExternalLink className="w-3 h-3 opacity-60" />
             </Link>
           </Button>
         </div>

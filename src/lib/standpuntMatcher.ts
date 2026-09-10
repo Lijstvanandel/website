@@ -208,8 +208,8 @@ const POLICY_RULES: PolicyRule[] = [
     standpuntNr: 1,
     stance: "positief",
     keywords: [
-      "volkshuisvesting", "volkshuisvestingprogramma", "toewijzing", "sociale huur", "lokale binding",
-      "woningtoewijzing", "urgentie", "woonvisie", "woondeal"
+      "volkshuisvesting", "volkshuisvestingsprogramma", "toewijzing", "sociale huur", "lokale binding",
+      "woningtoewijzing", "urgentie", "woonvisie", "woondeal", "woonagenda", "jongerenhuisvesting"
     ],
     explanation: "Inwoners met binding aan Steenwijkerland moeten voorrang krijgen bij toewijzing van woningen. Onze eigen jeugd eerst.",
     weight: 10,
@@ -219,9 +219,13 @@ const POLICY_RULES: PolicyRule[] = [
     hoofdstukNr: 5,
     standpuntNr: 2,
     stance: "negatief",
-    keywords: ["urgentie statushouders", "statushouders huisvesting", "voorrangspositie statushouders"],
+    keywords: [
+      "urgentie statushouders", "statushouders huisvesting", "voorrangspositie statushouders",
+      "statushouders", "taakstelling statushouders", "taakstelling", "aandachtsgroepen statushouders"
+    ],
+    docKeywords: ["statushouders", "taakstelling", "vergunninghouders"],
     explanation: "Lijst van Andel verwerpt automatische voorrang voor statushouders zolang eigen inwoners jarenlang op een wachtlijst staan.",
-    weight: 10,
+    weight: 9,
   },
   {
     id: "h5_betaalbare_koopwoningen",
@@ -230,10 +234,90 @@ const POLICY_RULES: PolicyRule[] = [
     stance: "positief",
     keywords: [
       "starterswoningen", "betaalbare koopwoningen", "starters", "jongerenhuisvesting", "seniorenwoningen",
-      "bouwen voor starters", "koopwoningen", "woningbouwproject", "omgevingsplan kindcentrum"
+      "bouwen voor starters", "koopwoningen", "woningbouwproject", "starterslening", "startersleningen",
+      "goedkope koop", "betaalbaar segment", "middeninkomens", "volkshuisvestingsprogramma", "volkshuisvesting"
     ],
+    docKeywords: ["starters", "starterslening", "betaalbare koop", "middeninkomens", "koopwoningen"],
     explanation: "Lijst van Andel stimuleert actieve bouw van betaalbare koopwoningen voor starters en gezinnen in Steenwijkerland.",
     weight: 9,
+  },
+  {
+    id: "h5_gezonde_huurmarkt",
+    hoofdstukNr: 5,
+    standpuntNr: 4,
+    stance: "positief",
+    keywords: [
+      "middenhuur", "vrije huur", "sociale huurwoningen", "corporaties", "wetland wonen", "woonconcept",
+      "prestatieafspraken", "huurdersverenigingen", "volkshuisvestingsprogramma"
+    ],
+    docKeywords: ["middenhuur", "sociale huur", "corporaties", "prestatieafspraken"],
+    explanation: "Lijst van Andel wil een gezonde en evenwichtige huurmarkt met ruimte voor middenhuur en particuliere initiatieven.",
+    weight: 8,
+  },
+  {
+    id: "h5_transformatie_leegstand",
+    hoofdstukNr: 5,
+    standpuntNr: 5,
+    stance: "positief",
+    keywords: [
+      "transformatie", "leegstaand vastgoed", "leegstand", "omvorming", "vab", "agrarische bebouwing",
+      "vrijkomende agrarische bebouwing", "herbestemming", "inbreiding"
+    ],
+    docKeywords: ["leegstaand vastgoed", "transformatie", "agrarische bebouwing", "vab"],
+    explanation: "Lijst van Andel stimuleert de transformatie van leegstaande gebouwen en agrarische opstallen naar woningen voor inwoners.",
+    weight: 8,
+  },
+  {
+    id: "h5_doorstroming_ouderen",
+    hoofdstukNr: 5,
+    standpuntNr: 6,
+    stance: "positief",
+    keywords: [
+      "doorstroming", "nultredenwoningen", "geclusterd wonen", "seniorenwoningen", "ouderenwoningen",
+      "hofjes", "knarrenhof", "levensloopbestendig", "zorggeschikte woningen", "woonzorgvisie"
+    ],
+    docKeywords: ["nultredenwoningen", "geclusterd wonen", "doorstroming", "senioren", "zorggeschikt"],
+    explanation: "Door gericht te bouwen voor senioren (nultreden, hofjes) stimuleren we doorstroming zodat gezinswoningen vrijkomen.",
+    weight: 9,
+  },
+  {
+    id: "h5_hoogbouw_dorpskarakter",
+    hoofdstukNr: 5,
+    standpuntNr: 10,
+    stance: "genuanceerd",
+    keywords: [
+      "hoogbouw", "gestapelde woonvormen", "gestapelde bouw", "woontorens", "kaders voor hoogbouw",
+      "laagbouw", "dorpskarakter"
+    ],
+    docKeywords: ["hoogbouw", "gestapelde woonvormen", "kaders voor hoogbouw"],
+    explanation: "Lijst van Andel waakt voor het landelijke dorpsprofiel en wijst onevenredige hoogbouw die het karakter aantast af.",
+    weight: 8,
+  },
+  {
+    id: "h5_cpo_en_deregulering",
+    hoofdstukNr: 5,
+    standpuntNr: 15,
+    stance: "positief",
+    keywords: [
+      "cpo", "collectief particulier opdrachtgeverschap", "zelfbouw", "woningsplitsing", "premantelzorg",
+      "mantelzorgwoning", "deregulering", "bouwregels vereenvoudigen"
+    ],
+    docKeywords: ["cpo", "collectief particulier", "woningsplitsing", "premantelzorg"],
+    explanation: "Bouwen en splitsen moet veel makkelijker worden zonder verstikkende ambtelijke regels en met actieve steun voor CPO-zelfbouwers.",
+    weight: 8,
+  },
+  {
+    id: "h5_voorzieningen_en_wijken",
+    hoofdstukNr: 5,
+    standpuntNr: 16,
+    stance: "positief",
+    keywords: [
+      "voorzieningenkernen", "basiskernen", "woonkernen", "fysiek volgt sociaal", "leefbare woonomgeving",
+      "wijkvernieuwing", "openbare ruimte"
+    ],
+    docKeywords: ["voorzieningenkernen", "basiskernen", "leefbare woonomgeving"],
+    explanation: "Woningbouw moet hand in hand gaan met leefbaarheid, scholen, eerstelijnszorg en behoud van dorpsvoorzieningen.",
+    weight: 7,
   },
   {
     id: "h5_bouwen_in_dorpen",
@@ -242,10 +326,11 @@ const POLICY_RULES: PolicyRule[] = [
     stance: "positief",
     keywords: [
       "tam-omgevingsplan", "omgevingsplan", "bestemmingsplan", "woonschepen", "cornelisgracht", "bouwverordening",
-      "sint jansklooster", "blokzijl", "vollenhove", "wanneperveen", "paasloo", "zuidveen", "giethoorn", "ossenzijl"
+      "sint jansklooster", "blokzijl", "vollenhove", "wanneperveen", "paasloo", "zuidveen", "giethoorn", "ossenzijl",
+      "kleine kernen", "dorpsidentiteit", "maatwerk in elke kern"
     ],
-    docKeywords: ["omgevingsplan", "ontwerpbesluit", "toelichting bestemmingsplan", "regels", "verbeelding"],
-    explanation: "Bouwen en ontwikkelen naar behoefte in álle kernen en dorpen met soepele ruimtelijke procedures en deregulering.",
+    docKeywords: ["omgevingsplan", "ontwerpbesluit", "toelichting bestemmingsplan", "regels", "verbeelding", "uitwerking per kern"],
+    explanation: "Bouwen en ontwikkelen naar behoefte in álle kernen en dorpen met soepele ruimtelijke procedures en behoud van identiteit.",
     weight: 7,
   },
   {
@@ -253,8 +338,11 @@ const POLICY_RULES: PolicyRule[] = [
     hoofdstukNr: 5,
     standpuntNr: 17,
     stance: "genuanceerd",
-    keywords: ["omgevingsvisie", "actualisatie omgevingsvisie", "ruimtelijke visie"],
-    explanation: "Omgevingsvisie moet dorpskarakter beschermen en woningbouw mogelijk maken, maar stikstof- en klimaatdwang mag bouwplannen niet verstikken.",
+    keywords: [
+      "omgevingsvisie", "actualisatie omgevingsvisie", "ruimtelijke visie", "wrv",
+      "wet regie op de volkshuisvesting", "rijkssturing", "woondeal"
+    ],
+    explanation: "Omgevingsvisie en woningbouw moeten dorpskarakter beschermen; lokale zeggenschap van de raad staat voorop boven Haagse dwang.",
     weight: 8,
   },
 
@@ -506,7 +594,7 @@ export function matchStandpuntenForTopic(topic: CouncilAgendaTopic): {
       }
     }
 
-    if (score >= 12 && matchedKeywords.length > 0) {
+    if (score >= 10 && matchedKeywords.length > 0) {
       scoredMatches.push({
         rule,
         score: Math.min(100, Math.round(score)),
@@ -514,6 +602,183 @@ export function matchStandpuntenForTopic(topic: CouncilAgendaTopic): {
         sourceDocs: Array.from(new Set(sourceDocs)),
       });
     }
+  }
+
+  // STEP 2: Dynamic Full-Program Standpoint Indexing across all 136 Standpoints
+  // Scans all 10 chapters and standpoints in the party program for semantic matches
+  for (const h of hoofdstukken) {
+    for (const s of h.standpunten) {
+      // Skip if already matched with high score from curated rules
+      const existingRule = scoredMatches.find(
+        (m) => m.rule.hoofdstukNr === h.nr && m.rule.standpuntNr === s.nr && m.score > 40
+      );
+      if (existingRule) continue;
+
+      const sTitleLower = s.titel.toLowerCase();
+      const sBodyLower = s.standpunt.toLowerCase();
+
+      // Extract distinctive tokens (length >= 4, excluding stop words)
+      const stopWords = new Set([
+        "voor", "door", "naar", "over", "onze", "zijn", "haar", "wordt", "hebben", "geen",
+        "niet", "moet", "willen", "steunt", "vindt", "gemeente", "steenwijkerland", "inwoners",
+        "alle", "deze", "waar", "gezien", "worden", "zullen", "kunnen", "onder", "tegen"
+      ]);
+
+      const titleTokens = sTitleLower
+        .replace(/[^\w\s-]/g, " ")
+        .split(/\s+/)
+        .filter((w) => w.length >= 4 && !stopWords.has(w));
+
+      let dynScore = 0;
+      const dynMatchedKw: string[] = [];
+      const dynSourceDocs: string[] = [];
+
+      for (const token of titleTokens) {
+        if (titleText.includes(token)) {
+          dynScore += 16;
+          dynMatchedKw.push(token);
+        } else if (descText.includes(token)) {
+          dynScore += 8;
+          dynMatchedKw.push(token);
+        }
+
+        for (const doc of topic.documents || []) {
+          const dTitle = doc.title.toLowerCase();
+          if (dTitle.includes(token)) {
+            dynScore += 6;
+            if (!dynMatchedKw.includes(token)) dynMatchedKw.push(token);
+            if (!dynSourceDocs.includes(doc.title)) dynSourceDocs.push(doc.title);
+          }
+        }
+      }
+
+      if (dynScore >= 14 && dynMatchedKw.length > 0) {
+        // Derive stance dynamically based on party standpunt tone
+        let dynamicStance: StandpuntStance = "positief";
+        if (
+          sTitleLower.includes("geen") ||
+          sTitleLower.includes("stop") ||
+          sTitleLower.includes("afwijzen") ||
+          sTitleLower.includes("verzet") ||
+          sTitleLower.includes("tegen") ||
+          sBodyLower.includes("wijst af") ||
+          sBodyLower.includes("geen sprake") ||
+          sBodyLower.includes("faliekant tegen") ||
+          sBodyLower.includes("verzet zich")
+        ) {
+          dynamicStance = "negatief";
+        } else if (
+          sTitleLower.includes("mits") ||
+          sTitleLower.includes("balans") ||
+          sTitleLower.includes("voorwaarde") ||
+          sTitleLower.includes("maatwerk") ||
+          sBodyLower.includes("mits") ||
+          sBodyLower.includes("in overleg")
+        ) {
+          dynamicStance = "genuanceerd";
+        }
+
+        const dynamicRule: PolicyRule = {
+          id: `dyn_h${h.nr}_s${s.nr}`,
+          hoofdstukNr: h.nr,
+          standpuntNr: s.nr,
+          stance: dynamicStance,
+          keywords: dynMatchedKw,
+          explanation: `Lijst van Andel toetst dit raadsvoorstel aan Hoofdstuk ${h.nr} (${h.titel}): ${s.titel}. Standpunt: "${s.standpunt.slice(0, 160)}..."`,
+          weight: 10,
+        };
+
+        scoredMatches.push({
+          rule: dynamicRule,
+          score: Math.min(95, Math.round(dynScore)),
+          matchedKeywords: Array.from(new Set(dynMatchedKw)),
+          sourceDocs: Array.from(new Set(dynSourceDocs)),
+        });
+      }
+    }
+  }
+
+  // STEP 3: Systematic Cross-Cutting Political Intersections
+  // Every substantial council proposal intersects with fundamental democratic, financial or autonomy principles:
+  
+  // A. Financial Discipline / Costs check (Hoofdstuk 10.1 & Hoofdstuk 1.12)
+  const isFinancialProposal =
+    combinedText.includes("begroting") ||
+    combinedText.includes("krediet") ||
+    combinedText.includes("financ") ||
+    combinedText.includes("subsidie") ||
+    combinedText.includes("investering") ||
+    combinedText.includes("kosten") ||
+    combinedText.includes("tarieven") ||
+    combinedText.includes("ozb") ||
+    combinedText.includes("rekenkamer");
+
+  if (isFinancialProposal) {
+    scoredMatches.push({
+      rule: {
+        id: "cross_fin_discipline",
+        hoofdstukNr: 1,
+        standpuntNr: 12,
+        stance: "genuanceerd",
+        keywords: ["financiële discipline", "investeringen", "begrotingskader"],
+        explanation: "Lijst van Andel hanteert strikte financiële discipline: belastinggeld van inwoners mag alleen doelmatig en zonder verspilling worden ingezet.",
+      },
+      score: 72,
+      matchedKeywords: ["financiële toetsing", "begroting"],
+      sourceDocs: [],
+    });
+  }
+
+  // B. Citizen Consultation & Village Council Participation (Hoofdstuk 1.3)
+  const isSpatialOrVisionProposal =
+    combinedText.includes("visie") ||
+    combinedText.includes("omgevingsplan") ||
+    combinedText.includes("bestemmingsplan") ||
+    combinedText.includes("ontwikkeling") ||
+    combinedText.includes("project") ||
+    combinedText.includes("dorpskern") ||
+    combinedText.includes("initiatief") ||
+    combinedText.includes("zienswijz");
+
+  if (isSpatialOrVisionProposal) {
+    scoredMatches.push({
+      rule: {
+        id: "cross_dorpsparticipatie",
+        hoofdstukNr: 1,
+        standpuntNr: 3,
+        stance: "positief",
+        keywords: ["burgerparticipatie", "dorpsraden", "omwonenden"],
+        explanation: "Lijst van Andel eist dat omwonenden en de betrokken dorps- of wijkraden vroegtijdig en volwaardig worden betrokken bij de besluitvorming.",
+      },
+      score: 75,
+      matchedKeywords: ["inwonersparticipatie", "dorpsraden"],
+      sourceDocs: [],
+    });
+  }
+
+  // C. Deregulation & Bureaucracy Reduction (Hoofdstuk 7.3)
+  const isRegulatoryProposal =
+    combinedText.includes("verordening") ||
+    combinedText.includes("beleidsregel") ||
+    combinedText.includes("dereguler") ||
+    combinedText.includes("regels") ||
+    combinedText.includes("vergunning") ||
+    combinedText.includes("leges");
+
+  if (isRegulatoryProposal) {
+    scoredMatches.push({
+      rule: {
+        id: "cross_deregulering",
+        hoofdstukNr: 7,
+        standpuntNr: 3,
+        stance: "positief",
+        keywords: ["deregulering", "minder regeldruk", "bureaucratie"],
+        explanation: "Lijst van Andel pleit voor minder regeldruk en het schrappen van overbodige bureaucratie voor inwoners en lokale ondernemers.",
+      },
+      score: 70,
+      matchedKeywords: ["minder regeldruk", "deregulering"],
+      sourceDocs: [],
+    });
   }
 
   // Deduplicate by chapter & standpoint nr, keeping highest score

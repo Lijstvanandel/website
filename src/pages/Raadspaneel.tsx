@@ -761,7 +761,7 @@ export default function Raadspaneel() {
 
       return true;
     });
-  }, [topics, searchQuery, categoryFilter, meetingDateFilter, user?.username]);
+  }, [topics, searchQuery, categoryFilter, meetingDateFilter, standpuntFilter, user?.username]);
 
   // Active selected topic
   const selectedTopic = useMemo(() => {

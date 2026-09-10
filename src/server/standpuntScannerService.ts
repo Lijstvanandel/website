@@ -95,16 +95,26 @@ export async function scanTopicDocumentsAndMatchStandpunten(
       const prompt = `Je bent de politiek strateeg en fractiespecialist van 'Lijst van Andel', een lokale politieke partij in de gemeenteraad van Steenwijkerland.
 
 OPDRACHT:
-Scan het onderstaande gemeenteraadsonderwerp en ALLE bijbehorende officiële raadsstukken en bijlagen grondig door. Koppel op basis van de inhoud van de stukken de relevante standpunten uit het verkiezingsprogramma van Lijst van Andel.
+Voer een INTEGRALE, ZEER KRITISCHE EN SECURE politieke analyse uit over het onderstaande raadsonderwerp en ALLE bijbehorende officiële raadsstukken en bijlagen. Koppel op basis van de inhoud van de stukken de relevante standpunten uit het verkiezingsprogramma van Lijst van Andel (10 hoofdstukken, 136 standpunten).
 
-CRUCIALE DIRECTIEVEN:
-1. MEERDERE STANDPUNTEN VEREIST: Beperk je NOOIT tot slechts 1 standpunt als het voorstel meerdere aspecten raakt! In de praktijk raken raadsvoorstellen vaak aan 2 tot 5 verschillende standpunten (bijvoorbeeld: Wonen/Bouwen én Lokale Autonomie/Democratie én Financiën/OZB én Participatie van omwonenden én Behoud van Groen/Natuur/Erfgoed). Koppel ALLE standpunten die inhoudelijk van toepassing zijn.
-2. BRONVERMELDING & CITATEN: Verwijs expliciet naar welk(e) document(en) relevant zijn en neem een concrete passage of feit ('citedPassage') op uit de gescande stukken die dit standpunt onderbouwt.
+CRUCIALE ANALYTISCHE DIRECTIEVEN:
+1. MEERDERE STANDPUNTEN VEREIST (GEMIDDELD 3 TOT 7 PER VOORSTEL):
+   - Beperk je NOOIT tot slechts 1 standpunt. Raadsvoorstellen hebben altijd meerdere dimensies en effecten.
+   - Toets zowel op het DIRECTE hoofdonderwerp (bijv. Wonen, Verkeer, Zorg/WMO, Veiligheid, Natuur, Economie, Cultuur) als op KRUISVERBANDEN & RANDVOORWAARDEN:
+     * Financiële doelmatigheid, kostenbeheersing & OZB (H10 / H1.12)
+     * Echte burgerparticipatie en overleg met dorps- en wijkraden (H1.3)
+     * Lokale autonomie vs. Haagse/regionale dwang en gemeenschappelijke regelingen (H1.6 / H1.7 / H5.17)
+     * Minder regeldruk, deregulering en bureaucratie (H7.3 / H5.15)
+     * Behoud van het leefbare dorpskarakter, landschap en erfgoed (H4 / H5.8 / H9.7)
+2. BRONVERMELDING & FEITELIJKE CITATEN:
+   - Verwijs expliciet naar welk(e) document(en) relevant zijn.
+   - Geef een concrete, letterlijke passage of cijfer/feit ('citedPassage') uit de gescande stukken die aantoont waarom dit standpunt van toepassing is.
 3. BEPAAL DE FRACTIESTELLINGNAME ('stance'):
-   - "positief": Lijst van Andel steunt dit (onderdeel van het) voorstel omdat het overeenkomt met ons partijprogramma.
-   - "negatief": Lijst van Andel is kritisch, bezorgd of tegen omdat het botst met onze partijprincipes (bijv. Haagse dwang, megawindturbines, zonnepark op landbouwgrond, lastenverhoging, voorrang statushouders, negeren dorpsparticipatie).
-   - "genuanceerd": Voorwaardelijk, gemengd beeld, amendement of motie noodzakelijk.
-4. GEEN GENERIEKE RECHTE LIJNEN: Geef per standpunt een scherpe, partijspecifieke uitleg ('explanation') waarin direct wordt verwezen naar de inhoud van de stukken.
+   - "positief": Lijst van Andel steunt dit (onderdeel van het) voorstel omdat het naadloos aansluit bij onze partijdoelen.
+   - "negatief": Lijst van Andel is kritisch, bezorgd of tegen omdat het botst met onze principes (bijv. lastenverzwaring, Haagse dwang, megawindturbines, zonneparken op landbouwgrond, voorrang statushouders boven lokale jeugd, negeren van dorpsparticipatie, geldverspilling).
+   - "genuanceerd": Voorwaardelijk, gemengd beeld, of noodzaak tot het indienen van een motie of amendement.
+4. SCHERPE POLITIEKE MOTIVERING:
+   - Formuleer per standpunt een inhoudelijke, niet-generieke fractietoelichting ('explanation') die direct refereert aan de feiten uit de stukken.
 
 GEGEVENS AGENDAPUNT:
 - Titel: "${topic.title}"
@@ -122,14 +132,14 @@ ${getProgrammaContext()}
 ANTWOORD UITSLUITEND IN DIT VALIDE JSON FORMAAT (GEEN MARKDOWN BACKTICKS OF UITLEG):
 {
   "primaryStance": "positief" | "negatief" | "gemengd" | "neutraal",
-  "summaryText": "Beknopte samenvatting (2-3 zinnen) van de politieke fractielijn voor dit raadsvoorstel.",
+  "summaryText": "Beknopte politieke fractielijn (2-3 zinnen) voor dit raadsvoorstel vanuit Lijst van Andel.",
   "standpunten": [
     {
       "hoofdstukNr": 1-10,
       "standpuntNr": 1-20,
       "standpuntTitel": "Exacte titel van het standpunt",
       "stance": "positief" | "negatief" | "genuanceerd",
-      "explanation": "Waarom Lijst van Andel deze positie inneemt op basis van de gescande stukken.",
+      "explanation": "Waarom Lijst van Andel deze positie inneemt op basis van de feiten in de gescande stukken.",
       "relevanceScore": 65-100,
       "sourceDocumentTitles": ["Exacte titel van het document waarin dit naar voren komt"],
       "citedPassage": "Letterlijk citaat of feitelijke passage uit de gescande stukken",
@@ -138,15 +148,29 @@ ANTWOORD UITSLUITEND IN DIT VALIDE JSON FORMAAT (GEEN MARKDOWN BACKTICKS OF UITL
   ]
 }`;
 
-      console.log(`[STANDPUNT SCANNER] Verzenden prompt naar Gemini 3.8 Flash...`);
-      const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents: prompt,
-        config: {
-          temperature: 0.15,
-          responseMimeType: "application/json",
-        },
-      });
+      console.log(`[STANDPUNT SCANNER] Verzenden prompt naar Gemini AI...`);
+      let response: any = null;
+
+      try {
+        response = await ai.models.generateContent({
+          model: "gemini-3.8-flash",
+          contents: prompt,
+          config: {
+            temperature: 0.15,
+            responseMimeType: "application/json",
+          },
+        });
+      } catch (gemini38Err: any) {
+        console.warn("[STANDPUNT SCANNER] Gemini 3.8 Flash mislukt, probeer Gemini 2.5 Flash fallback:", gemini38Err?.message || gemini38Err);
+        response = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: prompt,
+          config: {
+            temperature: 0.15,
+            responseMimeType: "application/json",
+          },
+        });
+      }
 
       const raw = response.text?.trim() || "";
       const cleanJson = raw.replace(/```json/gi, "").replace(/```/g, "").trim();
