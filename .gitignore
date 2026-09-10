@@ -40,7 +40,8 @@ database.sqlite*
 *.sqlite-wal
 uploads/
 public/uploads/
-*.csv
-public/*.csv
-dist/*.csv
+# Generated CSV exports
+raadsstukken_metadata_overijssel.csv
+public/uploads/**/*.csv
+!public/data/raadsstukken_metadata_tussentijds.csv
 
