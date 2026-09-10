@@ -51,6 +51,7 @@ import {
   TrendingDown,
   ThumbsUp,
   FileSearch,
+  Building2,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VideoPlayer } from "@/components/VideoPlayer";

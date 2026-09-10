@@ -178,7 +178,7 @@ export const OverijsselNotubizManager: React.FC<OverijsselNotubizManagerProps> =
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Synchronisatie kon niet worden gestart");
-      toast.success("Synchronisatie Provincie Overijssel NotuBiz gestart!");
+      toast.success("Synchronisatie Provincie Overijssel (OpenRaadsinformatie) gestart!");
       fetchStatus();
     } catch (err: any) {
       toast.error(err.message || "Fout bij starten sync");
@@ -227,7 +227,7 @@ export const OverijsselNotubizManager: React.FC<OverijsselNotubizManagerProps> =
                 Provincie Overijssel
               </span>
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300">
-                NotuBiz Org 1750
+                OpenRaadsinformatie Overijssel
               </span>
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300">
                 <Sparkles className="w-3 h-3" />
@@ -235,10 +235,10 @@ export const OverijsselNotubizManager: React.FC<OverijsselNotubizManagerProps> =
               </span>
             </div>
             <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              NotuBiz Documentenscraper & AI-Filter Provincie Overijssel
+              OpenRaadsinformatie Scraper & AI-Filter Provincie Overijssel
             </h2>
             <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 max-w-3xl">
-              Automatische synchronisatie van provinciale vergaderstukken (2021 – heden). Filtert op de <strong>Zwarte lijst</strong> (externe Twentse/Sallandse steden), <strong>Witte lijst</strong> (kernen Steenwijkerland) en <strong>Gemini Flash AI</strong> voor provinciebreed beleid. Exporteert direct naar <code className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-xs text-rose-600 font-mono">raadsstukken_metadata_overijssel.csv</code>.
+              Automatische synchronisatie van provinciale vergaderstukken via <a href="https://zoek.openraadsinformatie.nl/?organization=overijssel&sort=date_desc" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline font-mono">OpenRaadsinformatie</a> (2021 – heden). Filtert op de <strong>Zwarte lijst</strong> (externe Twentse/Sallandse steden), <strong>Witte lijst</strong> (kernen Steenwijkerland) en <strong>Gemini Flash AI</strong> voor provinciebreed beleid. Exporteert direct naar <code className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-xs text-rose-600 font-mono">raadsstukken_metadata_overijssel.csv</code>.
             </p>
           </div>
 

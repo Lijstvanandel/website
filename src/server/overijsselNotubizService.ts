@@ -653,7 +653,9 @@ function sanitizeFilename(str: string): string {
 }
 
 /**
- * Run full Overijssel NotuBiz sync from 2021 to current date
+ * Run full Overijssel sync from 2021 to current date using OpenRaadsinformatie
+ * Source URL: https://zoek.openraadsinformatie.nl/?organization=overijssel&sort=date_desc
+ * API Endpoint: https://zoek.openraadsinformatie.nl/api/search?organization=overijssel&sort=date_desc&page=${page}
  */
 export async function startOverijsselNotubizSync(options?: {
   years?: number[];
@@ -664,6 +666,7 @@ export async function startOverijsselNotubizSync(options?: {
   }
 
   const targetYears = options?.years && options.years.length > 0 ? options.years : [2021, 2022, 2023, 2024, 2025, 2026];
+  const minTargetYear = Math.min(...targetYears);
   abortController = new AbortController();
   const signal = abortController.signal;
 
@@ -688,298 +691,131 @@ export async function startOverijsselNotubizSync(options?: {
     steenwijkerlandCount: existingDocs.filter((d) => d.scope === "Lokaal - Steenwijkerland").length,
     provinciebreedCount: existingDocs.filter((d) => d.scope === "Provinciebreed").length,
     externCount: existingDocs.filter((d) => d.scope === "Lokaal - Externe Gemeente").length,
-    currentAction: "Initialiseren...",
+    currentAction: "Initialiseren OpenRaadsinformatie Scraper...",
     logs: [],
     startedAt: new Date().toISOString(),
     completedAt: null,
     error: null,
   };
 
-  addLog(`Start synchronisatie Provincie Overijssel NotuBiz bestanden (${targetYears.join(", ")})...`, "info");
+  addLog(`Start OpenRaadsinformatie synchronisatie Provincie Overijssel (https://zoek.openraadsinformatie.nl/?organization=overijssel&sort=date_desc)...`, "info");
 
   (async () => {
     try {
-      for (const year of targetYears) {
-        if (signal.aborted) break;
-        syncState.currentYear = year;
-        syncState.currentAction = `Vergaderingen ophalen voor jaar ${year}...`;
-        addLog(`Ophalen vergaderingen Provincie Overijssel voor jaar ${year}...`, "info");
+      let page = 1;
+      let stopPaging = false;
 
-        let events: any[] = [];
+      while (!stopPaging && !signal.aborted) {
+        syncState.currentAction = `OpenRaadsinformatie ophalen pagina ${page}...`;
+        addLog(`Ophalen pagina ${page} van OpenRaadsinformatie (organization=overijssel, sort=date_desc)...`, "info");
+
+        let searchRes: { results: any[]; totalCount: number; hasMore: boolean } | null = null;
         try {
-          events = await fetchOverijsselEventsForYear(year, signal);
+          const url = `https://zoek.openraadsinformatie.nl/api/search?organization=overijssel&sort=date_desc&page=${page}`;
+          const res = await fetchWithRetry(url, { signal, headers: { Accept: "application/json" } }, 3, 25000);
+          if (res.ok) {
+            const data = await res.json();
+            searchRes = {
+              results: Array.isArray(data.results) ? data.results : [],
+              totalCount: typeof data.totalCount === "number" ? data.totalCount : 0,
+              hasMore: Boolean(data.hasMore),
+            };
+          }
         } catch (err: any) {
-          addLog(`Fout bij ophalen jaar ${year}: ${err.message}`, "warn");
-          continue;
+          addLog(`Fout bij ophalen pagina ${page} van OpenRaadsinformatie: ${err.message}`, "warn");
+          break;
         }
 
-        const meetings = events.filter((e) => e.type === "meeting");
-        syncState.totalMeetingsFound += meetings.length;
-        addLog(`Jaar ${year}: ${meetings.length} vergaderingen gevonden (van ${events.length} events).`, "info");
+        if (!searchRes || !searchRes.results || searchRes.results.length === 0) {
+          addLog(`Geen verdere resultaten gevonden op OpenRaadsinformatie pagina ${page}.`, "info");
+          break;
+        }
 
-        for (const ev of meetings) {
+        if (page === 1 && searchRes.totalCount > 0) {
+          syncState.totalMeetingsFound = searchRes.totalCount;
+          addLog(`OpenRaadsinformatie: ca. ${searchRes.totalCount} resultaten beschikbaar voor Overijssel.`, "info");
+        }
+
+        for (const item of searchRes.results) {
           if (signal.aborted) break;
-          const meetingId = ev.id;
-          const meetingDate = ev.plannings?.[0]?.start_date?.split(" ")[0] || `${year}-01-01`;
-          const meetingTitle = ev.attributes?.find((a: any) => a.id === 1)?.value || ev.title || `Vergadering ${meetingId}`;
-          const gremiumName = ev.gremium?.title || ev.category?.title || "Provinciale Staten";
 
-          syncState.currentAction = `Analyseren vergadering ${meetingDate}: ${meetingTitle.slice(0, 40)}...`;
+          const rawDate = item.sortDate || item.date || "";
+          const itemYear = parseInt((rawDate || "").slice(0, 4), 10) || (rawDate ? new Date(rawDate).getFullYear() : 0);
 
-          let meetingDetail: any = null;
-          try {
-            meetingDetail = await fetchMeetingDetails(meetingId, signal);
-          } catch (err: any) {
-            console.warn(`[OVERIJSSEL] Could not fetch meeting ${meetingId}:`, err?.message);
+          if (itemYear && itemYear < minTargetYear) {
+            addLog(`Grensdatum bereikt op OpenRaadsinformatie (${rawDate.slice(0, 10)} < ${minTargetYear}). Scraper stopt paginering.`, "info");
+            stopPaging = true;
+            break;
           }
 
-          if (!meetingDetail) {
+          if (itemYear && !targetYears.includes(itemYear)) {
             syncState.processedMeetings++;
             continue;
           }
 
-          // Collect all documents from meeting level, agenda items, and module items
-          const candidateDocs: Array<{
-            documentId: string;
-            version: string | number;
-            title: string;
-            type: string;
-            url: string;
-            filetype: string;
-          }> = [];
+          syncState.currentYear = itemYear || minTargetYear;
+          const isDoc = item.entityType === "Document" || item.entityTypeLabel === "Document";
+          const isMeeting = item.entityType === "Meeting" || item.entityTypeLabel === "Vergadering";
 
-          // 1. Direct meeting documents
-          if (Array.isArray(meetingDetail.documents)) {
-            for (const doc of meetingDetail.documents) {
-              if (doc.url && (doc.filetype === "pdf" || doc.url.includes("document"))) {
-                candidateDocs.push({
-                  documentId: String(doc.id || doc["@attributes"]?.id || ""),
-                  version: doc.version || doc["@attributes"]?.version || 1,
-                  title: doc.title || "Document",
-                  type: doc.type || "Document",
-                  url: doc.url,
-                  filetype: doc.filetype || "pdf",
-                });
-              }
-            }
-          }
+          if (isDoc) {
+            let docId = "";
+            const match = String(item.entityId || "").match(/document:notubiz:provincie:overijssel:(\d+)/i) || String(item.entityId || "").match(/(\d+)/);
+            if (match) docId = match[1];
+            else docId = String(item.entityId || "").replace(/[^a-zA-Z0-9]/g, "_");
 
-          // 2. Agenda items documents
-          if (Array.isArray(meetingDetail.agenda_items)) {
-            for (const item of meetingDetail.agenda_items) {
-              const itemTitle = item.attributes?.find((a: any) => a.id === 1)?.value || item.title || "";
-              if (Array.isArray(item.documents)) {
-                for (const doc of item.documents) {
-                  candidateDocs.push({
-                    documentId: String(doc.id || doc["@attributes"]?.id || ""),
-                    version: doc.version || doc["@attributes"]?.version || 1,
-                    title: doc.title || itemTitle || "Agendastuk",
-                    type: doc.type || "Agendastuk",
-                    url: doc.url,
-                    filetype: doc.filetype || "pdf",
-                  });
-                }
-              }
-              // Sub items in module_items
-              if (Array.isArray(item.module_items)) {
-                for (const mod of item.module_items) {
-                  if (Array.isArray(mod.documents)) {
-                    for (const doc of mod.documents) {
-                      candidateDocs.push({
-                        documentId: String(doc.id || doc["@attributes"]?.id || ""),
-                        version: doc.version || doc["@attributes"]?.version || 1,
-                        title: doc.title || mod.title || itemTitle || "Statenvoorstel Bijlage",
-                        type: doc.type || "Statenvoorstel",
-                        url: doc.url,
-                        filetype: doc.filetype || "pdf",
-                      });
-                    }
-                  }
-                }
-              }
-            }
-          }
+            const docKey = `${docId}_1`;
+            syncState.totalDocumentsFound++;
 
-          syncState.totalDocumentsFound += candidateDocs.length;
-
-          // Process each candidate document
-          for (const cand of candidateDocs) {
-            if (signal.aborted) break;
-            if (!cand.documentId) continue;
-
-            const docKey = `${cand.documentId}_${cand.version}`;
             if (!options?.forceRescan && existingDocMap.has(docKey)) {
               syncState.scannedDocuments++;
+              syncState.processedMeetings++;
               continue;
             }
 
-            // Download PDF for analysis
+            const docTitle = item.title || item.summary || `Document ${docId}`;
+            const meetingTitle = item.summary || item.title || "OpenRaadsinformatie Overijssel";
+            const itemDate = (item.sortDate || "").slice(0, 10) || `${itemYear || 2026}-01-01`;
+
+            syncState.currentAction = `Analyseren [ORI Document]: ${docTitle.slice(0, 35)}...`;
+
             let pdfBuffer: Buffer | null = null;
-            const canonicalUrl = getCanonicalNotubizDownloadUrl(cand.documentId, cand.version, cand.url);
+            let downloadUrl = item.downloadUrl || getCanonicalNotubizDownloadUrl(docId, 1);
+
             try {
-              const docRes = await fetchWithRetry(canonicalUrl, { signal }, 3, 25000);
-              if (docRes.ok) {
-                const arr = await docRes.arrayBuffer();
+              const res = await fetchWithRetry(downloadUrl, { signal }, 3, 25000);
+              if (res.ok) {
+                const arr = await res.arrayBuffer();
                 pdfBuffer = Buffer.from(arr);
               }
             } catch (err: any) {
-              console.warn(`[OVERIJSSEL] Download failed for doc ${cand.documentId}:`, err?.message);
+              console.warn(`[OVERIJSSEL ORI] Download probeersel mislukt voor ${docId}:`, err?.message);
             }
 
             if (!pdfBuffer || pdfBuffer.length === 0) {
+              const fallbackUrl = getCanonicalNotubizDownloadUrl(docId, 1);
+              if (fallbackUrl !== downloadUrl) {
+                try {
+                  const res2 = await fetchWithRetry(fallbackUrl, { signal }, 2, 20000);
+                  if (res2.ok) {
+                    const arr = await res2.arrayBuffer();
+                    pdfBuffer = Buffer.from(arr);
+                    downloadUrl = fallbackUrl;
+                  }
+                } catch {
+                  // ignore
+                }
+              }
+            }
+
+            if (!pdfBuffer || pdfBuffer.length === 0) {
+              syncState.processedMeetings++;
               continue;
             }
-
-            // Run 3-tier classification
-            const classification = await classificeerProvinciaalDocument(
-              {
-                title: cand.title,
-                meetingTitle,
-                documentId: cand.documentId,
-              },
-              pdfBuffer
-            );
-
-            const safeTitle = sanitizeFilename(cand.title || "document");
-            const filename = `${meetingDate}_${cand.documentId}_${safeTitle}.pdf`;
-            const localRelPath = `/uploads/documents/overijssel/${filename}`;
-            const localAbsPath = path.join(UPLOADS_DIR, filename);
-
-            if (classification.opslaan) {
-              // Save locally on server
-              fs.writeFileSync(localAbsPath, pdfBuffer);
-              try {
-                const distPath = path.join(DIST_UPLOADS_DIR, filename);
-                fs.writeFileSync(distPath, pdfBuffer);
-              } catch {
-                // ignore
-              }
-            }
-
-            const record: OverijsselDocumentMetadata = {
-              id: `ov-${cand.documentId}`,
-              document_id: cand.documentId,
-              version: cand.version,
-              meeting_id: String(meetingId),
-              datum: meetingDate,
-              titel: cand.title,
-              meeting_titel: meetingTitle,
-              gremium_naam: gremiumName,
-              document_type: cand.type,
-              filetype: cand.filetype,
-              scope: classification.scope,
-              filter_methode: classification.filter_methode,
-              reden: classification.reden,
-              opslaan: classification.opslaan,
-              bestandsnaam: classification.opslaan ? filename : "",
-              lokaal_pad: classification.opslaan ? localRelPath : "",
-              notubiz_url: canonicalUrl,
-              grootte_bytes: pdfBuffer.length,
-              gesynchroniseerd_op: new Date().toISOString(),
-            };
-
-            existingDocMap.set(docKey, record);
-            syncState.scannedDocuments++;
-
-            if (classification.opslaan) {
-              syncState.savedDocuments++;
-              if (classification.scope === "Lokaal - Steenwijkerland") {
-                syncState.steenwijkerlandCount++;
-                addLog(`[BINGO STEENWIJKERLAND] ${cand.title} -> ${classification.reden}`, "success");
-              } else {
-                syncState.provinciebreedCount++;
-                addLog(`[PROVINCIEBREED BEHOUDEN] ${cand.title}`, "info");
-              }
-            } else {
-              syncState.excludedDocuments++;
-              syncState.externCount++;
-              addLog(`[EXTERN GENEGEERD] ${cand.title} -> ${classification.reden}`, "warn");
-            }
-
-            // Periodic flush to CSV and JSON every 5 scanned documents
-            if (syncState.scannedDocuments % 5 === 0) {
-              saveOverijsselMetadata(Array.from(existingDocMap.values()));
-            }
-          }
-
-          syncState.processedMeetings++;
-        }
-      }
-
-      // FASE 2: Synchroniseer NotuBiz Modules (Statenvoorstellen, Moties & Amendementen, Schriftelijke Vragen, etc.)
-      const MODULE_DEFINITIONS = [
-        { id: 19, name: "Statenvoorstellen" },
-        { id: 6, name: "Moties en Amendementen" },
-        { id: 4, name: "Schriftelijke vragen" },
-        { id: 3, name: "Toezeggingen" },
-      ];
-
-      const minTargetYear = Math.min(...targetYears);
-
-      for (const mod of MODULE_DEFINITIONS) {
-        if (signal.aborted) break;
-        syncState.currentAction = `NotuBiz Module ophalen: ${mod.name}...`;
-        addLog(`Ophalen NotuBiz module '${mod.name}' (ID ${mod.id})...`, "info");
-
-        let modItems: any[] = [];
-        try {
-          modItems = await fetchModuleItems(mod.id, signal);
-        } catch (err: any) {
-          addLog(`Fout bij ophalen module ${mod.name}: ${err?.message}`, "warn");
-          continue;
-        }
-
-        addLog(`Module '${mod.name}': ${modItems.length} items gevonden. Filteren op periode >= ${minTargetYear}...`, "info");
-
-        for (const item of modItems) {
-          if (signal.aborted) break;
-          const itemDateRaw = item.date || item.attributes?.find((a: any) => a.datatype === "datetime" || a.datatype === "date")?.value || "";
-          const itemYear = parseInt((itemDateRaw || "").slice(0, 4), 10);
-
-          if (itemYear && itemYear < minTargetYear) {
-            continue; // Buiten het gewenste tijdsvenster
-          }
-
-          const itemTitle = item.title || item.attributes?.find((a: any) => a.id === 1)?.value || `${mod.name} ${item.id}`;
-          const itemDate = itemDateRaw.split(" ")[0] || `${minTargetYear}-01-01`;
-
-          const rawDocs = item.attachments?.document || item.documents || [];
-          const docList = Array.isArray(rawDocs) ? rawDocs : [rawDocs];
-
-          for (const d of docList) {
-            if (signal.aborted) break;
-            const docId = String(d.id || d["@attributes"]?.id || "");
-            const docVersion = d.version || d["@attributes"]?.version || 1;
-            if (!docId) continue;
-
-            const docKey = `${docId}_${docVersion}`;
-            if (!options?.forceRescan && existingDocMap.has(docKey)) {
-              syncState.scannedDocuments++;
-              continue;
-            }
-
-            const docTitle = d.title || itemTitle;
-            const canonicalUrl = getCanonicalNotubizDownloadUrl(docId, docVersion, d.url || d.self);
-
-            syncState.currentAction = `Analyseren ${mod.name}: ${docTitle.slice(0, 35)}...`;
-
-            let pdfBuffer: Buffer | null = null;
-            try {
-              const docRes = await fetchWithRetry(canonicalUrl, { signal }, 3, 25000);
-              if (docRes.ok) {
-                const arr = await docRes.arrayBuffer();
-                pdfBuffer = Buffer.from(arr);
-              }
-            } catch (err: any) {
-              console.warn(`[OVERIJSSEL] Download failed for module doc ${docId}:`, err?.message);
-            }
-
-            if (!pdfBuffer || pdfBuffer.length === 0) continue;
 
             const classification = await classificeerProvinciaalDocument(
               {
                 title: docTitle,
-                meetingTitle: `${mod.name} - ${itemTitle}`,
+                meetingTitle,
                 documentId: docId,
               },
               pdfBuffer
@@ -1003,13 +839,13 @@ export async function startOverijsselNotubizSync(options?: {
             const record: OverijsselDocumentMetadata = {
               id: `ov-${docId}`,
               document_id: docId,
-              version: docVersion,
-              meeting_id: String(item.id || ""),
+              version: 1,
+              meeting_id: String(item.entityId || ""),
               datum: itemDate,
               titel: docTitle,
-              meeting_titel: `${mod.name}: ${itemTitle}`,
-              gremium_naam: "Provinciale Staten",
-              document_type: mod.name,
+              meeting_titel: meetingTitle,
+              gremium_naam: "OpenRaadsinformatie Overijssel",
+              document_type: item.entityTypeLabel || "Document",
               filetype: "pdf",
               scope: classification.scope,
               filter_methode: classification.filter_methode,
@@ -1017,7 +853,7 @@ export async function startOverijsselNotubizSync(options?: {
               opslaan: classification.opslaan,
               bestandsnaam: classification.opslaan ? filename : "",
               lokaal_pad: classification.opslaan ? localRelPath : "",
-              notubiz_url: canonicalUrl,
+              notubiz_url: downloadUrl,
               grootte_bytes: pdfBuffer.length,
               gesynchroniseerd_op: new Date().toISOString(),
             };
@@ -1029,29 +865,155 @@ export async function startOverijsselNotubizSync(options?: {
               syncState.savedDocuments++;
               if (classification.scope === "Lokaal - Steenwijkerland") {
                 syncState.steenwijkerlandCount++;
-                addLog(`[BINGO STEENWIJKERLAND] [${mod.name}] ${docTitle} -> ${classification.reden}`, "success");
+                addLog(`[BINGO STEENWIJKERLAND] ${docTitle} -> ${classification.reden}`, "success");
               } else {
                 syncState.provinciebreedCount++;
-                addLog(`[PROVINCIEBREED BEHOUDEN] [${mod.name}] ${docTitle}`, "info");
+                addLog(`[PROVINCIEBREED BEHOUDEN] ${docTitle}`, "info");
               }
             } else {
               syncState.excludedDocuments++;
               syncState.externCount++;
-              addLog(`[EXTERN GENEGEERD] [${mod.name}] ${docTitle} -> ${classification.reden}`, "warn");
+              addLog(`[EXTERN GENEGEERD] ${docTitle} -> ${classification.reden}`, "warn");
             }
 
             if (syncState.scannedDocuments % 5 === 0) {
               saveOverijsselMetadata(Array.from(existingDocMap.values()));
             }
+
+          } else if (isMeeting) {
+            try {
+              const detailsUrl = `https://zoek.openraadsinformatie.nl/api/entities/${encodeURIComponent(item.entityId)}`;
+              const detailsRes = await fetchWithRetry(detailsUrl, { signal, headers: { Accept: "application/json" } }, 2, 20000);
+              if (detailsRes.ok) {
+                const details = await detailsRes.json();
+                if (details && Array.isArray(details.agenda)) {
+                  for (const ag of details.agenda) {
+                    if (signal.aborted) break;
+                    if (Array.isArray(ag.documents)) {
+                      for (const d of ag.documents) {
+                        if (signal.aborted) break;
+                        let docId = "";
+                        const match = String(d.id || "").match(/document:notubiz:provincie:overijssel:(\d+)/i) || String(d.id || "").match(/(\d+)/);
+                        if (match) docId = match[1];
+                        else docId = String(d.id || "").replace(/[^a-zA-Z0-9]/g, "_");
+
+                        if (!docId) continue;
+                        const docKey = `${docId}_1`;
+                        syncState.totalDocumentsFound++;
+
+                        if (!options?.forceRescan && existingDocMap.has(docKey)) {
+                          syncState.scannedDocuments++;
+                          continue;
+                        }
+
+                        const docTitle = d.name || d.title || ag.title || item.title || `Document ${docId}`;
+                        const meetingTitle = item.title || details.title || "Vergadering Overijssel";
+                        const itemDate = (item.sortDate || details.sortDate || "").slice(0, 10) || `${itemYear || 2026}-01-01`;
+
+                        let pdfBuffer: Buffer | null = null;
+                        const downloadUrl = d.original_url || getCanonicalNotubizDownloadUrl(docId, 1);
+
+                        try {
+                          const res = await fetchWithRetry(downloadUrl, { signal }, 3, 20000);
+                          if (res.ok) {
+                            const arr = await res.arrayBuffer();
+                            pdfBuffer = Buffer.from(arr);
+                          }
+                        } catch {
+                          // ignore
+                        }
+
+                        if (!pdfBuffer || pdfBuffer.length === 0) continue;
+
+                        const classification = await classificeerProvinciaalDocument(
+                          { title: docTitle, meetingTitle, documentId: docId },
+                          pdfBuffer
+                        );
+
+                        const safeTitle = sanitizeFilename(docTitle);
+                        const filename = `${itemDate}_${docId}_${safeTitle}.pdf`;
+                        const localRelPath = `/uploads/documents/overijssel/${filename}`;
+                        const localAbsPath = path.join(UPLOADS_DIR, filename);
+
+                        if (classification.opslaan) {
+                          fs.writeFileSync(localAbsPath, pdfBuffer);
+                          try {
+                            const distPath = path.join(DIST_UPLOADS_DIR, filename);
+                            fs.writeFileSync(distPath, pdfBuffer);
+                          } catch {
+                            // ignore
+                          }
+                        }
+
+                        const record: OverijsselDocumentMetadata = {
+                          id: `ov-${docId}`,
+                          document_id: docId,
+                          version: 1,
+                          meeting_id: String(item.entityId || ""),
+                          datum: itemDate,
+                          titel: docTitle,
+                          meeting_titel: meetingTitle,
+                          gremium_naam: "OpenRaadsinformatie Overijssel",
+                          document_type: "Vergaderstuk",
+                          filetype: "pdf",
+                          scope: classification.scope,
+                          filter_methode: classification.filter_methode,
+                          reden: classification.reden,
+                          opslaan: classification.opslaan,
+                          bestandsnaam: classification.opslaan ? filename : "",
+                          lokaal_pad: classification.opslaan ? localRelPath : "",
+                          notubiz_url: downloadUrl,
+                          grootte_bytes: pdfBuffer.length,
+                          gesynchroniseerd_op: new Date().toISOString(),
+                        };
+
+                        existingDocMap.set(docKey, record);
+                        syncState.scannedDocuments++;
+
+                        if (classification.opslaan) {
+                          syncState.savedDocuments++;
+                          if (classification.scope === "Lokaal - Steenwijkerland") {
+                            syncState.steenwijkerlandCount++;
+                            addLog(`[BINGO STEENWIJKERLAND] ${docTitle} -> ${classification.reden}`, "success");
+                          } else {
+                            syncState.provinciebreedCount++;
+                            addLog(`[PROVINCIEBREED BEHOUDEN] ${docTitle}`, "info");
+                          }
+                        } else {
+                          syncState.excludedDocuments++;
+                          syncState.externCount++;
+                          addLog(`[EXTERN GENEGEERD] ${docTitle} -> ${classification.reden}`, "warn");
+                        }
+
+                        if (syncState.scannedDocuments % 5 === 0) {
+                          saveOverijsselMetadata(Array.from(existingDocMap.values()));
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            } catch {
+              // ignore
+            }
           }
+
+          syncState.processedMeetings++;
         }
+
+        if (!searchRes.hasMore) {
+          addLog("OpenRaadsinformatie stelt geen verdere pagina's meer beschikbaar.", "info");
+          break;
+        }
+
+        page++;
       }
 
       // Final save
       saveOverijsselMetadata(Array.from(existingDocMap.values()));
       syncState.currentAction = "Voltooid!";
       syncState.completedAt = new Date().toISOString();
-      addLog(`Synchronisatie Provincie Overijssel succesvol voltooid! Totaal ${syncState.savedDocuments} documenten opgeslagen. CSV bijgewerkt.`, "success");
+      addLog(`Synchronisatie via OpenRaadsinformatie (organization=overijssel, sort=date_desc) succesvol voltooid! Totaal ${syncState.savedDocuments} documenten opgeslagen. CSV bijgewerkt.`, "success");
     } catch (err: any) {
       if (signal.aborted) {
         syncState.currentAction = "Geannuleerd door gebruiker";
