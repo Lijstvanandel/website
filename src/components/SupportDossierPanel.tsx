@@ -325,6 +325,35 @@ export const SupportDossierPanel: React.FC<SupportDossierPanelProps> = ({
             </div>
           </div>
 
+          {/* 🚨 VRIJDAGMIDDAG-DUMP / NIEUWE STUKKEN ALERT BANNER */}
+          {(topic.hasNewDocumentsSinceCompile || topic.documents.some((d) => d.isNewAfterCompile)) && (
+            <div className="p-4 rounded-xl bg-rose-500/15 border-2 border-rose-500/40 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-pulse">
+              <div className="flex items-start sm:items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-rose-500/20 text-rose-700 dark:text-rose-300 flex items-center justify-center shrink-0">
+                  <AlertCircle className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+                </div>
+                <div>
+                  <div className="font-bold text-foreground text-sm flex items-center gap-2">
+                    <span className="text-rose-700 dark:text-rose-400">⚠️ Nieuw document toegevoegd na dossier-compilatie!</span>
+                  </div>
+                  <p className="text-muted-foreground mt-0.5">
+                    Er is recent een nieuw raadsvoorstel, nota van inlichtingen of financiële bijlage aan iBabs toegevoegd. Hercompileer dit ondersteuningsdossier direct zodat uw klemzetvragen en bewijslast gebaseerd zijn op de allernieuwste stukken.
+                  </p>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="default"
+                onClick={handleCompileDossier}
+                disabled={isCompiling}
+                className="h-8 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shrink-0 shadow-xs"
+              >
+                <RotateCw className="w-3.5 h-3.5 mr-1.5" />
+                Hercompileer met Nieuwe Stukken
+              </Button>
+            </div>
+          )}
+
           {/* Drie Pijlers Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             {/* PIJLER A: Historische Lijn (Context) */}

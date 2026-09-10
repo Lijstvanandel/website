@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
-import { CouncilAgendaTopic, CouncilDocument } from "../types/council.js";
+import { CouncilAgendaTopic, CouncilDocument, CouncilTopicDiffAlert } from "../types/council.js";
 import { getDbFromSqlite, saveDbToSqlite, initDatabase } from "./sqliteDatabase.js";
+import { notifyDocumentDiffDetected } from "./pushService.js";
 
 const BASE_URL = "https://steenwijkerland.bestuurlijkeinformatie.nl";
 const AGENDAS_API_TEMPLATE = `${BASE_URL}/Agenda/RetrieveAgendasForYear?agendatypeId=100000059&year=`;
@@ -222,6 +223,8 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
 
   let totalNewOrUpdated = 0;
   let bespreekstukkenFound = 0;
+  let totalDiffsDetected = 0;
+  let totalLateDumpsDetected = 0;
 
   // Process meetings with concurrency batching for ultra-fast scraping (2-3s total)
   const batchSize = 4;
@@ -362,14 +365,105 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
             const topicId = `topic_${meetingId}_${itemNumber.replace(/[^a-zA-Z0-9]/g, "_")}`;
             const existing = existingTopicsMap.get(topicId);
 
-            // Merge viewed status from existing topic
-            const mergedDocs = docLinks.map((newDoc) => {
-              const existingDoc = existing?.documents?.find((d) => d.id === newDoc.id);
-              return {
-                ...newDoc,
-                viewedBy: existingDoc?.viewedBy || [],
-              };
+            const meetingDateObj = new Date(parsedDate.dateIso);
+            const nowTime = Date.now();
+            const hoursUntilMeeting = (meetingDateObj.getTime() - nowTime) / (1000 * 60 * 60);
+            const dayOfWeek = new Date().getDay(); // 0=Sun, 1=Mon, ..., 4=Thu, 5=Fri
+            const isWithin48h = hoursUntilMeeting <= 48 && hoursUntilMeeting >= -12;
+            const isThursdayOrFriday = dayOfWeek === 4 || dayOfWeek === 5;
+            const isLateDumpWindow = isWithin48h || (isThursdayOrFriday && hoursUntilMeeting <= 96 && hoursUntilMeeting > 0);
+
+            const existingDocs = existing?.documents || [];
+            const detectedNewDocs: CouncilDocument[] = [];
+            let topicHasLateDump = existing?.hasRecentDump || false;
+
+            // Merge viewed status and identify brand new documents
+            const mergedDocs: CouncilDocument[] = docLinks.map((newDoc) => {
+              const existingDoc = existingDocs.find(
+                (d) => d.id === newDoc.id ||
+                       (d.url && newDoc.url && d.url.toLowerCase().trim() === newDoc.url.toLowerCase().trim()) ||
+                       d.title.toLowerCase().trim() === newDoc.title.toLowerCase().trim()
+              );
+
+              if (existingDoc) {
+                return {
+                  ...newDoc,
+                  addedAt: existingDoc.addedAt || existing?.scrapedAt || new Date().toISOString(),
+                  isLateDump: existingDoc.isLateDump || false,
+                  isNewAfterCompile: existingDoc.isNewAfterCompile || false,
+                  viewedBy: existingDoc.viewedBy || [],
+                };
+              } else {
+                // Brand new document on this topic
+                const isDump = (existing && existingDocs.length > 0) ? isLateDumpWindow : false;
+                if (isDump) {
+                  topicHasLateDump = true;
+                }
+                const isAfterCompile = !!(
+                  existing?.compiledDossier &&
+                  new Date().getTime() > new Date(existing.compiledDossier.compiledAt).getTime()
+                );
+
+                const docWithMeta: CouncilDocument = {
+                  ...newDoc,
+                  addedAt: new Date().toISOString(),
+                  isLateDump: isDump,
+                  isNewAfterCompile: isAfterCompile,
+                  viewedBy: [],
+                };
+
+                if (existing && existingDocs.length > 0) {
+                  detectedNewDocs.push(docWithMeta);
+                }
+                return docWithMeta;
+              }
             });
+
+            // Create diff alerts if new docs were added to an already existing topic (the Friday dump detector)
+            const newDiffAlerts: CouncilTopicDiffAlert[] = [];
+            if (detectedNewDocs.length > 0 && existing && existingDocs.length > 0) {
+              totalDiffsDetected += detectedNewDocs.length;
+              if (topicHasLateDump) {
+                totalLateDumpsDetected += detectedNewDocs.length;
+              }
+
+              for (const nd of detectedNewDocs) {
+                const isBespreek = topicCategory === "Oordeelvorming - bespreekstukken" || rawTitle.toLowerCase().includes("bespreek");
+                const summaryMsg = nd.isLateDump
+                  ? `[VRIJDAGMIDDAG-DUMP: Nieuw document toegevoegd aan ${isBespreek ? "Bespreekstuk" : "Agendapunt"} "${rawTitle}"]: "${nd.title}"`
+                  : `[UPDATE DETECTEERD: Nieuw document toegevoegd aan ${isBespreek ? "Bespreekstuk" : "Agendapunt"} "${rawTitle}"]: "${nd.title}"`;
+
+                const alertItem: CouncilTopicDiffAlert = {
+                  id: `diff_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+                  topicId,
+                  detectedAt: new Date().toISOString(),
+                  type: "new_document",
+                  documentTitle: nd.title,
+                  documentUrl: nd.url,
+                  documentId: nd.id,
+                  summary: summaryMsg,
+                  isDumpAlert: !!nd.isLateDump,
+                  hoursBeforeMeeting: Math.round(hoursUntilMeeting),
+                  dismissed: false,
+                };
+                newDiffAlerts.push(alertItem);
+
+                console.warn(`[DIFF-CHECKER] 🚨 ${summaryMsg} (${hoursUntilMeeting.toFixed(1)}u voor debat)`);
+
+                // Asynchronously send push notification
+                notifyDocumentDiffDetected(
+                  db,
+                  { id: topicId, title: rawTitle, category: topicCategory, assignedTo: existing?.assignedTo },
+                  { documentTitle: nd.title, isLateDump: !!nd.isLateDump, hoursBeforeMeeting: Math.round(hoursUntilMeeting) },
+                  saveDbToSqlite
+                ).catch((pErr) => console.error("[DIFF NOTIFY FOUT]", pErr));
+              }
+            }
+
+            const hasNewSinceCompile = existing?.compiledDossier
+              ? (existing.hasNewDocumentsSinceCompile || detectedNewDocs.length > 0)
+              : false;
+            const newCountSinceCompile = (existing?.newDocumentsCountSinceCompile || 0) + (existing?.compiledDossier ? detectedNewDocs.length : 0);
 
             const updatedTopic: CouncilAgendaTopic = {
               id: topicId,
@@ -398,6 +492,13 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
               bijdragePolitiekeMarkt: existing?.bijdragePolitiekeMarkt || "",
               bijdrageRaadsvergadering: existing?.bijdrageRaadsvergadering || "",
               markAsHamerstuk: existing?.markAsHamerstuk || false,
+              // Diff Checker & Late Dump state
+              hasRecentDump: topicHasLateDump,
+              hasDocumentDiff: (existing?.hasDocumentDiff && (existing.diffAlerts || []).some((a) => !a.dismissed)) || detectedNewDocs.length > 0,
+              lastDiffDetectedAt: detectedNewDocs.length > 0 ? new Date().toISOString() : (existing?.lastDiffDetectedAt || null),
+              diffAlerts: [...newDiffAlerts, ...(existing?.diffAlerts || [])],
+              hasNewDocumentsSinceCompile: hasNewSinceCompile,
+              newDocumentsCountSinceCompile: newCountSinceCompile,
             };
 
             existingTopicsMap.set(topicId, updatedTopic);
@@ -457,6 +558,9 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
     return a.meetingDate.localeCompare(b.meetingDate);
   });
 
+  // Calculate adaptive interval based on upcoming meetings
+  const adaptive = calculateAdaptiveInterval(finalList);
+
   // Save in SQLite
   db.councilAgendaTopics = finalList;
   db.councilScrapeSummary = {
@@ -466,31 +570,161 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
     bespreekstukkenCount: finalList.filter((t) => t.category === "Oordeelvorming - bespreekstukken" && !t.isArchived).length,
     archivedCount,
     status: "success",
+    // Watchdog diff checker telemetry
+    lastDiffCheckAt: new Date().toISOString(),
+    diffsDetectedCount: (db.councilScrapeSummary?.diffsDetectedCount || 0) + totalDiffsDetected,
+    lateDumpsDetectedCount: (db.councilScrapeSummary?.lateDumpsDetectedCount || 0) + totalLateDumpsDetected,
+    activePollingIntervalMinutes: adaptive.intervalMinutes,
+    nextExpectedCheckAt: new Date(Date.now() + adaptive.intervalMs).toISOString(),
   };
 
   saveDbToSqlite(db);
-  console.log(`[RAADSPANEEL SCRAPER] Klaar! ${finalList.length} agendapunten opgeslagen (${bespreekstukkenFound} bespreekstukken, ${archivedCount} gearchiveerd).`);
+  console.log(`[RAADSPANEEL SCRAPER] Klaar! ${finalList.length} agendapunten opgeslagen (${bespreekstukkenFound} bespreekstukken, ${archivedCount} gearchiveerd). Diff-alerts: ${totalDiffsDetected} nieuw, ${totalLateDumpsDetected} late dumps.`);
+
+  // Schedule next watchdog diff-check run adaptively
+  scheduleNextWatchdogScrape(adaptive.intervalMs);
+  console.log(`[iBABS WATCHDOG] Volgende automatische diff-check gepland over ${adaptive.intervalMinutes} min. Reden: ${adaptive.reason}`);
 
   return db.councilScrapeSummary;
 }
 
 /**
- * Schedule daily scraping every 24 hours
+ * Calculates adaptive polling interval:
+ * - 60 minutes (1 uur) if an upcoming meeting is within 24 hours.
+ * - 120 minutes (2 uur) if within 48 hours.
+ * - 1440 minutes (24 uur) otherwise.
  */
-let scrapeInterval: NodeJS.Timeout | null = null;
-export function startDailyCouncilScraper() {
-  if (scrapeInterval) return;
+export function calculateAdaptiveInterval(topics: CouncilAgendaTopic[]): {
+  intervalMs: number;
+  intervalMinutes: number;
+  reason: string;
+} {
+  const now = Date.now();
+  let minHoursUntil = Infinity;
 
-  // Run on startup after 5 seconds
+  for (const topic of topics) {
+    if (topic.isArchived) continue;
+    try {
+      const mDate = new Date(topic.meetingDate);
+      if (!isNaN(mDate.getTime())) {
+        const hours = (mDate.getTime() - now) / (1000 * 60 * 60);
+        // Upcoming meeting within reasonable window or active today
+        if (hours >= -6 && hours < minHoursUntil) {
+          minHoursUntil = hours;
+        }
+      }
+    } catch (_e) {
+      // ignore
+    }
+  }
+
+  if (minHoursUntil <= 24) {
+    return {
+      intervalMs: 60 * 60 * 1000, // 1 hour
+      intervalMinutes: 60,
+      reason: `Aanstaande raadsvergadering binnen ${Math.max(0, Math.round(minHoursUntil))} uur! Watchdog pollt elk uur op 'vrijdagmiddag-dumps'.`,
+    };
+  }
+
+  if (minHoursUntil <= 48) {
+    return {
+      intervalMs: 2 * 60 * 60 * 1000, // 2 hours
+      intervalMinutes: 120,
+      reason: `Vergadering binnen ${Math.round(minHoursUntil)} uur. Watchdog pollt elke 2 uur op tussentijdse toevoegingen.`,
+    };
+  }
+
+  return {
+    intervalMs: 24 * 60 * 60 * 1000, // 24 hours
+    intervalMinutes: 1440,
+    reason: `Geen directe vergadering binnen 48 uur. Dagelijkse controle actief.`,
+  };
+}
+
+/**
+ * Adaptive Watchdog Scheduler
+ */
+let watchdogTimer: NodeJS.Timeout | null = null;
+
+export function scheduleNextWatchdogScrape(delayMs: number) {
+  if (watchdogTimer) {
+    clearTimeout(watchdogTimer);
+    watchdogTimer = null;
+  }
+
+  watchdogTimer = setTimeout(async () => {
+    console.log("[iBABS WATCHDOG] Starten van geplande automatische scrape en diff-check cyclus...");
+    try {
+      await scrapeCouncilAgendas();
+    } catch (err: any) {
+      console.error("[iBABS WATCHDOG FOUT]:", err?.message);
+      // Retry in 30 minutes on error
+      scheduleNextWatchdogScrape(30 * 60 * 1000);
+    }
+  }, delayMs);
+}
+
+export function startCouncilWatchdogScheduler() {
+  // Initial run after 5 seconds on startup
   setTimeout(() => {
     scrapeCouncilAgendas().catch((err) => console.error("[RAADSPANEEL SCRAPER INIT FOUT]:", err));
   }, 5000);
+}
 
-  // Repeat every 24 hours
-  scrapeInterval = setInterval(() => {
-    console.log("[RAADSPANEEL SCRAPER] 24-uurs automatische scrape cyclus wordt gestart...");
-    scrapeCouncilAgendas().catch((err) => console.error("[RAADSPANEEL SCRAPER CRON FOUT]:", err));
-  }, 24 * 60 * 60 * 1000);
+// Alias for backwards compatibility
+export const startDailyCouncilScraper = startCouncilWatchdogScheduler;
+
+/**
+ * Dismiss diff alerts on a specific topic (user acknowledges the update)
+ */
+export function dismissTopicDiffAlert(topicId: string, username?: string): CouncilAgendaTopic | null {
+  const db = getDbFromSqlite();
+  const topics: CouncilAgendaTopic[] = db.councilAgendaTopics || [];
+  const topic = topics.find((t) => t.id === topicId);
+  if (!topic) return null;
+
+  topic.hasDocumentDiff = false;
+  topic.hasRecentDump = false;
+
+  if (Array.isArray(topic.diffAlerts)) {
+    for (const alert of topic.diffAlerts) {
+      alert.dismissed = true;
+      alert.dismissedAt = new Date().toISOString();
+      if (username) alert.dismissedBy = username;
+    }
+  }
+
+  saveDbToSqlite(db);
+  return topic;
+}
+
+/**
+ * Dismiss all diff alerts across all topics
+ */
+export function dismissAllDiffAlerts(username?: string): number {
+  const db = getDbFromSqlite();
+  const topics: CouncilAgendaTopic[] = db.councilAgendaTopics || [];
+  let updatedCount = 0;
+
+  for (const topic of topics) {
+    if (topic.hasDocumentDiff || topic.hasRecentDump) {
+      topic.hasDocumentDiff = false;
+      topic.hasRecentDump = false;
+      if (Array.isArray(topic.diffAlerts)) {
+        for (const alert of topic.diffAlerts) {
+          alert.dismissed = true;
+          alert.dismissedAt = new Date().toISOString();
+          if (username) alert.dismissedBy = username;
+        }
+      }
+      updatedCount++;
+    }
+  }
+
+  if (updatedCount > 0) {
+    saveDbToSqlite(db);
+  }
+  return updatedCount;
 }
 
 /**

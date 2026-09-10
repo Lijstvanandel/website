@@ -58,7 +58,9 @@ import { indexUploadedFile } from "./src/server/documentTextExtractor.js";
 import {
   scrapeCouncilAgendas,
   clearUnassignedCouncilTopics,
-  startDailyCouncilScraper
+  startDailyCouncilScraper,
+  dismissTopicDiffAlert,
+  dismissAllDiffAlerts,
 } from "./src/server/councilScraperService.js";
 import {
   getAllDossiers,
@@ -74,7 +76,9 @@ import {
   getAllCatalogDocuments,
   processUploadedCouncilDocuments,
   getRawNetworkGraph,
-  processMetadataOrGraphUpload
+  processMetadataOrGraphUpload,
+  getMissingCouncilDocuments,
+  generateMissingDocumentsCsv
 } from "./src/server/dossierManager.js";
 import {
   compileSupportDossierForTopic,
@@ -7336,6 +7340,49 @@ Sitemap: ${baseUrl}/sitemap.xml
     }
   });
 
+  // 2a-2. Manual Diff-Check trigger (iBabs Watchdog on demand)
+  app.post("/api/council/diff-check-now", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
+    res.setHeader("Content-Type", "application/json");
+    try {
+      const summary = await scrapeCouncilAgendas();
+      const db = getDb();
+      const topics = db.councilAgendaTopics || [];
+      const topicsWithDumps = topics.filter((t: any) => t.hasRecentDump || t.hasDocumentDiff);
+      
+      return res.json({
+        success: true,
+        message: topicsWithDumps.length > 0
+          ? `Diff-check voltooid! ${topicsWithDumps.length} agendapunt(en) met recente updates of 'vrijdagmiddag-dumps' gevonden.`
+          : "Diff-check voltooid: Alle raadsstukken zijn 100% up-to-date met iBabs. Geen nieuwe dumps gedetecteerd.",
+        summary,
+        topicsWithDumpsCount: topicsWithDumps.length,
+        topics,
+      });
+    } catch (err: any) {
+      console.error("[RAADSPANEEL DIFF-CHECK FOUT]", err);
+      return res.status(500).json({ error: "Fout bij uitvoeren van diff-check: " + err.message });
+    }
+  });
+
+  // 2a-3. Dismiss diff alerts on a specific topic
+  app.post("/api/council/topics/:topicId/dismiss-diff", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    res.setHeader("Content-Type", "application/json");
+    const { topicId } = req.params;
+    const updated = dismissTopicDiffAlert(topicId, req.user?.username || req.user?.fullName);
+    if (!updated) {
+      return res.status(404).json({ error: "Onderwerp niet gevonden" });
+    }
+    return res.json({ success: true, topic: updated });
+  });
+
+  // 2a-4. Dismiss all diff alerts
+  app.post("/api/council/dismiss-all-diffs", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    res.setHeader("Content-Type", "application/json");
+    const count = dismissAllDiffAlerts(req.user?.username || req.user?.fullName);
+    const db = getDb();
+    return res.json({ success: true, updatedCount: count, topics: db.councilAgendaTopics || [] });
+  });
+
   // 2b. Clear unassigned scraper topics (preserves assigned topics & notes)
   app.post("/api/council/clear-unassigned", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
     res.setHeader("Content-Type", "application/json");
@@ -7991,6 +8038,49 @@ Sitemap: ${baseUrl}/sitemap.xml
       res.status(500).json({ error: "Fout bij ophalen catalogus: " + err.message });
     }
   });
+
+  // Audit and export missing council documents (linked in metadata/dossiers but missing physically)
+  const handleMissingDocumentsRoute = (req: any, res: any) => {
+    try {
+      const db = getDb();
+      const report = getMissingCouncilDocuments(db);
+      const format = (req.query.format || "json").toString().toLowerCase().trim();
+      const mode = (req.query.mode === "unique" ? "unique" : "detailed") as "detailed" | "unique";
+
+      if (format === "csv") {
+        const csvContent = generateMissingDocumentsCsv(report, mode);
+        const timestamp = new Date().toISOString().slice(0, 10);
+        const filename =
+          mode === "unique"
+            ? `ontbrekende_raadsstukken_uniek_${timestamp}.csv`
+            : `ontbrekende_raadsstukken_koppelingen_${timestamp}.csv`;
+
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        return res.send(csvContent);
+      }
+
+      // JSON output
+      res.json({
+        success: true,
+        stats: {
+          totalDossiers: report.totalDossiers,
+          totalDocuments: report.totalDocuments,
+          totalUploadedFiles: report.totalUploadedFiles,
+          totalMissingLinks: report.totalMissingLinks,
+          uniqueMissingFilesCount: report.uniqueMissingFilesCount,
+        },
+        missingDocuments: report.missingDocuments,
+        uniqueMissingFiles: report.uniqueMissingFiles,
+      });
+    } catch (err: any) {
+      console.error("[COUNCIL MISSING DOCUMENTS ERROR]:", err);
+      res.status(500).json({ error: "Fout bij controleren ontbrekende documenten: " + err.message });
+    }
+  };
+
+  app.get("/api/council/dossiers/missing-files", optionalAuth, handleMissingDocumentsRoute);
+  app.get("/api/council/missing-documents", optionalAuth, handleMissingDocumentsRoute);
 
   // 2. Get single dossier detail with documents and its network graph
   app.get("/api/council/dossiers/:slug", optionalAuth, (req: any, res: any) => {

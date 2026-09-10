@@ -1174,4 +1174,210 @@ export function processMetadataOrGraphUpload(
   }
 }
 
+export interface MissingDocumentDetail {
+  id: string;
+  bestandsnaam: string;
+  titel: string;
+  dossier: string;
+  dossierSlug: string;
+  dossierCategory: string;
+  datum: string | null;
+  entiteiten: string[];
+  relaties: string[];
+  linkCount: number;
+}
+
+export interface UniqueMissingFile {
+  bestandsnaam: string;
+  titel: string;
+  dossiers: Array<{ title: string; slug: string; category: string }>;
+  datum: string | null;
+  linkCount: number;
+}
+
+export interface MissingDocumentsReport {
+  totalDossiers: number;
+  totalDocuments: number;
+  totalUploadedFiles: number;
+  totalMissingLinks: number;
+  uniqueMissingFilesCount: number;
+  missingDocuments: MissingDocumentDetail[];
+  uniqueMissingFiles: UniqueMissingFile[];
+}
+
+/**
+ * Audit and list all documents linked across dossiers that do not physically exist on the server.
+ */
+export function getMissingCouncilDocuments(db: any): MissingDocumentsReport {
+  const allDossiers = getAllDossiers(db?.customDossiers || [], db?.deletedDossierSlugs || []);
+
+  let totalDocuments = 0;
+  let totalUploadedFiles = 0;
+
+  const missingDocs: MissingDocumentDetail[] = [];
+  const uniqueMap = new Map<string, UniqueMissingFile>();
+
+  allDossiers.forEach((dossier) => {
+    totalDocuments += dossier.documentCount;
+    totalUploadedFiles += dossier.uploadedCount;
+
+    dossier.documents.forEach((doc) => {
+      if (!doc.fileExists) {
+        const cleanName = (doc.bestandsnaam || "").trim();
+        const key = cleanName.toLowerCase();
+
+        missingDocs.push({
+          id: doc.id,
+          bestandsnaam: doc.bestandsnaam,
+          titel: doc.titel || doc.bestandsnaam,
+          dossier: dossier.title,
+          dossierSlug: dossier.slug,
+          dossierCategory: dossier.category || "Algemeen",
+          datum: doc.datum || null,
+          entiteiten: doc.entiteiten || [],
+          relaties: doc.relaties || [],
+          linkCount: 1,
+        });
+
+        if (!uniqueMap.has(key)) {
+          uniqueMap.set(key, {
+            bestandsnaam: doc.bestandsnaam,
+            titel: doc.titel || doc.bestandsnaam,
+            dossiers: [
+              {
+                title: dossier.title,
+                slug: dossier.slug,
+                category: dossier.category || "Algemeen",
+              },
+            ],
+            datum: doc.datum || null,
+            linkCount: 1,
+          });
+        } else {
+          const entry = uniqueMap.get(key)!;
+          entry.linkCount++;
+          if (!entry.dossiers.some((d) => d.slug === dossier.slug)) {
+            entry.dossiers.push({
+              title: dossier.title,
+              slug: dossier.slug,
+              category: dossier.category || "Algemeen",
+            });
+          }
+          if (!entry.datum && doc.datum) {
+            entry.datum = doc.datum;
+          }
+        }
+      }
+    });
+  });
+
+  // Sync linkCount on detailed entries
+  missingDocs.forEach((doc) => {
+    const key = (doc.bestandsnaam || "").trim().toLowerCase();
+    const entry = uniqueMap.get(key);
+    if (entry) {
+      doc.linkCount = entry.linkCount;
+    }
+  });
+
+  // Sort detailed by dossier, then filename
+  missingDocs.sort((a, b) => {
+    const compDossier = a.dossier.localeCompare(b.dossier, "nl");
+    if (compDossier !== 0) return compDossier;
+    return a.bestandsnaam.localeCompare(b.bestandsnaam, "nl");
+  });
+
+  const uniqueMissingFiles = Array.from(uniqueMap.values()).sort((a, b) => {
+    return a.bestandsnaam.localeCompare(b.bestandsnaam, "nl");
+  });
+
+  return {
+    totalDossiers: allDossiers.length,
+    totalDocuments,
+    totalUploadedFiles,
+    totalMissingLinks: totalDocuments - totalUploadedFiles,
+    uniqueMissingFilesCount: uniqueMissingFiles.length,
+    missingDocuments: missingDocs,
+    uniqueMissingFiles,
+  };
+}
+
+/**
+ * Generate Excel-compatible CSV export of missing files.
+ */
+export function generateMissingDocumentsCsv(
+  report: MissingDocumentsReport,
+  mode: "detailed" | "unique" = "detailed"
+): string {
+  const escapeCsv = (val: any): string => {
+    if (val === null || val === undefined) return '""';
+    const str = String(val).replace(/"/g, '""');
+    return `"${str}"`;
+  };
+
+  const separator = ";"; // Dutch/European Excel semicolon
+  let csv = "\uFEFF"; // UTF-8 BOM for Microsoft Excel
+
+  if (mode === "unique") {
+    csv +=
+      [
+        "Bestandsnaam",
+        "Titel",
+        "Aantal Keer Gekoppeld",
+        "Gekoppelde Dossiers",
+        "Datum",
+        "Status",
+      ]
+        .map(escapeCsv)
+        .join(separator) + "\r\n";
+
+    for (const item of report.uniqueMissingFiles) {
+      const dossiersStr = item.dossiers.map((d) => d.title).join(", ");
+      csv +=
+        [
+          item.bestandsnaam,
+          item.titel,
+          item.linkCount,
+          dossiersStr,
+          item.datum || "",
+          "Fysiek PDF-bestand ontbreekt op server",
+        ]
+          .map(escapeCsv)
+          .join(separator) + "\r\n";
+    }
+  } else {
+    // Detailed list
+    csv +=
+      [
+        "Bestandsnaam",
+        "Titel",
+        "Dossier",
+        "Dossier Categorie",
+        "Datum",
+        "Aantal Keer Gekoppeld In Totaal",
+        "Status",
+      ]
+        .map(escapeCsv)
+        .join(separator) + "\r\n";
+
+    for (const doc of report.missingDocuments) {
+      csv +=
+        [
+          doc.bestandsnaam,
+          doc.titel,
+          doc.dossier,
+          doc.dossierCategory,
+          doc.datum || "",
+          doc.linkCount,
+          "Fysiek PDF-bestand ontbreekt op server",
+        ]
+          .map(escapeCsv)
+          .join(separator) + "\r\n";
+    }
+  }
+
+  return csv;
+}
+
+
 

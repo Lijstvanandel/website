@@ -192,6 +192,7 @@ export default function Raadspaneel() {
   const [councilMembers, setCouncilMembers] = useState<{ id: string; username: string; fullName: string; role?: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [isScraping, setIsScraping] = useState(false);
+  const [isDiffChecking, setIsDiffChecking] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
@@ -324,6 +325,82 @@ export default function Raadspaneel() {
       toast.error(err.message || "Fout bij scrapen");
     } finally {
       setIsScraping(false);
+    }
+  };
+
+  // Trigger manual diff-check (Watchdog)
+  const handleDiffCheckNow = async () => {
+    if (!token) return;
+    setIsDiffChecking(true);
+    try {
+      const res = await fetch("/api/council/diff-check-now", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await parseApiResponse(res);
+      if (!res.ok) throw new Error(data.error || "Diff-check mislukt");
+
+      if (data.topicsWithDumpsCount > 0) {
+        toast.warning("Update(s) gedetecteerd!", {
+          description: data.message,
+        });
+        setCategoryFilter("dumps");
+      } else {
+        toast.success("iBabs Watchdog: Up-to-date", {
+          description: data.message,
+        });
+      }
+      if (data.topics) setTopics(data.topics);
+      if (data.summary) setSummary(data.summary);
+    } catch (err: any) {
+      toast.error(err.message || "Fout bij diff-check");
+    } finally {
+      setIsDiffChecking(false);
+    }
+  };
+
+  // Dismiss diff alerts on a specific topic
+  const handleDismissTopicDiff = async (topicId: string) => {
+    if (!token) return;
+    try {
+      const res = await fetch(`/api/council/topics/${encodeURIComponent(topicId)}/dismiss-diff`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await parseApiResponse(res);
+      if (res.ok && data.topic) {
+        setTopics((prev) => prev.map((t) => (t.id === topicId ? data.topic : t)));
+        toast.success("Melding gemarkeerd als gecontroleerd");
+      }
+    } catch (err: any) {
+      toast.error("Kon melding niet markeren");
+    }
+  };
+
+  // Dismiss all diff alerts across all topics
+  const handleDismissAllDiffs = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch("/api/council/dismiss-all-diffs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await parseApiResponse(res);
+      if (res.ok) {
+        toast.success(`${data.updatedCount || 0} melding(en) gemarkeerd als gecontroleerd`);
+        if (data.topics) setTopics(data.topics);
+      }
+    } catch (err: any) {
+      toast.error("Kon meldingen niet wissen");
     }
   };
 
@@ -577,6 +654,13 @@ export default function Raadspaneel() {
     return Array.from(set).sort();
   }, [topics]);
 
+  // Topics with dumps or new documents since compilation
+  const topicsWithDumps = useMemo(() => {
+    return topics.filter(
+      (t) => !isInvalidOrJunkTopic(t.title) && (t.hasRecentDump || t.hasDocumentDiff || t.hasNewDocumentsSinceCompile)
+    );
+  }, [topics]);
+
   // Filtered topics (excluding procedural items & section headers)
   const filteredTopics = useMemo(() => {
     return topics.filter((t) => {
@@ -605,6 +689,9 @@ export default function Raadspaneel() {
       }
 
       // Category tab filter
+      if (categoryFilter === "dumps") {
+        return !t.isArchived && (t.hasRecentDump || t.hasDocumentDiff || t.hasNewDocumentsSinceCompile);
+      }
       if (categoryFilter === "oordeelvorming") {
         return !t.isArchived && t.category === "Oordeelvorming - bespreekstukken";
       }
@@ -662,7 +749,7 @@ export default function Raadspaneel() {
             {isCouncilOrAdmin && (
               <>
                 <Button
-                  onClick={() => setShowClearConfirm(true)}
+                  onClick={handleClearUnassigned}
                   disabled={isClearing || isScraping}
                   variant="outline"
                   className="border-destructive/40 text-destructive hover:bg-destructive/10 text-xs font-semibold h-9 rounded-xl shadow-xs"
@@ -672,8 +759,27 @@ export default function Raadspaneel() {
                   {isClearing ? "Wissen..." : "Onverdeelde Stukken Wissen"}
                 </Button>
                 <Button
+                  onClick={handleDiffCheckNow}
+                  disabled={isDiffChecking || isScraping}
+                  variant="outline"
+                  className={`text-xs font-semibold h-9 rounded-xl shadow-xs ${
+                    topicsWithDumps.length > 0
+                      ? "border-rose-500/50 bg-rose-500/10 text-rose-700 dark:text-rose-400 hover:bg-rose-500/20"
+                      : "border-sky-500/40 text-sky-600 dark:text-sky-400 hover:bg-sky-500/10"
+                  }`}
+                  title="Controleer iBabs direct op nieuwe documenten of 'vrijdagmiddag-dumps'"
+                >
+                  <Search className={`w-3.5 h-3.5 mr-1.5 ${isDiffChecking ? "animate-spin" : ""}`} />
+                  {isDiffChecking ? "Controleren..." : "iBabs Diff-Check"}
+                  {topicsWithDumps.length > 0 && (
+                    <span className="ml-1.5 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-rose-500 text-white">
+                      {topicsWithDumps.length}
+                    </span>
+                  )}
+                </Button>
+                <Button
                   onClick={handleTriggerScrape}
-                  disabled={isScraping || isClearing}
+                  disabled={isScraping || isClearing || isDiffChecking}
                   variant="outline"
                   className="border-accent/40 text-accent hover:bg-accent/15 text-xs font-semibold h-9 rounded-xl shadow-xs"
                 >
@@ -733,6 +839,68 @@ export default function Raadspaneel() {
           <DossierOverview initialDossierSlug={initialDossierSlug} />
         ) : isCouncilOrAdmin ? (
           <>
+            {/* 🚨 VRIJDAGMIDDAG-DUMP ALERT BANNER */}
+            {topicsWithDumps.length > 0 && (
+              <div className="mb-6 p-4 rounded-2xl bg-rose-500/10 border-2 border-rose-500/40 dark:bg-rose-950/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in shadow-xs">
+                <div className="flex items-start sm:items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-700 dark:text-rose-400 flex items-center justify-center shrink-0">
+                    <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-400 animate-pulse" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-bold text-foreground flex items-center gap-2">
+                      <span className="text-rose-700 dark:text-rose-400">
+                        🚨 {topicsWithDumps.length} Agendapunt{topicsWithDumps.length > 1 ? "en" : ""} met 'Vrijdagmiddag-dump' of document-update!
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5 max-w-3xl">
+                      Het college heeft recent een Nota van Inlichtingen, gewijzigd raadsvoorstel of financiële bijlage aan iBabs toegevoegd. Controleer de stukken om te voorkomen dat u in de raadszaal verrast wordt met nieuwere stukken.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setCategoryFilter("dumps")}
+                    className="h-8 text-xs font-bold border-rose-500/50 bg-rose-500/15 text-rose-700 dark:text-rose-300 hover:bg-rose-500/25 rounded-xl"
+                  >
+                    Bekijk Gewijzigde Stukken ({topicsWithDumps.length})
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleDismissAllDiffs}
+                    className="h-8 text-xs text-muted-foreground hover:text-foreground rounded-xl"
+                  >
+                    Alles Markeren
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Watchdog Status & Polling Bar */}
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 rounded-xl bg-muted/40 border border-border/80 text-xs">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                <span className="font-semibold text-foreground">iBabs Watchdog Diff-Checker:</span>
+                <span>
+                  {summary?.activePollingIntervalMinutes
+                    ? `Actief (Controleert elke ${summary.activePollingIntervalMinutes} minuten ivm vergaderritme)`
+                    : "Actief (Dagelijks + elk uur binnen 24u voor debat)"}
+                </span>
+              </div>
+              {summary?.lastDiffCheckAt && (
+                <div className="text-[11px] text-muted-foreground">
+                  Laatste controle: {new Date(summary.lastDiffCheckAt).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}
+                  {summary.nextExpectedCheckAt && (
+                    <span className="ml-1.5 opacity-80">
+                      • Volgende: {new Date(summary.nextExpectedCheckAt).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* KPI / Status Bar */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
           <div className="p-4 rounded-2xl bg-card border border-border shadow-xs">
@@ -833,6 +1001,12 @@ export default function Raadspaneel() {
           <div className="flex flex-wrap gap-1.5 pt-1 border-t border-border/50 text-xs">
             {[
               { id: "oordeelvorming", label: "Oordeelvorming - Bespreekstukken", icon: AlertCircle },
+              {
+                id: "dumps",
+                label: `🚨 Dumps / Gewijzigd (${topicsWithDumps.length})`,
+                icon: AlertTriangle,
+                highlight: topicsWithDumps.length > 0,
+              },
               { id: "mine", label: "Aan Mij Toegewezen", icon: UserCheck },
               { id: "unassigned", label: "Onverdeeld", icon: Layers },
               { id: "all_active", label: "Alle Actieve Punten", icon: FileCheck },
@@ -847,6 +1021,8 @@ export default function Raadspaneel() {
                   className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1.5 transition-all ${
                     isActive
                       ? "bg-accent text-accent-foreground font-semibold shadow-xs"
+                      : tab.highlight
+                      ? "bg-rose-500/15 text-rose-700 dark:text-rose-400 border border-rose-500/40 hover:bg-rose-500/25 font-bold animate-pulse"
                       : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted"
                   }`}
                 >
@@ -909,6 +1085,22 @@ export default function Raadspaneel() {
                       {/* Top labels */}
                       <div className="flex items-center justify-between gap-2 mb-1.5">
                         <div className="flex items-center gap-1.5 flex-wrap">
+                          {topic.hasRecentDump ? (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-500/20 text-rose-700 dark:text-rose-400 border border-rose-500/40 flex items-center gap-1 animate-pulse">
+                              <AlertTriangle className="w-3 h-3 text-rose-500" />
+                              Vrijdagmiddag-dump!
+                            </span>
+                          ) : topic.hasDocumentDiff ? (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/40 flex items-center gap-1">
+                              <AlertCircle className="w-3 h-3 text-amber-500" />
+                              Nieuwe Stukken
+                            </span>
+                          ) : null}
+                          {topic.hasNewDocumentsSinceCompile && (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/40 flex items-center gap-1">
+                              Update na compilatie
+                            </span>
+                          )}
                           {isBespreek ? (
                             <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
                               Bespreekstuk
@@ -1030,6 +1222,47 @@ export default function Raadspaneel() {
                     )}
                   </div>
                 </div>
+
+                {/* 🚨 Topic-Specifieke Vrijdagmiddag-Dump Alert Box */}
+                {(selectedTopic.hasRecentDump || selectedTopic.hasDocumentDiff || (selectedTopic.diffAlerts && selectedTopic.diffAlerts.some((a) => !a.dismissed))) && (
+                  <div className="p-4 rounded-xl bg-rose-500/10 border-2 border-rose-500/40 text-xs space-y-2.5 animate-fade-in">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 font-bold text-rose-700 dark:text-rose-400 text-sm">
+                        <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 animate-pulse shrink-0" />
+                        <span>
+                          {selectedTopic.hasRecentDump
+                            ? "VRIJDAGMIDDAG-DUMP: Nieuwe documenten toegevoegd kort voor de vergadering!"
+                            : "UPDATE DETECTIE: Gewijzigde of nieuwe raadsstukken gevonden!"}
+                        </span>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleDismissTopicDiff(selectedTopic.id)}
+                        className="h-7 text-[11px] font-semibold border-rose-500/40 text-rose-700 dark:text-rose-300 hover:bg-rose-500/20"
+                      >
+                        Markeer als Gecontroleerd
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      De iBabs Diff-Checker heeft geconstateerd dat de documentstructuur van dit agendapunt is gewijzigd na de initiële publicatie. Bekijk de nieuw toegevoegde documenten hieronder zorgvuldig.
+                    </p>
+                    {selectedTopic.diffAlerts && selectedTopic.diffAlerts.length > 0 && (
+                      <div className="pt-2 border-t border-rose-500/20 space-y-1">
+                        {selectedTopic.diffAlerts.filter((a) => !a.dismissed).map((alert) => (
+                          <div key={alert.id} className="text-foreground/90 pl-3 border-l-2 border-rose-500 text-[11.5px]">
+                            <span className="font-semibold">{alert.summary}</span>
+                            {alert.detectedAt && (
+                              <span className="text-[10px] text-muted-foreground ml-2">
+                                (Gedetecteerd: {new Date(alert.detectedAt).toLocaleString("nl-NL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })})
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Assignment Box */}
                 <div className="p-4 rounded-xl bg-muted/40 border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1247,13 +1480,30 @@ export default function Raadspaneel() {
                               </button>
 
                               <div className="min-w-0">
-                                <div className="font-semibold text-xs text-foreground truncate" title={doc.title}>
-                                  {doc.title}
+                                <div className="font-semibold text-xs text-foreground truncate flex items-center gap-1.5 flex-wrap" title={doc.title}>
+                                  <span>{doc.title}</span>
+                                  {doc.isLateDump && (
+                                    <span className="px-1.5 py-0.2 rounded text-[9.5px] font-bold bg-rose-500/20 text-rose-700 dark:text-rose-400 border border-rose-500/40 inline-flex items-center gap-1 shrink-0 animate-pulse">
+                                      <AlertTriangle className="w-2.5 h-2.5" />
+                                      Vrijdagmiddag-dump
+                                    </span>
+                                  )}
+                                  {doc.isNewAfterCompile && !doc.isLateDump && (
+                                    <span className="px-1.5 py-0.2 rounded text-[9.5px] font-bold bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/40 inline-flex items-center gap-1 shrink-0">
+                                      <AlertCircle className="w-2.5 h-2.5" />
+                                      Nieuw na compilatie
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
                                   <span className="uppercase font-mono text-[10px] px-1.5 py-0.2 bg-muted rounded">
                                     {doc.fileType || "PDF"}
                                   </span>
+                                  {doc.firstDetectedAt && (
+                                    <span className="text-[10px] text-muted-foreground">
+                                      Toegevoegd: {new Date(doc.firstDetectedAt).toLocaleDateString("nl-NL")}
+                                    </span>
+                                  )}
                                   {doc.viewedBy && doc.viewedBy.length > 0 && (
                                     <span className="text-emerald-600 dark:text-emerald-400 font-medium">
                                       Bekeken door: {doc.viewedBy.map((v) => v.fullName || v.username).join(", ")}

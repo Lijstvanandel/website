@@ -8,6 +8,26 @@ export interface CouncilDocument {
     fullName?: string;
     viewedAt: string;
   }[];
+  // Diff checker metadata
+  addedAt?: string; // When this document was first indexed
+  isLateDump?: boolean; // Added within 48h before the meeting (the classic Friday dump)
+  isNewAfterCompile?: boolean; // Document added after a support dossier was compiled
+}
+
+export interface CouncilTopicDiffAlert {
+  id: string;
+  topicId: string;
+  detectedAt: string; // ISO timestamp
+  type: "new_document" | "updated_document" | "removed_document" | "content_update";
+  documentTitle?: string;
+  documentUrl?: string;
+  documentId?: string;
+  summary: string;
+  isDumpAlert: boolean; // True if within 48h before meeting (vrijdagmiddag-dump)
+  hoursBeforeMeeting?: number;
+  dismissed?: boolean;
+  dismissedAt?: string;
+  dismissedBy?: string;
 }
 
 export interface CouncilTopicNote {
@@ -65,6 +85,14 @@ export interface CouncilAgendaTopic {
   compiledDossier?: SupportDossier | null;
   linkedDossierSlug?: string | null;
   linkedDossierId?: string | null;
+
+  // Diff Checker & Vrijdagmiddag-dump Detection
+  hasRecentDump?: boolean; // True if a late document was added (<48h before meeting)
+  hasDocumentDiff?: boolean; // True if unacknowledged document changes exist
+  lastDiffDetectedAt?: string | null;
+  diffAlerts?: CouncilTopicDiffAlert[];
+  hasNewDocumentsSinceCompile?: boolean;
+  newDocumentsCountSinceCompile?: number;
 }
 
 export interface DossierEvidenceItem {
@@ -114,5 +142,11 @@ export interface CouncilMeetingScrapeSummary {
   archivedCount: number;
   status: "idle" | "scraping" | "success" | "error";
   errorMessage?: string;
+  // Diff checker & Watchdog telemetry
+  lastDiffCheckAt?: string;
+  diffsDetectedCount?: number;
+  lateDumpsDetectedCount?: number;
+  activePollingIntervalMinutes?: number;
+  nextExpectedCheckAt?: string;
 }
 

@@ -415,3 +415,64 @@ export async function notifyMemberFeedbackSubmitted(
   return { recipients: recipientUserIds.size, sent: totalSent };
 }
 
+/**
+ * Send hard push notification when a new document / Friday-afternoon dump is detected on a council agenda topic
+ */
+export async function notifyDocumentDiffDetected(
+  db: any,
+  topic: { id: string; title: string; category?: string; assignedTo?: string | null },
+  diffInfo: {
+    documentTitle: string;
+    isLateDump: boolean;
+    hoursBeforeMeeting?: number;
+  },
+  saveDbCallback?: (db: any) => void
+): Promise<{ recipients: number; sent: number }> {
+  ensureVapidKeys(db, saveDbCallback);
+
+  if (!db.pushSubscriptions || db.pushSubscriptions.length === 0) {
+    return { recipients: 0, sent: 0 };
+  }
+
+  const recipientUserIds = new Set<string>();
+
+  // Add assigned user if available
+  if (topic.assignedTo && db.users) {
+    const assigned = db.users.find((u: any) => u.username === topic.assignedTo || u.id === topic.assignedTo);
+    if (assigned) recipientUserIds.add(assigned.id);
+  }
+
+  // Add all raadsleden, fractieleden and admins
+  if (db.users) {
+    for (const usr of db.users) {
+      if (usr.role === "admin" || usr.role === "raadslid" || usr.role === "fractielid") {
+        recipientUserIds.add(usr.id);
+      }
+    }
+  }
+
+  const isBespreek = topic.category?.toLowerCase().includes("bespreek");
+  const prefix = diffInfo.isLateDump
+    ? `🚨 [VRIJDAGMIDDAG-DUMP DETECTIE]`
+    : `[UPDATE DETECTEERD: Nieuw raadsstuk]`;
+
+  const bodyTiming = diffInfo.hoursBeforeMeeting !== undefined && diffInfo.hoursBeforeMeeting > 0
+    ? `(${diffInfo.hoursBeforeMeeting}u voor vergadering) `
+    : "";
+
+  const payload: PushPayload = {
+    title: `${prefix} ${isBespreek ? "Bespreekstuk" : "Agendapunt"}`,
+    body: `${bodyTiming}Nieuw stuk toegevoegd aan "${topic.title}": "${diffInfo.documentTitle}". Controleer direct uw inbreng!`,
+    url: `/raadspaneel?topic=${encodeURIComponent(topic.id)}`,
+    tag: `topic-diff-${topic.id}-${Date.now()}`,
+  };
+
+  let totalSent = 0;
+  for (const uid of recipientUserIds) {
+    const res = await sendPushNotificationToUser(db, uid, payload, saveDbCallback);
+    totalSent += res.sent;
+  }
+
+  return { recipients: recipientUserIds.size, sent: totalSent };
+}
+

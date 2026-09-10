@@ -17,11 +17,14 @@ import {
   FolderEdit,
   Edit3,
   MapPin,
+  FileSpreadsheet,
+  AlertTriangle,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DossierBulkUploadModal } from "./DossierBulkUploadModal";
+import { MissingFilesExportModal } from "./MissingFilesExportModal";
 import { CreateDossierModal } from "./CreateDossierModal";
 import { EditDossierModal } from "./EditDossierModal";
 import { DossierDetail } from "./DossierDetail";
@@ -142,6 +145,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
 
   // Modals
   const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false);
+  const [isMissingFilesModalOpen, setIsMissingFilesModalOpen] = useState(false);
   const [isCreateDossierOpen, setIsCreateDossierOpen] = useState(false);
   const [isEditDossierOpen, setIsEditDossierOpen] = useState(false);
   const [editingDossier, setEditingDossier] = useState<Dossier | null>(null);
@@ -434,6 +438,22 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
         {isCouncilOrAdmin && (
           <div className="flex flex-wrap items-center gap-2.5 shrink-0">
             <Button
+              id="btn-export-missing-files"
+              onClick={() => setIsMissingFilesModalOpen(true)}
+              variant="outline"
+              className="border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 text-xs font-semibold h-9 rounded-xl shadow-xs"
+              title="Exporteer en bekijk de raadsstukken die gekoppeld zijn maar ontbreken op de server"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5 text-amber-500" />
+              Export Ontbrekende Bestanden
+              {stats.totalDocuments > stats.totalUploadedFiles && (
+                <span className="ml-1.5 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500 text-white">
+                  {stats.totalDocuments - stats.totalUploadedFiles}
+                </span>
+              )}
+            </Button>
+
+            <Button
               id="btn-open-bulk-upload"
               onClick={() => setIsBulkUploadOpen(true)}
               variant="outline"
@@ -479,9 +499,21 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
           <div className="text-2xl font-bold text-foreground">
             {stats.totalDocuments}
           </div>
-          <span className="text-[11px] text-muted-foreground">
-            Stukken in metadata netwerkgraaf
-          </span>
+          <div className="flex items-center justify-between mt-0.5">
+            <span className="text-[11px] text-muted-foreground">
+              Stukken in metadata netwerkgraaf
+            </span>
+            {stats.totalDocuments > stats.totalUploadedFiles && (
+              <button
+                onClick={() => setIsMissingFilesModalOpen(true)}
+                className="text-[10px] font-bold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
+                title="Klik om ontbrekende bestanden te exporteren"
+              >
+                <AlertTriangle className="w-3 h-3 text-amber-500" />
+                {stats.totalDocuments - stats.totalUploadedFiles} ontbreken
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="p-4 rounded-2xl bg-card border border-border shadow-xs">
@@ -492,11 +524,56 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
           <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
             {stats.totalUploadedFiles}
           </div>
-          <span className="text-[11px] text-muted-foreground">
-            Fysiek aanwezig en direct leesbaar in viewer
-          </span>
+          <div className="flex items-center justify-between mt-0.5">
+            <span className="text-[11px] text-muted-foreground">
+              Fysiek aanwezig en direct leesbaar
+            </span>
+            {stats.totalDocuments > stats.totalUploadedFiles && (
+              <button
+                onClick={() => setIsMissingFilesModalOpen(true)}
+                className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 hover:underline"
+              >
+                Exporteer audit
+              </button>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Missing Files Reconciliation Banner */}
+      {stats.totalDocuments > stats.totalUploadedFiles && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border-2 border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs animate-fade-in">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/40 flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+            </div>
+            <div>
+              <div className="text-xs sm:text-sm font-bold text-foreground flex items-center gap-2">
+                <span className="text-amber-700 dark:text-amber-400">
+                  {stats.totalDocuments - stats.totalUploadedFiles} raadsstukken gekoppeld zonder fysiek PDF-bestand
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/30">
+                  Audit vereist
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5 max-w-2xl">
+                Er zijn {stats.totalDocuments} stukken gekoppeld in de metadata graaf, maar slechts {stats.totalUploadedFiles} bestanden aanwezig op de server. Download een Excel (CSV) export om exact te zien welke bestandsnamen ontbreken.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+            <Button
+              size="sm"
+              onClick={() => setIsMissingFilesModalOpen(true)}
+              className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold h-9 rounded-xl shadow-xs"
+              id="btn-open-missing-files-modal"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5" />
+              Exporteer Ontbrekende Bestanden ({stats.totalDocuments - stats.totalUploadedFiles})
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* 1. Favorites Carousel (positioned directly above the search bar as requested) */}
       <FavoritesCarousel
@@ -852,6 +929,13 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
         onUploadSuccess={() => {
           fetchDossiers();
         }}
+      />
+
+      {/* Missing Files Export & Audit Modal */}
+      <MissingFilesExportModal
+        isOpen={isMissingFilesModalOpen}
+        onClose={() => setIsMissingFilesModalOpen(false)}
+        onOpenBulkUpload={() => setIsBulkUploadOpen(true)}
       />
 
       {/* Create Dossier Modal */}

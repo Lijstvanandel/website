@@ -970,6 +970,13 @@ export async function compileSupportDossierForTopic(
   topic.compiledDossier = compiledDossier;
   topic.linkedDossierSlug = linkedDossier.slug;
   topic.linkedDossierId = linkedDossier.id;
+  topic.hasNewDocumentsSinceCompile = false;
+  topic.newDocumentsCountSinceCompile = 0;
+  if (Array.isArray(topic.documents)) {
+    for (const d of topic.documents) {
+      d.isNewAfterCompile = false;
+    }
+  }
   db.councilAgendaTopics[topicIndex] = topic;
 
   saveDbToSqlite(db);
