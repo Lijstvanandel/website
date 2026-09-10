@@ -599,7 +599,7 @@ async function fetchOverijsselEventsForYear(year: number, signal?: AbortSignal):
   url.searchParams.set("format", "json");
   url.searchParams.set("version", "1.17.0");
 
-  const res = await fetchWithRetry(url.toString(), { signal });
+  const res = await fetchWithRetry(url.toString(), { signal }, 4, 45000);
 
   if (!res.ok) {
     throw new Error(`NotuBiz API returned ${res.status} for year ${year}`);
@@ -615,7 +615,7 @@ async function fetchOverijsselEventsForYear(year: number, signal?: AbortSignal):
 async function fetchMeetingDetails(meetingId: number | string, signal?: AbortSignal): Promise<any> {
   const url = `https://api.notubiz.nl/events/meetings/${meetingId}?format=json&version=1.17.0`;
   try {
-    const res = await fetchWithRetry(url, { signal }, 3, 20000);
+    const res = await fetchWithRetry(url, { signal }, 3, 35000);
     if (!res.ok) return null;
     const data = await res.json();
     return data.meeting || null;
@@ -631,7 +631,7 @@ async function fetchMeetingDetails(meetingId: number | string, signal?: AbortSig
 async function fetchModuleItems(moduleId: number, signal?: AbortSignal): Promise<any[]> {
   const url = `https://api.notubiz.nl/organisations/1750/modules/${moduleId}/items?format=json&version=1.17.0`;
   try {
-    const res = await fetchWithRetry(url, { signal }, 3, 30000);
+    const res = await fetchWithRetry(url, { signal }, 3, 45000);
     if (!res.ok) return [];
     const data = await res.json();
     return data.items || [];
@@ -764,9 +764,9 @@ export async function startOverijsselNotubizSync(options?: {
             }
           }
 
-          // 2. Agenda items documents
-          if (Array.isArray(meetingDetail.agenda_items)) {
-            for (const item of meetingDetail.agenda_items) {
+          // 2. Agenda items documents (with recursive sub-items support)
+          function extractAgendaDocs(items: any[]) {
+            for (const item of items || []) {
               const itemTitle = item.attributes?.find((a: any) => a.id === 1)?.value || item.title || "";
               if (Array.isArray(item.documents)) {
                 for (const doc of item.documents) {
@@ -797,7 +797,14 @@ export async function startOverijsselNotubizSync(options?: {
                   }
                 }
               }
+              if (Array.isArray(item.agenda_items) && item.agenda_items.length > 0) {
+                extractAgendaDocs(item.agenda_items);
+              }
             }
+          }
+
+          if (Array.isArray(meetingDetail.agenda_items)) {
+            extractAgendaDocs(meetingDetail.agenda_items);
           }
 
           syncState.totalDocumentsFound += candidateDocs.length;
@@ -944,7 +951,18 @@ export async function startOverijsselNotubizSync(options?: {
           const itemDate = itemDateRaw.split(" ")[0] || `${minTargetYear}-01-01`;
 
           const rawDocs = item.attachments?.document || item.documents || [];
-          const docList = Array.isArray(rawDocs) ? rawDocs : [rawDocs];
+          const docList: any[] = Array.isArray(rawDocs) ? [...rawDocs] : rawDocs ? [rawDocs] : [];
+
+          // Extract documents from all attributes (e.g. Hoofddocument, Bijlagen)
+          for (const attr of item.attributes || []) {
+            if (attr.datatype === "document" || attr.datatype === "document_list" || attr.datatype === "attachment") {
+              for (const val of attr.values || []) {
+                if (val?.document) {
+                  docList.push(val.document);
+                }
+              }
+            }
+          }
 
           for (const d of docList) {
             if (signal.aborted) break;
