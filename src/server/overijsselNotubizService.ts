@@ -1,6 +1,15 @@
 import fs from "fs";
 import path from "path";
+import https from "node:https";
+import http from "node:http";
+import dns from "node:dns";
 import { GoogleGenAI } from "@google/genai";
+
+try {
+  dns.setDefaultResultOrder("ipv4first");
+} catch {
+  // ignore
+}
 
 const appDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
 
@@ -429,34 +438,115 @@ ${introTekst.slice(0, 3000)}`;
   }
 }
 
+interface HttpResponse {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  headers: Record<string, any>;
+  arrayBuffer: () => Promise<ArrayBuffer>;
+  buffer: () => Promise<Buffer>;
+  text: () => Promise<string>;
+  json: () => Promise<any>;
+}
+
 /**
- * Robust fetch with automatic retry, exponential backoff, and timeout
+ * Robust IPv4 HTTP/HTTPS request handler
  */
-async function fetchWithRetry(url: string, options: any = {}, maxRetries = 4, timeoutMs = 25000): Promise<Response> {
+function requestIPv4(urlStr: string, options: any = {}): Promise<HttpResponse> {
+  return new Promise((resolve, reject) => {
+    try {
+      const url = new URL(urlStr);
+      const isHttps = url.protocol === "https:";
+      const lib = isHttps ? https : http;
+
+      const reqOptions: any = {
+        protocol: url.protocol,
+        hostname: url.hostname,
+        port: url.port || (isHttps ? 443 : 80),
+        path: url.pathname + url.search,
+        method: options.method || "GET",
+        family: 4, // Explicitly force IPv4 to avoid broken VPS IPv6 routes
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept": "application/json, text/plain, */*",
+          ...(options.headers || {}),
+        },
+        timeout: options.timeout || 25000,
+      };
+
+      const req = lib.request(reqOptions, (res: any) => {
+        // Handle standard 3xx HTTP redirects
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          let redirectUrl = res.headers.location;
+          if (redirectUrl.startsWith("/")) {
+            redirectUrl = `${url.protocol}//${url.host}${redirectUrl}`;
+          }
+          return resolve(requestIPv4(redirectUrl, options));
+        }
+
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk: Buffer) => chunks.push(chunk));
+        res.on("end", () => {
+          const buffer = Buffer.concat(chunks);
+          const resObj: HttpResponse = {
+            ok: res.statusCode >= 200 && res.statusCode < 300,
+            status: res.statusCode || 0,
+            statusText: res.statusMessage || "",
+            headers: res.headers || {},
+            arrayBuffer: () => Promise.resolve(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)),
+            buffer: () => Promise.resolve(buffer),
+            text: () => Promise.resolve(buffer.toString("utf-8")),
+            json: () => {
+              try {
+                return Promise.resolve(JSON.parse(buffer.toString("utf-8")));
+              } catch (parseErr) {
+                return Promise.reject(parseErr);
+              }
+            },
+          };
+          resolve(resObj);
+        });
+      });
+
+      if (options.signal) {
+        options.signal.addEventListener(
+          "abort",
+          () => {
+            req.destroy(new Error("This operation was aborted"));
+          },
+          { once: true }
+        );
+      }
+
+      req.on("error", (err: any) => {
+        reject(err);
+      });
+
+      req.on("timeout", () => {
+        req.destroy(new Error(`Request timed out after ${reqOptions.timeout}ms`));
+      });
+
+      if (options.body) {
+        req.write(options.body);
+      }
+      req.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+/**
+ * Robust fetch with automatic retry, exponential backoff, IPv4 routing and timeout
+ */
+async function fetchWithRetry(url: string, options: any = {}, maxRetries = 4, timeoutMs = 25000): Promise<HttpResponse> {
   let lastError: any = null;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-      // Handle custom or external abort signal
-      if (options.signal) {
-        options.signal.addEventListener("abort", () => controller.abort(), { once: true });
-      }
-
-      const headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
-        ...(options.headers || {}),
-      };
-
-      const res = await fetch(url, {
+      const res = await requestIPv4(url, {
         ...options,
-        signal: controller.signal,
-        headers,
+        timeout: timeoutMs,
       });
-
-      clearTimeout(timer);
 
       if (res.ok || res.status === 404) {
         return res;
@@ -478,7 +568,7 @@ async function fetchWithRetry(url: string, options: any = {}, maxRetries = 4, ti
       }
     }
   }
-  throw lastError || new Error(`Fetch failed after ${maxRetries} attempts: ${url}`);
+  throw lastError || new Error(`Request failed after ${maxRetries} attempts: ${url}`);
 }
 
 /**

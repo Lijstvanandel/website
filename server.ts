@@ -1,3 +1,10 @@
+import dns from "node:dns";
+try {
+  dns.setDefaultResultOrder("ipv4first");
+} catch {
+  // ignore
+}
+
 import dotenv from "dotenv";
 dotenv.config();
 

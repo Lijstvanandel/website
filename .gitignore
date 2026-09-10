@@ -39,4 +39,8 @@ database.sqlite*
 *.sqlite-journal
 *.sqlite-wal
 uploads/
+public/uploads/
+*.csv
+public/*.csv
+dist/*.csv
 
