@@ -2,6 +2,7 @@ import * as cheerio from "cheerio";
 import { CouncilAgendaTopic, CouncilDocument, CouncilTopicDiffAlert } from "../types/council.js";
 import { getDbFromSqlite, saveDbToSqlite, initDatabase } from "./sqliteDatabase.js";
 import { notifyDocumentDiffDetected } from "./pushService.js";
+import { enrichTopicWithStandpunten } from "../lib/standpuntMatcher.js";
 
 const BASE_URL = "https://steenwijkerland.bestuurlijkeinformatie.nl";
 const AGENDAS_API_TEMPLATE = `${BASE_URL}/Agenda/RetrieveAgendasForYear?agendatypeId=100000059&year=`;
@@ -561,13 +562,16 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
   // Calculate adaptive interval based on upcoming meetings
   const adaptive = calculateAdaptiveInterval(finalList);
 
+  // Enrich each topic with party policy standpunten matching
+  const enrichedFinalList = finalList.map((t) => enrichTopicWithStandpunten(t));
+
   // Save in SQLite
-  db.councilAgendaTopics = finalList;
+  db.councilAgendaTopics = enrichedFinalList;
   db.councilScrapeSummary = {
     lastScrapedAt: new Date().toISOString(),
     totalMeetingsScraped: scrapedMeetingLinks.length,
-    totalTopics: finalList.length,
-    bespreekstukkenCount: finalList.filter((t) => t.category === "Oordeelvorming - bespreekstukken" && !t.isArchived).length,
+    totalTopics: enrichedFinalList.length,
+    bespreekstukkenCount: enrichedFinalList.filter((t) => t.category === "Oordeelvorming - bespreekstukken" && !t.isArchived).length,
     archivedCount,
     status: "success",
     // Watchdog diff checker telemetry

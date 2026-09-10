@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   ChevronDown,
   Vote,
@@ -115,7 +115,10 @@ const StandpuntCard = ({ hNr, s, dynamicVideos, fractieleden }: StandpuntCardPro
   const totalBijdragen = combinedVideos.length;
 
   return (
-    <div className="bg-secondary/40 border border-border p-5 md:p-6 rounded-sm flex flex-col justify-between">
+    <div
+      id={`standpunt-h${hNr}-s${s.nr}`}
+      className="bg-secondary/40 border border-border p-5 md:p-6 rounded-sm flex flex-col justify-between transition-all duration-300"
+    >
       <div>
         <div className="flex items-start gap-3 mb-4">
           <div className="font-display text-3xl text-accent leading-none shrink-0 w-9">
@@ -272,9 +275,43 @@ const StandpuntCard = ({ hNr, s, dynamicVideos, fractieleden }: StandpuntCardPro
 
 const Standpunten = () => {
   const { user } = useAuth();
-  const [openIdx, setOpenIdx] = useState<number | null>(0);
+  const [searchParams] = useSearchParams();
+  const paramHoofdstuk = searchParams.get("hoofdstuk");
+  const paramStandpunt = searchParams.get("standpunt");
+
+  const [openIdx, setOpenIdx] = useState<number | null>(() => {
+    if (paramHoofdstuk) {
+      const h = Number(paramHoofdstuk) - 1;
+      if (h >= 0 && h < 10) return h;
+    }
+    return 0;
+  });
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const [fractieleden, setFractieleden] = useState<FractielidItem[]>([]);
+
+  useEffect(() => {
+    if (paramHoofdstuk) {
+      const h = Number(paramHoofdstuk) - 1;
+      if (h >= 0 && h < 10) {
+        setOpenIdx(h);
+        setTimeout(() => {
+          if (paramStandpunt) {
+            const el = document.getElementById(`standpunt-h${paramHoofdstuk}-s${paramStandpunt}`);
+            if (el) {
+              el.scrollIntoView({ behavior: "smooth", block: "center" });
+              el.classList.add("ring-2", "ring-accent", "ring-offset-4");
+              setTimeout(() => {
+                el.classList.remove("ring-2", "ring-accent", "ring-offset-4");
+              }, 4000);
+            }
+          } else {
+            const hEl = document.getElementById(`hoofdstuk-${paramHoofdstuk}`);
+            if (hEl) hEl.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        }, 350);
+      }
+    }
+  }, [paramHoofdstuk, paramStandpunt]);
 
   useEffect(() => {
     // Ophalen van dynamische video's en fractieleden

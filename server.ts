@@ -84,6 +84,7 @@ import {
   compileSupportDossierForTopic,
   ensureVerifiablePdfFile,
 } from "./src/server/supportDossierService.js";
+import { enrichTopicWithStandpunten } from "./src/lib/standpuntMatcher.js";
 
 // Ensure .env is explicitly loaded from working directory in case of PM2 or systemd execution
 function ensureEnvLoaded() {
@@ -7301,7 +7302,10 @@ Sitemap: ${baseUrl}/sitemap.xml
   app.get("/api/council/topics", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
     const db = getDb();
     const rawTopics = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
-    const topics = rawTopics.map((t: any) => enrichTopicWithMemberData(t, db));
+    const topics = rawTopics.map((t: any) => {
+      const withMember = enrichTopicWithMemberData(t, db);
+      return enrichTopicWithStandpunten(withMember);
+    });
     const summary = db.councilScrapeSummary || {
       lastScrapedAt: null,
       totalMeetingsScraped: 0,
@@ -7796,6 +7800,155 @@ Sitemap: ${baseUrl}/sitemap.xml
       topic,
       message: "Ondersteuningsdossier gereset."
     });
+  });
+
+  // 6c. Standpunten koppeling & handmatige fractie-aanpassingen
+  app.patch("/api/council/topics/:topicId/standpunten", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    const { topicId } = req.params;
+    const { matchedStandpunten, standpuntSummary } = req.body;
+    const db = getDb();
+    const topicIdx = (db.councilAgendaTopics || []).findIndex((t: any) => t.id === topicId);
+    if (topicIdx < 0) {
+      return res.status(404).json({ error: "Agendapunt niet gevonden" });
+    }
+
+    const topic = db.councilAgendaTopics[topicIdx];
+    if (Array.isArray(matchedStandpunten)) {
+      topic.matchedStandpunten = matchedStandpunten.map((m: any) => ({
+        ...m,
+        manuallyAdjusted: true,
+        adjustedBy: req.user?.username || "raadslid",
+        adjustedAt: new Date().toISOString(),
+      }));
+    }
+    if (standpuntSummary) {
+      topic.standpuntSummary = standpuntSummary;
+    } else {
+      const enriched = enrichTopicWithStandpunten(topic);
+      topic.standpuntSummary = enriched.standpuntSummary;
+    }
+
+    saveDb(db);
+    return res.json({
+      success: true,
+      topic: enrichTopicWithStandpunten(enrichTopicWithMemberData(topic, db)),
+      message: "Standpunten succesvol opgeslagen."
+    });
+  });
+
+  // 6d. Diepe AI-analyse met partijprogramma (Gemini)
+  app.post("/api/council/topics/:topicId/standpunten/ai-analyze", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
+    const { topicId } = req.params;
+    const db = getDb();
+    const topicIdx = (db.councilAgendaTopics || []).findIndex((t: any) => t.id === topicId);
+    if (topicIdx < 0) {
+      return res.status(404).json({ error: "Agendapunt niet gevonden" });
+    }
+
+    const topic = db.councilAgendaTopics[topicIdx];
+
+    try {
+      // First ensure baseline matching
+      const baselineEnriched = enrichTopicWithStandpunten(topic);
+
+      if (process.env.GEMINI_API_KEY) {
+        const { GoogleGenAI } = await import("@google/genai");
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+        const prompt = `Je bent de fractiespecialist en politiek strateeg van de lokale politieke partij 'Lijst van Andel' in de gemeente Steenwijkerland.
+De partij staat voor:
+- Lokale autonomie, democratie via referenda, directe burgerparticipatie, geen Haagse dwang (geen Spreidingswet, geen dwang-AZC's).
+- Wonen: Steenwijkerlanders en eigen jeugd éérst bij toewijzing van woningen; betaalbaar bouwen in álle dorpen en kernen; geen voorrang voor statushouders.
+- Veiligheid: Meer zichtbare politie en boa's op straat; harde aanpak van overlast en criminaliteit.
+- Bereikbaarheid: Goede autoverbindingen, randweg Blokzijl, geen nutteloze afsluitingen of onttrekkingen van openbare wegen in dorpen, betaalbaar/gratis parkeren.
+- Economie & Lasten: Verlaging OZB, geen nieuwe heffingen of milieutoeslagen, minder regeldruk voor MKB.
+- Energie & Landschap: Faliekant TEGEN megawindturbines en zonneparken op landbouwgrond/weilanden; wél zonne-energie op carports/daken/bedrijventerreinen. Bescherming van Weerribben-Wieden.
+- Sociaal & Zorg: Zorggeld direct naar de inwoner (WMO), behoud van dorpsscholen en sportverenigingen.
+
+Analyseer het volgende agendapunt van de gemeenteraad Steenwijkerland:
+Titel: "${topic.title}"
+Categorie: "${topic.category || 'Niet gespecificeerd'}"
+Vergaderdatum: "${topic.meetingDate}"
+Bijbehorende documenten: ${(topic.documents || []).map((d: any) => d.title).join(", ")}
+Omschrijving: "${topic.description || ''}"
+
+Geef een beknopte, scherpe politieke analyse in JSON-formaat:
+{
+  "primaryStance": "positief" | "negatief" | "gemengd" | "neutraal",
+  "summaryText": "Korte samenvatting (1-2 zinnen) van het standpunt van Lijst van Andel.",
+  "standpunten": [
+    {
+      "hoofdstukNr": 1-10,
+      "standpuntNr": 1-20,
+      "standpuntTitel": "Titel van het standpunt",
+      "stance": "positief" | "negatief" | "genuanceerd",
+      "explanation": "Waarom Lijst van Andel deze positie inneemt t.a.v. dit voorstel.",
+      "relevanceScore": 80-100
+    }
+  ]
+}
+Geef UITSLUITEND valide JSON terug zonder markdown backticks.`;
+
+        const response = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: prompt,
+        });
+
+        const rawText = response.text || "";
+        const cleanJson = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
+        try {
+          const parsed = JSON.parse(cleanJson);
+          if (parsed && Array.isArray(parsed.standpunten) && parsed.standpunten.length > 0) {
+            topic.matchedStandpunten = parsed.standpunten.map((sp: any) => ({
+              id: `${topic.id}_ai_h${sp.hoofdstukNr}_s${sp.standpuntNr}`,
+              hoofdstukNr: Number(sp.hoofdstukNr),
+              hoofdstukTitel: `Hoofdstuk ${sp.hoofdstukNr}`,
+              standpuntNr: Number(sp.standpuntNr),
+              standpuntTitel: sp.standpuntTitel,
+              standpuntText: "",
+              stance: sp.stance === "positief" || sp.stance === "negatief" ? sp.stance : "genuanceerd",
+              explanation: sp.explanation,
+              relevanceScore: Number(sp.relevanceScore) || 90,
+              matchedKeywords: ["AI Analyse"],
+              manuallyAdjusted: true,
+              adjustedBy: "Gemini AI",
+              adjustedAt: new Date().toISOString(),
+            }));
+            topic.standpuntSummary = {
+              total: topic.matchedStandpunten.length,
+              positiefCount: topic.matchedStandpunten.filter((m: any) => m.stance === "positief").length,
+              negatiefCount: topic.matchedStandpunten.filter((m: any) => m.stance === "negatief").length,
+              genuanceerdCount: topic.matchedStandpunten.filter((m: any) => m.stance === "genuanceerd").length,
+              primaryStance: parsed.primaryStance || "positief",
+              summaryText: parsed.summaryText || "AI analyse voltooid.",
+              keyArguments: topic.matchedStandpunten.map((m: any) => m.explanation),
+            };
+            saveDb(db);
+            return res.json({
+              success: true,
+              topic: enrichTopicWithMemberData(topic, db),
+              message: "Diepe AI-analyse succesvol uitgevoerd met partijprogramma!"
+            });
+          }
+        } catch (jsonErr) {
+          console.warn("[AI STANDPUNTEN PARSE FOUT]", jsonErr);
+        }
+      }
+
+      // Fallback: use deterministic matcher
+      topic.matchedStandpunten = baselineEnriched.matchedStandpunten;
+      topic.standpuntSummary = baselineEnriched.standpuntSummary;
+      saveDb(db);
+
+      return res.json({
+        success: true,
+        topic: enrichTopicWithMemberData(topic, db),
+        message: "Standpuntenanalyse geactualiseerd."
+      });
+    } catch (err: any) {
+      console.error("[AI STANDPUNTEN ERROR]", err);
+      return res.status(500).json({ error: "Fout bij analyseren van standpunten: " + err.message });
+    }
   });
 
 

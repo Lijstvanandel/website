@@ -30,6 +30,10 @@ import {
   RotateCcw,
   AlertTriangle,
   FolderArchive,
+  ThumbsUp,
+  ThumbsDown,
+  Scale,
+  BookOpen,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -58,6 +62,7 @@ import {
 } from "@/types/council";
 import { SupportDossierPanel } from "@/components/SupportDossierPanel";
 import { SecureDocumentViewer } from "@/components/SecureDocumentViewer";
+import { TopicStandpuntenSection } from "@/components/council/TopicStandpuntenSection";
 import { MemberDocument } from "@/types/document";
 
 
@@ -200,6 +205,27 @@ export default function Raadspaneel() {
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("oordeelvorming"); // "all" | "oordeelvorming" | "mine" | "unassigned" | "archived"
   const [meetingDateFilter, setMeetingDateFilter] = useState<string>("all");
+  const [standpuntFilter, setStandpuntFilter] = useState<"all" | "negatief" | "positief" | "genuanceerd">("all");
+
+  // Summary statistics for party standpoints across active topics
+  const standpuntStats = useMemo(() => {
+    let negatief = 0;
+    let positief = 0;
+    let genuanceerd = 0;
+    topics.forEach((t) => {
+      if (t.isArchived) return;
+      if ((t.standpuntSummary?.negatiefCount || 0) > 0 || (t.matchedStandpunten && t.matchedStandpunten.some((m) => m.stance === "negatief"))) {
+        negatief++;
+      }
+      if ((t.standpuntSummary?.positiefCount || 0) > 0 || (t.matchedStandpunten && t.matchedStandpunten.some((m) => m.stance === "positief"))) {
+        positief++;
+      }
+      if ((t.standpuntSummary?.genuanceerdCount || 0) > 0 || (t.matchedStandpunten && t.matchedStandpunten.some((m) => m.stance === "genuanceerd"))) {
+        genuanceerd++;
+      }
+    });
+    return { negatief, positief, genuanceerd };
+  }, [topics]);
 
   // Document modal viewer
   const [activeDoc, setActiveDoc] = useState<{ doc: CouncilDocument; topic: CouncilAgendaTopic } | null>(null);
@@ -678,9 +704,34 @@ export default function Raadspaneel() {
         const matchAssigned = (t.assignedName || t.assignedTo || "").toLowerCase().includes(q);
         const matchDocs = t.documents.some((d) => d.title.toLowerCase().includes(q));
         const matchNotes = t.notes.some((n) => n.note.toLowerCase().includes(q));
-        if (!matchTitle && !matchDesc && !matchMeeting && !matchAssigned && !matchDocs && !matchNotes) {
+        const matchStandpunten = (t.matchedStandpunten || []).some(
+          (m) =>
+            m.standpuntTitel.toLowerCase().includes(q) ||
+            m.explanation.toLowerCase().includes(q) ||
+            m.hoofdstukTitel.toLowerCase().includes(q) ||
+            (m.matchedKeywords || []).some((kw) => kw.toLowerCase().includes(q))
+        );
+        if (!matchTitle && !matchDesc && !matchMeeting && !matchAssigned && !matchDocs && !matchNotes && !matchStandpunten) {
           return false;
         }
+      }
+
+      // Standpunt Stance filter
+      if (standpuntFilter === "negatief") {
+        const hasNeg =
+          (t.standpuntSummary?.negatiefCount || 0) > 0 ||
+          (t.matchedStandpunten && t.matchedStandpunten.some((m) => m.stance === "negatief"));
+        if (!hasNeg) return false;
+      } else if (standpuntFilter === "positief") {
+        const hasPos =
+          (t.standpuntSummary?.positiefCount || 0) > 0 ||
+          (t.matchedStandpunten && t.matchedStandpunten.some((m) => m.stance === "positief"));
+        if (!hasPos) return false;
+      } else if (standpuntFilter === "genuanceerd") {
+        const hasNuanced =
+          (t.standpuntSummary?.genuanceerdCount || 0) > 0 ||
+          (t.matchedStandpunten && t.matchedStandpunten.some((m) => m.stance === "genuanceerd"));
+        if (!hasNuanced) return false;
       }
 
       // Date filter
@@ -1032,6 +1083,70 @@ export default function Raadspaneel() {
               );
             })}
           </div>
+
+          {/* Standpunten Partijprogramma Filter Row */}
+          <div className="flex items-center gap-2 pt-2 border-t border-border/40 text-xs flex-wrap">
+            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1 shrink-0">
+              <BookOpen className="w-3.5 h-3.5 text-accent" />
+              <span>Standpunten:</span>
+            </span>
+
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setStandpuntFilter("all")}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                  standpuntFilter === "all"
+                    ? "bg-foreground text-background font-semibold shadow-2xs"
+                    : "bg-muted/40 text-muted-foreground hover:text-foreground hover:bg-muted"
+                }`}
+              >
+                Alle ({topics.filter((t) => !t.isArchived).length})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStandpuntFilter("negatief")}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  standpuntFilter === "negatief"
+                    ? "bg-rose-600 text-white shadow-2xs"
+                    : "bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/30 hover:bg-rose-500/20"
+                }`}
+                title="Toon onderwerpen waar Lijst van Andel kritisch of negatief tegenover staat"
+              >
+                <ThumbsDown className="w-3 h-3" />
+                <span>Kritisch / Negatief ({standpuntStats.negatief})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStandpuntFilter("positief")}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  standpuntFilter === "positief"
+                    ? "bg-emerald-600 text-white shadow-2xs"
+                    : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20"
+                }`}
+                title="Toon onderwerpen waar Lijst van Andel positief of ondersteunend tegenover staat"
+              >
+                <ThumbsUp className="w-3 h-3" />
+                <span>Positief / Voor ({standpuntStats.positief})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStandpuntFilter("genuanceerd")}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  standpuntFilter === "genuanceerd"
+                    ? "bg-amber-600 text-white shadow-2xs"
+                    : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/20"
+                }`}
+                title="Toon onderwerpen met een genuanceerd of gemengd standpunt"
+              >
+                <Scale className="w-3 h-3" />
+                <span>Genuanceerd ({standpuntStats.genuanceerd})</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Main 2-Column Interface: Left List, Right Detail & Notes */}
@@ -1132,6 +1247,30 @@ export default function Raadspaneel() {
                       <h3 className="font-normal text-sm text-foreground mb-2 line-clamp-2 leading-snug">
                         {topic.title}
                       </h3>
+
+                      {/* Standpunt badges preview */}
+                      {topic.standpuntSummary && topic.standpuntSummary.total > 0 && (
+                        <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                          {topic.standpuntSummary.negatiefCount > 0 && (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-500/15 text-rose-700 dark:text-rose-400 border border-rose-500/30 flex items-center gap-1">
+                              <ThumbsDown className="w-2.5 h-2.5 text-rose-600 dark:text-rose-400" />
+                              <span>{topic.standpuntSummary.negatiefCount} Kritisch</span>
+                            </span>
+                          )}
+                          {topic.standpuntSummary.positiefCount > 0 && (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                              <ThumbsUp className="w-2.5 h-2.5 text-emerald-600 dark:text-emerald-400" />
+                              <span>{topic.standpuntSummary.positiefCount} Positief</span>
+                            </span>
+                          )}
+                          {topic.standpuntSummary.genuanceerdCount > 0 && topic.standpuntSummary.negatiefCount === 0 && topic.standpuntSummary.positiefCount === 0 && (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                              <Scale className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" />
+                              <span>Genuanceerd</span>
+                            </span>
+                          )}
+                        </div>
+                      )}
 
                       {/* Footer Info: Assignment & Read Progress */}
                       <div className="flex items-center justify-between pt-2.5 border-t border-border/50 text-[11px] gap-2">
@@ -1317,6 +1456,18 @@ export default function Raadspaneel() {
                     </Select>
                   </div>
                 </div>
+
+                {/* 🏛️ Standpunten & Partijlijn Koppeling (Positief / Negatief / Genuanceerd) */}
+                <TopicStandpuntenSection
+                  topic={selectedTopic}
+                  token={token}
+                  onTopicUpdated={(updatedTopic) => {
+                    setTopics((prev) => prev.map((t) => (t.id === updatedTopic.id ? updatedTopic : t)));
+                  }}
+                  onOpenDocumentViewer={(doc) => {
+                    setActiveDoc({ doc, topic: selectedTopic });
+                  }}
+                />
 
                 {/* ⚙️ Zero-Hallucination Ondersteuningsdossier per agendapunt */}
                 <SupportDossierPanel
@@ -1510,6 +1661,36 @@ export default function Raadspaneel() {
                                     </span>
                                   )}
                                 </div>
+
+                                {/* Matched standpunten for this specific document */}
+                                {doc.matchedStandpunten && doc.matchedStandpunten.length > 0 && (
+                                  <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                                    {doc.matchedStandpunten.map((dsp, dIdx) => (
+                                      <Link
+                                        key={dIdx}
+                                        to={`/standpunten?hoofdstuk=${dsp.hoofdstukNr}&standpunt=${dsp.standpuntNr}`}
+                                        className={`px-2 py-0.5 rounded text-[10px] font-semibold inline-flex items-center gap-1 border transition-all hover:scale-105 ${
+                                          dsp.stance === "negatief"
+                                            ? "bg-rose-500/15 text-rose-700 dark:text-rose-400 border-rose-500/30 hover:bg-rose-500/25"
+                                            : dsp.stance === "positief"
+                                            ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25"
+                                            : "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/25"
+                                        }`}
+                                        title={`Standpunt H${dsp.hoofdstukNr}.${dsp.standpuntNr}: ${dsp.standpuntTitel}\n${dsp.explanation}`}
+                                      >
+                                        {dsp.stance === "negatief" ? (
+                                          <ThumbsDown className="w-2.5 h-2.5 text-rose-600 dark:text-rose-400" />
+                                        ) : dsp.stance === "positief" ? (
+                                          <ThumbsUp className="w-2.5 h-2.5 text-emerald-600 dark:text-emerald-400" />
+                                        ) : (
+                                          <Scale className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" />
+                                        )}
+                                        <span>H{dsp.hoofdstukNr}.{dsp.standpuntNr} {dsp.standpuntTitel}</span>
+                                        <ExternalLink className="w-2.5 h-2.5 opacity-60 ml-0.5" />
+                                      </Link>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             </div>
 
@@ -1793,6 +1974,41 @@ export default function Raadspaneel() {
                     <span className="font-medium text-foreground">
                       {currentModalDoc.viewedBy.map((v) => v.fullName || v.username).join(", ")}
                     </span>
+                  </div>
+                )}
+
+                {/* Standpunten banner in modal */}
+                {((currentModalDoc.matchedStandpunten && currentModalDoc.matchedStandpunten.length > 0) || (currentModalTopic.matchedStandpunten && currentModalTopic.matchedStandpunten.length > 0)) && (
+                  <div className="mt-2 p-2.5 rounded-xl bg-accent/5 border border-accent/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-foreground flex items-center gap-1">
+                        <BookOpen className="w-3.5 h-3.5 text-accent" />
+                        <span>Partijstandpunt:</span>
+                      </span>
+                      {((currentModalDoc.matchedStandpunten && currentModalDoc.matchedStandpunten.length > 0) ? currentModalDoc.matchedStandpunten : currentModalTopic.matchedStandpunten || []).map((sp, idx) => (
+                        <span
+                          key={idx}
+                          className={`px-2 py-0.5 rounded text-[11px] font-semibold inline-flex items-center gap-1 border ${
+                            sp.stance === "negatief"
+                              ? "bg-rose-500/15 text-rose-700 dark:text-rose-400 border-rose-500/30"
+                              : sp.stance === "positief"
+                              ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30"
+                              : "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30"
+                          }`}
+                        >
+                          {sp.stance === "negatief" ? <ThumbsDown className="w-3 h-3" /> : sp.stance === "positief" ? <ThumbsUp className="w-3 h-3" /> : <Scale className="w-3 h-3" />}
+                          <span>H{sp.hoofdstukNr}.{sp.standpuntNr} {sp.standpuntTitel} ({sp.stance.toUpperCase()})</span>
+                        </span>
+                      ))}
+                    </div>
+                    <Link
+                      to={`/standpunten?hoofdstuk=${(currentModalDoc.matchedStandpunten?.[0] || currentModalTopic.matchedStandpunten?.[0])?.hoofdstukNr || 1}&standpunt=${(currentModalDoc.matchedStandpunten?.[0] || currentModalTopic.matchedStandpunten?.[0])?.standpuntNr || 1}`}
+                      target="_blank"
+                      className="text-xs font-semibold text-accent hover:underline flex items-center gap-1 shrink-0"
+                    >
+                      <span>Bekijk standpunt in verkiezingsprogramma</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </Link>
                   </div>
                 )}
               </DialogHeader>

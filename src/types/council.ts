@@ -12,6 +12,45 @@ export interface CouncilDocument {
   addedAt?: string; // When this document was first indexed
   isLateDump?: boolean; // Added within 48h before the meeting (the classic Friday dump)
   isNewAfterCompile?: boolean; // Document added after a support dossier was compiled
+  // Partijprogramma & Standpunten koppeling per document
+  matchedStandpunten?: DocumentMatchedStandpunt[];
+}
+
+export type StandpuntStance = "positief" | "negatief" | "genuanceerd";
+
+export interface MatchedStandpunt {
+  id?: string;
+  hoofdstukNr: number;
+  hoofdstukTitel: string;
+  standpuntNr: number;
+  standpuntTitel: string;
+  standpuntText: string;
+  stance: StandpuntStance; // "positief" = voor / ondersteunend | "negatief" = tegen / kritisch / afwijzend | "genuanceerd" = voorwaardelijk / gemengd
+  explanation: string; // Waarom Lijst van Andel deze positie inneemt t.a.v. dit onderwerp
+  relevanceScore: number; // 0 - 100
+  matchedKeywords: string[];
+  sourceDocumentTitles?: string[];
+  manuallyAdjusted?: boolean;
+  adjustedBy?: string;
+  adjustedAt?: string;
+}
+
+export interface DocumentMatchedStandpunt {
+  hoofdstukNr: number;
+  standpuntNr: number;
+  standpuntTitel: string;
+  stance: StandpuntStance;
+  matchedReason?: string;
+}
+
+export interface TopicStandpuntSummary {
+  total: number;
+  positiefCount: number;
+  negatiefCount: number;
+  genuanceerdCount: number;
+  primaryStance: "positief" | "negatief" | "gemengd" | "neutraal";
+  summaryText: string;
+  keyArguments?: string[];
 }
 
 export interface CouncilTopicDiffAlert {
@@ -93,6 +132,10 @@ export interface CouncilAgendaTopic {
   diffAlerts?: CouncilTopicDiffAlert[];
   hasNewDocumentsSinceCompile?: boolean;
   newDocumentsCountSinceCompile?: number;
+
+  // Gekoppelde Partijstandpunten (/standpunten) & Stem/Stellingname Analyse
+  matchedStandpunten?: MatchedStandpunt[];
+  standpuntSummary?: TopicStandpuntSummary;
 }
 
 export interface DossierEvidenceItem {
