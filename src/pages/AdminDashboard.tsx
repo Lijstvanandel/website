@@ -52,6 +52,7 @@ import {
   ThumbsUp,
   FileSearch,
   Building2,
+  Waves,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VideoPlayer } from "@/components/VideoPlayer";
@@ -69,6 +70,7 @@ import NewsletterManager from "@/components/admin/NewsletterManager";
 import { StellingenManager } from "@/components/admin/StellingenManager";
 import { CouncilAuditManager } from "@/components/admin/CouncilAuditManager";
 import { OverijsselNotubizManager } from "@/components/council/OverijsselNotubizManager";
+import { WaterschapManager } from "@/components/council/WaterschapManager";
 import { WIJKEN_EN_KERNEN } from "@/data/wijken";
 import { NewsItem } from "@/data/news";
 import { hoofdstukken } from "@/data/partijprogramma";
@@ -1160,6 +1162,9 @@ export default function AdminDashboard() {
           </TabsTrigger>
           <TabsTrigger value="overijssel-notubiz" className="gap-2 text-xs text-emerald-600 dark:text-emerald-400">
             <Building2 className="w-4 h-4" /> Provincie NotuBiz Sync
+          </TabsTrigger>
+          <TabsTrigger value="waterschap" className="gap-2 text-xs text-blue-600 dark:text-blue-400">
+            <Waves className="w-4 h-4" /> Waterschap Sync
           </TabsTrigger>
           <TabsTrigger value="system" className="gap-2 text-xs text-accent">
             <Server className="w-4 h-4" /> Systeem & Updates
@@ -3633,6 +3638,11 @@ export default function AdminDashboard() {
         {/* PROVINCIE OVERIJSSEL NOTUBIZ SCRAPER & EXPORT */}
         <TabsContent value="overijssel-notubiz">
           <OverijsselNotubizManager token={token || effectiveToken} />
+        </TabsContent>
+
+        {/* WATERSCHAP DRENTS OVERIJSSELSE DELTA SCRAPER */}
+        <TabsContent value="waterschap">
+          <WaterschapManager token={token || effectiveToken} />
         </TabsContent>
 
         {/* SYSTEEM, CACHE & GITHUB UPDATES */}

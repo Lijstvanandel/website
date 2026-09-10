@@ -100,6 +100,13 @@ import {
   getSavedOverijsselDocuments,
   saveOverijsselMetadata
 } from "./src/server/overijsselNotubizService.js";
+import {
+  startWaterschapSync,
+  cancelWaterschapSync,
+  getWaterschapSyncStatus,
+  getSavedWaterschapDocuments,
+  saveWaterschapMetadata
+} from "./src/server/waterschapService.js";
 
 // Ensure .env is explicitly loaded from working directory in case of PM2 or systemd execution
 function ensureEnvLoaded() {
@@ -8978,6 +8985,99 @@ Sitemap: ${baseUrl}/sitemap.xml
       });
     } catch (err: any) {
       res.status(500).json({ error: "Fout bij ophalen documenten: " + err.message });
+    }
+  });
+
+  // Waterschap Drents Overijsselse Delta Scraper API Endpoints
+  app.post("/api/council/waterschap/start-sync", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
+    try {
+      startWaterschapSync().catch((err) => console.error("Background Waterschap sync error:", err));
+      res.json({
+        success: true,
+        message: "Synchronisatie Waterschap Drents Overijsselse Delta gestart",
+        status: getWaterschapSyncStatus(),
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Fout bij starten Waterschap synchronisatie" });
+    }
+  });
+
+  app.post("/api/council/waterschap/cancel-sync", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    try {
+      cancelWaterschapSync();
+      res.json({ success: true, message: "Waterschap synchronisatie geannuleerd" });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Fout bij annuleren" });
+    }
+  });
+
+  app.get("/api/council/waterschap/sync-status", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    try {
+      const status = getWaterschapSyncStatus();
+      res.json(status);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Fout bij ophalen status" });
+    }
+  });
+
+  app.get("/api/council/waterschap/metadata.csv", optionalAuth, (req: any, res: any) => {
+    try {
+      const csvPath = path.join(process.cwd(), "public", "uploads", "documents", "raadsstukken_metadata_waterschap.csv");
+      const rootCsvPath = path.join(process.cwd(), "raadsstukken_metadata_waterschap.csv");
+
+      let targetPath = fs.existsSync(csvPath) ? csvPath : fs.existsSync(rootCsvPath) ? rootCsvPath : null;
+
+      if (!targetPath) {
+        const items = getSavedWaterschapDocuments();
+        if (items.length > 0) {
+          saveWaterschapMetadata(items);
+          targetPath = csvPath;
+        }
+      }
+
+      if (!targetPath || !fs.existsSync(targetPath)) {
+        return res.status(404).json({ error: "CSV-bestand nog niet gegenereerd. Start eerst de synchronisatie." });
+      }
+
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", 'attachment; filename="raadsstukken_metadata_waterschap.csv"');
+      const stream = fs.createReadStream(targetPath);
+      stream.pipe(res);
+    } catch (err: any) {
+      res.status(500).json({ error: "Fout bij downloaden Waterschap CSV: " + err.message });
+    }
+  });
+
+  app.get("/api/council/waterschap/documents", optionalAuth, (req: any, res: any) => {
+    try {
+      const docs = getSavedWaterschapDocuments();
+      const { scope, q, query, year } = req.query;
+      const searchTerm = (q || query || "").toString().toLowerCase();
+
+      let filtered = docs;
+      if (scope && scope !== "all") {
+        filtered = filtered.filter((d) => d.scope === scope);
+      }
+      if (year && year !== "all") {
+        filtered = filtered.filter((d) => d.datum && d.datum.startsWith(String(year)));
+      }
+      if (searchTerm) {
+        filtered = filtered.filter(
+          (d) =>
+            d.titel.toLowerCase().includes(searchTerm) ||
+            d.meeting_titel.toLowerCase().includes(searchTerm) ||
+            d.gremium_naam.toLowerCase().includes(searchTerm) ||
+            d.reden.toLowerCase().includes(searchTerm)
+        );
+      }
+
+      res.json({
+        total: filtered.length,
+        allTotal: docs.length,
+        documents: filtered,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "Fout bij ophalen Waterschap documenten: " + err.message });
     }
   });
 

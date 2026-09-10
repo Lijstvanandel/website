@@ -35,6 +35,7 @@ import {
   Scale,
   BookOpen,
   Building2,
+  Waves,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -65,6 +66,7 @@ import { SupportDossierPanel } from "@/components/SupportDossierPanel";
 import { SecureDocumentViewer } from "@/components/SecureDocumentViewer";
 import { TopicStandpuntenSection } from "@/components/council/TopicStandpuntenSection";
 import { OverijsselNotubizManager } from "@/components/council/OverijsselNotubizManager";
+import { WaterschapManager } from "@/components/council/WaterschapManager";
 import { MemberDocument } from "@/types/document";
 
 
@@ -181,14 +183,16 @@ export default function Raadspaneel() {
 
   const initialDossierSlug = slug || searchParams.get("dossier") || null;
   const tabParam = searchParams.get("tab");
-  const activePanelTab: "dossiers" | "agenda" | "overijssel" =
-    tabParam === "overijssel"
+  const activePanelTab: "dossiers" | "agenda" | "overijssel" | "waterschap" =
+    tabParam === "waterschap"
+      ? "waterschap"
+      : tabParam === "overijssel"
       ? "overijssel"
       : tabParam === "agenda" && isCouncilOrAdmin
       ? "agenda"
       : "dossiers";
 
-  const setActivePanelTab = (tab: "dossiers" | "agenda" | "overijssel") => {
+  const setActivePanelTab = (tab: "dossiers" | "agenda" | "overijssel" | "waterschap") => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.set("tab", tab);
@@ -903,12 +907,27 @@ export default function Raadspaneel() {
             }`}
           >
             <Building2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            Provincie Overijssel NotuBiz
+            Provincie Overijssel
+          </button>
+
+          <button
+            id="tab-btn-panel-waterschap"
+            onClick={() => setActivePanelTab("waterschap")}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all shrink-0 ${
+              activePanelTab === "waterschap"
+                ? "bg-accent text-accent-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground hover:bg-card border border-border/70"
+            }`}
+          >
+            <Waves className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            Waterschap Drents Overijsselse Delta
           </button>
         </div>
 
         {activePanelTab === "dossiers" ? (
           <DossierOverview initialDossierSlug={initialDossierSlug} />
+        ) : activePanelTab === "waterschap" ? (
+          <WaterschapManager token={token || undefined} />
         ) : activePanelTab === "overijssel" ? (
           <OverijsselNotubizManager token={token || undefined} />
         ) : isCouncilOrAdmin ? (
