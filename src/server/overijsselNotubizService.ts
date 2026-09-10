@@ -464,7 +464,7 @@ interface HttpResponse {
 }
 
 /**
- * Robust IPv4 HTTP/HTTPS request handler using custom DNS lookup
+ * Robust IPv4 HTTP/HTTPS request handler
  */
 function requestIPv4(urlStr: string, options: any = {}): Promise<HttpResponse> {
   return new Promise((resolve, reject) => {
@@ -479,10 +479,7 @@ function requestIPv4(urlStr: string, options: any = {}): Promise<HttpResponse> {
         port: url.port || (isHttps ? 443 : 80),
         path: url.pathname + url.search,
         method: options.method || "GET",
-        lookup: (hostname: string, opts: any, callback: any) => {
-          const finalOpts = typeof opts === "object" ? { ...opts, family: 4 } : { family: 4 };
-          dns.lookup(hostname, finalOpts, callback);
-        },
+        family: 4, // Explicitly force IPv4 to avoid broken VPS IPv6 routes
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
           "Accept": "application/json, text/plain, */*",
@@ -560,7 +557,8 @@ function curlIPv4(urlStr: string, options: any = {}, timeoutMs = 30000): Promise
   return new Promise((resolve, reject) => {
     try {
       const timeoutSec = Math.max(5, Math.round(timeoutMs / 1000));
-      const args = ["-4", "-s", "-L", "--max-time", String(timeoutSec), "-w", "\n%{http_code}", urlStr];
+      const DELIM = "\n__NOTUBIZ_STATUS__:";
+      const args = ["-4", "-s", "-L", "--max-time", String(timeoutSec), "-w", `${DELIM}%{http_code}`, urlStr];
       const proc = spawn("curl", args);
       const chunks: Buffer[] = [];
 
@@ -585,16 +583,17 @@ function curlIPv4(urlStr: string, options: any = {}, timeoutMs = 30000): Promise
           return reject(new Error("This operation was aborted"));
         }
         const fullBuf = Buffer.concat(chunks);
-        const lastNewline = fullBuf.lastIndexOf(10);
+        const delimBuf = Buffer.from(DELIM);
+        const delimIdx = fullBuf.lastIndexOf(delimBuf);
         let status = 200;
         let bodyBuf = fullBuf;
-        if (lastNewline !== -1) {
-          const codeStr = fullBuf.slice(lastNewline + 1).toString("utf-8").trim();
+        if (delimIdx !== -1) {
+          const codeStr = fullBuf.slice(delimIdx + delimBuf.length).toString("utf-8").trim();
           const parsedCode = parseInt(codeStr, 10);
           if (!isNaN(parsedCode) && parsedCode > 0) {
             status = parsedCode;
-            bodyBuf = fullBuf.slice(0, lastNewline);
           }
+          bodyBuf = fullBuf.slice(0, delimIdx);
         }
         resolve({
           ok: status >= 200 && status < 300,
