@@ -10,7 +10,7 @@ import {
 } from "../types/council.js";
 import { Dossier, DossierDocument } from "../types/dossier.js";
 import { slugify, createCustomDossier, updateDossier, getAllDossiers } from "./dossierManager.js";
-import { getDbFromSqlite, saveDbToSqlite } from "./sqliteDatabase.js";
+import { getDbFromSqlite, saveDbToSqlite, persistSqlite } from "./sqliteDatabase.js";
 import { getDocumentContent, normalizeForSearch } from "./documentTextExtractor.js";
 
 const METADATA_PATH = path.join(process.cwd(), "public", "data", "raadsstukken_metadata_tussentijds.json");
@@ -973,6 +973,11 @@ export async function compileSupportDossierForTopic(
   db.councilAgendaTopics[topicIndex] = topic;
 
   saveDbToSqlite(db);
+  try {
+    persistSqlite();
+  } catch (_pErr) {
+    // Ignore persist errors
+  }
 
   console.log(`[SUPPORT DOSSIER] Succesvol gecompileerd en gekoppeld! Dossier slug: ${linkedDossier.slug}`);
 

@@ -62,6 +62,7 @@ import {
 } from "./src/server/councilScraperService.js";
 import {
   getAllDossiers,
+  slugify,
   getDossierGraph,
   createCustomDossier,
   updateDossier,
@@ -7994,13 +7995,102 @@ Sitemap: ${baseUrl}/sitemap.xml
   // 2. Get single dossier detail with documents and its network graph
   app.get("/api/council/dossiers/:slug", optionalAuth, (req: any, res: any) => {
     try {
-      const slug = req.params.slug;
+      const rawSlug = decodeURIComponent(req.params.slug || "").trim();
       const db = getDb();
       const allDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || []);
-      const dossier = allDossiers.find((d) => d.slug === slug || d.id === slug);
+      
+      const searchSlug = rawSlug.toLowerCase();
+      let dossier = allDossiers.find(
+        (d) =>
+          d.slug?.toLowerCase() === searchSlug ||
+          d.id?.toLowerCase() === searchSlug ||
+          slugify(d.slug || "") === slugify(rawSlug) ||
+          slugify(d.title || "") === slugify(rawSlug) ||
+          (d.id && slugify(d.id) === slugify(rawSlug))
+      );
+
+      // Fallback: If not found in standard/custom catalog, check if an agenda topic has this compiled support dossier
+      if (!dossier) {
+        const topics = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
+        const matchingTopic = topics.find((t: any) => {
+          if (!t) return false;
+          const topicSlug = slugify(t.title || "");
+          const expectedDossierSlug = `ondersteuningsdossier-${topicSlug}`;
+          return (
+            (t.linkedDossierSlug && t.linkedDossierSlug.toLowerCase() === searchSlug) ||
+            (t.linkedDossierId && t.linkedDossierId.toLowerCase() === searchSlug) ||
+            expectedDossierSlug === searchSlug ||
+            slugify(t.linkedDossierSlug || "") === slugify(rawSlug) ||
+            topicSlug === searchSlug ||
+            t.id === rawSlug
+          );
+        });
+
+        if (matchingTopic && (matchingTopic.compiledDossier || matchingTopic.linkedDossierSlug)) {
+          const compiled = matchingTopic.compiledDossier;
+          const topicSlug = slugify(matchingTopic.title || "");
+          const recoveredSlug = matchingTopic.linkedDossierSlug || `ondersteuningsdossier-${topicSlug}`;
+
+          const recoveredDossier: any = {
+            id: compiled?.id || matchingTopic.linkedDossierId || `custom-${matchingTopic.id}`,
+            title: `Ondersteuningsdossier: ${matchingTopic.title}`,
+            slug: recoveredSlug,
+            description: compiled?.managementsamenvatting
+              ? compiled.managementsamenvatting.slice(0, 400)
+              : `Officieel fractie-ondersteuningsdossier voor het agendapunt '${matchingTopic.title}' (${matchingTopic.meetingTitle} van ${matchingTopic.meetingDateDisplay || matchingTopic.meetingDate}).`,
+            category: "Gemeenteraad & Beleid",
+            thumbnail: "https://images.unsplash.com/photo-1450133064473-71024230f91b?w=800&auto=format&fit=crop&q=80",
+            tags: ["Agenda", "Ondersteuningsdossier", matchingTopic.category],
+            documentCount: (matchingTopic.documents || []).length + ((compiled?.bewijslast || []) as any[]).length,
+            uploadedCount: (matchingTopic.documents || []).length,
+            dateRange: { start: matchingTopic.meetingDate, end: matchingTopic.meetingDate },
+            documents: [
+              ...(matchingTopic.documents || []).map((d: any, idx: number) => ({
+                id: d.id || `doc_${idx}`,
+                bestandsnaam: d.filename || `${slugify(d.title || "document")}.pdf`,
+                titel: d.title,
+                dossier: `Ondersteuningsdossier: ${matchingTopic.title}`,
+                datum: matchingTopic.meetingDate,
+                entiteiten: ["Gemeenteraad Steenwijkerland", "Lijst van Andel"],
+                relaties: `Raadsstuk bij vergadering ${matchingTopic.meetingTitle}`,
+                fileUrl: d.url,
+                fileExists: true,
+                fileSize: "Document",
+              })),
+              ...(((compiled?.bewijslast || []) as any[])).map((ev: any, idx: number) => ({
+                id: `ev_doc_${idx}`,
+                bestandsnaam: ev.sourceDocName,
+                titel: `Bewijsstuk: ${ev.finding.slice(0, 60)}...`,
+                dossier: `Ondersteuningsdossier: ${matchingTopic.title}`,
+                datum: matchingTopic.meetingDate,
+                entiteiten: ["Raadsarchief Steenwijkerland"],
+                relaties: `Geciteerd op pagina ${ev.page}`,
+                fileUrl: ev.sourceDocUrl || `/uploads/fractiestukken/${ev.sourceDocName}`,
+                fileExists: true,
+                fileSize: "PDF Bewijslast",
+              })),
+            ],
+            isCustom: true,
+            createdAt: compiled?.compiledAt || matchingTopic.scrapedAt || new Date().toISOString(),
+            updatedAt: compiled?.compiledAt || new Date().toISOString(),
+          };
+
+          // Save into customDossiers so it permanently persists in the catalogue as well
+          if (!db.customDossiers) db.customDossiers = [];
+          const cIdx = db.customDossiers.findIndex((cd: any) => cd.slug === recoveredDossier.slug || cd.id === recoveredDossier.id);
+          if (cIdx >= 0) {
+            db.customDossiers[cIdx] = recoveredDossier;
+          } else {
+            db.customDossiers.unshift(recoveredDossier);
+          }
+          saveDb(db);
+
+          dossier = recoveredDossier;
+        }
+      }
 
       if (!dossier) {
-        return res.status(404).json({ error: `Dossier met kenmerk '${slug}' niet gevonden` });
+        return res.status(404).json({ error: `Dossier met kenmerk '${rawSlug}' niet gevonden` });
       }
 
       const graph = getDossierGraph(dossier.slug || dossier.id, db);

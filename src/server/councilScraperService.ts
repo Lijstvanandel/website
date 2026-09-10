@@ -381,7 +381,7 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
               agendaItemNumber: itemNumber,
               category: topicCategory,
               title: rawTitle,
-              description: bodyDescription.slice(0, 800),
+              description: existing?.description || bodyDescription.slice(0, 800),
               assignedTo: existing?.assignedTo || null,
               assignedName: existing?.assignedName || null,
               assignedAt: existing?.assignedAt || null,
@@ -391,6 +391,13 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
               archivedAt: existing?.archivedAt || null,
               sourceUrl: meeting.url,
               scrapedAt: new Date().toISOString(),
+              // CRITICAL: Always preserve compiled support dossier and contributions
+              compiledDossier: existing?.compiledDossier || null,
+              linkedDossierSlug: existing?.linkedDossierSlug || null,
+              linkedDossierId: existing?.linkedDossierId || null,
+              bijdragePolitiekeMarkt: existing?.bijdragePolitiekeMarkt || "",
+              bijdrageRaadsvergadering: existing?.bijdrageRaadsvergadering || "",
+              markAsHamerstuk: existing?.markAsHamerstuk || false,
             };
 
             existingTopicsMap.set(topicId, updatedTopic);

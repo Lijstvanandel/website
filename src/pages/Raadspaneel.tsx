@@ -179,6 +179,10 @@ export default function Raadspaneel() {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.set("tab", tab);
+      const currentTopic = searchParams.get("topic") || localStorage.getItem("lva_last_selected_topic_id");
+      if (tab === "agenda" && currentTopic) {
+        next.set("topic", currentTopic);
+      }
       return next;
     });
   };
@@ -209,8 +213,33 @@ export default function Raadspaneel() {
   const [raadsvergaderingText, setRaadsvergaderingText] = useState("");
   const [isSavingContribution, setIsSavingContribution] = useState(false);
 
-  // Active topic for note dialog or details
-  const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
+  // Active topic for note dialog or details - persisted in URL param and localStorage
+  const [selectedTopicId, setSelectedTopicId] = useState<string | null>(() => {
+    try {
+      const fromUrl = searchParams.get("topic");
+      if (fromUrl) return fromUrl;
+      const fromStorage = localStorage.getItem("lva_last_selected_topic_id");
+      if (fromStorage) return fromStorage;
+    } catch (_e) {
+      // ignore
+    }
+    return null;
+  });
+
+  const handleSelectTopic = useCallback((topicId: string) => {
+    setSelectedTopicId(topicId);
+    try {
+      localStorage.setItem("lva_last_selected_topic_id", topicId);
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("topic", topicId);
+        return next;
+      });
+    } catch (_e) {
+      // ignore
+    }
+  }, [setSearchParams]);
+
   const [newNoteText, setNewNoteText] = useState("");
   const [submittingNote, setSubmittingNote] = useState(false);
   const [noteTargetDocId, setNoteTargetDocId] = useState<string | null>(null);
@@ -248,13 +277,17 @@ export default function Raadspaneel() {
       setSummary(data.summary || null);
       setCouncilMembers(data.councilMembers || []);
       
-      // Auto-select first bespreekstuk if none selected
-      if (!selectedTopicId && data.topics && data.topics.length > 0) {
-        const firstBespreek = data.topics.find((t: CouncilAgendaTopic) => !t.isArchived && t.category.includes("Oordeelvorming"));
-        if (firstBespreek) {
-          setSelectedTopicId(firstBespreek.id);
-        } else {
-          setSelectedTopicId(data.topics[0].id);
+      // Auto-select topic: preserve current selection, preferred URL/storage, or fallback to first bespreekstuk
+      if (data.topics && data.topics.length > 0) {
+        const preferredId = selectedTopicId || searchParams.get("topic") || localStorage.getItem("lva_last_selected_topic_id");
+        const foundPreferred = preferredId ? data.topics.find((t: CouncilAgendaTopic) => t.id === preferredId) : null;
+
+        if (foundPreferred) {
+          setSelectedTopicId(foundPreferred.id);
+        } else if (!selectedTopicId || !data.topics.some((t: CouncilAgendaTopic) => t.id === selectedTopicId)) {
+          const firstBespreek = data.topics.find((t: CouncilAgendaTopic) => !t.isArchived && t.category.includes("Oordeelvorming"));
+          const fallback = firstBespreek ? firstBespreek.id : data.topics[0].id;
+          setSelectedTopicId(fallback);
         }
       }
     } catch (err: any) {
@@ -263,7 +296,7 @@ export default function Raadspaneel() {
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, [token, selectedTopicId]);
+  }, [token, selectedTopicId, searchParams]);
 
   useEffect(() => {
     if (isAuthenticated && isCouncilOrAdmin) {
@@ -866,7 +899,7 @@ export default function Raadspaneel() {
                   return (
                     <div
                       key={topic.id}
-                      onClick={() => setSelectedTopicId(topic.id)}
+                      onClick={() => handleSelectTopic(topic.id)}
                       className={`p-4 rounded-2xl border text-left cursor-pointer transition-all duration-200 relative group ${
                         isSelected
                           ? "bg-accent/10 border-accent shadow-sm ring-1 ring-accent"
@@ -1064,7 +1097,13 @@ export default function Raadspaneel() {
                     setSecureViewerPage(page || 1);
                   }}
                   onOpenDossierTab={(slug) => {
-                    setSearchParams({ tab: "dossiers", dossier: slug });
+                    setSearchParams((prev) => {
+                      const next = new URLSearchParams(prev);
+                      next.set("tab", "dossiers");
+                      next.set("dossier", slug);
+                      if (selectedTopicId) next.set("topic", selectedTopicId);
+                      return next;
+                    });
                     setActivePanelTab("dossiers");
                   }}
                   onAppendToInbreng={async (textToAppend, target) => {

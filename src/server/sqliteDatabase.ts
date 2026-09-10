@@ -39,6 +39,7 @@ const TABLE_DEFINITIONS: { [table: string]: string } = {
   documentFavorites: "CREATE TABLE IF NOT EXISTS documentFavorites (id TEXT PRIMARY KEY, data TEXT)",
   councilSearchLogs: "CREATE TABLE IF NOT EXISTS councilSearchLogs (id TEXT PRIMARY KEY, data TEXT)",
   councilDocumentViews: "CREATE TABLE IF NOT EXISTS councilDocumentViews (id TEXT PRIMARY KEY, data TEXT)",
+  customDossiers: "CREATE TABLE IF NOT EXISTS customDossiers (id TEXT PRIMARY KEY, data TEXT)",
   systemSettings: "CREATE TABLE IF NOT EXISTS systemSettings (id TEXT PRIMARY KEY, data TEXT)",
   kv_store: "CREATE TABLE IF NOT EXISTS kv_store (key TEXT PRIMARY KEY, value TEXT)",
 };
@@ -71,6 +72,33 @@ export async function initDatabase() {
 
   for (const table of Object.keys(TABLE_DEFINITIONS)) {
     sqliteDb.run(TABLE_DEFINITIONS[table]);
+  }
+
+  // Migrate legacy customDossiers from kv_store if customDossiers table is empty
+  try {
+    const customCountRes = sqliteDb.exec("SELECT count(*) FROM customDossiers");
+    const hasCustomInTable = customCountRes.length > 0 && customCountRes[0].values[0][0] > 0;
+    if (!hasCustomInTable) {
+      const kvCustom = sqliteDb.exec("SELECT value FROM kv_store WHERE key = 'customDossiers'");
+      if (kvCustom.length > 0 && kvCustom[0].values && kvCustom[0].values[0]) {
+        const rawJson = kvCustom[0].values[0][0];
+        const parsed = JSON.parse(rawJson);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          console.log(`[SQLITE MIGRATIE] ${parsed.length} customDossiers migreren van kv_store naar tabel...`);
+          for (const item of parsed) {
+            const itemId = String(item.id || item.slug || crypto.randomUUID());
+            sqliteDb.run("INSERT OR REPLACE INTO customDossiers (id, data) VALUES (?, ?)", [
+              itemId,
+              JSON.stringify(item),
+            ]);
+          }
+          sqliteDb.run("DELETE FROM kv_store WHERE key = 'customDossiers'");
+          persistSqlite();
+        }
+      }
+    }
+  } catch (migCustomErr) {
+    console.warn("[SQLITE MIGRATIE] Kon customDossiers uit kv_store niet migreren:", migCustomErr);
   }
 
   // Check if we need to migrate existing db.json to SQLite
@@ -237,6 +265,7 @@ export function getDbFromSqlite(): any {
     "documentFavorites",
     "councilSearchLogs",
     "councilDocumentViews",
+    "customDossiers",
   ];
 
   for (const table of listTables) {
