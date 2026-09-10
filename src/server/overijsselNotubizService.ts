@@ -704,6 +704,7 @@ export async function startOverijsselNotubizSync(options?: {
     try {
       let offset = 0;
       let stopPaging = false;
+      let consecutiveOldItems = 0;
 
       while (!stopPaging && !signal.aborted) {
         const pageNum = Math.floor(offset / 25) + 1;
@@ -744,9 +745,16 @@ export async function startOverijsselNotubizSync(options?: {
           const itemYear = parseInt((rawDate || "").slice(0, 4), 10) || (rawDate ? new Date(rawDate).getFullYear() : 0);
 
           if (itemYear && itemYear < minTargetYear) {
-            addLog(`Grensdatum bereikt op OpenRaadsinformatie (${rawDate.slice(0, 10)} < ${minTargetYear}). Scraper stopt paginering.`, "info");
-            stopPaging = true;
-            break;
+            consecutiveOldItems++;
+            if (consecutiveOldItems >= 20) {
+              addLog(`Grensdatum bereikt op OpenRaadsinformatie (${rawDate.slice(0, 10)} < ${minTargetYear}). Scraper stopt verdere paginering.`, "info");
+              stopPaging = true;
+              break;
+            }
+            syncState.processedMeetings++;
+            continue;
+          } else {
+            consecutiveOldItems = 0;
           }
 
           if (itemYear && !targetYears.includes(itemYear)) {
