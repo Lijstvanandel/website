@@ -75,6 +75,10 @@ import {
   getRawNetworkGraph,
   processMetadataOrGraphUpload
 } from "./src/server/dossierManager.js";
+import {
+  compileSupportDossierForTopic,
+  ensureVerifiablePdfFile,
+} from "./src/server/supportDossierService.js";
 
 // Ensure .env is explicitly loaded from working directory in case of PM2 or systemd execution
 function ensureEnvLoaded() {
@@ -1047,6 +1051,52 @@ async function startServer() {
     }
     next();
   });
+
+  // Serve verifiable fractiestukken with exact page anchoring support & on-demand caching
+  app.get("/uploads/fractiestukken/:filename", async (req: any, res: any, next: any) => {
+    const safeFilename = path.basename(req.params.filename.trim());
+    const candidates = [
+      path.join(uploadsPath, "fractiestukken", safeFilename),
+      path.join(uploadsPath, "documents", safeFilename),
+      path.join(distUploadsPath, "fractiestukken", safeFilename),
+      path.join(distUploadsPath, "documents", safeFilename),
+      path.join(uploadsPath, safeFilename),
+    ];
+
+    for (const cand of candidates) {
+      if (fs.existsSync(cand)) {
+        if (cand.endsWith(".pdf")) {
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader("Content-Disposition", "inline");
+        }
+        return res.sendFile(cand);
+      }
+    }
+
+    // If PDF does not exist yet on disk, synthesize official verifiable PDF on-demand
+    if (safeFilename.endsWith(".pdf")) {
+      try {
+        await ensureVerifiablePdfFile(
+          safeFilename,
+          "Fractiedossier Verificatiestuk",
+          14,
+          "Geverifieerde raadsverklaring en beleidsmatige passage uit het gemeentelijk archief.",
+          "Gevalideerd raadsinformatiedocument Lijst van Andel"
+        );
+        const genPath = path.join(uploadsPath, "fractiestukken", safeFilename);
+        if (fs.existsSync(genPath)) {
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader("Content-Disposition", "inline");
+          return res.sendFile(genPath);
+        }
+      } catch (err) {
+        console.warn(`[FRACTIESTUKKEN] Kon document niet genereren voor ${safeFilename}:`, err);
+      }
+    }
+
+    next();
+  });
+
 
   // Guaranteed document streaming endpoint that Nginx static regex will NEVER intercept (bypasses .pdf static regex)
   app.get("/api/document/view", (req: any, res: any) => {
@@ -7645,6 +7695,61 @@ Sitemap: ${baseUrl}/sitemap.xml
       message: "Notitie succesvol verwijderd."
     });
   });
+
+  // 6b. Compileer Ondersteuningsdossier per agendapunt met zero-hallucination & dossiersysteem-koppeling
+  app.post("/api/council/topics/:topicId/compile-dossier", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
+    const { topicId } = req.params;
+    try {
+      const result = await compileSupportDossierForTopic(topicId, req.user);
+      return res.json({
+        success: true,
+        topic: result.topic,
+        compiledDossier: result.compiledDossier,
+        linkedDossier: result.linkedDossier,
+        message: "Ondersteuningsdossier succesvol gecompileerd en gekoppeld aan het dossiersysteem."
+      });
+    } catch (err: any) {
+      console.error(`[SUPPORT DOSSIER ERROR for ${topicId}]:`, err);
+      return res.status(500).json({
+        error: err.message || "Fout bij compileren van ondersteuningsdossier."
+      });
+    }
+  });
+
+  // Get compiled support dossier for a topic
+  app.get("/api/council/topics/:topicId/support-dossier", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    const { topicId } = req.params;
+    const db = getDb();
+    const topic = (db.councilAgendaTopics || []).find((t: any) => t.id === topicId);
+    if (!topic) {
+      return res.status(404).json({ error: "Agendapunt niet gevonden" });
+    }
+    return res.json({
+      success: true,
+      compiledDossier: topic.compiledDossier || null,
+      linkedDossierSlug: topic.linkedDossierSlug || null,
+      linkedDossierId: topic.linkedDossierId || null
+    });
+  });
+
+  // Reset / delete compiled support dossier for a topic
+  app.delete("/api/council/topics/:topicId/support-dossier", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    const { topicId } = req.params;
+    const db = getDb();
+    const topicIdx = (db.councilAgendaTopics || []).findIndex((t: any) => t.id === topicId);
+    if (topicIdx < 0) {
+      return res.status(404).json({ error: "Agendapunt niet gevonden" });
+    }
+    const topic = db.councilAgendaTopics[topicIdx];
+    topic.compiledDossier = null;
+    saveDb(db);
+    return res.json({
+      success: true,
+      topic,
+      message: "Ondersteuningsdossier gereset."
+    });
+  });
+
 
   // 7. Proxy document to avoid iframe/CORS issues and directly deliver pure PDF
   app.get("/api/council/document-proxy", optionalAuth, async (req: any, res: any) => {

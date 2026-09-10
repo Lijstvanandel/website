@@ -56,6 +56,10 @@ import {
   CouncilTopicNote,
   CouncilMeetingScrapeSummary,
 } from "@/types/council";
+import { SupportDossierPanel } from "@/components/SupportDossierPanel";
+import { SecureDocumentViewer } from "@/components/SecureDocumentViewer";
+import { MemberDocument } from "@/types/document";
+
 
 const PROCEDURAL_KEYWORDS = [
   "opening",
@@ -210,6 +214,11 @@ export default function Raadspaneel() {
   const [newNoteText, setNewNoteText] = useState("");
   const [submittingNote, setSubmittingNote] = useState(false);
   const [noteTargetDocId, setNoteTargetDocId] = useState<string | null>(null);
+
+  // Secure Document Viewer for click-to-verify
+  const [secureViewerDoc, setSecureViewerDoc] = useState<MemberDocument | null>(null);
+  const [secureViewerPage, setSecureViewerPage] = useState<number>(1);
+
 
   // Safe JSON parser for API responses to prevent HTML syntax errors
   const parseApiResponse = async (res: Response) => {
@@ -395,7 +404,29 @@ export default function Raadspaneel() {
     }
   };
 
+  const handleDirectSaveContribution = async (topicId: string, payload: { bijdragePolitiekeMarkt?: string; bijdrageRaadsvergadering?: string }) => {
+    if (!token) return;
+    try {
+      const res = await fetch(`/api/council/topics/${topicId}/contributions`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await parseApiResponse(res);
+      if (res.ok && data.topic) {
+        setTopics((prev) => prev.map((t) => (t.id === topicId ? data.topic : t)));
+        toast.success("Inbreng bijgewerkt met klemzet-vraag.");
+      }
+    } catch (e) {
+      console.warn("Kon bijdrage niet direct opslaan:", e);
+    }
+  };
+
   // Mark document as viewed toggle
+
   const handleToggleDocViewed = async (topicId: string, docId: string, isCurrentlyViewed: boolean) => {
     if (!token) return;
     try {
@@ -859,6 +890,13 @@ export default function Raadspaneel() {
                               Archief
                             </span>
                           )}
+                          {topic.compiledDossier && (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-accent/15 text-accent border border-accent/30 flex items-center gap-1">
+                              <Sparkles className="w-2.5 h-2.5" />
+                              Dossier
+                            </span>
+                          )}
+
                         </div>
                         <span className="text-[10.5px] font-medium text-muted-foreground shrink-0">
                           {topic.meetingDateDisplay || topic.meetingDate}
@@ -1014,7 +1052,38 @@ export default function Raadspaneel() {
                   </div>
                 </div>
 
+                {/* ⚙️ Zero-Hallucination Ondersteuningsdossier per agendapunt */}
+                <SupportDossierPanel
+                  topic={selectedTopic}
+                  onDossierUpdated={(updatedTopic) => {
+                    setTopics((prev) => prev.map((t) => (t.id === updatedTopic.id ? updatedTopic : t)));
+                  }}
+                  onOpenDocumentViewer={(doc, page) => {
+                    setSecureViewerDoc(doc);
+                    setSecureViewerPage(page || 1);
+                  }}
+                  onOpenDossierTab={(slug) => {
+                    setSearchParams({ tab: "dossiers", dossier: slug });
+                    setActivePanelTab("dossiers");
+                  }}
+                  onAppendToInbreng={async (textToAppend, target) => {
+                    if (!selectedTopic) return;
+                    if (target === "markt") {
+                      const current = selectedTopic.bijdragePolitiekeMarkt || "";
+                      const next = current ? `${current}\n\n${textToAppend}` : textToAppend;
+                      setPolitiekeMarktText(next);
+                      await handleDirectSaveContribution(selectedTopic.id, { bijdragePolitiekeMarkt: next });
+                    } else {
+                      const current = selectedTopic.bijdrageRaadsvergadering || "";
+                      const next = current ? `${current}\n\n${textToAppend}` : textToAppend;
+                      setRaadsvergaderingText(next);
+                      await handleDirectSaveContribution(selectedTopic.id, { bijdrageRaadsvergadering: next });
+                    }
+                  }}
+                />
+
                 {/* Fractie Bijdragen & Behandeling Actieknoppen */}
+
                 <div className="p-4 rounded-xl bg-background border border-border/90 shadow-2xs space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
@@ -1774,6 +1843,16 @@ export default function Raadspaneel() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Secure Document Viewer voor Click-to-Verify & Pagina-Archief */}
+      <SecureDocumentViewer
+        document={secureViewerDoc}
+        isOpen={!!secureViewerDoc}
+        onClose={() => setSecureViewerDoc(null)}
+        user={user}
+        initialPage={secureViewerPage}
+      />
     </div>
   );
 }
+

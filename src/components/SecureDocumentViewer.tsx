@@ -19,11 +19,22 @@ import {
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { MemberDocument } from "@/types/document";
-import * as pdfjsLib from "pdfjs-dist";
+import * as pdfjsModule from "pdfjs-dist";
+import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
+
+// Support both ESM default and namespace exports for pdfjs-dist
+const pdfjsLib: any = (pdfjsModule as any)?.default || pdfjsModule;
 
 // Configure PDF.js worker
 if (typeof window !== "undefined") {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || "3.11.174"}/pdf.worker.min.js`;
+  const workerOptions = pdfjsLib?.GlobalWorkerOptions || (pdfjsModule as any)?.GlobalWorkerOptions;
+  if (workerOptions) {
+    try {
+      workerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib?.version || (pdfjsModule as any)?.version || "3.11.174"}/pdf.worker.min.js`;
+    } catch (e) {
+      console.warn("Failed to set PDF.js workerSrc", e);
+    }
+  }
 }
 
 interface SecureDocumentViewerProps {
@@ -36,6 +47,7 @@ interface SecureDocumentViewerProps {
     email?: string;
     role?: string;
   } | null;
+  initialPage?: number;
 }
 
 export const SecureDocumentViewer: React.FC<SecureDocumentViewerProps> = ({
@@ -43,8 +55,10 @@ export const SecureDocumentViewer: React.FC<SecureDocumentViewerProps> = ({
   isOpen,
   onClose,
   user,
+  initialPage = 1,
 }) => {
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(initialPage || 1);
+
   const [totalPages, setTotalPages] = useState(1);
   const [scale, setScale] = useState(1.15);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -55,8 +69,8 @@ export const SecureDocumentViewer: React.FC<SecureDocumentViewerProps> = ({
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
-  const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
+  const pdfDocRef = useRef<PDFDocumentProxy | null>(null);
+  const renderTaskRef = useRef<RenderTask | null>(null);
 
   const memberName = user?.fullName || user?.username || "Geregistreerd Lid";
   const userIdentifier = user?.email || user?.username || "Lid";
@@ -170,9 +184,10 @@ export const SecureDocumentViewer: React.FC<SecureDocumentViewerProps> = ({
   useEffect(() => {
     if (!isOpen || !doc) return;
 
-    setCurrentPage(1);
+    setCurrentPage(initialPage && initialPage >= 1 ? initialPage : 1);
     setIsMasked(false);
     setPdfError(null);
+
 
     let isMounted = true;
 
@@ -185,7 +200,11 @@ export const SecureDocumentViewer: React.FC<SecureDocumentViewerProps> = ({
 
       setPdfLoading(true);
       try {
-        const loadingTask = pdfjsLib.getDocument({
+        const getDocFn = pdfjsLib?.getDocument || (pdfjsModule as any)?.getDocument;
+        if (!getDocFn) {
+          throw new Error("PDF.js getDocument functie niet beschikbaar");
+        }
+        const loadingTask = getDocFn({
           url: doc.fileUrl,
           withCredentials: false,
         });

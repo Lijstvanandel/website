@@ -60,6 +60,50 @@ export interface CouncilAgendaTopic {
   status?: "in_behandeling" | "hamerstuk_afgehandeld" | "bespreekstuk" | "afgerond" | string;
   hamerstukAfgehandeldAt?: string | null;
   hamerstukAfgehandeldBy?: string | null;
+
+  // Ondersteuningsdossier & Dossiersysteem koppeling
+  compiledDossier?: SupportDossier | null;
+  linkedDossierSlug?: string | null;
+  linkedDossierId?: string | null;
+}
+
+export interface DossierEvidenceItem {
+  id: string;
+  sourceDocName: string;
+  sourceDocUrl?: string;
+  page: number;
+  quote: string;
+  finding: string;
+  type: "contradictie" | "toezegging" | "beleidswijziging" | "financieel" | "historisch_feit";
+  contradictionWith?: {
+    sourceDocName: string;
+    sourceDocUrl?: string;
+    page: number;
+    quote: string;
+  };
+}
+
+export interface SupportDossier {
+  id: string;
+  topicId: string;
+  topicTitle: string;
+  compiledAt: string;
+  compiledBy?: string;
+  status: "compleet" | "geen_referenties" | "fout";
+  historischeLijn: string;
+  bewijslast: DossierEvidenceItem[];
+  klemzetVragen: string[];
+  gefilterdeDocumenten: {
+    filename: string;
+    title: string;
+    dossier: string;
+    url: string;
+    pageCount?: number;
+    matchedTags?: string[];
+  }[];
+  linkedDossierSlug?: string;
+  linkedDossierId?: string;
+  rawAnalysis?: string;
 }
 
 export interface CouncilMeetingScrapeSummary {
