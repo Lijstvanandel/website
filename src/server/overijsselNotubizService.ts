@@ -677,6 +677,78 @@ export async function startOverijsselNotubizSync(options?: {
     existingDocMap.set(`${doc.document_id}_${doc.version}`, doc);
   }
 
+  // Scan physical files on the server to make sure we don't re-download them
+  const physicalDocIds = new Set<string>();
+  if (fs.existsSync(UPLOADS_DIR)) {
+    try {
+      const files = fs.readdirSync(UPLOADS_DIR);
+      let recoveredCount = 0;
+      for (const file of files) {
+        if (!file.endsWith(".pdf")) continue;
+        // Filename is like: 2023-11-20_12345_safe_title.pdf
+        const match = file.match(/^\d{4}-\d{2}-\d{2}_([a-zA-Z0-9_-]+)_/);
+        const docId = match ? match[1] : null;
+        if (docId) {
+          physicalDocIds.add(docId);
+
+          // If this document is missing from existingDocMap, reconstruct a safe metadata entry
+          const docKey = `${docId}_1`;
+          if (!existingDocMap.has(docKey)) {
+            const filePath = path.join(UPLOADS_DIR, file);
+            let size = 0;
+            try {
+              size = fs.statSync(filePath).size;
+            } catch {
+              // ignore
+            }
+
+            // Extract item date from prefix, or default to current year
+            const datePrefixMatch = file.match(/^(\d{4}-\d{2}-\d{2})/);
+            const itemDate = datePrefixMatch ? datePrefixMatch[1] : `${new Date().getFullYear()}-01-01`;
+
+            // Clean title
+            const nameWithoutDateAndId = file.replace(/^\d{4}-\d{2}-\d{2}_[a-zA-Z0-9_-]+_/, "").replace(/\.pdf$/i, "");
+            const displayTitle = nameWithoutDateAndId.replace(/_/g, " ") || `Document ${docId}`;
+
+            // Check if it's Steenwijkerland or Provinciebreed based on the title
+            const lowerTitle = displayTitle.toLowerCase();
+            const isSteenwijkerland = matchLocalKeywordsInText(lowerTitle) !== null;
+
+            const restoredRecord: OverijsselDocumentMetadata = {
+              id: `ov-${docId}`,
+              document_id: docId,
+              version: 1,
+              meeting_id: "openraadsinformatie-hersteld",
+              datum: itemDate,
+              titel: displayTitle,
+              meeting_titel: "Hersteld van server",
+              gremium_naam: "OpenRaadsinformatie Overijssel",
+              document_type: "Vergaderstuk",
+              filetype: "pdf",
+              scope: isSteenwijkerland ? "Lokaal - Steenwijkerland" : "Provinciebreed",
+              filter_methode: "Hersteld van lokale schijf",
+              reden: "Bestand was al fysiek aanwezig op de server",
+              opslaan: true,
+              bestandsnaam: file,
+              lokaal_pad: `/uploads/documents/overijssel/${file}`,
+              notubiz_url: `https://api.notubiz.nl/document/${docId}/1`,
+              grootte_bytes: size,
+              gesynchroniseerd_op: new Date().toISOString(),
+            };
+            existingDocMap.set(docKey, restoredRecord);
+            recoveredCount++;
+          }
+        }
+      }
+      if (recoveredCount > 0) {
+        console.log(`[OVERIJSSEL] ${recoveredCount} physical documents recovered into metadata mapping.`);
+      }
+    } catch (err) {
+      console.warn("[OVERIJSSEL] Failed to scan physical files during initialization:", err);
+    }
+  }
+
+  const updatedDocs = Array.from(existingDocMap.values());
   syncState = {
     isRunning: true,
     isPaused: false,
@@ -686,11 +758,11 @@ export async function startOverijsselNotubizSync(options?: {
     processedMeetings: 0,
     totalDocumentsFound: 0,
     scannedDocuments: 0,
-    savedDocuments: existingDocs.filter((d) => d.opslaan).length,
-    excludedDocuments: existingDocs.filter((d) => !d.opslaan).length,
-    steenwijkerlandCount: existingDocs.filter((d) => d.scope === "Lokaal - Steenwijkerland").length,
-    provinciebreedCount: existingDocs.filter((d) => d.scope === "Provinciebreed").length,
-    externCount: existingDocs.filter((d) => d.scope === "Lokaal - Externe Gemeente").length,
+    savedDocuments: updatedDocs.filter((d) => d.opslaan).length,
+    excludedDocuments: updatedDocs.filter((d) => !d.opslaan).length,
+    steenwijkerlandCount: updatedDocs.filter((d) => d.scope === "Lokaal - Steenwijkerland").length,
+    provinciebreedCount: updatedDocs.filter((d) => d.scope === "Provinciebreed").length,
+    externCount: updatedDocs.filter((d) => d.scope === "Lokaal - Externe Gemeente").length,
     currentAction: "Initialiseren OpenRaadsinformatie Scraper...",
     logs: [],
     startedAt: new Date().toISOString(),
@@ -776,6 +848,13 @@ export async function startOverijsselNotubizSync(options?: {
             syncState.totalDocumentsFound++;
 
             if (!options?.forceRescan && existingDocMap.has(docKey)) {
+              const existingRecord = existingDocMap.get(docKey);
+              const docTitle = item.title || item.summary || `Document ${docId}`;
+              if (existingRecord?.opslaan) {
+                addLog(`[AL OP SERVER] Overgeslagen (al gedownload): ${docTitle}`, "info");
+              } else {
+                addLog(`[AL GECLASSIFICEERD] Overgeslagen (irrelevant): ${docTitle}`, "info");
+              }
               syncState.scannedDocuments++;
               syncState.processedMeetings++;
               continue;
@@ -911,6 +990,13 @@ export async function startOverijsselNotubizSync(options?: {
                         syncState.totalDocumentsFound++;
 
                         if (!options?.forceRescan && existingDocMap.has(docKey)) {
+                          const existingRecord = existingDocMap.get(docKey);
+                          const docTitle = d.name || d.title || ag.title || item.title || `Document ${docId}`;
+                          if (existingRecord?.opslaan) {
+                            addLog(`[AL OP SERVER] Overgeslagen (al gedownload): ${docTitle}`, "info");
+                          } else {
+                            addLog(`[AL GECLASSIFICEERD] Overgeslagen (irrelevant): ${docTitle}`, "info");
+                          }
                           syncState.scannedDocuments++;
                           continue;
                         }
