@@ -67,6 +67,7 @@ import { SystemManager } from "@/components/SystemManager";
 import NewsletterManager from "@/components/admin/NewsletterManager";
 import { StellingenManager } from "@/components/admin/StellingenManager";
 import { CouncilAuditManager } from "@/components/admin/CouncilAuditManager";
+import { OverijsselNotubizManager } from "@/components/council/OverijsselNotubizManager";
 import { WIJKEN_EN_KERNEN } from "@/data/wijken";
 import { NewsItem } from "@/data/news";
 import { hoofdstukken } from "@/data/partijprogramma";
@@ -1155,6 +1156,9 @@ export default function AdminDashboard() {
           </TabsTrigger>
           <TabsTrigger value="council-audit" className="gap-2 text-xs text-accent">
             <FileSearch className="w-4 h-4 text-accent" /> Raadsarchief Auditlogs
+          </TabsTrigger>
+          <TabsTrigger value="overijssel-notubiz" className="gap-2 text-xs text-emerald-600 dark:text-emerald-400">
+            <Building2 className="w-4 h-4" /> Provincie NotuBiz Sync
           </TabsTrigger>
           <TabsTrigger value="system" className="gap-2 text-xs text-accent">
             <Server className="w-4 h-4" /> Systeem & Updates
@@ -3623,6 +3627,11 @@ export default function AdminDashboard() {
         {/* RAADSARCHIEF AUDIT & GEBRUIKSLOGS */}
         <TabsContent value="council-audit">
           <CouncilAuditManager />
+        </TabsContent>
+
+        {/* PROVINCIE OVERIJSSEL NOTUBIZ SCRAPER & EXPORT */}
+        <TabsContent value="overijssel-notubiz">
+          <OverijsselNotubizManager token={token || effectiveToken} />
         </TabsContent>
 
         {/* SYSTEEM, CACHE & GITHUB UPDATES */}

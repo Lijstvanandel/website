@@ -86,6 +86,13 @@ import {
 } from "./src/server/supportDossierService.js";
 import { enrichTopicWithStandpunten } from "./src/lib/standpuntMatcher.js";
 import { scanTopicDocumentsAndMatchStandpunten } from "./src/server/standpuntScannerService.js";
+import {
+  startOverijsselNotubizSync,
+  cancelOverijsselSync,
+  getOverijsselSyncStatus,
+  getSavedOverijsselDocuments,
+  saveOverijsselMetadata
+} from "./src/server/overijsselNotubizService.js";
 
 // Ensure .env is explicitly loaded from working directory in case of PM2 or systemd execution
 function ensureEnvLoaded() {
@@ -8867,6 +8874,103 @@ Sitemap: ${baseUrl}/sitemap.xml
       res.json({ success: true, preferences });
     } catch (err: any) {
       res.status(500).json({ error: "Kon voorkeuren niet opslaan" });
+    }
+  });
+
+  // ==========================================
+  // 12B. Provincie Overijssel NotuBiz Scraper
+  // ==========================================
+  app.post("/api/council/overijssel/start-sync", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
+    try {
+      const { years, forceRescan } = req.body || {};
+      const status = await startOverijsselNotubizSync({ years, forceRescan });
+      res.json({
+        success: true,
+        message: "Synchronisatie Provincie Overijssel NotuBiz gestart",
+        status
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Fout bij starten synchronisatie" });
+    }
+  });
+
+  app.post("/api/council/overijssel/cancel-sync", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    try {
+      const cancelled = cancelOverijsselSync();
+      res.json({ success: true, cancelled, message: "Synchronisatie geannuleerd" });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Fout bij annuleren" });
+    }
+  });
+
+  app.get("/api/council/overijssel/sync-status", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    try {
+      const status = getOverijsselSyncStatus();
+      res.json({ success: true, status });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Fout bij ophalen status" });
+    }
+  });
+
+  app.get("/api/council/overijssel/metadata.csv", optionalAuth, (req: any, res: any) => {
+    try {
+      const csvPath = path.join(process.cwd(), "public", "uploads", "documents", "raadsstukken_metadata_overijssel.csv");
+      const rootCsvPath = path.join(process.cwd(), "raadsstukken_metadata_overijssel.csv");
+
+      let targetPath = fs.existsSync(csvPath) ? csvPath : (fs.existsSync(rootCsvPath) ? rootCsvPath : null);
+
+      if (!targetPath) {
+        // Generate on the fly from stored json if available
+        const items = getSavedOverijsselDocuments();
+        if (items.length > 0) {
+          saveOverijsselMetadata(items);
+          targetPath = csvPath;
+        }
+      }
+
+      if (!targetPath || !fs.existsSync(targetPath)) {
+        return res.status(404).json({ error: "CSV-bestand nog niet gegenereerd. Start eerst de synchronisatie." });
+      }
+
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", 'attachment; filename="raadsstukken_metadata_overijssel.csv"');
+      const stream = fs.createReadStream(targetPath);
+      stream.pipe(res);
+    } catch (err: any) {
+      res.status(500).json({ error: "Fout bij downloaden CSV: " + err.message });
+    }
+  });
+
+  app.get("/api/council/overijssel/documents", optionalAuth, (req: any, res: any) => {
+    try {
+      const docs = getSavedOverijsselDocuments();
+      const { scope, query, year } = req.query;
+
+      let filtered = docs;
+      if (scope && scope !== "all") {
+        filtered = filtered.filter((d) => d.scope === scope);
+      }
+      if (year) {
+        filtered = filtered.filter((d) => d.datum && d.datum.startsWith(String(year)));
+      }
+      if (query && typeof query === "string") {
+        const qLower = query.toLowerCase();
+        filtered = filtered.filter(
+          (d) =>
+            d.titel.toLowerCase().includes(qLower) ||
+            d.meeting_titel.toLowerCase().includes(qLower) ||
+            d.gremium_naam.toLowerCase().includes(qLower) ||
+            d.reden.toLowerCase().includes(qLower)
+        );
+      }
+
+      res.json({
+        total: filtered.length,
+        allTotal: docs.length,
+        documents: filtered,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "Fout bij ophalen documenten: " + err.message });
     }
   });
 

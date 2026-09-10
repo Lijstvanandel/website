@@ -34,6 +34,7 @@ import {
   ThumbsDown,
   Scale,
   BookOpen,
+  Building2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -63,6 +64,7 @@ import {
 import { SupportDossierPanel } from "@/components/SupportDossierPanel";
 import { SecureDocumentViewer } from "@/components/SecureDocumentViewer";
 import { TopicStandpuntenSection } from "@/components/council/TopicStandpuntenSection";
+import { OverijsselNotubizManager } from "@/components/council/OverijsselNotubizManager";
 import { MemberDocument } from "@/types/document";
 
 
@@ -178,9 +180,15 @@ export default function Raadspaneel() {
   );
 
   const initialDossierSlug = slug || searchParams.get("dossier") || null;
-  const activePanelTab = (!isCouncilOrAdmin || searchParams.get("tab") !== "agenda") ? "dossiers" : "agenda";
+  const tabParam = searchParams.get("tab");
+  const activePanelTab: "dossiers" | "agenda" | "overijssel" =
+    tabParam === "overijssel"
+      ? "overijssel"
+      : tabParam === "agenda" && isCouncilOrAdmin
+      ? "agenda"
+      : "dossiers";
 
-  const setActivePanelTab = (tab: "dossiers" | "agenda") => {
+  const setActivePanelTab = (tab: "dossiers" | "agenda" | "overijssel") => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.set("tab", tab);
@@ -884,10 +892,25 @@ export default function Raadspaneel() {
               Vergaderagenda & Bespreekstukken
             </button>
           )}
+
+          <button
+            id="tab-btn-panel-overijssel"
+            onClick={() => setActivePanelTab("overijssel")}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all shrink-0 ${
+              activePanelTab === "overijssel"
+                ? "bg-accent text-accent-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground hover:bg-card border border-border/70"
+            }`}
+          >
+            <Building2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            Provincie Overijssel NotuBiz
+          </button>
         </div>
 
         {activePanelTab === "dossiers" ? (
           <DossierOverview initialDossierSlug={initialDossierSlug} />
+        ) : activePanelTab === "overijssel" ? (
+          <OverijsselNotubizManager token={token || undefined} />
         ) : isCouncilOrAdmin ? (
           <>
             {/* 🚨 VRIJDAGMIDDAG-DUMP ALERT BANNER */}
