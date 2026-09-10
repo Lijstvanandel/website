@@ -290,26 +290,29 @@ function matchExternalKeywordsInText(text: string): string | null {
   return null;
 }
 
+// Cache AI quota exhaustion status to avoid repetitive 429 API errors
+let aiQuotaExhausted = false;
+
 /**
- * 3-Tier document classifier matching the user's exact specification
+ * 3-Tier document classifier:
+ * 1. Blacklist check on titles (Zwolle, Enschede, etc.) -> Skip immediately (0ms)
+ * 2. Whitelist check on titles/content (Steenwijkerland, etc.) -> Keep immediately (0ms)
+ * 3. Text & AI analysis with automatic fallback if AI quota is exhausted or offline
  */
 export async function classificeerProvinciaalDocument(
-  notubizItem: { title: string; meetingTitle?: string; documentId: string | number },
+  notubizItem: {
+    title: string;
+    meetingTitle?: string;
+    documentId?: string | number;
+  },
   pdfBuffer: Buffer
-): Promise<{
-  scope: "Lokaal - Steenwijkerland" | "Provinciebreed" | "Lokaal - Externe Gemeente" | "Ongeclassificeerd";
-  opslaan: boolean;
-  filter_methode: string;
-  reden: string;
-}> {
-  const titel = (notubizItem.title || "").toLowerCase();
-  const contextTitel = `${notubizItem.title || ""} ${notubizItem.meetingTitle || ""}`.toLowerCase();
+): Promise<DocumentClassificationResult> {
+  const contextTitel = `${notubizItem.meetingTitle || ""} ${notubizItem.title || ""}`.toLowerCase();
 
   // TRAP 1a: Zwarte lijst check (Gratis & snel)
-  const matchedBlacklist = matchExternalKeywordsInText(titel);
-  if (matchedBlacklist) {
-    const msg = `Zwarte lijst: Bevat externe gemeente '${matchedBlacklist}' in titel`;
-    console.log(`[VERNIETIGD] Gaat over externe gemeente: ${notubizItem.title} (${matchedBlacklist})`);
+  const matchedBlacklist = matchExternalKeywordsInText(contextTitel);
+  if (matchedBlacklist && !matchLocalKeywordsInText(contextTitel)) {
+    const msg = `Zwarte lijst: Externe gemeente '${matchedBlacklist}' in context`;
     return {
       scope: "Lokaal - Externe Gemeente",
       opslaan: false,
@@ -322,7 +325,6 @@ export async function classificeerProvinciaalDocument(
   const matchedWhitelist = matchLocalKeywordsInText(contextTitel);
   if (matchedWhitelist) {
     const msg = `Witte lijst: Lokaal Steenwijkerland trefwoord '${matchedWhitelist}' gedetecteerd`;
-    console.log(`[BINGO] Lokaal Steenwijkerland gedetecteerd: ${notubizItem.title} (${matchedWhitelist})`);
     return {
       scope: "Lokaal - Steenwijkerland",
       opslaan: true,
@@ -331,13 +333,9 @@ export async function classificeerProvinciaalDocument(
     };
   }
 
-  // TRAP 2: Gemini Flash Analyse (Voor de generieke/provinciebrede titels)
-  console.log(`[AI CHECK] Generieke titel gedetecteerd, tekst extractie voor: ${notubizItem.title}`);
-  
-  // Alleen de eerste 2 pagina's extraheren (Token-besparing & snelheid)
+  // TRAP 2: Tekstextractie van de eerste 2 pagina's
   const introTekst = await extractIntroTextFromPdfBuffer(pdfBuffer, 2);
 
-  // Als de bodytekst expliciet een zwarte lijst gemeente bevat en GEEN Steenwijkerland
   if (introTekst) {
     const hasExternalInBody = matchExternalKeywordsInText(introTekst);
     const hasSteenwijkInBody = matchLocalKeywordsInText(introTekst);
@@ -350,21 +348,31 @@ export async function classificeerProvinciaalDocument(
         reden: `Tekstuele match: Steenwijkerland term '${hasSteenwijkInBody}' gevonden in documentintro`,
       };
     }
+
+    if (hasExternalInBody && !hasSteenwijkInBody) {
+      // Externe gemeente prominent aanwezig in document
+      return {
+        scope: "Lokaal - Externe Gemeente",
+        opslaan: false,
+        filter_methode: "Zwarte lijst (Documenttekst)",
+        reden: `Tekstuele match: Externe gemeente '${hasExternalInBody}' in documenttekst`,
+      };
+    }
   }
 
-  // AI prompt opstellen
+  // TRAP 3: AI Analyse (als API beschikbaar is en quota niet op is)
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || !introTekst || introTekst.length < 20) {
-    // Geen AI beschikbaar of geen tekst -> veiligheidshalve markeren als Provinciebreed/Ongeclassificeerd
+  if (!apiKey || aiQuotaExhausted || !introTekst || introTekst.length < 20) {
+    // Directe snelle en veilige fallback zonder API vertraging
     return {
       scope: "Provinciebreed",
       opslaan: true,
-      filter_methode: "Heuristische Provinciebrede Default",
-      reden: "Generiek provinciaal document zonder externe uitsluiting",
+      filter_methode: aiQuotaExhausted ? "Regelgebaseerde Fallback (AI Quota Vol)" : "Heuristische Provinciebrede Default",
+      reden: "Generiek provinciaal document behouden voor provinciaal beleidsoverzicht",
     };
   }
 
-  const prompt = `Je bent een strenge data-classificeerder voor de lokale politieke partij 'Lijst van Andel' in Steenwijkerland.
+  const prompt = `Je bent een data-classificeerder voor de lokale politieke partij 'Lijst van Andel' in Steenwijkerland.
 Analyseer deze inleiding/samenvatting van een provinciaal document uit Overijssel:
 Titel: "${notubizItem.title}"
 
@@ -375,8 +383,8 @@ Kies EXACT één van deze drie categorieën:
 
 Retourneer uitsluitend JSON in dit exacte format: {"scope": "Provinciebreed" | "Steenwijkerland" | "Extern", "reden": "Korte toelichting"}
 
-Documenttekst (eerste 2 pagina's):
-${introTekst.slice(0, 3000)}`;
+Documenttekst:
+${introTekst.slice(0, 2500)}`;
 
   try {
     const ai = new GoogleGenAI({ apiKey });
@@ -391,7 +399,11 @@ ${introTekst.slice(0, 3000)}`;
           responseMimeType: "application/json",
         },
       });
-    } catch {
+    } catch (modelErr: any) {
+      if (modelErr?.status === 429 || modelErr?.message?.includes("429") || modelErr?.message?.includes("credits are depleted")) {
+        aiQuotaExhausted = true;
+        throw modelErr;
+      }
       response = await ai.models.generateContent({
         model: "gemini-3.8-flash",
         contents: prompt,
@@ -406,11 +418,7 @@ ${introTekst.slice(0, 3000)}`;
     const cleanJson = raw.replace(/```json/gi, "").replace(/```/g, "").trim();
     const aiOordeel = JSON.parse(cleanJson);
 
-    // Anti-Rate Limit Throttle: 4 seconden wachten voor de volgende call
-    await sleep(4000);
-
     if (aiOordeel.scope === "Extern") {
-      console.log(`[AI VERNIETIGD] Flash beoordeelt als extern: ${aiOordeel.reden}`);
       return {
         scope: "Lokaal - Externe Gemeente",
         opslaan: false,
@@ -420,7 +428,6 @@ ${introTekst.slice(0, 3000)}`;
     }
 
     const finalScope = aiOordeel.scope === "Steenwijkerland" ? "Lokaal - Steenwijkerland" : "Provinciebreed";
-    console.log(`[AI GOEDGEKEURD] Scope: ${finalScope} | Reden: ${aiOordeel.reden}`);
     return {
       scope: finalScope,
       opslaan: true,
@@ -428,13 +435,19 @@ ${introTekst.slice(0, 3000)}`;
       reden: aiOordeel.reden || "AI classificatie: relevant voor provincie/Steenwijkerland",
     };
   } catch (error: any) {
-    console.error(`[API FOUT] Falen bij classificatie van ${notubizItem.title}:`, error?.message || error);
-    // Bij twijfel of API-storing: bewaar veiligheidshalve als Provinciebreed
+    if (error?.status === 429 || error?.message?.includes("429") || error?.message?.includes("RESOURCE_EXHAUSTED") || error?.message?.includes("credits are depleted")) {
+      if (!aiQuotaExhausted) {
+        console.warn("[AI NOTITIE] Gemini API quota bereikt/op. Overschakelen naar snelle autonome regelgebaseerde classificatie.");
+        aiQuotaExhausted = true;
+      }
+    } else {
+      console.warn(`[AI WAARSCHUWING] Fallback bij classificatie van '${notubizItem.title}':`, error?.message || error);
+    }
     return {
       scope: "Provinciebreed",
       opslaan: true,
-      filter_methode: "AI Fallback (Veiligheidsbehoud)",
-      reden: "API rate-limit of storing; veiligheidshalve behouden voor provinciaal overzicht",
+      filter_methode: "Regelgebaseerde Fallback",
+      reden: "Provinciaal document veiligheidshalve behouden voor provinciaal overzicht",
     };
   }
 }
