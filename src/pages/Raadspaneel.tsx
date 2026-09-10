@@ -1676,7 +1676,7 @@ export default function Raadspaneel() {
                                             ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25"
                                             : "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/25"
                                         }`}
-                                        title={`Standpunt H${dsp.hoofdstukNr}.${dsp.standpuntNr}: ${dsp.standpuntTitel}\n${dsp.explanation}`}
+                                        title={`Standpunt H${dsp.hoofdstukNr}.${dsp.standpuntNr}: ${dsp.standpuntTitel}${dsp.matchedReason ? `\n${dsp.matchedReason}` : (dsp as any).explanation ? `\n${(dsp as any).explanation}` : ''}${dsp.citedPassage ? `\n\nCitaat: "${dsp.citedPassage}"` : ''}`}
                                       >
                                         {dsp.stance === "negatief" ? (
                                           <ThumbsDown className="w-2.5 h-2.5 text-rose-600 dark:text-rose-400" />

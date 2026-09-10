@@ -30,6 +30,7 @@ export interface MatchedStandpunt {
   relevanceScore: number; // 0 - 100
   matchedKeywords: string[];
   sourceDocumentTitles?: string[];
+  citedPassage?: string; // Geciteerde passage of feitelijke referentie uit de gescande raadsstukken
   manuallyAdjusted?: boolean;
   adjustedBy?: string;
   adjustedAt?: string;
@@ -41,6 +42,7 @@ export interface DocumentMatchedStandpunt {
   standpuntTitel: string;
   stance: StandpuntStance;
   matchedReason?: string;
+  citedPassage?: string; // Geciteerde passage uit dit specifieke document
 }
 
 export interface TopicStandpuntSummary {

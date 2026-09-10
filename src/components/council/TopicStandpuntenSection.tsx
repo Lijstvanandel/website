@@ -256,14 +256,14 @@ export function TopicStandpuntenSection({
             onClick={handleRunAiAnalysis}
             disabled={isAiAnalyzing}
             className="h-8 text-xs px-2.5 border-accent/40 text-accent hover:bg-accent/10 rounded-lg gap-1.5"
-            title="Diepe AI-verificatie met alle 10 hoofdstukken van het partijprogramma"
+            title="Scan alle raadsstukken en koppel alle relevante standpunten van Lijst van Andel (meerdere standpunten mogelijk via Gemini)"
           >
             {isAiAnalyzing ? (
               <RefreshCw className="w-3 h-3 animate-spin" />
             ) : (
               <Sparkles className="w-3 h-3 text-accent" />
             )}
-            <span>{isAiAnalyzing ? "Analyseren..." : "AI Analyse"}</span>
+            <span>{isAiAnalyzing ? "Stukken scannen..." : "Stukken Scannen (AI)"}</span>
           </Button>
 
           <Button
@@ -568,6 +568,19 @@ export function TopicStandpuntenSection({
                     <span>{m.explanation}</span>
                   </div>
                 </div>
+
+                {/* Scanned Document Passage */}
+                {m.citedPassage && (
+                  <div className="text-xs bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/20 text-foreground/90 p-2.5 rounded-lg mb-2 flex items-start gap-2">
+                    <FileText className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-semibold text-amber-800 dark:text-amber-300 block text-[11px] mb-0.5">
+                        Gevonden passage in gescande stukken:
+                      </span>
+                      <span className="italic text-[11.5px] leading-relaxed">"{m.citedPassage}"</span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Party Program Original Quote (expandable) */}
                 {m.standpuntText && (

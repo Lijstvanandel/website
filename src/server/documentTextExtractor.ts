@@ -214,6 +214,101 @@ function escapeHtml(str: string): string {
 }
 
 /**
+ * Get or extract text content from a CouncilDocument (local or remote iBabs PDF)
+ */
+export async function getCouncilDocumentContent(doc: {
+  id?: string;
+  title?: string;
+  url?: string;
+}): Promise<string> {
+  if (!doc) return "";
+  loadCache();
+
+  const cacheKey = (doc.id || doc.url || doc.title || "").toLowerCase();
+  if (cacheKey && textCache.has(cacheKey)) {
+    return textCache.get(cacheKey) || "";
+  }
+  if (doc.title && textCache.has(doc.title.toLowerCase())) {
+    return textCache.get(doc.title.toLowerCase()) || "";
+  }
+
+  // 1. Try resolving locally if filename can be deduced
+  if (doc.title) {
+    const localContent = await getDocumentContent(doc.title);
+    if (localContent) {
+      if (cacheKey) textCache.set(cacheKey, localContent);
+      return localContent;
+    }
+  }
+
+  // 2. If it has a remote URL, fetch the document and parse its text
+  if (doc.url && (doc.url.startsWith("http") || doc.url.startsWith("/"))) {
+    try {
+      const BASE_STEENWIJK = "https://steenwijkerland.bestuurlijkeinformatie.nl";
+      let targetUrl = doc.url.startsWith("/") ? `${BASE_STEENWIJK}${doc.url}` : doc.url;
+
+      try {
+        const parsed = new URL(targetUrl);
+        const docId = parsed.searchParams.get("documentId");
+        const agendaItemId = parsed.searchParams.get("agendaItemId");
+        if (docId && agendaItemId && (parsed.pathname.includes("/Agenda/Document") || parsed.pathname.includes("/Document"))) {
+          targetUrl = `${BASE_STEENWIJK}/Document/LoadAgendaItemDocument/${docId}?agendaItemId=${agendaItemId}`;
+        }
+      } catch {
+        // use targetUrl as-is
+      }
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 9000);
+
+      const res = await fetch(targetUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/1.0",
+          "Accept": "application/pdf,*/*",
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (res.ok) {
+        const buf = Buffer.from(await res.arrayBuffer());
+        if (buf.length > 0) {
+          const pdfParseModule = await import("pdf-parse");
+          const PDFParseClass = (pdfParseModule as any).PDFParse || (pdfParseModule as any).default?.PDFParse || (pdfParseModule as any).default;
+
+          let extractedText = "";
+          if (typeof PDFParseClass === "function") {
+            try {
+              const parser = new PDFParseClass({ data: buf });
+              const result = await parser.getText();
+              extractedText = result?.text || "";
+            } catch {
+              const result = await (PDFParseClass as any)(buf);
+              extractedText = result?.text || "";
+            }
+          } else if (typeof (pdfParseModule as any) === "function") {
+            const result = await (pdfParseModule as any)(buf);
+            extractedText = result?.text || "";
+          }
+
+          if (extractedText && extractedText.trim().length > 0) {
+            const cleanText = extractedText.replace(/\r\n/g, "\n").trim();
+            if (cacheKey) textCache.set(cacheKey, cleanText);
+            if (doc.title) textCache.set(doc.title.toLowerCase(), cleanText);
+            saveCache();
+            return cleanText;
+          }
+        }
+      }
+    } catch (fetchErr: any) {
+      console.warn(`[TEXT EXTRACTOR] Kon remote raadsstuk niet ophalen voor '${doc.title}':`, fetchErr?.message || fetchErr);
+    }
+  }
+
+  return "";
+}
+
+/**
  * Asynchronously index a single newly uploaded document
  */
 export async function indexUploadedFile(filename: string, filePath?: string): Promise<void> {

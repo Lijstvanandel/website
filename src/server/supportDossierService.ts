@@ -12,6 +12,7 @@ import { Dossier, DossierDocument } from "../types/dossier.js";
 import { slugify, createCustomDossier, updateDossier, getAllDossiers } from "./dossierManager.js";
 import { getDbFromSqlite, saveDbToSqlite, persistSqlite } from "./sqliteDatabase.js";
 import { getDocumentContent, normalizeForSearch } from "./documentTextExtractor.js";
+import { scanTopicDocumentsAndMatchStandpunten } from "./standpuntScannerService.js";
 
 const METADATA_PATH = path.join(process.cwd(), "public", "data", "raadsstukken_metadata_tussentijds.json");
 const UPLOADS_DOCS_DIR = path.join(process.cwd(), "public", "uploads", "documents");
@@ -816,6 +817,14 @@ export async function compileSupportDossierForTopic(
 
   // 2. Exact Extraction & AI Analysis
   const analysis = await compileEvidenceAndAnalysis(topic, filtered, matchedTags);
+
+  // 2b. Deep Document Scan & Multiple Party Standpoints Matching with Gemini
+  try {
+    console.log(`[SUPPORT DOSSIER] Scannen van vergaderstukken voor meervoudige partijstandpunten...`);
+    await scanTopicDocumentsAndMatchStandpunten(topic, db);
+  } catch (scanErr) {
+    console.warn(`[SUPPORT DOSSIER] Waarschuwing bij scannen van standpunten:`, scanErr);
+  }
 
   // 3. Ensure Verifiable PDF Files with Real Page Highlights
   for (const item of analysis.bewijslast) {
