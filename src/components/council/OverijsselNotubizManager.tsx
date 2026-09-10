@@ -18,6 +18,8 @@ import {
   Terminal,
   ShieldCheck,
   Calendar,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -100,6 +102,12 @@ export const OverijsselNotubizManager: React.FC<OverijsselNotubizManagerProps> =
   const [showLogs, setShowLogs] = useState<boolean>(true);
   const [previewDocUrl, setPreviewDocUrl] = useState<string | null>(null);
   const [previewDocTitle, setPreviewDocTitle] = useState<string>("");
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, scopeFilter, yearFilter, pageSize]);
 
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -492,88 +500,152 @@ export const OverijsselNotubizManager: React.FC<OverijsselNotubizManagerProps> =
                   </td>
                 </tr>
               ) : (
-                documents.map((doc) => {
-                  const isSteenwijk = doc.scope === "Lokaal - Steenwijkerland";
-                  const isProvinciebreed = doc.scope === "Provinciebreed";
-                  const isExtern = doc.scope === "Lokaal - Externe Gemeente";
+                (() => {
+                  const totalPages = Math.ceil(documents.length / pageSize) || 1;
+                  const safeCurrentPage = Math.min(currentPage, totalPages);
+                  const startIndex = (safeCurrentPage - 1) * pageSize;
+                  const endIndex = Math.min(startIndex + pageSize, documents.length);
+                  const paginatedDocs = documents.slice(startIndex, endIndex);
 
-                  return (
-                    <tr
-                      key={doc.id || doc.document_id}
-                      className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition"
-                    >
-                      <td className="py-2.5 px-3 whitespace-nowrap text-slate-600 dark:text-slate-400 font-mono">
-                        {doc.datum}
-                      </td>
-                      <td className="py-2.5 px-3 max-w-xs sm:max-w-md">
-                        <div className="font-semibold text-slate-900 dark:text-white line-clamp-1">
-                          {doc.titel}
-                        </div>
-                        <div className="text-[11px] text-slate-500 line-clamp-1">
-                          {doc.meeting_titel} • {doc.gremium_naam}
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-3 whitespace-nowrap">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
-                            isSteenwijk
-                              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                              : isProvinciebreed
-                              ? "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300"
-                              : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
-                          }`}
-                        >
-                          {doc.scope}
-                        </span>
-                        {doc.opslaan ? (
-                          <span className="block text-[10px] text-emerald-600 mt-0.5">● Opgeslagen</span>
-                        ) : (
-                          <span className="block text-[10px] text-amber-600 mt-0.5">○ Genegeerd</span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 max-w-xs">
-                        <div className="font-medium text-slate-700 dark:text-slate-300 text-[11px]">
-                          {doc.filter_methode}
-                        </div>
-                        <div className="text-[11px] text-slate-500 line-clamp-2">
-                          {doc.reden}
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1">
-                          {doc.lokaal_pad ? (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 text-xs px-2 gap-1 text-blue-600 hover:text-blue-700"
-                              onClick={() => {
-                                setPreviewDocUrl(doc.lokaal_pad);
-                                setPreviewDocTitle(doc.titel);
-                              }}
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                              Bekijk
-                            </Button>
-                          ) : doc.notubiz_url ? (
-                            <a
-                              href={doc.notubiz_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800 p-1"
-                            >
-                              <ExternalLink className="w-3.5 h-3.5" />
-                              NotuBiz
-                            </a>
-                          ) : null}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
+                  return paginatedDocs.map((doc) => {
+                    const isSteenwijk = doc.scope === "Lokaal - Steenwijkerland";
+                    const isProvinciebreed = doc.scope === "Provinciebreed";
+                    const isExtern = doc.scope === "Lokaal - Externe Gemeente";
+
+                    return (
+                      <tr
+                        key={doc.id || doc.document_id}
+                        className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition"
+                      >
+                        <td className="py-2.5 px-3 whitespace-nowrap text-slate-600 dark:text-slate-400 font-mono">
+                          {doc.datum}
+                        </td>
+                        <td className="py-2.5 px-3 max-w-xs sm:max-w-md">
+                          <div className="font-semibold text-slate-900 dark:text-white line-clamp-1">
+                            {doc.titel}
+                          </div>
+                          <div className="text-[11px] text-slate-500 line-clamp-1">
+                            {doc.meeting_titel} • {doc.gremium_naam}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                              isSteenwijk
+                                ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                                : isProvinciebreed
+                                ? "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300"
+                                : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                            }`}
+                          >
+                            {doc.scope}
+                          </span>
+                          {doc.opslaan ? (
+                            <span className="block text-[10px] text-emerald-600 mt-0.5">● Opgeslagen</span>
+                          ) : (
+                            <span className="block text-[10px] text-amber-600 mt-0.5">○ Genegeerd</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 max-w-xs">
+                          <div className="font-medium text-slate-700 dark:text-slate-300 text-[11px]">
+                            {doc.filter_methode}
+                          </div>
+                          <div className="text-[11px] text-slate-500 line-clamp-2">
+                            {doc.reden}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1">
+                            {doc.lokaal_pad ? (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 text-xs px-2 gap-1 text-blue-600 hover:text-blue-700"
+                                onClick={() => {
+                                  setPreviewDocUrl(doc.lokaal_pad);
+                                  setPreviewDocTitle(doc.titel);
+                                }}
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                Bekijk
+                              </Button>
+                            ) : doc.notubiz_url ? (
+                              <a
+                                href={doc.notubiz_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800 p-1"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                                NotuBiz
+                              </a>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  });
+                })()
               )}
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Controls */}
+        {documents.length > 0 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400">
+            <div className="flex items-center gap-2">
+              <span className="font-medium">Toon per pagina:</span>
+              <Select
+                value={String(pageSize)}
+                onValueChange={(val) => {
+                  setPageSize(Number(val));
+                  setCurrentPage(1);
+                }}
+              >
+                <SelectTrigger className="w-[110px] text-xs h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10 per pagina</SelectItem>
+                  <SelectItem value="20">20 per pagina</SelectItem>
+                  <SelectItem value="50">50 per pagina</SelectItem>
+                </SelectContent>
+              </Select>
+              <span className="text-slate-500 ml-1">
+                ({(currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, documents.length)} van {documents.length} documenten)
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 px-2.5 text-xs gap-1"
+                disabled={currentPage <= 1}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                Vorige
+              </Button>
+
+              <span className="px-2 font-medium">
+                Pagina {currentPage} van {Math.ceil(documents.length / pageSize) || 1}
+              </span>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 px-2.5 text-xs gap-1"
+                disabled={currentPage >= (Math.ceil(documents.length / pageSize) || 1)}
+                onClick={() => setCurrentPage((p) => Math.min(Math.ceil(documents.length / pageSize) || 1, p + 1))}
+              >
+                Volgende
+                <ChevronRight className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* PDF Preview Modal */}
