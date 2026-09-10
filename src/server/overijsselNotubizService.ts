@@ -702,16 +702,17 @@ export async function startOverijsselNotubizSync(options?: {
 
   (async () => {
     try {
-      let page = 1;
+      let offset = 0;
       let stopPaging = false;
 
       while (!stopPaging && !signal.aborted) {
-        syncState.currentAction = `OpenRaadsinformatie ophalen pagina ${page}...`;
-        addLog(`Ophalen pagina ${page} van OpenRaadsinformatie (organization=overijssel, sort=date_desc)...`, "info");
+        const pageNum = Math.floor(offset / 25) + 1;
+        syncState.currentAction = `OpenRaadsinformatie ophalen resultaten (offset ${offset})...`;
+        addLog(`Ophalen offset ${offset} (ca. pagina ${pageNum}) van OpenRaadsinformatie (organization=overijssel, sort=date_desc)...`, "info");
 
         let searchRes: { results: any[]; totalCount: number; hasMore: boolean } | null = null;
         try {
-          const url = `https://zoek.openraadsinformatie.nl/api/search?organization=overijssel&sort=date_desc&page=${page}`;
+          const url = `https://zoek.openraadsinformatie.nl/api/search?organization=overijssel&sort=date_desc&offset=${offset}&limit=50`;
           const res = await fetchWithRetry(url, { signal, headers: { Accept: "application/json" } }, 3, 25000);
           if (res.ok) {
             const data = await res.json();
@@ -722,16 +723,16 @@ export async function startOverijsselNotubizSync(options?: {
             };
           }
         } catch (err: any) {
-          addLog(`Fout bij ophalen pagina ${page} van OpenRaadsinformatie: ${err.message}`, "warn");
+          addLog(`Fout bij ophalen offset ${offset} van OpenRaadsinformatie: ${err.message}`, "warn");
           break;
         }
 
         if (!searchRes || !searchRes.results || searchRes.results.length === 0) {
-          addLog(`Geen verdere resultaten gevonden op OpenRaadsinformatie pagina ${page}.`, "info");
+          addLog(`Geen verdere resultaten gevonden op OpenRaadsinformatie bij offset ${offset}.`, "info");
           break;
         }
 
-        if (page === 1 && searchRes.totalCount > 0) {
+        if (offset === 0 && searchRes.totalCount > 0) {
           syncState.totalMeetingsFound = searchRes.totalCount;
           addLog(`OpenRaadsinformatie: ca. ${searchRes.totalCount} resultaten beschikbaar voor Overijssel.`, "info");
         }
@@ -1006,7 +1007,7 @@ export async function startOverijsselNotubizSync(options?: {
           break;
         }
 
-        page++;
+        offset += searchRes.results.length;
       }
 
       // Final save
