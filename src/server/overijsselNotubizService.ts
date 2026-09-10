@@ -244,12 +244,11 @@ async function extractIntroTextFromPdfBuffer(pdfBuffer: Buffer, maxPages = 2): P
   return "";
 }
 
-// Disambiguated body-text keywords (to avoid false positives on words like "in Nederland")
+// Disambiguated body-text keywords (to avoid false positives on words like "in Nederland" or "stuk" matching "tuk")
 function matchLocalKeywordsInText(text: string): string | null {
   if (!text) return null;
   const lower = text.toLowerCase();
 
-  // High-confidence Steenwijkerland keywords that are distinct
   for (const kw of LOKAAL_KEYWORDS) {
     if (kw === "nederland") {
       // Avoid matching generic country "Nederland"
@@ -258,13 +257,11 @@ function matchLocalKeywordsInText(text: string): string | null {
       }
       continue;
     }
-    if (kw === "baars" || kw === "doosje" || kw === "thij" || kw === "de pol") {
-      const regex = new RegExp(`\\b${kw}\\b`, "i");
-      if (regex.test(lower)) return kw;
-      continue;
-    }
 
-    if (lower.includes(kw)) {
+    // Always use word boundary so words like "agendastuk" do not match the village "tuk"
+    const escaped = kw.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+    const regex = new RegExp(`\\b${escaped}\\b`, "i");
+    if (regex.test(lower)) {
       return kw;
     }
   }
@@ -433,6 +430,75 @@ ${introTekst.slice(0, 3000)}`;
 }
 
 /**
+ * Robust fetch with automatic retry, exponential backoff, and timeout
+ */
+async function fetchWithRetry(url: string, options: any = {}, maxRetries = 4, timeoutMs = 25000): Promise<Response> {
+  let lastError: any = null;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+      // Handle custom or external abort signal
+      if (options.signal) {
+        options.signal.addEventListener("abort", () => controller.abort(), { once: true });
+      }
+
+      const headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        ...(options.headers || {}),
+      };
+
+      const res = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+        headers,
+      });
+
+      clearTimeout(timer);
+
+      if (res.ok || res.status === 404) {
+        return res;
+      }
+
+      if (res.status >= 500 && attempt < maxRetries) {
+        await sleep(1500 * attempt);
+        continue;
+      }
+
+      return res;
+    } catch (err: any) {
+      lastError = err;
+      if (options.signal?.aborted) {
+        throw err;
+      }
+      if (attempt < maxRetries) {
+        await sleep(1500 * attempt);
+      }
+    }
+  }
+  throw lastError || new Error(`Fetch failed after ${maxRetries} attempts: ${url}`);
+}
+
+/**
+ * Normalize NotuBiz document download URL to use official open API endpoint
+ */
+function getCanonicalNotubizDownloadUrl(documentId: string | number, version: string | number = 1, rawUrl?: string): string {
+  // Always use the direct API endpoint for clean PDF bytes without Cloudflare HTML challenges
+  if (documentId) {
+    return `https://api.notubiz.nl/document/${documentId}/${version || 1}`;
+  }
+  if (rawUrl) {
+    if (rawUrl.startsWith("http")) return rawUrl;
+    if (rawUrl.startsWith("//")) return `https:${rawUrl}`;
+    if (rawUrl.startsWith("api.notubiz.nl")) return `https://${rawUrl}`;
+    return `https://api.notubiz.nl/${rawUrl.replace(/^\/+/, "")}`;
+  }
+  return `https://api.notubiz.nl/document/${documentId}/${version || 1}`;
+}
+
+/**
  * Fetch all events/meetings for a given year from NotuBiz API (Org 1750: Provincie Overijssel)
  */
 async function fetchOverijsselEventsForYear(year: number, signal?: AbortSignal): Promise<any[]> {
@@ -443,10 +509,7 @@ async function fetchOverijsselEventsForYear(year: number, signal?: AbortSignal):
   url.searchParams.set("format", "json");
   url.searchParams.set("version", "1.17.0");
 
-  const res = await fetch(url.toString(), {
-    headers: { "User-Agent": "LijstVanAndel-CouncilSync/1.0" },
-    signal,
-  });
+  const res = await fetchWithRetry(url.toString(), { signal });
 
   if (!res.ok) {
     throw new Error(`NotuBiz API returned ${res.status} for year ${year}`);
@@ -461,17 +524,31 @@ async function fetchOverijsselEventsForYear(year: number, signal?: AbortSignal):
  */
 async function fetchMeetingDetails(meetingId: number | string, signal?: AbortSignal): Promise<any> {
   const url = `https://api.notubiz.nl/events/meetings/${meetingId}?format=json&version=1.17.0`;
-  const res = await fetch(url, {
-    headers: { "User-Agent": "LijstVanAndel-CouncilSync/1.0" },
-    signal,
-  });
-
-  if (!res.ok) {
+  try {
+    const res = await fetchWithRetry(url, { signal }, 3, 20000);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.meeting || null;
+  } catch (err: any) {
+    console.warn(`[OVERIJSSEL] Error fetching meeting ${meetingId}:`, err?.message || err);
     return null;
   }
+}
 
-  const data = await res.json();
-  return data.meeting || null;
+/**
+ * Fetch module items (Statenvoorstellen, Moties, etc.)
+ */
+async function fetchModuleItems(moduleId: number, signal?: AbortSignal): Promise<any[]> {
+  const url = `https://api.notubiz.nl/organisations/1750/modules/${moduleId}/items?format=json&version=1.17.0`;
+  try {
+    const res = await fetchWithRetry(url, { signal }, 3, 30000);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.items || [];
+  } catch (err: any) {
+    console.warn(`[OVERIJSSEL] Error fetching module ${moduleId} items:`, err?.message || err);
+    return [];
+  }
 }
 
 /**
@@ -638,7 +715,7 @@ export async function startOverijsselNotubizSync(options?: {
           // Process each candidate document
           for (const cand of candidateDocs) {
             if (signal.aborted) break;
-            if (!cand.documentId || !cand.url) continue;
+            if (!cand.documentId) continue;
 
             const docKey = `${cand.documentId}_${cand.version}`;
             if (!options?.forceRescan && existingDocMap.has(docKey)) {
@@ -648,12 +725,9 @@ export async function startOverijsselNotubizSync(options?: {
 
             // Download PDF for analysis
             let pdfBuffer: Buffer | null = null;
+            const canonicalUrl = getCanonicalNotubizDownloadUrl(cand.documentId, cand.version, cand.url);
             try {
-              const downloadUrl = cand.url.startsWith("http") ? cand.url : `https://api.notubiz.nl/document/${cand.documentId}/${cand.version}`;
-              const docRes = await fetch(downloadUrl, {
-                headers: { "User-Agent": "LijstVanAndel-CouncilSync/1.0" },
-                signal,
-              });
+              const docRes = await fetchWithRetry(canonicalUrl, { signal }, 3, 25000);
               if (docRes.ok) {
                 const arr = await docRes.arrayBuffer();
                 pdfBuffer = Buffer.from(arr);
@@ -709,7 +783,7 @@ export async function startOverijsselNotubizSync(options?: {
               opslaan: classification.opslaan,
               bestandsnaam: classification.opslaan ? filename : "",
               lokaal_pad: classification.opslaan ? localRelPath : "",
-              notubiz_url: cand.url,
+              notubiz_url: canonicalUrl,
               grootte_bytes: pdfBuffer.length,
               gesynchroniseerd_op: new Date().toISOString(),
             };
@@ -739,6 +813,147 @@ export async function startOverijsselNotubizSync(options?: {
           }
 
           syncState.processedMeetings++;
+        }
+      }
+
+      // FASE 2: Synchroniseer NotuBiz Modules (Statenvoorstellen, Moties & Amendementen, Schriftelijke Vragen, etc.)
+      const MODULE_DEFINITIONS = [
+        { id: 19, name: "Statenvoorstellen" },
+        { id: 6, name: "Moties en Amendementen" },
+        { id: 4, name: "Schriftelijke vragen" },
+        { id: 3, name: "Toezeggingen" },
+      ];
+
+      const minTargetYear = Math.min(...targetYears);
+
+      for (const mod of MODULE_DEFINITIONS) {
+        if (signal.aborted) break;
+        syncState.currentAction = `NotuBiz Module ophalen: ${mod.name}...`;
+        addLog(`Ophalen NotuBiz module '${mod.name}' (ID ${mod.id})...`, "info");
+
+        let modItems: any[] = [];
+        try {
+          modItems = await fetchModuleItems(mod.id, signal);
+        } catch (err: any) {
+          addLog(`Fout bij ophalen module ${mod.name}: ${err?.message}`, "warn");
+          continue;
+        }
+
+        addLog(`Module '${mod.name}': ${modItems.length} items gevonden. Filteren op periode >= ${minTargetYear}...`, "info");
+
+        for (const item of modItems) {
+          if (signal.aborted) break;
+          const itemDateRaw = item.date || item.attributes?.find((a: any) => a.datatype === "datetime" || a.datatype === "date")?.value || "";
+          const itemYear = parseInt((itemDateRaw || "").slice(0, 4), 10);
+
+          if (itemYear && itemYear < minTargetYear) {
+            continue; // Buiten het gewenste tijdsvenster
+          }
+
+          const itemTitle = item.title || item.attributes?.find((a: any) => a.id === 1)?.value || `${mod.name} ${item.id}`;
+          const itemDate = itemDateRaw.split(" ")[0] || `${minTargetYear}-01-01`;
+
+          const rawDocs = item.attachments?.document || item.documents || [];
+          const docList = Array.isArray(rawDocs) ? rawDocs : [rawDocs];
+
+          for (const d of docList) {
+            if (signal.aborted) break;
+            const docId = String(d.id || d["@attributes"]?.id || "");
+            const docVersion = d.version || d["@attributes"]?.version || 1;
+            if (!docId) continue;
+
+            const docKey = `${docId}_${docVersion}`;
+            if (!options?.forceRescan && existingDocMap.has(docKey)) {
+              syncState.scannedDocuments++;
+              continue;
+            }
+
+            const docTitle = d.title || itemTitle;
+            const canonicalUrl = getCanonicalNotubizDownloadUrl(docId, docVersion, d.url || d.self);
+
+            syncState.currentAction = `Analyseren ${mod.name}: ${docTitle.slice(0, 35)}...`;
+
+            let pdfBuffer: Buffer | null = null;
+            try {
+              const docRes = await fetchWithRetry(canonicalUrl, { signal }, 3, 25000);
+              if (docRes.ok) {
+                const arr = await docRes.arrayBuffer();
+                pdfBuffer = Buffer.from(arr);
+              }
+            } catch (err: any) {
+              console.warn(`[OVERIJSSEL] Download failed for module doc ${docId}:`, err?.message);
+            }
+
+            if (!pdfBuffer || pdfBuffer.length === 0) continue;
+
+            const classification = await classificeerProvinciaalDocument(
+              {
+                title: docTitle,
+                meetingTitle: `${mod.name} - ${itemTitle}`,
+                documentId: docId,
+              },
+              pdfBuffer
+            );
+
+            const safeTitle = sanitizeFilename(docTitle);
+            const filename = `${itemDate}_${docId}_${safeTitle}.pdf`;
+            const localRelPath = `/uploads/documents/overijssel/${filename}`;
+            const localAbsPath = path.join(UPLOADS_DIR, filename);
+
+            if (classification.opslaan) {
+              fs.writeFileSync(localAbsPath, pdfBuffer);
+              try {
+                const distPath = path.join(DIST_UPLOADS_DIR, filename);
+                fs.writeFileSync(distPath, pdfBuffer);
+              } catch {
+                // ignore
+              }
+            }
+
+            const record: OverijsselDocumentMetadata = {
+              id: `ov-${docId}`,
+              document_id: docId,
+              version: docVersion,
+              meeting_id: String(item.id || ""),
+              datum: itemDate,
+              titel: docTitle,
+              meeting_titel: `${mod.name}: ${itemTitle}`,
+              gremium_naam: "Provinciale Staten",
+              document_type: mod.name,
+              filetype: "pdf",
+              scope: classification.scope,
+              filter_methode: classification.filter_methode,
+              reden: classification.reden,
+              opslaan: classification.opslaan,
+              bestandsnaam: classification.opslaan ? filename : "",
+              lokaal_pad: classification.opslaan ? localRelPath : "",
+              notubiz_url: canonicalUrl,
+              grootte_bytes: pdfBuffer.length,
+              gesynchroniseerd_op: new Date().toISOString(),
+            };
+
+            existingDocMap.set(docKey, record);
+            syncState.scannedDocuments++;
+
+            if (classification.opslaan) {
+              syncState.savedDocuments++;
+              if (classification.scope === "Lokaal - Steenwijkerland") {
+                syncState.steenwijkerlandCount++;
+                addLog(`[BINGO STEENWIJKERLAND] [${mod.name}] ${docTitle} -> ${classification.reden}`, "success");
+              } else {
+                syncState.provinciebreedCount++;
+                addLog(`[PROVINCIEBREED BEHOUDEN] [${mod.name}] ${docTitle}`, "info");
+              }
+            } else {
+              syncState.excludedDocuments++;
+              syncState.externCount++;
+              addLog(`[EXTERN GENEGEERD] [${mod.name}] ${docTitle} -> ${classification.reden}`, "warn");
+            }
+
+            if (syncState.scannedDocuments % 5 === 0) {
+              saveOverijsselMetadata(Array.from(existingDocMap.values()));
+            }
+          }
         }
       }
 
