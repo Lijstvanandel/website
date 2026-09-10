@@ -619,7 +619,56 @@ function curlIPv4(urlStr: string, options: any = {}, timeoutMs = 30000): Promise
 }
 
 /**
- * Robust fetch with automatic retry, exponential backoff, IPv4 routing and curl fallback
+ * Robust JSON fetch with automatic retry, exponential backoff, IPv4 routing and curl fallback
+ */
+async function fetchJsonWithRetry<T = any>(url: string, options: any = {}, maxRetries = 4, timeoutMs = 35000): Promise<T> {
+  let lastError: any = null;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    // 1. Try native Node https with IPv4
+    try {
+      const res = await requestIPv4(url, { ...options, timeout: timeoutMs });
+      if (res.ok) {
+        const text = await res.text();
+        if (text && text.trim().length > 0) {
+          try {
+            return JSON.parse(text) as T;
+          } catch (parseErr: any) {
+            console.warn(`[OVERIJSSEL JSON] Parse error on attempt ${attempt}: ${parseErr.message}`);
+          }
+        }
+      }
+    } catch (err: any) {
+      lastError = err;
+      if (options.signal?.aborted) throw err;
+    }
+
+    // 2. Try curl -4 fallback
+    try {
+      const curlRes = await curlIPv4(url, options, timeoutMs);
+      if (curlRes.ok) {
+        const text = await curlRes.text();
+        if (text && text.trim().length > 0) {
+          try {
+            return JSON.parse(text) as T;
+          } catch (parseErr: any) {
+            console.warn(`[OVERIJSSEL CURL JSON] Parse error on attempt ${attempt}: ${parseErr.message}`);
+          }
+        }
+      }
+    } catch (curlErr: any) {
+      lastError = curlErr;
+      if (options.signal?.aborted) throw curlErr;
+    }
+
+    if (attempt < maxRetries) {
+      await sleep(1200 * attempt);
+    }
+  }
+  throw lastError || new Error(`Failed to fetch valid JSON from ${url} after ${maxRetries} attempts`);
+}
+
+/**
+ * Robust binary/document fetch with automatic retry, exponential backoff, IPv4 routing and curl fallback
  */
 async function fetchWithRetry(url: string, options: any = {}, maxRetries = 4, timeoutMs = 30000): Promise<HttpResponse> {
   let lastError: any = null;
@@ -632,36 +681,41 @@ async function fetchWithRetry(url: string, options: any = {}, maxRetries = 4, ti
       });
 
       if (res.ok || res.status === 404) {
-        return res;
+        const buf = await res.buffer();
+        if (buf.length > 0 || res.status === 404) {
+          return res;
+        }
       }
 
       if (res.status >= 500 && attempt < maxRetries) {
         await sleep(1500 * attempt);
         continue;
       }
-
-      return res;
     } catch (err: any) {
       lastError = err;
       if (options.signal?.aborted) {
         throw err;
       }
+    }
 
-      // 2. Try curl -4 fallback
-      try {
-        const curlRes = await curlIPv4(url, options, timeoutMs);
-        if (curlRes.ok || curlRes.status === 404) {
+    // 2. Try curl -4 fallback
+    try {
+      const curlRes = await curlIPv4(url, options, timeoutMs);
+      if (curlRes.ok || curlRes.status === 404) {
+        const buf = await curlRes.buffer();
+        if (buf.length > 0 || curlRes.status === 404) {
           return curlRes;
         }
-      } catch (curlErr: any) {
-        if (options.signal?.aborted) {
-          throw curlErr;
-        }
       }
+    } catch (curlErr: any) {
+      lastError = curlErr;
+      if (options.signal?.aborted) {
+        throw curlErr;
+      }
+    }
 
-      if (attempt < maxRetries) {
-        await sleep(1500 * attempt);
-      }
+    if (attempt < maxRetries) {
+      await sleep(1500 * attempt);
     }
   }
   throw lastError || new Error(`Request failed after ${maxRetries} attempts: ${url}`);
@@ -695,14 +749,8 @@ async function fetchOverijsselEventsForYear(year: number, signal?: AbortSignal):
   url.searchParams.set("format", "json");
   url.searchParams.set("version", "1.17.0");
 
-  const res = await fetchWithRetry(url.toString(), { signal }, 4, 45000);
-
-  if (!res.ok) {
-    throw new Error(`NotuBiz API returned ${res.status} for year ${year}`);
-  }
-
-  const data = await res.json();
-  return data.events || [];
+  const data = await fetchJsonWithRetry<any>(url.toString(), { signal }, 4, 45000);
+  return data?.events || [];
 }
 
 /**
@@ -711,10 +759,8 @@ async function fetchOverijsselEventsForYear(year: number, signal?: AbortSignal):
 async function fetchMeetingDetails(meetingId: number | string, signal?: AbortSignal): Promise<any> {
   const url = `https://api.notubiz.nl/events/meetings/${meetingId}?format=json&version=1.17.0`;
   try {
-    const res = await fetchWithRetry(url, { signal }, 3, 35000);
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.meeting || null;
+    const data = await fetchJsonWithRetry<any>(url, { signal }, 3, 35000);
+    return data?.meeting || null;
   } catch (err: any) {
     console.warn(`[OVERIJSSEL] Error fetching meeting ${meetingId}:`, err?.message || err);
     return null;
@@ -727,10 +773,8 @@ async function fetchMeetingDetails(meetingId: number | string, signal?: AbortSig
 async function fetchModuleItems(moduleId: number, signal?: AbortSignal): Promise<any[]> {
   const url = `https://api.notubiz.nl/organisations/1750/modules/${moduleId}/items?format=json&version=1.17.0`;
   try {
-    const res = await fetchWithRetry(url, { signal }, 3, 45000);
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.items || [];
+    const data = await fetchJsonWithRetry<any>(url, { signal }, 3, 45000);
+    return data?.items || [];
   } catch (err: any) {
     console.warn(`[OVERIJSSEL] Error fetching module ${moduleId} items:`, err?.message || err);
     return [];
