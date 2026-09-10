@@ -3,7 +3,6 @@ import path from "path";
 import https from "node:https";
 import http from "node:http";
 import dns from "node:dns";
-import { spawn } from "node:child_process";
 import { GoogleGenAI } from "@google/genai";
 
 try {
@@ -290,29 +289,26 @@ function matchExternalKeywordsInText(text: string): string | null {
   return null;
 }
 
-// Cache AI quota exhaustion status to avoid repetitive 429 API errors
-let aiQuotaExhausted = false;
-
 /**
- * 3-Tier document classifier:
- * 1. Blacklist check on titles (Zwolle, Enschede, etc.) -> Skip immediately (0ms)
- * 2. Whitelist check on titles/content (Steenwijkerland, etc.) -> Keep immediately (0ms)
- * 3. Text & AI analysis with automatic fallback if AI quota is exhausted or offline
+ * 3-Tier document classifier matching the user's exact specification
  */
 export async function classificeerProvinciaalDocument(
-  notubizItem: {
-    title: string;
-    meetingTitle?: string;
-    documentId?: string | number;
-  },
+  notubizItem: { title: string; meetingTitle?: string; documentId: string | number },
   pdfBuffer: Buffer
-): Promise<DocumentClassificationResult> {
-  const contextTitel = `${notubizItem.meetingTitle || ""} ${notubizItem.title || ""}`.toLowerCase();
+): Promise<{
+  scope: "Lokaal - Steenwijkerland" | "Provinciebreed" | "Lokaal - Externe Gemeente" | "Ongeclassificeerd";
+  opslaan: boolean;
+  filter_methode: string;
+  reden: string;
+}> {
+  const titel = (notubizItem.title || "").toLowerCase();
+  const contextTitel = `${notubizItem.title || ""} ${notubizItem.meetingTitle || ""}`.toLowerCase();
 
   // TRAP 1a: Zwarte lijst check (Gratis & snel)
-  const matchedBlacklist = matchExternalKeywordsInText(contextTitel);
-  if (matchedBlacklist && !matchLocalKeywordsInText(contextTitel)) {
-    const msg = `Zwarte lijst: Externe gemeente '${matchedBlacklist}' in context`;
+  const matchedBlacklist = matchExternalKeywordsInText(titel);
+  if (matchedBlacklist) {
+    const msg = `Zwarte lijst: Bevat externe gemeente '${matchedBlacklist}' in titel`;
+    console.log(`[VERNIETIGD] Gaat over externe gemeente: ${notubizItem.title} (${matchedBlacklist})`);
     return {
       scope: "Lokaal - Externe Gemeente",
       opslaan: false,
@@ -325,6 +321,7 @@ export async function classificeerProvinciaalDocument(
   const matchedWhitelist = matchLocalKeywordsInText(contextTitel);
   if (matchedWhitelist) {
     const msg = `Witte lijst: Lokaal Steenwijkerland trefwoord '${matchedWhitelist}' gedetecteerd`;
+    console.log(`[BINGO] Lokaal Steenwijkerland gedetecteerd: ${notubizItem.title} (${matchedWhitelist})`);
     return {
       scope: "Lokaal - Steenwijkerland",
       opslaan: true,
@@ -333,9 +330,13 @@ export async function classificeerProvinciaalDocument(
     };
   }
 
-  // TRAP 2: Tekstextractie van de eerste 2 pagina's
+  // TRAP 2: Gemini Flash Analyse (Voor de generieke/provinciebrede titels)
+  console.log(`[AI CHECK] Generieke titel gedetecteerd, tekst extractie voor: ${notubizItem.title}`);
+  
+  // Alleen de eerste 2 pagina's extraheren (Token-besparing & snelheid)
   const introTekst = await extractIntroTextFromPdfBuffer(pdfBuffer, 2);
 
+  // Als de bodytekst expliciet een zwarte lijst gemeente bevat en GEEN Steenwijkerland
   if (introTekst) {
     const hasExternalInBody = matchExternalKeywordsInText(introTekst);
     const hasSteenwijkInBody = matchLocalKeywordsInText(introTekst);
@@ -348,31 +349,21 @@ export async function classificeerProvinciaalDocument(
         reden: `Tekstuele match: Steenwijkerland term '${hasSteenwijkInBody}' gevonden in documentintro`,
       };
     }
-
-    if (hasExternalInBody && !hasSteenwijkInBody) {
-      // Externe gemeente prominent aanwezig in document
-      return {
-        scope: "Lokaal - Externe Gemeente",
-        opslaan: false,
-        filter_methode: "Zwarte lijst (Documenttekst)",
-        reden: `Tekstuele match: Externe gemeente '${hasExternalInBody}' in documenttekst`,
-      };
-    }
   }
 
-  // TRAP 3: AI Analyse (als API beschikbaar is en quota niet op is)
+  // AI prompt opstellen
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || aiQuotaExhausted || !introTekst || introTekst.length < 20) {
-    // Directe snelle en veilige fallback zonder API vertraging
+  if (!apiKey || !introTekst || introTekst.length < 20) {
+    // Geen AI beschikbaar of geen tekst -> veiligheidshalve markeren als Provinciebreed/Ongeclassificeerd
     return {
       scope: "Provinciebreed",
       opslaan: true,
-      filter_methode: aiQuotaExhausted ? "Regelgebaseerde Fallback (AI Quota Vol)" : "Heuristische Provinciebrede Default",
-      reden: "Generiek provinciaal document behouden voor provinciaal beleidsoverzicht",
+      filter_methode: "Heuristische Provinciebrede Default",
+      reden: "Generiek provinciaal document zonder externe uitsluiting",
     };
   }
 
-  const prompt = `Je bent een data-classificeerder voor de lokale politieke partij 'Lijst van Andel' in Steenwijkerland.
+  const prompt = `Je bent een strenge data-classificeerder voor de lokale politieke partij 'Lijst van Andel' in Steenwijkerland.
 Analyseer deze inleiding/samenvatting van een provinciaal document uit Overijssel:
 Titel: "${notubizItem.title}"
 
@@ -383,8 +374,8 @@ Kies EXACT één van deze drie categorieën:
 
 Retourneer uitsluitend JSON in dit exacte format: {"scope": "Provinciebreed" | "Steenwijkerland" | "Extern", "reden": "Korte toelichting"}
 
-Documenttekst:
-${introTekst.slice(0, 2500)}`;
+Documenttekst (eerste 2 pagina's):
+${introTekst.slice(0, 3000)}`;
 
   try {
     const ai = new GoogleGenAI({ apiKey });
@@ -399,11 +390,7 @@ ${introTekst.slice(0, 2500)}`;
           responseMimeType: "application/json",
         },
       });
-    } catch (modelErr: any) {
-      if (modelErr?.status === 429 || modelErr?.message?.includes("429") || modelErr?.message?.includes("credits are depleted")) {
-        aiQuotaExhausted = true;
-        throw modelErr;
-      }
+    } catch {
       response = await ai.models.generateContent({
         model: "gemini-3.8-flash",
         contents: prompt,
@@ -418,7 +405,11 @@ ${introTekst.slice(0, 2500)}`;
     const cleanJson = raw.replace(/```json/gi, "").replace(/```/g, "").trim();
     const aiOordeel = JSON.parse(cleanJson);
 
+    // Anti-Rate Limit Throttle: 4 seconden wachten voor de volgende call
+    await sleep(4000);
+
     if (aiOordeel.scope === "Extern") {
+      console.log(`[AI VERNIETIGD] Flash beoordeelt als extern: ${aiOordeel.reden}`);
       return {
         scope: "Lokaal - Externe Gemeente",
         opslaan: false,
@@ -428,6 +419,7 @@ ${introTekst.slice(0, 2500)}`;
     }
 
     const finalScope = aiOordeel.scope === "Steenwijkerland" ? "Lokaal - Steenwijkerland" : "Provinciebreed";
+    console.log(`[AI GOEDGEKEURD] Scope: ${finalScope} | Reden: ${aiOordeel.reden}`);
     return {
       scope: finalScope,
       opslaan: true,
@@ -435,19 +427,13 @@ ${introTekst.slice(0, 2500)}`;
       reden: aiOordeel.reden || "AI classificatie: relevant voor provincie/Steenwijkerland",
     };
   } catch (error: any) {
-    if (error?.status === 429 || error?.message?.includes("429") || error?.message?.includes("RESOURCE_EXHAUSTED") || error?.message?.includes("credits are depleted")) {
-      if (!aiQuotaExhausted) {
-        console.warn("[AI NOTITIE] Gemini API quota bereikt/op. Overschakelen naar snelle autonome regelgebaseerde classificatie.");
-        aiQuotaExhausted = true;
-      }
-    } else {
-      console.warn(`[AI WAARSCHUWING] Fallback bij classificatie van '${notubizItem.title}':`, error?.message || error);
-    }
+    console.error(`[API FOUT] Falen bij classificatie van ${notubizItem.title}:`, error?.message || error);
+    // Bij twijfel of API-storing: bewaar veiligheidshalve als Provinciebreed
     return {
       scope: "Provinciebreed",
       opslaan: true,
-      filter_methode: "Regelgebaseerde Fallback",
-      reden: "Provinciaal document veiligheidshalve behouden voor provinciaal overzicht",
+      filter_methode: "AI Fallback (Veiligheidsbehoud)",
+      reden: "API rate-limit of storing; veiligheidshalve behouden voor provinciaal overzicht",
     };
   }
 }
@@ -485,7 +471,7 @@ function requestIPv4(urlStr: string, options: any = {}): Promise<HttpResponse> {
           "Accept": "application/json, text/plain, */*",
           ...(options.headers || {}),
         },
-        timeout: options.timeout || 30000,
+        timeout: options.timeout || 25000,
       };
 
       const req = lib.request(reqOptions, (res: any) => {
@@ -551,171 +537,35 @@ function requestIPv4(urlStr: string, options: any = {}): Promise<HttpResponse> {
 }
 
 /**
- * Fallback via system curl -4 (bypasses any Node networking quirks on Linux VPS)
+ * Robust fetch with automatic retry, exponential backoff, IPv4 routing and timeout
  */
-function curlIPv4(urlStr: string, options: any = {}, timeoutMs = 30000): Promise<HttpResponse> {
-  return new Promise((resolve, reject) => {
-    try {
-      const timeoutSec = Math.max(5, Math.round(timeoutMs / 1000));
-      const DELIM = "\n__NOTUBIZ_STATUS__:";
-      const args = ["-4", "-s", "-L", "--max-time", String(timeoutSec), "-w", `${DELIM}%{http_code}`, urlStr];
-      const proc = spawn("curl", args);
-      const chunks: Buffer[] = [];
-
-      if (options.signal) {
-        options.signal.addEventListener(
-          "abort",
-          () => {
-            try {
-              proc.kill("SIGKILL");
-            } catch {
-              // ignore
-            }
-          },
-          { once: true }
-        );
-      }
-
-      proc.stdout.on("data", (c: Buffer) => chunks.push(c));
-      proc.on("error", reject);
-      proc.on("close", (code) => {
-        if (options.signal?.aborted) {
-          return reject(new Error("This operation was aborted"));
-        }
-        const fullBuf = Buffer.concat(chunks);
-        const delimBuf = Buffer.from(DELIM);
-        const delimIdx = fullBuf.lastIndexOf(delimBuf);
-        let status = 200;
-        let bodyBuf = fullBuf;
-        if (delimIdx !== -1) {
-          const codeStr = fullBuf.slice(delimIdx + delimBuf.length).toString("utf-8").trim();
-          const parsedCode = parseInt(codeStr, 10);
-          if (!isNaN(parsedCode) && parsedCode > 0) {
-            status = parsedCode;
-          }
-          bodyBuf = fullBuf.slice(0, delimIdx);
-        }
-        resolve({
-          ok: status >= 200 && status < 300,
-          status,
-          statusText: `HTTP ${status}`,
-          headers: {},
-          buffer: () => Promise.resolve(bodyBuf),
-          arrayBuffer: () => Promise.resolve(bodyBuf.buffer.slice(bodyBuf.byteOffset, bodyBuf.byteOffset + bodyBuf.byteLength)),
-          text: () => Promise.resolve(bodyBuf.toString("utf-8")),
-          json: () => {
-            try {
-              return Promise.resolve(JSON.parse(bodyBuf.toString("utf-8")));
-            } catch (err) {
-              return Promise.reject(err);
-            }
-          },
-        });
-      });
-    } catch (err) {
-      reject(err);
-    }
-  });
-}
-
-/**
- * Robust JSON fetch with automatic retry, exponential backoff, IPv4 routing and curl fallback
- */
-async function fetchJsonWithRetry<T = any>(url: string, options: any = {}, maxRetries = 4, timeoutMs = 35000): Promise<T> {
-  let lastError: any = null;
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    // 1. Try native Node https with IPv4
-    try {
-      const res = await requestIPv4(url, { ...options, timeout: timeoutMs });
-      if (res.ok) {
-        const text = await res.text();
-        if (text && text.trim().length > 0) {
-          try {
-            return JSON.parse(text) as T;
-          } catch (parseErr: any) {
-            console.warn(`[OVERIJSSEL JSON] Parse error on attempt ${attempt}: ${parseErr.message}`);
-          }
-        }
-      }
-    } catch (err: any) {
-      lastError = err;
-      if (options.signal?.aborted) throw err;
-    }
-
-    // 2. Try curl -4 fallback
-    try {
-      const curlRes = await curlIPv4(url, options, timeoutMs);
-      if (curlRes.ok) {
-        const text = await curlRes.text();
-        if (text && text.trim().length > 0) {
-          try {
-            return JSON.parse(text) as T;
-          } catch (parseErr: any) {
-            console.warn(`[OVERIJSSEL CURL JSON] Parse error on attempt ${attempt}: ${parseErr.message}`);
-          }
-        }
-      }
-    } catch (curlErr: any) {
-      lastError = curlErr;
-      if (options.signal?.aborted) throw curlErr;
-    }
-
-    if (attempt < maxRetries) {
-      await sleep(1200 * attempt);
-    }
-  }
-  throw lastError || new Error(`Failed to fetch valid JSON from ${url} after ${maxRetries} attempts`);
-}
-
-/**
- * Robust binary/document fetch with automatic retry, exponential backoff, IPv4 routing and curl fallback
- */
-async function fetchWithRetry(url: string, options: any = {}, maxRetries = 4, timeoutMs = 30000): Promise<HttpResponse> {
+async function fetchWithRetry(url: string, options: any = {}, maxRetries = 4, timeoutMs = 25000): Promise<HttpResponse> {
   let lastError: any = null;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // 1. Try native Node https with IPv4 lookup
       const res = await requestIPv4(url, {
         ...options,
         timeout: timeoutMs,
       });
 
       if (res.ok || res.status === 404) {
-        const buf = await res.buffer();
-        if (buf.length > 0 || res.status === 404) {
-          return res;
-        }
+        return res;
       }
 
       if (res.status >= 500 && attempt < maxRetries) {
         await sleep(1500 * attempt);
         continue;
       }
+
+      return res;
     } catch (err: any) {
       lastError = err;
       if (options.signal?.aborted) {
         throw err;
       }
-    }
-
-    // 2. Try curl -4 fallback
-    try {
-      const curlRes = await curlIPv4(url, options, timeoutMs);
-      if (curlRes.ok || curlRes.status === 404) {
-        const buf = await curlRes.buffer();
-        if (buf.length > 0 || curlRes.status === 404) {
-          return curlRes;
-        }
+      if (attempt < maxRetries) {
+        await sleep(1500 * attempt);
       }
-    } catch (curlErr: any) {
-      lastError = curlErr;
-      if (options.signal?.aborted) {
-        throw curlErr;
-      }
-    }
-
-    if (attempt < maxRetries) {
-      await sleep(1500 * attempt);
     }
   }
   throw lastError || new Error(`Request failed after ${maxRetries} attempts: ${url}`);
@@ -749,8 +599,14 @@ async function fetchOverijsselEventsForYear(year: number, signal?: AbortSignal):
   url.searchParams.set("format", "json");
   url.searchParams.set("version", "1.17.0");
 
-  const data = await fetchJsonWithRetry<any>(url.toString(), { signal }, 4, 45000);
-  return data?.events || [];
+  const res = await fetchWithRetry(url.toString(), { signal });
+
+  if (!res.ok) {
+    throw new Error(`NotuBiz API returned ${res.status} for year ${year}`);
+  }
+
+  const data = await res.json();
+  return data.events || [];
 }
 
 /**
@@ -759,8 +615,10 @@ async function fetchOverijsselEventsForYear(year: number, signal?: AbortSignal):
 async function fetchMeetingDetails(meetingId: number | string, signal?: AbortSignal): Promise<any> {
   const url = `https://api.notubiz.nl/events/meetings/${meetingId}?format=json&version=1.17.0`;
   try {
-    const data = await fetchJsonWithRetry<any>(url, { signal }, 3, 35000);
-    return data?.meeting || null;
+    const res = await fetchWithRetry(url, { signal }, 3, 20000);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.meeting || null;
   } catch (err: any) {
     console.warn(`[OVERIJSSEL] Error fetching meeting ${meetingId}:`, err?.message || err);
     return null;
@@ -773,8 +631,10 @@ async function fetchMeetingDetails(meetingId: number | string, signal?: AbortSig
 async function fetchModuleItems(moduleId: number, signal?: AbortSignal): Promise<any[]> {
   const url = `https://api.notubiz.nl/organisations/1750/modules/${moduleId}/items?format=json&version=1.17.0`;
   try {
-    const data = await fetchJsonWithRetry<any>(url, { signal }, 3, 45000);
-    return data?.items || [];
+    const res = await fetchWithRetry(url, { signal }, 3, 30000);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.items || [];
   } catch (err: any) {
     console.warn(`[OVERIJSSEL] Error fetching module ${moduleId} items:`, err?.message || err);
     return [];
@@ -904,9 +764,9 @@ export async function startOverijsselNotubizSync(options?: {
             }
           }
 
-          // 2. Agenda items documents (with recursive sub-items support)
-          function extractAgendaDocs(items: any[]) {
-            for (const item of items || []) {
+          // 2. Agenda items documents
+          if (Array.isArray(meetingDetail.agenda_items)) {
+            for (const item of meetingDetail.agenda_items) {
               const itemTitle = item.attributes?.find((a: any) => a.id === 1)?.value || item.title || "";
               if (Array.isArray(item.documents)) {
                 for (const doc of item.documents) {
@@ -937,14 +797,7 @@ export async function startOverijsselNotubizSync(options?: {
                   }
                 }
               }
-              if (Array.isArray(item.agenda_items) && item.agenda_items.length > 0) {
-                extractAgendaDocs(item.agenda_items);
-              }
             }
-          }
-
-          if (Array.isArray(meetingDetail.agenda_items)) {
-            extractAgendaDocs(meetingDetail.agenda_items);
           }
 
           syncState.totalDocumentsFound += candidateDocs.length;
@@ -1091,18 +944,7 @@ export async function startOverijsselNotubizSync(options?: {
           const itemDate = itemDateRaw.split(" ")[0] || `${minTargetYear}-01-01`;
 
           const rawDocs = item.attachments?.document || item.documents || [];
-          const docList: any[] = Array.isArray(rawDocs) ? [...rawDocs] : rawDocs ? [rawDocs] : [];
-
-          // Extract documents from all attributes (e.g. Hoofddocument, Bijlagen)
-          for (const attr of item.attributes || []) {
-            if (attr.datatype === "document" || attr.datatype === "document_list" || attr.datatype === "attachment") {
-              for (const val of attr.values || []) {
-                if (val?.document) {
-                  docList.push(val.document);
-                }
-              }
-            }
-          }
+          const docList = Array.isArray(rawDocs) ? rawDocs : [rawDocs];
 
           for (const d of docList) {
             if (signal.aborted) break;
