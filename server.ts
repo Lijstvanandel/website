@@ -8824,11 +8824,21 @@ Sitemap: ${baseUrl}/sitemap.xml
       }
     });
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    const indexHtmlPath = path.join(distPath, 'index.html');
+    // Robust directory resolution that works whether running via tsx server.ts, node dist/server.cjs, or PM2/systemd from any working directory
+    const possibleDistDirs = [
+      path.join(process.cwd(), "dist"),
+      path.resolve(__dirname), // In case server.cjs is executing from inside dist/
+      path.resolve(__dirname, "dist"),
+      path.resolve(__dirname, "..", "dist"),
+    ];
+    const distPath = possibleDistDirs.find((dir) => fs.existsSync(path.join(dir, "index.html"))) || path.join(process.cwd(), "dist");
+    const indexHtmlPath = path.join(distPath, "index.html");
     let cachedIndexHtml = "";
     if (fs.existsSync(indexHtmlPath)) {
       cachedIndexHtml = fs.readFileSync(indexHtmlPath, "utf-8");
+      console.log(`[PRODUCTION STATIC] Statische bestanden worden geserveerd vanuit: ${distPath}`);
+    } else {
+      console.warn(`[PRODUCTION STATIC WAARSCHUWING] Geen index.html gevonden in ${distPath}! Voer 'npm run build' uit.`);
     }
 
     // Serve static assets first (js, css, images) with aggressive caching for fast Core Web Vitals
@@ -8850,6 +8860,35 @@ Sitemap: ${baseUrl}/sitemap.xml
       let html = cachedIndexHtml;
       if (!html && fs.existsSync(indexHtmlPath)) {
         html = fs.readFileSync(indexHtmlPath, "utf-8");
+      }
+      if (!html) {
+        console.error(`[SERVER FOUT] dist/index.html niet gevonden op ${indexHtmlPath}. Heb je 'npm run build' uitgevoerd?`);
+        return res.status(500).send(`
+          <!DOCTYPE html>
+          <html lang="nl">
+          <head>
+            <meta charset="utf-8">
+            <title>Lijst van Andel - Build vereist</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; padding: 40px 20px; display: flex; align-items: center; justify-content: center; min-height: 80vh; }
+              .box { max-width: 580px; width: 100%; background: #1e293b; border: 1px solid rgba(251, 191, 36, 0.3); border-radius: 12px; padding: 32px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); text-align: left; }
+              h1 { color: #f59e0b; margin-top: 0; font-size: 22px; }
+              p { color: #94a3b8; line-height: 1.6; font-size: 14px; }
+              code { background: #0f172a; color: #38bdf8; padding: 3px 8px; border-radius: 4px; font-size: 13px; }
+              pre { background: #0f172a; color: #4ade80; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 13px; line-height: 1.5; border: 1px solid #334155; }
+            </style>
+          </head>
+          <body>
+            <div class="box">
+              <h1>⚠️ Frontend nog niet gebouwd (Geen dist/index.html)</h1>
+              <p>De Node backend server draait, maar de frontend productiebestanden ontbreken in de map <code>${distPath}</code>.</p>
+              <p><strong>Oplossing:</strong> Voer op de Ubuntu server het volgende uit in de hoofdmap van het project:</p>
+              <pre>npm run build\npm start</pre>
+            </div>
+          </body>
+          </html>
+        `);
       }
       return renderHtmlWithSeo(req, res, html);
     });

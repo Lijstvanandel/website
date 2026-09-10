@@ -23,9 +23,12 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { CouncilAgendaTopic, SupportDossier, DossierEvidenceItem } from "@/types/council";
 import { MemberDocument } from "@/types/document";
+import { useAuth } from "@/context/AuthContext";
+import { safeLocalStorage, safeSessionStorage } from "@/lib/safeStorage";
 
 interface SupportDossierPanelProps {
   topic: CouncilAgendaTopic;
+  token?: string | null;
   onDossierUpdated: (updatedTopic: CouncilAgendaTopic) => void;
   onOpenDocumentViewer: (doc: MemberDocument, initialPage?: number) => void;
   onOpenDossierTab?: (slug: string) => void;
@@ -34,11 +37,20 @@ interface SupportDossierPanelProps {
 
 export const SupportDossierPanel: React.FC<SupportDossierPanelProps> = ({
   topic,
+  token: propToken,
   onDossierUpdated,
   onOpenDocumentViewer,
   onOpenDossierTab,
   onAppendToInbreng,
 }) => {
+  const { token: authContextToken } = useAuth();
+  const effectiveToken =
+    propToken ||
+    authContextToken ||
+    safeLocalStorage.getItem("auth_token") ||
+    safeSessionStorage.getItem("auth_token") ||
+    null;
+
   const [isCompiling, setIsCompiling] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
   const [copiedQuestionIdx, setCopiedQuestionIdx] = useState<number | null>(null);
@@ -51,12 +63,20 @@ export const SupportDossierPanel: React.FC<SupportDossierPanelProps> = ({
 
   // Compile / Recompile Handler
   const handleCompileDossier = async () => {
+    if (!effectiveToken) {
+      toast.error("Niet geautoriseerd: geen actieve inlogsessie gevonden. Log alstublieft opnieuw in via het menu.");
+      return;
+    }
+
     setIsCompiling(true);
     setIsExpanded(true);
     try {
       const res = await fetch(`/api/council/topics/${encodeURIComponent(topic.id)}/compile-dossier`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${effectiveToken}`,
+        },
       });
 
       const data = await res.json();
@@ -80,10 +100,18 @@ export const SupportDossierPanel: React.FC<SupportDossierPanelProps> = ({
   // Reset dossier handler
   const handleResetDossier = async () => {
     if (!confirm("Weet u zeker dat u dit ondersteuningsdossier wilt wissen?")) return;
+    if (!effectiveToken) {
+      toast.error("Niet geautoriseerd: geen actieve inlogsessie gevonden.");
+      return;
+    }
+
     setResetting(true);
     try {
       const res = await fetch(`/api/council/topics/${encodeURIComponent(topic.id)}/support-dossier`, {
         method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${effectiveToken}`,
+        },
       });
       const data = await res.json();
       if (res.ok && data.success) {

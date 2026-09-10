@@ -1055,6 +1055,7 @@ export default function Raadspaneel() {
                 {/* ⚙️ Zero-Hallucination Ondersteuningsdossier per agendapunt */}
                 <SupportDossierPanel
                   topic={selectedTopic}
+                  token={token}
                   onDossierUpdated={(updatedTopic) => {
                     setTopics((prev) => prev.map((t) => (t.id === updatedTopic.id ? updatedTopic : t)));
                   }}
