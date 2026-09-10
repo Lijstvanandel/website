@@ -3,6 +3,7 @@ import path from "path";
 import https from "node:https";
 import http from "node:http";
 import dns from "node:dns";
+import { spawn } from "node:child_process";
 import { GoogleGenAI } from "@google/genai";
 
 try {
@@ -450,7 +451,7 @@ interface HttpResponse {
 }
 
 /**
- * Robust IPv4 HTTP/HTTPS request handler
+ * Robust IPv4 HTTP/HTTPS request handler using custom DNS lookup
  */
 function requestIPv4(urlStr: string, options: any = {}): Promise<HttpResponse> {
   return new Promise((resolve, reject) => {
@@ -465,13 +466,16 @@ function requestIPv4(urlStr: string, options: any = {}): Promise<HttpResponse> {
         port: url.port || (isHttps ? 443 : 80),
         path: url.pathname + url.search,
         method: options.method || "GET",
-        family: 4, // Explicitly force IPv4 to avoid broken VPS IPv6 routes
+        lookup: (hostname: string, opts: any, callback: any) => {
+          const finalOpts = typeof opts === "object" ? { ...opts, family: 4 } : { family: 4 };
+          dns.lookup(hostname, finalOpts, callback);
+        },
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
           "Accept": "application/json, text/plain, */*",
           ...(options.headers || {}),
         },
-        timeout: options.timeout || 25000,
+        timeout: options.timeout || 30000,
       };
 
       const req = lib.request(reqOptions, (res: any) => {
@@ -537,12 +541,79 @@ function requestIPv4(urlStr: string, options: any = {}): Promise<HttpResponse> {
 }
 
 /**
- * Robust fetch with automatic retry, exponential backoff, IPv4 routing and timeout
+ * Fallback via system curl -4 (bypasses any Node networking quirks on Linux VPS)
  */
-async function fetchWithRetry(url: string, options: any = {}, maxRetries = 4, timeoutMs = 25000): Promise<HttpResponse> {
+function curlIPv4(urlStr: string, options: any = {}, timeoutMs = 30000): Promise<HttpResponse> {
+  return new Promise((resolve, reject) => {
+    try {
+      const timeoutSec = Math.max(5, Math.round(timeoutMs / 1000));
+      const args = ["-4", "-s", "-L", "--max-time", String(timeoutSec), "-w", "\n%{http_code}", urlStr];
+      const proc = spawn("curl", args);
+      const chunks: Buffer[] = [];
+
+      if (options.signal) {
+        options.signal.addEventListener(
+          "abort",
+          () => {
+            try {
+              proc.kill("SIGKILL");
+            } catch {
+              // ignore
+            }
+          },
+          { once: true }
+        );
+      }
+
+      proc.stdout.on("data", (c: Buffer) => chunks.push(c));
+      proc.on("error", reject);
+      proc.on("close", (code) => {
+        if (options.signal?.aborted) {
+          return reject(new Error("This operation was aborted"));
+        }
+        const fullBuf = Buffer.concat(chunks);
+        const lastNewline = fullBuf.lastIndexOf(10);
+        let status = 200;
+        let bodyBuf = fullBuf;
+        if (lastNewline !== -1) {
+          const codeStr = fullBuf.slice(lastNewline + 1).toString("utf-8").trim();
+          const parsedCode = parseInt(codeStr, 10);
+          if (!isNaN(parsedCode) && parsedCode > 0) {
+            status = parsedCode;
+            bodyBuf = fullBuf.slice(0, lastNewline);
+          }
+        }
+        resolve({
+          ok: status >= 200 && status < 300,
+          status,
+          statusText: `HTTP ${status}`,
+          headers: {},
+          buffer: () => Promise.resolve(bodyBuf),
+          arrayBuffer: () => Promise.resolve(bodyBuf.buffer.slice(bodyBuf.byteOffset, bodyBuf.byteOffset + bodyBuf.byteLength)),
+          text: () => Promise.resolve(bodyBuf.toString("utf-8")),
+          json: () => {
+            try {
+              return Promise.resolve(JSON.parse(bodyBuf.toString("utf-8")));
+            } catch (err) {
+              return Promise.reject(err);
+            }
+          },
+        });
+      });
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+/**
+ * Robust fetch with automatic retry, exponential backoff, IPv4 routing and curl fallback
+ */
+async function fetchWithRetry(url: string, options: any = {}, maxRetries = 4, timeoutMs = 30000): Promise<HttpResponse> {
   let lastError: any = null;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
+      // 1. Try native Node https with IPv4 lookup
       const res = await requestIPv4(url, {
         ...options,
         timeout: timeoutMs,
@@ -563,6 +634,19 @@ async function fetchWithRetry(url: string, options: any = {}, maxRetries = 4, ti
       if (options.signal?.aborted) {
         throw err;
       }
+
+      // 2. Try curl -4 fallback
+      try {
+        const curlRes = await curlIPv4(url, options, timeoutMs);
+        if (curlRes.ok || curlRes.status === 404) {
+          return curlRes;
+        }
+      } catch (curlErr: any) {
+        if (options.signal?.aborted) {
+          throw curlErr;
+        }
+      }
+
       if (attempt < maxRetries) {
         await sleep(1500 * attempt);
       }
