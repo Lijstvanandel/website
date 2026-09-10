@@ -145,10 +145,16 @@ export default defineConfig(({ mode }) => ({
             if (id.includes("@radix-ui")) {
               return "vendor-ui";
             }
+            if (id.includes("pdfjs-dist") || id.includes("pdf-lib")) {
+              return "vendor-pdf";
+            }
+            if (id.includes("leaflet")) {
+              return "vendor-map";
+            }
             if (id.includes("recharts") || id.includes("d3-")) {
               return "vendor-charts";
             }
-            if (id.includes("qrcode") || id.includes("canvas-confetti")) {
+            if (id.includes("qrcode") || id.includes("canvas-confetti") || id.includes("jsqr")) {
               return "vendor-utils";
             }
           }
