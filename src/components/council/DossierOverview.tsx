@@ -227,16 +227,16 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
           "Content-Type": "application/json",
           Authorization: token ? `Bearer ${token}` : "",
         },
-        body: JSON.stringify({ force: false }),
+        body: JSON.stringify({ force: true }),
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Fout bij bulk-classificatie");
+        throw new Error(data.error || "Fout bij volledige data-herstructurering");
       }
-      toast.info("Bulk-classificatie gestart in de achtergrond.");
+      toast.info("Volledige data-herstructurering en taxonomie-classificatie gestart in de achtergrond.");
       fetchBulkStatus();
     } catch (err: any) {
-      toast.error(err.message || "Fout bij uitvoeren bulk-classificatie");
+      toast.error(err.message || "Fout bij uitvoeren herstructurering");
       setIsClassifying(false);
     }
   };
@@ -648,10 +648,10 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
               onClick={handleBulkClassify}
               disabled={isClassifying}
               className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold h-8 rounded-xl shadow-2xs"
-              title="Breng alle documenten in overijssel, waterschap en algemene uploads samen in dossiers op basis van de taxonomie-richtlijnen"
+              title="Herstructureer alle data en breng documenten samen in dossiers op basis van taxonomie, MDTO en graph-principes"
             >
               <Sparkles className={`w-3.5 h-3.5 mr-1.5 ${isClassifying ? 'animate-spin' : ''}`} />
-              {isClassifying ? "Samenbrengen..." : "Breng Samen in Dossiers"}
+              {isClassifying ? "Herstructureren..." : "Herstructureer & Breng Samen"}
             </Button>
 
             <a
