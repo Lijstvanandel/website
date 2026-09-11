@@ -8796,10 +8796,18 @@ Sitemap: ${baseUrl}/sitemap.xml
         const result = processUploadedCouncilDocuments(files, syncFileAcrossUploadDirs);
 
         // Background extract and index text for instant full-text search
-        for (const file of files) {
-          indexUploadedFile(file.originalname || file.filename, file.path).catch((idxErr) => {
-            console.warn("[BACKGROUND INDEX ERR]:", idxErr);
-          });
+        if (Array.isArray((result as any).allSavedFiles) && (result as any).allSavedFiles.length > 0) {
+          for (const item of (result as any).allSavedFiles) {
+            indexUploadedFile(item.filename, item.path).catch((idxErr) => {
+              console.warn("[BACKGROUND INDEX ERR]:", idxErr);
+            });
+          }
+        } else {
+          for (const file of files) {
+            indexUploadedFile(file.originalname || file.filename, file.path).catch((idxErr) => {
+              console.warn("[BACKGROUND INDEX ERR]:", idxErr);
+            });
+          }
         }
 
         res.json({

@@ -153,6 +153,65 @@ async function fetchBinaryBuffer(urlStr: string, maxRedirects = 5, timeoutMs = 2
   });
 }
 
+// Cached in-memory metadata lookups
+let cachedOverijsselMeta: any[] | null = null;
+let cachedWaterschapMeta: any[] | null = null;
+
+function getKnownMetadataUrls(filename: string): { url?: string; category?: "overijssel" | "waterschap" | "steenwijkerland" } {
+  try {
+    const cleanFn = filename.replace(/^(overijssel|waterschap|documents)\//i, "").toLowerCase().trim();
+
+    // 1. Check Overijssel metadata
+    if (!cachedOverijsselMeta) {
+      const p = path.join(process.cwd(), "public", "uploads", "documents", "raadsstukken_metadata_overijssel.json");
+      if (fs.existsSync(p)) {
+        try {
+          cachedOverijsselMeta = JSON.parse(fs.readFileSync(p, "utf-8"));
+        } catch {}
+      }
+    }
+    if (Array.isArray(cachedOverijsselMeta)) {
+      const match = cachedOverijsselMeta.find(
+        (m) =>
+          (m.bestandsnaam && m.bestandsnaam.toLowerCase().trim() === cleanFn) ||
+          (m.document_id && cleanFn.includes(String(m.document_id)))
+      );
+      if (match) {
+        return {
+          url: match.notubiz_url || (match.document_id ? `https://api.notubiz.nl/document/${match.document_id}/${match.version || 1}` : undefined),
+          category: "overijssel",
+        };
+      }
+    }
+
+    // 2. Check Waterschap metadata
+    if (!cachedWaterschapMeta) {
+      const p = path.join(process.cwd(), "public", "uploads", "documents", "raadsstukken_metadata_waterschap.json");
+      if (fs.existsSync(p)) {
+        try {
+          cachedWaterschapMeta = JSON.parse(fs.readFileSync(p, "utf-8"));
+        } catch {}
+      }
+    }
+    if (Array.isArray(cachedWaterschapMeta)) {
+      const match = cachedWaterschapMeta.find(
+        (m) =>
+          (m.bestandsnaam && m.bestandsnaam.toLowerCase().trim() === cleanFn) ||
+          (m.document_id && cleanFn.includes(String(m.document_id)))
+      );
+      if (match) {
+        return {
+          url: match.notubiz_url || match.download_url || (match.document_id ? `https://bestuursinformatie.wdodelta.nl/api/v2/documents/${match.document_id}/download` : undefined),
+          category: "waterschap",
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("[REPAIR] Metadata lookup error:", err);
+  }
+  return {};
+}
+
 /**
  * Determine the local target path for a given missing filename.
  */
@@ -164,8 +223,9 @@ function resolveLocalTargetPaths(filename: string): {
 } {
   ensureDirectories();
   const lower = filename.toLowerCase().trim();
+  const known = getKnownMetadataUrls(filename);
 
-  if (lower.startsWith("overijssel/") || lower.includes("overijssel_")) {
+  if (lower.startsWith("overijssel/") || lower.includes("overijssel_") || known.category === "overijssel") {
     const cleanName = filename.replace(/^overijssel\//i, "");
     return {
       category: "overijssel",
@@ -175,7 +235,7 @@ function resolveLocalTargetPaths(filename: string): {
     };
   }
 
-  if (lower.startsWith("waterschap/") || lower.includes("wdodelta")) {
+  if (lower.startsWith("waterschap/") || lower.includes("wdodelta") || known.category === "waterschap") {
     const cleanName = filename.replace(/^waterschap\//i, "");
     return {
       category: "waterschap",
@@ -205,6 +265,12 @@ function getCandidateDownloadUrls(filename: string, category: "overijssel" | "wa
   const urls: string[] = [];
   let docId: string | null = null;
 
+  // 0. Check known exact metadata URL
+  const known = getKnownMetadataUrls(filename);
+  if (known.url) {
+    urls.push(known.url);
+  }
+
   // 1. Overijssel patterns: overijssel_16379109.pdf or 16379109
   const ovMatch = filename.match(/overijssel_(\d+)/i);
   if (ovMatch) {
@@ -227,30 +293,27 @@ function getCandidateDownloadUrls(filename: string, category: "overijssel" | "wa
     }
   }
 
-  if (!docId) {
+  if (!docId && urls.length === 0) {
     return { docId: null, urls: [] };
   }
 
-  if (category === "overijssel") {
+  if (docId) {
+    // Generate multi-version endpoints (NotuBiz documents often have versions 1, 2, or 3)
     urls.push(`https://api.notubiz.nl/document/${docId}/1`);
-    urls.push(`https://api.notubiz.nl/documents/${docId}/download`);
-    urls.push(`https://statenvergaderingen.overijssel.nl/document/${docId}`);
+    urls.push(`https://api.notubiz.nl/document/${docId}/2`);
+    urls.push(`https://api.notubiz.nl/document/${docId}/3`);
     urls.push(`https://api.notubiz.nl/document/${docId}`);
-  } else if (category === "waterschap") {
     urls.push(`https://bestuursinformatie.wdodelta.nl/api/v2/documents/${docId}/download`);
-    urls.push(`https://api.notubiz.nl/document/${docId}/1`);
+    urls.push(`https://steenwijkerland.bestuurlijkeinformatie.nl/Agenda/Document/${docId}`);
+    urls.push(`https://steenwijkerland.bestuurlijkeinformatie.nl/Document/${docId}`);
+    urls.push(`https://steenwijkerland.bestuurlijkeinformatie.nl/Document/Download/${docId}`);
     urls.push(`https://api.notubiz.nl/documents/${docId}/download`);
-    urls.push(`https://api.notubiz.nl/document/${docId}`);
-  } else {
-    // Steenwijkerland / Gemeente
-    urls.push(`https://api.notubiz.nl/document/${docId}/1`);
-    urls.push(`https://api.notubiz.nl/documents/${docId}/download?version=1`);
-    urls.push(`https://api.notubiz.nl/documents/${docId}/download`);
-    urls.push(`https://steenwijkerland.notubiz.nl/document/${docId}`);
-    urls.push(`https://api.notubiz.nl/document/${docId}`);
+    urls.push(`https://api.notubiz.nl/events/documents/${docId}`);
   }
 
-  return { docId, urls };
+  // Deduplicate URLs
+  const uniqueUrls = Array.from(new Set(urls.filter(Boolean)));
+  return { docId, urls: uniqueUrls };
 }
 
 /**

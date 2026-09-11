@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import AdmZip from "adm-zip";
 import type { Dossier, DossierDocument, GraphNode, GraphEdge, NetworkGraphData, RaadsstukMetadata } from "../types/dossier.js";
 import { getKv, setKv } from "./sqliteDatabase.js";
 
@@ -1674,16 +1675,19 @@ export function getAllCatalogDocuments(db: any): DossierDocument[] {
   });
 }
 
-// Process bulk uploaded council documents
+// Process bulk uploaded council documents (supports direct PDFs/documents and .ZIP archives)
 export function processUploadedCouncilDocuments(
   uploadedFiles: any[],
   syncFileFn: (filePath: string) => void
 ): {
   totalUploaded: number;
+  zipCount: number;
+  extractedFromZipCount: number;
   matchedCount: number;
   unmatchedCount: number;
-  matchedDocuments: Array<{ filename: string; dossier: string; title: string }>;
+  matchedDocuments: Array<{ filename: string; dossier: string; title: string; category?: string }>;
   unmatchedDocuments: string[];
+  allSavedFiles: Array<{ filename: string; path: string }>;
 } {
   const metadataList = getRawMetadata();
   const metadataByFilename = new Map<string, RaadsstukMetadata>();
@@ -1699,47 +1703,129 @@ export function processUploadedCouncilDocuments(
     }
   });
 
-  const matchedDocuments: Array<{ filename: string; dossier: string; title: string }> = [];
+  const matchedDocuments: Array<{ filename: string; dossier: string; title: string; category?: string }> = [];
   const unmatchedDocuments: string[] = [];
+  const allSavedFiles: Array<{ filename: string; path: string }> = [];
+  let zipCount = 0;
+  let extractedFromZipCount = 0;
 
-  uploadedFiles.forEach((file) => {
-    const rawName = file.originalname || file.filename || "onbekend.pdf";
+  // Helper to process a single saved buffer or file
+  const processSingleFileRecord = (rawName: string, bufferOrSourcePath: Buffer | string, isFromZip = false) => {
     const lowerName = rawName.toLowerCase().trim();
+    const cleanBasename = path.basename(rawName);
 
-    // Mirror to dist directory as well
-    const pubPath = path.join(DOCUMENTS_DIR, rawName);
-    try {
-      syncFileFn(pubPath);
-    } catch (syncErr) {
-      console.warn("Could not sync file to dist:", syncErr);
+    // Determine subfolder if filename indicates overijssel / waterschap
+    let targetDir = DOCUMENTS_DIR;
+    let category = "Steenwijkerland";
+
+    if (lowerName.startsWith("overijssel/") || lowerName.includes("overijssel_") || rawName.includes("Provinciale Staten")) {
+      targetDir = path.join(DOCUMENTS_DIR, "overijssel");
+      category = "Provincie Overijssel";
+    } else if (lowerName.startsWith("waterschap/") || lowerName.includes("wdodelta") || rawName.includes("Waterschap")) {
+      targetDir = path.join(DOCUMENTS_DIR, "waterschap");
+      category = "Waterschap WDODelta";
     }
 
-    let match = metadataByFilename.get(lowerName);
+    try {
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+      }
+    } catch (_e) {}
+
+    const targetFilePath = path.join(targetDir, cleanBasename);
+
+    try {
+      if (Buffer.isBuffer(bufferOrSourcePath)) {
+        fs.writeFileSync(targetFilePath, bufferOrSourcePath);
+      } else if (typeof bufferOrSourcePath === "string" && bufferOrSourcePath !== targetFilePath) {
+        if (fs.existsSync(bufferOrSourcePath)) {
+          fs.copyFileSync(bufferOrSourcePath, targetFilePath);
+        }
+      }
+
+      // Sync to dist
+      syncFileFn(targetFilePath);
+    } catch (writeErr) {
+      console.warn(`Could not write/sync uploaded file ${rawName}:`, writeErr);
+    }
+
+    allSavedFiles.push({
+      filename: cleanBasename,
+      path: targetFilePath,
+    });
+
+    if (isFromZip) {
+      extractedFromZipCount++;
+    }
+
+    // Match against metadata
+    let match = metadataByFilename.get(lowerName) || metadataByFilename.get(cleanBasename.toLowerCase().trim());
     if (!match) {
       try {
-        match = metadataByFilename.get(decodeURIComponent(lowerName));
-      } catch (_e) {
-        // Fallback to direct name
-      }
+        match = metadataByFilename.get(decodeURIComponent(cleanBasename.toLowerCase().trim()));
+      } catch (_e) {}
     }
 
     if (match) {
       matchedDocuments.push({
-        filename: rawName,
+        filename: cleanBasename,
         dossier: match.dossier,
-        title: match.titel || rawName,
+        title: match.titel || cleanBasename,
+        category: match.entiteiten || category,
       });
     } else {
-      unmatchedDocuments.push(rawName);
+      unmatchedDocuments.push(cleanBasename);
     }
-  });
+  };
+
+  for (const file of uploadedFiles) {
+    const rawName = file.originalname || file.filename || "onbekend.pdf";
+    const lower = rawName.toLowerCase();
+    const isZip = lower.endsWith(".zip") || file.mimetype === "application/zip" || file.mimetype === "application/x-zip-compressed";
+
+    if (isZip) {
+      zipCount++;
+      try {
+        const filePath = file.path;
+        const zip = filePath && fs.existsSync(filePath) ? new AdmZip(filePath) : (file.buffer ? new AdmZip(file.buffer) : null);
+
+        if (zip) {
+          const zipEntries = zip.getEntries();
+          for (const entry of zipEntries) {
+            // Ignore directories, hidden files and macOS metadata files
+            if (entry.isDirectory || entry.entryName.includes("__MACOSX") || path.basename(entry.entryName).startsWith(".")) {
+              continue;
+            }
+
+            const ext = path.extname(entry.entryName).toLowerCase();
+            // Accept PDF and other council document formats
+            if ([".pdf", ".docx", ".doc", ".xlsx", ".csv", ".txt", ".json"].includes(ext) || !ext) {
+              const entryBuffer = entry.getData();
+              processSingleFileRecord(entry.entryName, entryBuffer, true);
+            }
+          }
+        }
+      } catch (zipErr) {
+        console.error(`[ZIP UNPACK ERROR for ${rawName}]:`, zipErr);
+        unmatchedDocuments.push(`${rawName} (ZIP uitpakfout)`);
+      }
+    } else {
+      // Regular single file
+      processSingleFileRecord(rawName, file.path || file.buffer, false);
+    }
+  }
+
+  const effectiveTotal = (uploadedFiles.length - zipCount) + extractedFromZipCount;
 
   return {
-    totalUploaded: uploadedFiles.length,
+    totalUploaded: effectiveTotal > 0 ? effectiveTotal : uploadedFiles.length,
+    zipCount,
+    extractedFromZipCount,
     matchedCount: matchedDocuments.length,
     unmatchedCount: unmatchedDocuments.length,
     matchedDocuments,
     unmatchedDocuments,
+    allSavedFiles,
   };
 }
 

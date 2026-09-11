@@ -15,6 +15,12 @@ import {
   Plus,
   Info,
   RefreshCw,
+  Archive,
+  Search,
+  Filter,
+  Layers,
+  ArrowRight,
+  FolderCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -24,6 +30,13 @@ interface DossierBulkUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
   onUploadSuccess: () => void;
+}
+
+interface MatchedDocItem {
+  filename: string;
+  dossier: string;
+  title: string;
+  category?: string;
 }
 
 export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
@@ -40,11 +53,18 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatusText, setUploadStatusText] = useState("");
+  const [uploadStage, setUploadStage] = useState<"idle" | "uploading" | "unpacking" | "matching" | "indexing" | "completed">("idle");
+  const [filterQuery, setFilterQuery] = useState("");
+  const [resultFilterTab, setResultFilterTab] = useState<"all" | "matched" | "unmatched">("all");
+
   const [uploadResult, setUploadResult] = useState<{
     matchedCount: number;
     totalUploaded: number;
+    zipCount?: number;
+    extractedFromZipCount?: number;
     unmatchedCount: number;
-    matchedDocuments: Array<{ filename: string; dossier: string; title: string }>;
+    matchedDocuments: MatchedDocItem[];
+    unmatchedDocuments?: string[];
   } | null>(null);
 
   // Metadata upload state
@@ -95,7 +115,7 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
     if (duplicatesDetected > 0) {
       setSkippedDuplicatesCount((prev) => prev + duplicatesDetected);
       toast.info(
-        `${duplicatesDetected} dubbele bestand(en) automatisch overgeslagen (worden niet dubbel toegevoegd).`
+        `${duplicatesDetected} dubbele bestand(en) automatisch overgeslagen.`
       );
     }
     setUploadResult(null);
@@ -123,15 +143,27 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
     e.preventDefault();
   };
 
-  // Helper to partition files into safe batches (max 4 files or max 10MB per batch)
+  // Helper to partition files into safe batches (max 4 files or max 25MB per batch, with ZIP files handled individually)
   const createBatches = (files: File[]) => {
     const batches: File[][] = [];
     let currentBatch: File[] = [];
     let currentBatchBytes = 0;
-    const MAX_BATCH_BYTES = 10 * 1024 * 1024; // 10MB per batch
-    const MAX_FILES_PER_BATCH = 4;
+    const MAX_BATCH_BYTES = 25 * 1024 * 1024; // 25MB per batch
+    const MAX_FILES_PER_BATCH = 5;
 
     for (const file of files) {
+      const isZip = file.name.toLowerCase().endsWith(".zip");
+      if (isZip) {
+        // Send zip files individually to prevent timeouts
+        if (currentBatch.length > 0) {
+          batches.push(currentBatch);
+          currentBatch = [];
+          currentBatchBytes = 0;
+        }
+        batches.push([file]);
+        continue;
+      }
+
       if (
         currentBatch.length > 0 &&
         (currentBatchBytes + file.size > MAX_BATCH_BYTES || currentBatch.length >= MAX_FILES_PER_BATCH)
@@ -149,26 +181,42 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
     return batches;
   };
 
+  const hasZipFile = selectedFiles.some((f) => f.name.toLowerCase().endsWith(".zip"));
+
   const handleUpload = async () => {
     if (selectedFiles.length === 0) return;
 
     setIsUploading(true);
+    setUploadStage("uploading");
     setUploadProgress(5);
-    setUploadStatusText(`Upload voorbereiden voor ${selectedFiles.length} bestanden...`);
+    setUploadStatusText(`Upload voorbereiden voor ${selectedFiles.length} bestand(en)...`);
 
     const token = getToken();
     const batches = createBatches(selectedFiles);
     let completedFiles = 0;
     let accumulatedMatchedCount = 0;
     let accumulatedUnmatchedCount = 0;
-    const accumulatedMatchedDocs: Array<{ filename: string; dossier: string; title: string }> = [];
+    let accumulatedZipCount = 0;
+    let accumulatedExtractedFromZipCount = 0;
+    const accumulatedMatchedDocs: MatchedDocItem[] = [];
+    const accumulatedUnmatchedDocs: string[] = [];
 
     try {
       for (let i = 0; i < batches.length; i++) {
         const batch = batches[i];
-        setUploadStatusText(
-          `Deel ${i + 1} van ${batches.length} verwerken: ${completedFiles} van de ${selectedFiles.length} bestanden gereed...`
-        );
+        const isCurrentZip = batch.some((f) => f.name.toLowerCase().endsWith(".zip"));
+
+        if (isCurrentZip) {
+          setUploadStage("unpacking");
+          setUploadStatusText(
+            `ZIP-archief uploaden en uitpakken op de server (${i + 1}/${batches.length})...`
+          );
+        } else {
+          setUploadStage("uploading");
+          setUploadStatusText(
+            `Deel ${i + 1} van ${batches.length} uploaden: ${completedFiles} van de ${selectedFiles.length} bestanden gereed...`
+          );
+        }
 
         const formData = new FormData();
         batch.forEach((file) => {
@@ -183,6 +231,9 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
           body: formData,
         });
 
+        setUploadStage("matching");
+        setUploadStatusText(`Bestanden vergelijken met raadsdossiers en netwerkgrafiek...`);
+
         const responseText = await res.text();
         let data: any = null;
         try {
@@ -190,7 +241,7 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
         } catch (_jsonErr) {
           if (res.status === 413 || responseText.includes("413") || responseText.toLowerCase().includes("too large")) {
             throw new Error(
-              `Eén van de bestanden in deel ${i + 1} is te groot voor de server. Upload bestanden kleiner dan 25 MB per stuk.`
+              `Eén van de bestanden in deel ${i + 1} is te groot voor de server. Upload bestanden kleiner dan 100 MB per stuk.`
             );
           }
           if (!res.ok) {
@@ -206,28 +257,49 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
         completedFiles += batch.length;
         accumulatedMatchedCount += data.matchedCount || 0;
         accumulatedUnmatchedCount += data.unmatchedCount || 0;
+        accumulatedZipCount += data.zipCount || 0;
+        accumulatedExtractedFromZipCount += data.extractedFromZipCount || 0;
+
         if (Array.isArray(data.matchedDocuments)) {
           accumulatedMatchedDocs.push(...data.matchedDocuments);
         }
+        if (Array.isArray(data.unmatchedDocuments)) {
+          accumulatedUnmatchedDocs.push(...data.unmatchedDocuments);
+        }
 
         const calculatedProgress = Math.min(
-          98,
+          95,
           Math.round((completedFiles / selectedFiles.length) * 100)
         );
         setUploadProgress(calculatedProgress);
       }
 
+      setUploadStage("indexing");
+      setUploadStatusText("Zoekindex bijwerken voor directe tekstdoorzoeking...");
+      setUploadProgress(99);
+      await new Promise((r) => setTimeout(r, 400));
+
+      setUploadStage("completed");
       setUploadProgress(100);
+
+      const totalEffectiveCount =
+        accumulatedExtractedFromZipCount > 0
+          ? (completedFiles - accumulatedZipCount) + accumulatedExtractedFromZipCount
+          : completedFiles;
+
       const finalResult = {
-        totalUploaded: completedFiles,
+        totalUploaded: totalEffectiveCount,
+        zipCount: accumulatedZipCount,
+        extractedFromZipCount: accumulatedExtractedFromZipCount,
         matchedCount: accumulatedMatchedCount,
         unmatchedCount: accumulatedUnmatchedCount,
         matchedDocuments: accumulatedMatchedDocs,
+        unmatchedDocuments: accumulatedUnmatchedDocs,
       };
 
       setUploadResult(finalResult);
       toast.success(
-        `${accumulatedMatchedCount} van de ${completedFiles} bestanden direct herkend en gekoppeld aan dossiers!`
+        `${accumulatedMatchedCount} van de ${totalEffectiveCount} documenten direct herkend en verdeeld over de dossiers!`
       );
       onUploadSuccess();
     } catch (err: any) {
@@ -236,9 +308,12 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
       if (completedFiles > 0) {
         setUploadResult({
           totalUploaded: completedFiles,
+          zipCount: accumulatedZipCount,
+          extractedFromZipCount: accumulatedExtractedFromZipCount,
           matchedCount: accumulatedMatchedCount,
           unmatchedCount: accumulatedUnmatchedCount,
           matchedDocuments: accumulatedMatchedDocs,
+          unmatchedDocuments: accumulatedUnmatchedDocs,
         });
         onUploadSuccess();
       }
@@ -312,29 +387,46 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
     }
   };
 
+  // Filter matched documents in result view
+  const filteredMatched = (uploadResult?.matchedDocuments || []).filter((doc) => {
+    if (!filterQuery) return true;
+    const q = filterQuery.toLowerCase();
+    return (
+      doc.filename.toLowerCase().includes(q) ||
+      doc.dossier.toLowerCase().includes(q) ||
+      (doc.title && doc.title.toLowerCase().includes(q)) ||
+      (doc.category && doc.category.toLowerCase().includes(q))
+    );
+  });
+
+  const filteredUnmatched = (uploadResult?.unmatchedDocuments || []).filter((fn) => {
+    if (!filterQuery) return true;
+    return fn.toLowerCase().includes(filterQuery.toLowerCase());
+  });
+
   return (
     <div
       id="bulk-upload-modal-overlay"
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/75 backdrop-blur-xs transition-opacity"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-xs transition-opacity"
       onClick={onClose}
     >
       <div
         id="bulk-upload-modal-card"
-        className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[92vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-muted/30">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-muted/30">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-accent/15 text-accent">
+            <div className="p-2.5 rounded-xl bg-accent/15 text-accent">
               <FolderSync className="w-5 h-5" />
             </div>
             <div>
               <h3 className="text-base font-bold text-foreground">
-                Documenten & Dossiers Beheer
+                Documenten & ZIP Bulk-Upload
               </h3>
               <p className="text-xs text-muted-foreground">
-                Bulk-upload van PDF raadsstukken of update van metadata & relaties.
+                Upload losse PDF/Word-stukken of een compleet .ZIP archief. Automatische uitpakking en dossierverdeling.
               </p>
             </div>
           </div>
@@ -350,7 +442,7 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex border-b border-border bg-muted/20 px-5 pt-2 gap-2 text-xs">
+        <div className="flex border-b border-border bg-muted/20 px-6 pt-2 gap-2 text-xs">
           <button
             onClick={() => setActiveTab("documents")}
             className={`pb-2.5 px-3 font-semibold transition-all border-b-2 flex items-center gap-2 ${
@@ -359,8 +451,8 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
                 : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
-            <FileText className="w-4 h-4" />
-            PDF Raadsstukken Bulk-Upload
+            <Layers className="w-4 h-4" />
+            Documenten & ZIP Archief Upload
             {selectedFiles.length > 0 && (
               <span className="px-1.5 py-0.2 rounded-full bg-accent text-accent-foreground text-[10px]">
                 {selectedFiles.length}
@@ -381,20 +473,20 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="p-5 overflow-y-auto space-y-4">
+        <div className="p-6 overflow-y-auto space-y-5">
           {activeTab === "documents" ? (
             !uploadResult ? (
               <>
                 {/* Active database info callout */}
-                <div className="flex items-start gap-2.5 p-3 rounded-xl bg-accent/5 border border-accent/20 text-xs">
+                <div className="flex items-start gap-3 p-3.5 rounded-xl bg-accent/5 border border-accent/20 text-xs">
                   <Info className="w-4 h-4 text-accent shrink-0 mt-0.5" />
-                  <div>
+                  <div className="space-y-1">
                     <span className="font-semibold text-foreground">
-                      406 raadsstukken geregistreerd in 226 dossiers.
-                    </span>{" "}
-                    <span className="text-muted-foreground">
-                      Upload hieronder de PDF-bestanden. Bestanden worden automatisch herkend aan de hand van de bestandsnaam en gekoppeld aan het bijbehorende dossier en de netwerkgrafiek.
+                      Automatische dossier-detectie & ZIP-ondersteuning
                     </span>
+                    <p className="text-muted-foreground">
+                      Je kunt hier direct losse PDF's, Word-documenten of een heel <strong>.ZIP-bestand</strong> (bijv. van NotuBiz of een export) uploaden. Het systeem pakt het ZIP-archief automatisch uit op de server, detecteert de bestuurslaag (Gemeente, Provincie of Waterschap) en koppelt elk stuk direct aan het juiste raadsdossier.
+                    </p>
                   </div>
                 </div>
 
@@ -404,29 +496,33 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
                   onDrop={handleDrop}
                   onDragOver={handleDragOver}
                   onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-accent/40 hover:border-accent hover:bg-accent/5 transition-colors rounded-2xl p-7 text-center cursor-pointer flex flex-col items-center justify-center gap-3"
+                  className="border-2 border-dashed border-accent/40 hover:border-accent hover:bg-accent/5 transition-all rounded-2xl p-8 text-center cursor-pointer flex flex-col items-center justify-center gap-3.5 group"
                 >
-                  <div className="w-12 h-12 rounded-2xl bg-accent/10 flex items-center justify-center text-accent">
-                    <Upload className="w-6 h-6" />
+                  <div className="w-14 h-14 rounded-2xl bg-accent/10 group-hover:scale-105 transition-transform flex items-center justify-center text-accent">
+                    <Upload className="w-7 h-7" />
                   </div>
-                  <div>
+                  <div className="space-y-1">
                     <p className="text-sm font-semibold text-foreground">
-                      Sleep PDF raadsstukken hierheen of klik om te selecteren
+                      Sleep documenten of een .ZIP archief hierheen
                     </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Ondersteunt honderden bestanden tegelijk (wordt automatisch in veilige delen verwerkt)
+                    <p className="text-xs text-muted-foreground">
+                      Ondersteunt <span className="font-medium text-foreground">.ZIP</span>, <span className="font-medium text-foreground">.PDF</span>, <span className="font-medium text-foreground">.DOCX</span>, <span className="font-medium text-foreground">.XLSX</span>
                     </p>
-                    <p className="text-[11px] text-accent/90 mt-1.5 font-medium flex items-center justify-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-accent" />
-                      Duplicaten worden direct automatisch herkend en uitgefilterd
-                    </p>
+                    <div className="flex items-center justify-center gap-2 pt-1 text-[11px] text-accent font-medium">
+                      <span className="flex items-center gap-1 bg-accent/10 px-2.5 py-0.5 rounded-full">
+                        <Archive className="w-3 h-3" /> Automatische ZIP-uitpakking
+                      </span>
+                      <span className="flex items-center gap-1 bg-accent/10 px-2.5 py-0.5 rounded-full">
+                        <FolderCheck className="w-3 h-3" /> Directe dossierverdeling
+                      </span>
+                    </div>
                   </div>
                   <input
                     id="bulk-upload-file-input"
                     ref={fileInputRef}
                     type="file"
                     multiple
-                    accept=".pdf,.doc,.docx"
+                    accept=".pdf,.doc,.docx,.xlsx,.zip,application/zip,application/x-zip-compressed"
                     className="hidden"
                     onChange={handleFileChange}
                   />
@@ -434,17 +530,23 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
 
                 {/* Selected Files Preview List */}
                 {selectedFiles.length > 0 && (
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-foreground">
-                          Geselecteerd voor upload ({selectedFiles.length} bestanden,{" "}
+                          Geselecteerd voor upload ({selectedFiles.length} bestand(en),{" "}
                           {(
                             selectedFiles.reduce((acc, f) => acc + f.size, 0) /
                             (1024 * 1024)
                           ).toFixed(1)}{" "}
                           MB)
                         </span>
+                        {hasZipFile && (
+                          <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 text-[10px] font-semibold flex items-center gap-1">
+                            <Archive className="w-3 h-3" />
+                            Bevat ZIP archief
+                          </span>
+                        )}
                         {skippedDuplicatesCount > 0 && (
                           <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold flex items-center gap-1">
                             <CheckCircle2 className="w-3 h-3" />
@@ -475,27 +577,41 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
                       </div>
                     </div>
 
-                    <div className="max-h-48 overflow-y-auto rounded-xl border border-border p-2 bg-background space-y-1">
+                    <div className="max-h-52 overflow-y-auto rounded-xl border border-border p-2 bg-background space-y-1.5">
                       {selectedFiles.map((file, idx) => {
-                        const isLarge = file.size > 25 * 1024 * 1024;
+                        const isZip = file.name.toLowerCase().endsWith(".zip");
+                        const isLarge = file.size > 50 * 1024 * 1024;
                         return (
                           <div
                             key={idx}
-                            className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs ${
-                              isLarge ? "bg-amber-500/10 border border-amber-500/30" : "bg-muted/40"
+                            className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs ${
+                              isZip
+                                ? "bg-accent/10 border border-accent/25"
+                                : isLarge
+                                ? "bg-amber-500/10 border border-amber-500/30"
+                                : "bg-muted/40"
                             }`}
                           >
-                            <div className="flex items-center gap-2 min-w-0 pr-2">
-                              <FileText className="w-3.5 h-3.5 text-accent shrink-0" />
-                              <span className="font-mono truncate">{file.name}</span>
+                            <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                              {isZip ? (
+                                <Archive className="w-4 h-4 text-accent shrink-0" />
+                              ) : (
+                                <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                              )}
+                              <span className="font-mono truncate font-medium">{file.name}</span>
+                              {isZip && (
+                                <span className="text-[10px] bg-accent/20 text-accent font-semibold px-2 py-0.5 rounded-full shrink-0">
+                                  ZIP Archief
+                                </span>
+                              )}
                               {isLarge && (
                                 <span className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 font-semibold px-1.5 py-0.5 rounded bg-amber-500/15 shrink-0">
                                   <AlertTriangle className="w-3 h-3" />
-                                  Groot bestand
+                                  Groot archief
                                 </span>
                               )}
                             </div>
-                            <div className="flex items-center gap-2 shrink-0">
+                            <div className="flex items-center gap-2.5 shrink-0">
                               <span className="text-[11px] text-muted-foreground font-medium">
                                 {(file.size / (1024 * 1024)).toFixed(2)} MB
                               </span>
@@ -517,94 +633,195 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
                   </div>
                 )}
 
-                {/* Progress Bar */}
+                {/* Progress Bar & Stage Flow */}
                 {isUploading && (
-                  <div className="space-y-1.5 bg-accent/5 p-3 rounded-xl border border-accent/20">
+                  <div className="space-y-3 bg-accent/5 p-4 rounded-xl border border-accent/20">
                     <div className="flex items-center justify-between text-xs text-foreground">
-                      <span className="flex items-center gap-1.5 font-medium text-accent truncate pr-2">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-accent shrink-0" />
-                        {uploadStatusText || "Bestanden opslaan en synchroniseren..."}
+                      <span className="flex items-center gap-2 font-medium text-accent truncate pr-2">
+                        <Loader2 className="w-4 h-4 animate-spin text-accent shrink-0" />
+                        {uploadStatusText || "Bestanden verwerken..."}
                       </span>
                       <span className="font-bold text-accent shrink-0">{uploadProgress}%</span>
                     </div>
-                    <div className="h-2 rounded-full bg-muted overflow-hidden">
+
+                    <div className="h-2.5 rounded-full bg-muted overflow-hidden">
                       <div
                         className="h-full bg-accent transition-all duration-300"
                         style={{ width: `${uploadProgress}%` }}
                       />
                     </div>
+
+                    {/* Step indicator pills */}
+                    <div className="grid grid-cols-4 gap-2 pt-1">
+                      <div className={`p-2 rounded-lg text-center text-[10px] font-semibold flex flex-col items-center gap-1 ${
+                        uploadStage === "uploading" ? "bg-accent/20 text-accent border border-accent/40" : "bg-muted/40 text-muted-foreground"
+                      }`}>
+                        <Upload className="w-3 h-3" />
+                        <span>1. Upload</span>
+                      </div>
+                      <div className={`p-2 rounded-lg text-center text-[10px] font-semibold flex flex-col items-center gap-1 ${
+                        uploadStage === "unpacking" ? "bg-accent/20 text-accent border border-accent/40" : "bg-muted/40 text-muted-foreground"
+                      }`}>
+                        <Archive className="w-3 h-3" />
+                        <span>2. Uitpakken</span>
+                      </div>
+                      <div className={`p-2 rounded-lg text-center text-[10px] font-semibold flex flex-col items-center gap-1 ${
+                        uploadStage === "matching" ? "bg-accent/20 text-accent border border-accent/40" : "bg-muted/40 text-muted-foreground"
+                      }`}>
+                        <FolderCheck className="w-3 h-3" />
+                        <span>3. Verdelen</span>
+                      </div>
+                      <div className={`p-2 rounded-lg text-center text-[10px] font-semibold flex flex-col items-center gap-1 ${
+                        uploadStage === "indexing" || uploadStage === "completed" ? "bg-accent/20 text-accent border border-accent/40" : "bg-muted/40 text-muted-foreground"
+                      }`}>
+                        <Search className="w-3 h-3" />
+                        <span>4. Indexeren</span>
+                      </div>
+                    </div>
                   </div>
                 )}
               </>
             ) : (
-              /* Upload Complete Feedback Summary */
-              <div className="space-y-4 text-center py-4">
+              /* Upload Complete Feedback Summary & Detailed Distribution View */
+              <div className="space-y-5 text-center py-2">
                 <div className="w-14 h-14 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
                   <CheckCircle2 className="w-8 h-8" />
                 </div>
                 <div>
                   <h4 className="text-base font-bold text-foreground">
-                    Bulk Upload Succesvol Afgerond!
+                    Bulk Upload & Verdeling Succesvol Afgerond!
                   </h4>
-                  <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
-                    De documenten zijn fysiek opgeslagen in de server-infrastructuur en gekoppeld aan de dossiers en netwerkgrafiek.
+                  <p className="text-xs text-muted-foreground mt-1 max-w-lg mx-auto">
+                    {uploadResult.zipCount && uploadResult.zipCount > 0
+                      ? `${uploadResult.zipCount} ZIP-archief (${uploadResult.extractedFromZipCount} bestanden) succesvol uitgepakt en verdeeld over de raadsdossiers.`
+                      : `Alle bestanden zijn fysiek opgeslagen en direct gekoppeld aan de dossiers en netwerkgrafiek.`}
                   </p>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3 max-w-md mx-auto text-center">
+                {/* Metric Summary Cards */}
+                <div className="grid grid-cols-3 gap-3 max-w-lg mx-auto text-center">
                   <div className="p-3 rounded-xl bg-muted/40 border border-border">
-                    <div className="text-lg font-bold text-foreground">
+                    <div className="text-xl font-extrabold text-foreground">
                       {uploadResult.totalUploaded}
                     </div>
-                    <div className="text-[11px] text-muted-foreground">Geüpload</div>
+                    <div className="text-[11px] text-muted-foreground font-medium">
+                      Totaal Verwerkt
+                    </div>
                   </div>
                   <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-                    <div className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+                    <div className="text-xl font-extrabold text-emerald-600 dark:text-emerald-400">
                       {uploadResult.matchedCount}
                     </div>
-                    <div className="text-[11px] text-emerald-700 dark:text-emerald-300">
-                      Herkend in Dossiers
+                    <div className="text-[11px] text-emerald-700 dark:text-emerald-300 font-semibold">
+                      Verdeeld over Dossiers
                     </div>
                   </div>
                   <div className="p-3 rounded-xl bg-muted/40 border border-border">
-                    <div className="text-lg font-bold text-muted-foreground">
+                    <div className="text-xl font-extrabold text-muted-foreground">
                       {uploadResult.unmatchedCount}
                     </div>
-                    <div className="text-[11px] text-muted-foreground">Nieuw / Overig</div>
+                    <div className="text-[11px] text-muted-foreground font-medium">
+                      Algemeen Archief
+                    </div>
                   </div>
                 </div>
 
-                {uploadResult.matchedDocuments.length > 0 && (
-                  <div className="text-left space-y-1.5 mt-4">
-                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">
-                      Gekoppelde Stukken:
-                    </span>
-                    <div className="max-h-40 overflow-y-auto rounded-xl border border-border p-2 bg-background space-y-1 text-xs">
-                      {uploadResult.matchedDocuments.slice(0, 50).map((doc, idx) => (
+                {/* Search & Distribution Details */}
+                <div className="text-left space-y-2.5 pt-2 border-t border-border">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                      <FolderCheck className="w-4 h-4 text-accent" />
+                      <span>Verdeelde Documenten Overzicht:</span>
+                    </div>
+
+                    {/* Filter tabs */}
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                        <input
+                          type="text"
+                          placeholder="Filter bestanden / dossiers..."
+                          value={filterQuery}
+                          onChange={(e) => setFilterQuery(e.target.value)}
+                          className="h-7 pl-7 pr-2.5 text-xs rounded-lg border border-border bg-background w-44 sm:w-56 focus:outline-hidden focus:ring-1 focus:ring-accent"
+                        />
+                      </div>
+                      <button
+                        onClick={() => setResultFilterTab("all")}
+                        className={`px-2 py-1 rounded text-[11px] font-semibold transition-colors ${
+                          resultFilterTab === "all" ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        Alles ({uploadResult.totalUploaded})
+                      </button>
+                      <button
+                        onClick={() => setResultFilterTab("matched")}
+                        className={`px-2 py-1 rounded text-[11px] font-semibold transition-colors ${
+                          resultFilterTab === "matched" ? "bg-emerald-600 text-white" : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        Dossiers ({uploadResult.matchedCount})
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Results List */}
+                  <div className="max-h-56 overflow-y-auto rounded-xl border border-border p-2 bg-background space-y-1.5 text-xs">
+                    {resultFilterTab !== "unmatched" &&
+                      filteredMatched.map((doc, idx) => (
                         <div
-                          key={idx}
-                          className="flex items-center justify-between p-1.5 rounded-md bg-muted/30 text-xs"
+                          key={`matched-${idx}`}
+                          className="flex items-start justify-between p-2 rounded-lg bg-muted/30 border border-border/50 text-xs gap-3"
                         >
-                          <span className="font-mono text-[11px] truncate pr-2">{doc.filename}</span>
-                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-accent/15 text-accent shrink-0">
-                            {doc.dossier}
+                          <div className="min-w-0 flex-1 space-y-0.5">
+                            <div className="font-mono text-[11px] font-semibold text-foreground truncate">
+                              {doc.filename}
+                            </div>
+                            <div className="text-[11px] text-muted-foreground truncate">
+                              {doc.title}
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end gap-1 shrink-0">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-accent/15 text-accent">
+                              {doc.dossier}
+                            </span>
+                            {doc.category && (
+                              <span className="text-[9px] text-muted-foreground">
+                                {doc.category}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+
+                    {resultFilterTab !== "matched" &&
+                      filteredUnmatched.map((fn, idx) => (
+                        <div
+                          key={`unmatched-${idx}`}
+                          className="flex items-center justify-between p-2 rounded-lg bg-muted/20 text-xs"
+                        >
+                          <span className="font-mono text-[11px] text-muted-foreground truncate pr-2">
+                            {fn}
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground shrink-0">
+                            Veilig opgeslagen in documenten-archief
                           </span>
                         </div>
                       ))}
-                      {uploadResult.matchedDocuments.length > 50 && (
-                        <div className="text-[11px] text-center text-muted-foreground py-1">
-                          ...en nog {uploadResult.matchedDocuments.length - 50} andere stukken
-                        </div>
-                      )}
-                    </div>
+
+                    {filteredMatched.length === 0 && filteredUnmatched.length === 0 && (
+                      <div className="text-center py-6 text-xs text-muted-foreground">
+                        Geen documenten gevonden die voldoen aan de filter.
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
             )
           ) : (
             /* Metadata & Network Graph Tab */
             <div className="space-y-4">
-              <div className="p-3 rounded-xl bg-accent/5 border border-accent/20 text-xs text-muted-foreground space-y-1">
+              <div className="p-3.5 rounded-xl bg-accent/5 border border-accent/20 text-xs text-muted-foreground space-y-1">
                 <p className="font-semibold text-foreground flex items-center gap-1.5">
                   <Network className="w-4 h-4 text-accent" />
                   Update Raadsstukken Metadata & Netwerkgraaf
@@ -759,7 +976,7 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="px-5 py-3.5 border-t border-border bg-muted/20 flex items-center justify-between">
+        <div className="px-6 py-4 border-t border-border bg-muted/20 flex items-center justify-between">
           <Button
             id="btn-cancel-bulk-upload"
             variant="outline"
@@ -777,17 +994,22 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
                 size="sm"
                 disabled={selectedFiles.length === 0 || isUploading}
                 onClick={handleUpload}
-                className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-xs rounded-xl"
+                className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-xs rounded-xl h-9 px-4"
               >
                 {isUploading ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
                     Verwerken ({selectedFiles.length})...
                   </>
+                ) : hasZipFile ? (
+                  <>
+                    <Archive className="w-3.5 h-3.5 mr-1.5" />
+                    ZIP Archief Uploaden & Uitpakken
+                  </>
                 ) : (
                   <>
                     <Upload className="w-3.5 h-3.5 mr-1.5" />
-                    Upload {selectedFiles.length} Bestanden
+                    Upload {selectedFiles.length} Bestand(en)
                   </>
                 )}
               </Button>
@@ -798,10 +1020,11 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
                 onClick={() => {
                   setSelectedFiles([]);
                   setUploadResult(null);
+                  setFilterQuery("");
                 }}
                 className="bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-xs rounded-xl"
               >
-                Nog meer bestanden uploaden
+                Nog meer bestanden of .ZIP uploaden
               </Button>
             ))}
         </div>
@@ -809,3 +1032,4 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
     </div>
   );
 };
+
