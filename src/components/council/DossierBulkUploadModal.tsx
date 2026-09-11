@@ -25,6 +25,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
+import { UploadActivityLogConsole, type UploadLogEntry } from "./UploadActivityLogConsole";
 
 interface DossierBulkUploadModalProps {
   isOpen: boolean;
@@ -62,6 +63,27 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
   } | null>(null);
   const [filterQuery, setFilterQuery] = useState("");
   const [resultFilterTab, setResultFilterTab] = useState<"all" | "matched" | "unmatched">("all");
+
+  // Live activity & execution log
+  const [activityLogs, setActivityLogs] = useState<UploadLogEntry[]>([]);
+
+  const addLog = (
+    level: UploadLogEntry["level"],
+    tag: UploadLogEntry["tag"],
+    message: string,
+    details?: string
+  ) => {
+    const timeStr = new Date().toLocaleTimeString("nl-NL");
+    const newEntry: UploadLogEntry = {
+      id: `log_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      timestamp: timeStr,
+      level,
+      tag,
+      message,
+      details,
+    };
+    setActivityLogs((prev) => [...prev, newEntry]);
+  };
 
   const [uploadResult, setUploadResult] = useState<{
     matchedCount: number;
@@ -115,11 +137,17 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
         }
       }
 
+      const totalMb = (uniqueNew.reduce((acc, f) => acc + f.size, 0) / (1024 * 1024)).toFixed(1);
+      if (uniqueNew.length > 0) {
+        addLog("info", "FILES", `${uniqueNew.length} bestand(en) toegevoegd aan uploadlijst (${totalMb} MB).`);
+      }
+
       return [...prev, ...uniqueNew];
     });
 
     if (duplicatesDetected > 0) {
       setSkippedDuplicatesCount((prev) => prev + duplicatesDetected);
+      addLog("warn", "FILES", `${duplicatesDetected} dubbele bestand(en) overgeslagen.`);
       toast.info(
         `${duplicatesDetected} dubbele bestand(en) automatisch overgeslagen.`
       );
@@ -128,7 +156,13 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
   };
 
   const removeFile = (index: number) => {
-    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+    setSelectedFiles((prev) => {
+      const removed = prev[index];
+      if (removed) {
+        addLog("info", "FILES", `Bestand "${removed.name}" verwijderd uit selectie.`);
+      }
+      return prev.filter((_, i) => i !== index);
+    });
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -198,6 +232,13 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
     const uploadId = `upload_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
     const startTime = Date.now();
+    const isZip = file.name.toLowerCase().endsWith(".zip");
+
+    addLog(
+      "info",
+      "CHUNK",
+      `Bestand "${file.name}" (${(file.size / (1024 * 1024)).toFixed(1)} MB) opgesplitst in ${totalChunks} brok(ken) van 8 MB.`
+    );
 
     let finalResult: any = null;
 
@@ -268,12 +309,28 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
           });
 
           success = true;
+          addLog(
+            "chunk",
+            "CHUNK",
+            `Deel ${chunkIndex + 1}/${totalChunks} van "${file.name}" succesvol verstuurd naar de server.`
+          );
+
           if (chunkIndex === totalChunks - 1) {
             finalResult = chunkResult;
+            addLog(
+              "success",
+              "SERVER",
+              `✅ Alle ${totalChunks} chunks van "${file.name}" ontvangen! Server voert samenvoeging en ${isZip ? "ZIP-extractie" : "analyse"} uit...`
+            );
           }
         } catch (err: any) {
           lastError = err;
           console.warn(`[CHUNK RETRY ${attempts}/3] op chunk ${chunkIndex + 1}/${totalChunks}:`, err);
+          addLog(
+            "warn",
+            "RETRY",
+            `⚠️ Deel ${chunkIndex + 1}/${totalChunks} van "${file.name}" haperde (poging ${attempts}/3). Automatische herpoging...`
+          );
           if (attempts < 3) {
             await new Promise((r) => setTimeout(r, 1000 * attempts));
           }
@@ -281,6 +338,11 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
       }
 
       if (!success) {
+        addLog(
+          "error",
+          "ERROR",
+          `❌ Upload mislukt voor deel ${chunkIndex + 1}/${totalChunks} van "${file.name}".`
+        );
         throw lastError || new Error(`Uploaden van deel ${chunkIndex + 1}/${totalChunks} is na 3 pogingen mislukt.`);
       }
     }
@@ -365,6 +427,12 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
     const accumulatedMatchedDocs: MatchedDocItem[] = [];
     const accumulatedUnmatchedDocs: string[] = [];
 
+    addLog(
+      "info",
+      "START",
+      `🚀 Bulk upload gestart voor ${selectedFiles.length} bestand(en)...`
+    );
+
     try {
       // If we have large files (> 10MB) or ZIP files, process them with chunked upload!
       const largeOrZipFiles = selectedFiles.filter((f) => f.name.toLowerCase().endsWith(".zip") || f.size > 10 * 1024 * 1024);
@@ -417,6 +485,13 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
           }
         );
 
+        // Incorporate server-side logs if provided
+        if (Array.isArray(data.serverLogs)) {
+          data.serverLogs.forEach((slog: any) => {
+            addLog(slog.level || "info", slog.tag || (isZip ? "UNZIP" : "MATCH"), slog.message);
+          });
+        }
+
         completedFiles += 1;
         accumulatedMatchedCount += data.matchedCount || 0;
         accumulatedUnmatchedCount += data.unmatchedCount || 0;
@@ -443,6 +518,8 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
             `Deel ${i + 1} van ${smallBatches.length} uploaden (${(batchSizeBytes / (1024 * 1024)).toFixed(1)} MB)...`
           );
 
+          addLog("info", "BATCH", `Batch ${i + 1}/${smallBatches.length} (${batch.length} bestanden) uploaden...`);
+
           const data = await uploadBatchDirect(
             batch,
             token,
@@ -462,6 +539,12 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
             }
           );
 
+          if (Array.isArray(data.serverLogs)) {
+            data.serverLogs.forEach((slog: any) => {
+              addLog(slog.level || "info", slog.tag || "MATCH", slog.message);
+            });
+          }
+
           completedFiles += batch.length;
           accumulatedMatchedCount += data.matchedCount || 0;
           accumulatedUnmatchedCount += data.unmatchedCount || 0;
@@ -478,6 +561,7 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
       setUploadStage("indexing");
       setUploadStatusText("Zoekindex bijwerken voor directe tekstdoorzoeking...");
       setUploadProgress(99);
+      addLog("info", "INDEX", "Zoekindex wordt bijgewerkt en metadata cache gesynchroniseerd...");
       await new Promise((r) => setTimeout(r, 400));
 
       setUploadStage("completed");
@@ -499,12 +583,18 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
       };
 
       setUploadResult(finalResult);
+      addLog(
+        "success",
+        "DONE",
+        `🎉 Bulk upload & verdeling voltooid! ${accumulatedMatchedCount} van de ${totalEffectiveCount} documenten direct gekoppeld.`
+      );
       toast.success(
         `${accumulatedMatchedCount} van de ${totalEffectiveCount} documenten direct herkend en verdeeld over de dossiers!`
       );
       onUploadSuccess();
     } catch (err: any) {
       console.error("[BULK UPLOAD CLIENT ERROR]:", err);
+      addLog("error", "ERROR", `Fout opgetreden tijdens upload: ${err.message || err}`);
       toast.error(err.message || "Fout bij uploaden.");
       if (completedFiles > 0) {
         setUploadResult({
@@ -911,6 +1001,16 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
                         <span>4. Indexeren</span>
                       </div>
                     </div>
+
+                    {/* Live Processing Terminal Logs while Uploading */}
+                    <div className="pt-2">
+                      <UploadActivityLogConsole
+                        logs={activityLogs}
+                        isUploading={isUploading}
+                        onClearLogs={() => setActivityLogs([])}
+                        defaultExpanded={true}
+                      />
+                    </div>
                   </div>
                 )}
               </>
@@ -1049,6 +1149,18 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
                     )}
                   </div>
                 </div>
+
+                {/* Persistent Activity Log Console in Results View */}
+                {activityLogs.length > 0 && (
+                  <div className="text-left pt-2">
+                    <UploadActivityLogConsole
+                      logs={activityLogs}
+                      isUploading={false}
+                      onClearLogs={() => setActivityLogs([])}
+                      defaultExpanded={false}
+                    />
+                  </div>
+                )}
               </div>
             )
           ) : (

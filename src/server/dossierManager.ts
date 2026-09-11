@@ -1707,8 +1707,16 @@ export function processUploadedCouncilDocuments(
   const matchedDocuments: Array<{ filename: string; dossier: string; title: string; category?: string }> = [];
   const unmatchedDocuments: string[] = [];
   const allSavedFiles: Array<{ filename: string; path: string }> = [];
+  const serverLogs: Array<{ timestamp: string; level: "info" | "success" | "warn" | "error"; message: string }> = [];
   let zipCount = 0;
   let extractedFromZipCount = 0;
+
+  const addLog = (level: "info" | "success" | "warn" | "error", message: string) => {
+    const timeStr = new Date().toLocaleTimeString("nl-NL");
+    serverLogs.push({ timestamp: timeStr, level, message });
+  };
+
+  addLog("info", `Start verwerking van ${uploadedFiles.length} bestand(en) op de server...`);
 
   // Helper to process a single saved buffer or file
   const processSingleFileRecord = (rawName: string, bufferOrSourcePath: Buffer | string, isFromZip = false) => {
@@ -1746,8 +1754,9 @@ export function processUploadedCouncilDocuments(
 
       // Sync to dist
       syncFileFn(targetFilePath);
-    } catch (writeErr) {
+    } catch (writeErr: any) {
       console.warn(`Could not write/sync uploaded file ${rawName}:`, writeErr);
+      addLog("warn", `Bestand wegschrijven waarschuwing (${cleanBasename}): ${writeErr?.message || writeErr}`);
     }
 
     allSavedFiles.push({
@@ -1774,8 +1783,10 @@ export function processUploadedCouncilDocuments(
         title: match.titel || cleanBasename,
         category: match.entiteiten || category,
       });
+      addLog("success", `Gekoppeld: "${cleanBasename}" ➔ Dossier: "${match.dossier}" (${match.titel || cleanBasename})`);
     } else {
       unmatchedDocuments.push(cleanBasename);
+      addLog("info", `Opgeslagen in archief: "${cleanBasename}" (${category})`);
     }
   };
 
@@ -1786,6 +1797,7 @@ export function processUploadedCouncilDocuments(
 
     if (isZip) {
       zipCount++;
+      addLog("info", `📦 ZIP-archief gedetecteerd: "${rawName}". Start uitpakken...`);
       let zipExtractedSuccessfully = false;
 
       // 1. First try native Linux /usr/bin/unzip (most robust for large 100MB-1GB+ ZIP archives)
@@ -1804,6 +1816,7 @@ export function processUploadedCouncilDocuments(
       if (sourceZipPath && fs.existsSync(sourceZipPath)) {
         try {
           fs.mkdirSync(tempExtractDir, { recursive: true });
+          addLog("info", `Uitpakken met streaming Linux /usr/bin/unzip...`);
           execSync(`unzip -o -q "${sourceZipPath}" -d "${tempExtractDir}"`, { timeout: 120000 });
 
           // Recursively read all files in tempExtractDir
@@ -1826,6 +1839,7 @@ export function processUploadedCouncilDocuments(
           };
 
           const extractedFiles = readAllFiles(tempExtractDir, tempExtractDir);
+          addLog("info", `Totaal ${extractedFiles.length} bestand(en) gevonden in het ZIP-archief.`);
 
           if (extractedFiles.length > 0) {
             for (const item of extractedFiles) {
@@ -1835,9 +1849,11 @@ export function processUploadedCouncilDocuments(
               }
             }
             zipExtractedSuccessfully = true;
+            addLog("success", `ZIP-archief "${rawName}" succesvol verwerkt (${extractedFiles.length} documenten).`);
           }
-        } catch (unzipCliErr) {
+        } catch (unzipCliErr: any) {
           console.warn(`[NATIVE UNZIP FAILED, FALLING BACK TO ADMZIP for ${rawName}]:`, unzipCliErr);
+          addLog("warn", `Native unzip melding: ${unzipCliErr?.message || unzipCliErr}. Poging met fallback parser...`);
         } finally {
           // Clean up temp extraction folder
           try {
@@ -1851,9 +1867,11 @@ export function processUploadedCouncilDocuments(
       // 2. Fallback to AdmZip if native unzip did not extract files
       if (!zipExtractedSuccessfully) {
         try {
+          addLog("info", `AdmZip fallback extractor starten voor "${rawName}"...`);
           const zip = sourceZipPath && fs.existsSync(sourceZipPath) ? new AdmZip(sourceZipPath) : (file.buffer ? new AdmZip(file.buffer) : null);
           if (zip) {
             const zipEntries = zip.getEntries();
+            addLog("info", `AdmZip vond ${zipEntries.length} items in het archief.`);
             for (const entry of zipEntries) {
               if (entry.isDirectory || entry.entryName.includes("__MACOSX") || path.basename(entry.entryName).startsWith(".")) {
                 continue;
@@ -1865,10 +1883,12 @@ export function processUploadedCouncilDocuments(
               }
             }
             zipExtractedSuccessfully = true;
+            addLog("success", `AdmZip uitpakken voltooid.`);
           }
-        } catch (zipErr) {
+        } catch (zipErr: any) {
           console.error(`[ADMZIP UNPACK ERROR for ${rawName}]:`, zipErr);
           unmatchedDocuments.push(`${rawName} (ZIP uitpakfout)`);
+          addLog("error", `Fout bij uitpakken ZIP "${rawName}": ${zipErr?.message || zipErr}`);
         }
       }
 
@@ -1885,6 +1905,7 @@ export function processUploadedCouncilDocuments(
   }
 
   const effectiveTotal = (uploadedFiles.length - zipCount) + extractedFromZipCount;
+  addLog("success", `Afronding: ${matchedDocuments.length} documenten gekoppeld aan raadsdossiers, ${unmatchedDocuments.length} in algemeen archief.`);
 
   return {
     totalUploaded: effectiveTotal > 0 ? effectiveTotal : uploadedFiles.length,
@@ -1895,6 +1916,7 @@ export function processUploadedCouncilDocuments(
     matchedDocuments,
     unmatchedDocuments,
     allSavedFiles,
+    serverLogs,
   };
 }
 
