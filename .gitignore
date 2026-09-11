@@ -32,7 +32,7 @@ dist/version.json
 .env.*
 !.env.example
 
-# SQLite Database & Uploads for persistent production on OVH/VPS
+# Database & Uploads
 database.sqlite
 database.sqlite*
 *.sqlite
@@ -43,6 +43,7 @@ public/uploads/
 *.csv
 public/*.csv
 dist/*.csv
-data/
+!src/data/
+!public/data/
 *metadata_master*
 
