@@ -30,7 +30,23 @@ export const OFFICIAL_DOSSIERS = [
 
 // Lazy Gemini client
 let geminiClient: GoogleGenAI | null = null;
+let isGeminiQuotaExhausted = false;
+let geminiQuotaExhaustedMessage = "";
+
+export function getGeminiQuotaStatus(): { exhausted: boolean; message: string } {
+  return {
+    exhausted: isGeminiQuotaExhausted,
+    message: geminiQuotaExhaustedMessage
+  };
+}
+
+export function resetGeminiQuotaStatus(): void {
+  isGeminiQuotaExhausted = false;
+  geminiQuotaExhaustedMessage = "";
+}
+
 function getGemini(): GoogleGenAI | null {
+  if (isGeminiQuotaExhausted) return null;
   if (!geminiClient && process.env.GEMINI_API_KEY) {
     geminiClient = new GoogleGenAI({
       apiKey: process.env.GEMINI_API_KEY,
@@ -76,11 +92,11 @@ export function scanPdfFiles(): Array<{ absolutePath: string; relativePath: stri
 /**
  * Run fallback keyword-based classifier in case Gemini fails or API key is missing
  */
-function runFallbackClassification(text: string, filename: string): Partial<RaadsstukMetadata> {
+export function runFallbackClassification(text: string, filename: string): Partial<RaadsstukMetadata> {
   const content = (filename + " " + text).toLowerCase();
   let dossier = "Bestuur, Financiën & Organisatie"; // Default rest category
 
-  // Check categories based on keywords mapping the PDFs' loads
+  // 1. Wonen, Bouwen & Ontwikkeling
   if (
     content.includes("bestemmingsplan") ||
     content.includes("omgevingsplan") ||
@@ -90,13 +106,26 @@ function runFallbackClassification(text: string, filename: string): Partial<Raad
     content.includes("woonvisie") ||
     content.includes("bouwproject") ||
     content.includes("woningbouw") ||
+    content.includes("sociale woningbouw") ||
+    content.includes("woning") ||
     content.includes("vab") ||
     content.includes("vrijkomende agrarische") ||
-    content.includes("welstand")
+    content.includes("welstand") ||
+    content.includes("ruimtelijke ordening") ||
+    content.includes("ruimtelijke inrichting") ||
+    content.includes("ruimtelijke ontwikkeling") ||
+    content.includes("nieuwbouw") ||
+    content.includes("woonwagen") ||
+    content.includes("woonschepen") ||
+    content.includes("kavel") ||
+    content.includes("bouwlocatie") ||
+    content.includes("sloop") ||
+    content.includes("stadsvisie")
   ) {
-    // Inspraak/zienswijzen on bestemmingsplan goes here
     dossier = "Wonen, Bouwen & Ontwikkeling";
-  } else if (
+  }
+  // 2. Natuur, Milieu & Klimaat
+  else if (
     content.includes("stikstof") ||
     content.includes("aerius") ||
     content.includes("flora") ||
@@ -108,16 +137,37 @@ function runFallbackClassification(text: string, filename: string): Partial<Raad
     content.includes("klimaat") ||
     content.includes("energietransitie") ||
     content.includes("zonnepark") ||
+    content.includes("zonneweide") ||
+    content.includes("zonnepanelen") ||
+    content.includes("zonne-energie") ||
     content.includes("windenergie") ||
     content.includes("windturbine") ||
     content.includes("icebear") ||
     content.includes("emissie") ||
     content.includes("geurhinder") ||
+    content.includes("luchtkwaliteit") ||
     content.includes("peilbesluit") ||
-    content.includes("waterpeil")
+    content.includes("waterpeil") ||
+    content.includes("watertoets") ||
+    content.includes("waterbeheer") ||
+    content.includes("wdodelta") ||
+    content.includes("waterschap") ||
+    content.includes("bodemverontreiniging") ||
+    content.includes("bodemsanering") ||
+    content.includes("pfas") ||
+    content.includes("regionale energie strategie") ||
+    content.includes("res") ||
+    content.includes("energie-infrastructuur") ||
+    content.includes("transformatorstation") ||
+    content.includes("compactstation") ||
+    content.includes("wet natuurbescherming") ||
+    content.includes("inpassingsplan") ||
+    content.includes("pip noordmanen")
   ) {
     dossier = "Natuur, Milieu & Klimaat";
-  } else if (
+  }
+  // 3. Verkeer, Wegen & Bereikbaarheid
+  else if (
     content.includes("gvvp") ||
     content.includes("verkeer") ||
     content.includes("wegen") ||
@@ -125,40 +175,68 @@ function runFallbackClassification(text: string, filename: string): Partial<Raad
     content.includes("parkeer") ||
     content.includes("laadpaal") ||
     content.includes("fietspad") ||
+    content.includes("fietsplan") ||
+    content.includes("fietsinfrastructuur") ||
     content.includes("openbaar vervoer") ||
+    content.includes("busproblemen") ||
+    content.includes("buslijn") ||
+    content.includes("busvervoer") ||
+    content.includes("bus") ||
+    content.includes("spoor") ||
+    content.includes("station") ||
     content.includes("oeververbinding") ||
-    content.includes("brug")
+    content.includes("brug") ||
+    content.includes("infrastructuur en verkeer") ||
+    content.includes("verkeersregulering") ||
+    content.includes("wegdek")
   ) {
     dossier = "Verkeer, Wegen & Bereikbaarheid";
-  } else if (
+  }
+  // 4. Openbare Ruimte & Onderhoud
+  else if (
     content.includes("openbare ruimte") ||
-    content.includes("onderhoud") ||
+    content.includes("onderhoud maatschappelijk") ||
     content.includes("riolering") ||
     content.includes("watertaken") ||
     content.includes("verlichting") ||
+    content.includes("openbare verlichting") ||
     content.includes("begraafplaats") ||
     content.includes("exoten") ||
     content.includes("gladheid") ||
     content.includes("speelplaats") ||
-    content.includes("havenbeheer")
+    content.includes("havenbeheer") ||
+    content.includes("ligplaatsverbod") ||
+    content.includes("bomenkap") ||
+    content.includes("vastgoedonderhoud") ||
+    content.includes("hemelwater")
   ) {
     dossier = "Openbare Ruimte & Onderhoud";
-  } else if (
+  }
+  // 5. Economie, Ondernemen & Toerisme
+  else if (
     content.includes("bedrijventerrein") ||
     content.includes("eeserwold") ||
     content.includes("groot verlaat") ||
     content.includes("ondernemen") ||
+    content.includes("ondernemer") ||
     content.includes("detailhandel") ||
     content.includes("leegstand") ||
     content.includes("toerisme") ||
-    content.includes("recreatie") ||
     content.includes("toeristenbelasting") ||
+    content.includes("recreatie") ||
     content.includes("vaarverordening") ||
     content.includes("vaar- en verhuur") ||
-    content.includes("horeca")
+    content.includes("horeca") ||
+    content.includes("terrassen") ||
+    content.includes("pachtbeleid") ||
+    content.includes("agrarisch beleid") ||
+    content.includes("aan huis gebonden") ||
+    content.includes("bedrijfsontwikkeling")
   ) {
     dossier = "Economie, Ondernemen & Toerisme";
-  } else if (
+  }
+  // 6. Werk, Inkomen & Armoede
+  else if (
     content.includes("participatiewet") ||
     content.includes("schuldhulp") ||
     content.includes("armoede") ||
@@ -166,23 +244,37 @@ function runFallbackClassification(text: string, filename: string): Partial<Raad
     content.includes("bijstand") ||
     content.includes("werklozen") ||
     content.includes("noordwestgroep") ||
-    content.includes("studietoeslag")
+    content.includes("studietoeslag") ||
+    content.includes("cao aan de slag") ||
+    content.includes("minimabeleid") ||
+    content.includes("starterslening")
   ) {
     dossier = "Werk, Inkomen & Armoede";
-  } else if (
+  }
+  // 7. Zorg, Gezondheid & Welzijn
+  else if (
     content.includes("wmo") ||
     content.includes("zorg") ||
     content.includes("welzijn") ||
     content.includes("ggd") ||
+    content.includes("ggd ijsselland") ||
     content.includes("gezondheid") ||
+    content.includes("volksgezondheid") ||
+    content.includes("publieke gezondheid") ||
     content.includes("gala") ||
     content.includes("infectieziekte") ||
-    content.includes("mantelzorg")
+    content.includes("mantelzorg") ||
+    content.includes("beschermd wonen") ||
+    content.includes("maatschappelijke opvang") ||
+    content.includes("spuk")
   ) {
-    // GR GGD IJsselland goes here
     dossier = "Zorg, Gezondheid & Welzijn";
-  } else if (
+  }
+  // 8. Jeugd, Gezin & Onderwijs
+  else if (
     content.includes("jeugd") ||
+    content.includes("jeugdzorg") ||
+    content.includes("jeugdhulp") ||
     content.includes("gezin") ||
     content.includes("onderwijs") ||
     content.includes("school") ||
@@ -190,48 +282,81 @@ function runFallbackClassification(text: string, filename: string): Partial<Raad
     content.includes("leerling") ||
     content.includes("kinderopvang") ||
     content.includes("leerplicht") ||
-    content.includes("rsj ijsselland")
+    content.includes("rsj") ||
+    content.includes("rsj ijsselland") ||
+    content.includes("onderwijshuisvesting") ||
+    content.includes("leerlingenvervoer") ||
+    content.includes("huiselijk geweld") ||
+    content.includes("kindermishandeling")
   ) {
-    // GR RSJ IJsselland goes here
     dossier = "Jeugd, Gezin & Onderwijs";
-  } else if (
+  }
+  // 9. Veiligheid, Toezicht & Handhaving
+  else if (
     content.includes("veiligheid") ||
     content.includes("apv") ||
     content.includes("handhaving") ||
     content.includes("toezicht") ||
     content.includes("brandweer") ||
+    content.includes("brandweerzorg") ||
     content.includes("politie") ||
     content.includes("cameratoezicht") ||
+    content.includes("camerahandhaving") ||
     content.includes("ondermijning") ||
-    content.includes("noodverordening")
+    content.includes("noodverordening") ||
+    content.includes("veiligheidsregio") ||
+    content.includes("vrij") ||
+    content.includes("crisisbeheersing")
   ) {
     dossier = "Veiligheid, Toezicht & Handhaving";
-  } else if (
+  }
+  // 10. Kunst, Cultuur & Sport
+  else if (
     content.includes("sport") ||
     content.includes("cultuur") ||
     content.includes("kunst") ||
+    content.includes("beeldende kunst") ||
     content.includes("museum") ||
+    content.includes("spijkervetstallen") ||
+    content.includes("stadsmuseum") ||
     content.includes("bibliotheek") ||
     content.includes("evenement") ||
     content.includes("theater") ||
+    content.includes("theatersubsidie") ||
     content.includes("meenthe") ||
-    content.includes("subsidie") && (content.includes("muziek") || content.includes("vereniging"))
+    content.includes("scala") ||
+    content.includes("monument") ||
+    content.includes("erfgoed") ||
+    content.includes("kunstgras")
   ) {
-    // Theater subsidies go here
     dossier = "Kunst, Cultuur & Sport";
-  } else if (
+  }
+  // 11. Samenleving, Inclusie & Wijken
+  else if (
     content.includes("samenleving") ||
     content.includes("inclusie") ||
     content.includes("wijken") ||
     content.includes("kernen") ||
     content.includes("dorpsplan") ||
     content.includes("asiel") ||
+    content.includes("oekraïne") ||
     content.includes("opvang") ||
     content.includes("vluchtelingen") ||
     content.includes("inburgering") ||
-    content.includes("spreidingswet")
+    content.includes("spreidingswet") ||
+    content.includes("burgeramendement") ||
+    content.includes("burgerinitiatief") ||
+    content.includes("inwonersparticipatie") ||
+    content.includes("participatie") ||
+    content.includes("dorpsbelang") ||
+    content.includes("plaatselijk belang") ||
+    content.includes("sociaal domein")
   ) {
     dossier = "Samenleving, Inclusie & Wijken";
+  }
+  // 12. Bestuur, Financiën & Organisatie (All else: Begrotingen, Regelingen, Rekenkamer, etc.)
+  else {
+    dossier = "Bestuur, Financiën & Organisatie";
   }
 
   // Attempt to parse a date
@@ -268,8 +393,16 @@ function runFallbackClassification(text: string, filename: string): Partial<Raad
     }
   }
 
+  // Clean title
+  let cleanTitle = filename.replace(/\.pdf$/i, "").replace(/[_-]/g, " ");
+  // Remove leading dates or numeric IDs if present
+  cleanTitle = cleanTitle.replace(/^\d{4}[-\s]\d{2}[-\s]\d{2}[\s_]*/, "").replace(/^\d{5,10}[\s_]*/, "").trim();
+  if (!cleanTitle) {
+    cleanTitle = filename.replace(/\.pdf$/i, "");
+  }
+
   return {
-    titel: filename.replace(/\.pdf$/i, "").replace(/[_-]/g, " "),
+    titel: cleanTitle,
     dossier,
     subdossier: "",
     datum: datum || new Date().toISOString().split("T")[0],
@@ -351,28 +484,51 @@ async function classifyWithGemini(
   ${textSample}
   `;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-3.8-flash",
-    contents: prompt,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          titel: { type: Type.STRING },
-          dossier: { type: Type.STRING },
-          subdossier: { type: Type.STRING },
-          datum: { type: Type.STRING },
-          wijk_of_kern: { type: Type.STRING },
-          entiteiten: { type: Type.STRING },
-          relaties: { type: Type.STRING }
-        },
-        required: ["titel", "dossier", "subdossier", "datum", "wijk_of_kern", "entiteiten", "relaties"]
+  let response: any = null;
+  try {
+    response = await ai.models.generateContent({
+      model: "gemini-3.8-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            titel: { type: Type.STRING },
+            dossier: { type: Type.STRING },
+            subdossier: { type: Type.STRING },
+            datum: { type: Type.STRING },
+            wijk_of_kern: { type: Type.STRING },
+            entiteiten: { type: Type.STRING },
+            relaties: { type: Type.STRING }
+          },
+          required: ["titel", "dossier", "subdossier", "datum", "wijk_of_kern", "entiteiten", "relaties"]
+        }
       }
-    }
-  });
+    });
+  } catch (err: any) {
+    const errMsg = err?.message || String(err);
+    const isQuota =
+      err?.status === 429 ||
+      errMsg.includes("429") ||
+      errMsg.includes("RESOURCE_EXHAUSTED") ||
+      errMsg.includes("prepayment") ||
+      errMsg.includes("depleted") ||
+      errMsg.includes("quota");
 
-  const parsed = JSON.parse(response.text || "{}");
+    if (isQuota) {
+      if (!isGeminiQuotaExhausted) {
+        isGeminiQuotaExhausted = true;
+        geminiQuotaExhaustedMessage = "Gemini API credits opgebruikt of quota bereikt (429 RESOURCE_EXHAUSTED). Heuristische taxonomie-classificatie geactiveerd.";
+        console.warn(`[BULK CLASS] ${geminiQuotaExhaustedMessage}`);
+      }
+    } else {
+      console.warn(`[BULK CLASS] Gemini failed for ${filename}:`, errMsg);
+    }
+    return runFallbackClassification(text, filename);
+  }
+
+  const parsed = JSON.parse(response?.text || "{}");
   return parsed;
 }
 
@@ -480,11 +636,14 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
         }
 
         let meta: Partial<RaadsstukMetadata> = {};
-        try {
-          meta = await classifyWithGemini(text, file.filename, file.relativePath);
-        } catch (err) {
-          console.warn(`[BULK CLASS] Gemini failed for ${file.filename}. Using fallback:`, err);
+        if (isGeminiQuotaExhausted) {
           meta = runFallbackClassification(text, file.filename);
+        } else {
+          try {
+            meta = await classifyWithGemini(text, file.filename, file.relativePath);
+          } catch (_err) {
+            meta = runFallbackClassification(text, file.filename);
+          }
         }
 
         // Prepare complete metadata record
@@ -634,11 +793,14 @@ export async function runBulkClassification(options: { force?: boolean } = {}): 
     }
 
     let meta: Partial<RaadsstukMetadata> = {};
-    try {
-      meta = await classifyWithGemini(text, file.filename, file.relativePath);
-    } catch (err) {
-      console.warn(`[BULK CLASS] Gemini failed for ${file.filename}. Using fallback:`, err);
+    if (isGeminiQuotaExhausted) {
       meta = runFallbackClassification(text, file.filename);
+    } else {
+      try {
+        meta = await classifyWithGemini(text, file.filename, file.relativePath);
+      } catch (_err) {
+        meta = runFallbackClassification(text, file.filename);
+      }
     }
 
     // Prepare complete metadata record

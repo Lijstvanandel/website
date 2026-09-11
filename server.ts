@@ -85,7 +85,8 @@ import {
   getRawNetworkGraph,
   processMetadataOrGraphUpload,
   getMissingCouncilDocuments,
-  generateMissingDocumentsCsv
+  generateMissingDocumentsCsv,
+  getSubdossierThumbnail,
 } from "./src/server/dossierManager.js";
 import {
   compileSupportDossierForTopic,
@@ -8027,37 +8028,94 @@ Sitemap: ${baseUrl}/sitemap.xml
         totalUploadedFiles += d.uploadedCount;
       });
 
-      // Filter
-      const filtered = allDossiers.filter((d) => {
-        if (wijkSlug) {
-          const matchWijk =
-            (d.wijkSlug && d.wijkSlug.toLowerCase() === wijkSlug) ||
-            (d.wijkNaam && d.wijkNaam.toLowerCase() === wijkSlug);
-          if (!matchWijk) {
+      // Filter & Wijk tailor
+      const filtered = allDossiers
+        .map((d) => {
+          if (wijkSlug) {
+            const wijkClean = wijkSlug.replace(/-/g, " ").toLowerCase();
+            const matchingDocs = (d.documents || []).filter((doc) => {
+              const docWijk = (doc.wijk_of_kern || "").toLowerCase();
+              const docTitle = (doc.titel || "").toLowerCase();
+              const docEnt = (doc.entiteiten || []).join(" ").toLowerCase();
+              return (
+                (d.wijkSlug && d.wijkSlug.toLowerCase() === wijkSlug) ||
+                (d.wijkNaam && d.wijkNaam.toLowerCase() === wijkSlug) ||
+                (doc.wijken && doc.wijken.some((w) => w.toLowerCase().includes(wijkClean) || wijkClean.includes(w.toLowerCase()))) ||
+                docWijk.includes(wijkClean) ||
+                docTitle.includes(wijkClean) ||
+                docEnt.includes(wijkClean)
+              );
+            });
+
+            if (matchingDocs.length === 0) {
+              return null;
+            }
+
+            // Recalculate subdossiers specific to this wijk
+            const subMap = new Map<string, typeof matchingDocs>();
+            matchingDocs.forEach((doc) => {
+              const st = doc.subdossier || "Algemeen";
+              if (!subMap.has(st)) subMap.set(st, []);
+              subMap.get(st)!.push(doc);
+            });
+
+            const wijkSubdossiers = Array.from(subMap.entries()).map(([subTitle, subDocs]) => {
+              const subDates = subDocs.map((sd) => sd.datum).filter(Boolean) as string[];
+              subDates.sort();
+              return {
+                id: slugify(subTitle),
+                title: subTitle,
+                slug: slugify(subTitle),
+                hoofddossier: d.title,
+                documentCount: subDocs.length,
+                uploadedCount: subDocs.filter((sd) => sd.fileExists).length,
+                dateRange: {
+                  start: subDates.length > 0 ? subDates[0] : null,
+                  end: subDates.length > 0 ? subDates[subDates.length - 1] : null,
+                },
+                wijken: [wijkSlug],
+                tags: Array.from(new Set(subDocs.flatMap((sd) => sd.entiteiten).slice(0, 5))),
+                description: `${subDocs.length} raadsstukken binnen ${subTitle} voor dit gebied.`,
+                thumbnail: getSubdossierThumbnail(subTitle, d.title),
+              };
+            });
+            wijkSubdossiers.sort((a, b) => b.documentCount - a.documentCount);
+
+            return {
+              ...d,
+              documentCount: matchingDocs.length,
+              uploadedCount: matchingDocs.filter((sd) => sd.fileExists).length,
+              documents: matchingDocs,
+              subdossiers: wijkSubdossiers,
+              subdossierCount: wijkSubdossiers.length,
+              wijkSpecific: true,
+            };
+          }
+          return d;
+        })
+        .filter((d): d is typeof allDossiers[0] => Boolean(d))
+        .filter((d) => {
+          if (category && d.category.toLowerCase() !== category.toLowerCase()) {
             return false;
           }
-        }
-        if (category && d.category.toLowerCase() !== category.toLowerCase()) {
-          return false;
-        }
-        if (hasFilesOnly && d.uploadedCount === 0) {
-          return false;
-        }
-        if (search) {
-          const matchTitle = d.title.toLowerCase().includes(search);
-          const matchDesc = d.description.toLowerCase().includes(search);
-          const matchCat = d.category.toLowerCase().includes(search);
-          const matchWijk = (d.wijkNaam || "").toLowerCase().includes(search);
-          const matchTag = d.tags.some((t) => t.toLowerCase().includes(search));
-          const matchDoc = d.documents.some((doc) =>
-            doc.titel.toLowerCase().includes(search) || doc.bestandsnaam.toLowerCase().includes(search)
-          );
-          if (!matchTitle && !matchDesc && !matchCat && !matchTag && !matchDoc && !matchWijk) {
+          if (hasFilesOnly && d.uploadedCount === 0) {
             return false;
           }
-        }
-        return true;
-      });
+          if (search) {
+            const matchTitle = d.title.toLowerCase().includes(search);
+            const matchDesc = d.description.toLowerCase().includes(search);
+            const matchCat = d.category.toLowerCase().includes(search);
+            const matchWijk = (d.wijkNaam || "").toLowerCase().includes(search);
+            const matchTag = d.tags.some((t) => t.toLowerCase().includes(search));
+            const matchDoc = d.documents.some((doc) =>
+              doc.titel.toLowerCase().includes(search) || doc.bestandsnaam.toLowerCase().includes(search)
+            );
+            if (!matchTitle && !matchDesc && !matchCat && !matchTag && !matchDoc && !matchWijk) {
+              return false;
+            }
+          }
+          return true;
+        });
 
       // Sort dossiers based on requested sortBy parameter
       const sortBy = (req.query.sortBy || "az").toString();
@@ -8277,6 +8335,24 @@ Sitemap: ${baseUrl}/sitemap.xml
       }
 
       if (!dossier) {
+        for (const parent of allDossiers) {
+          const matchedSub = (parent.subdossiers || []).find(
+            (s) =>
+              s.slug.toLowerCase() === searchSlug ||
+              s.id.toLowerCase() === searchSlug ||
+              slugify(s.title) === slugify(rawSlug)
+          );
+          if (matchedSub) {
+            dossier = {
+              ...parent,
+              initialSubdossier: matchedSub.slug,
+            };
+            break;
+          }
+        }
+      }
+
+      if (!dossier) {
         return res.status(404).json({ error: `Dossier met kenmerk '${rawSlug}' niet gevonden` });
       }
 
@@ -8415,7 +8491,7 @@ Sitemap: ${baseUrl}/sitemap.xml
       try {
         const slug = req.params.slug;
         const db = getDb();
-        const { titel, datum, entiteiten, relaties } = req.body;
+        const { titel, datum, entiteiten, relaties, subdossier, wijk_of_kern } = req.body;
         let bestandsnaam = req.body.bestandsnaam;
 
         if (req.file) {
@@ -8438,6 +8514,8 @@ Sitemap: ${baseUrl}/sitemap.xml
             datum: datum || new Date().toISOString().split("T")[0],
             entiteiten,
             relaties,
+            subdossier: subdossier ? subdossier.trim() : undefined,
+            wijk_of_kern: wijk_of_kern ? wijk_of_kern.trim() : undefined,
           },
           db,
           saveDb

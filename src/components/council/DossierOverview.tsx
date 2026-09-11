@@ -19,6 +19,7 @@ import {
   MapPin,
   FileSpreadsheet,
   AlertTriangle,
+  FolderTree,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -114,11 +115,19 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
   );
 
   // Selected dossier for drill-down view (from query param or prop)
-  const urlDossier = searchParams.get("dossier") || initialDossierSlug || null;
+  const urlDossier =
+    searchParams.get("dossier") ||
+    initialDossierSlug ||
+    searchParams.get("subdossier") ||
+    null;
   const [activeDossierSlug, setActiveDossierSlug] = useState<string | null>(urlDossier);
 
   useEffect(() => {
-    const qDossier = searchParams.get("dossier") || initialDossierSlug || null;
+    const qDossier =
+      searchParams.get("dossier") ||
+      initialDossierSlug ||
+      searchParams.get("subdossier") ||
+      null;
     if (qDossier && qDossier !== activeDossierSlug) {
       setActiveDossierSlug(qDossier);
     }
@@ -138,6 +147,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.delete("dossier");
+      next.delete("subdossier");
       return next;
     });
     fetchDossiers();
@@ -492,6 +502,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
     return (
       <DossierDetail
         dossierSlug={activeDossierSlug}
+        initialSubdossierSlug={searchParams.get("subdossier") || null}
         onBack={handleBackToOverview}
       />
     );
@@ -985,10 +996,18 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
                   </div>
 
                   <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-white text-xs">
-                    <span className="flex items-center gap-1.5 font-medium drop-shadow-xs">
-                      <FileText className="w-3.5 h-3.5" />
-                      {dossier.documentCount} {dossier.documentCount === 1 ? "stuk" : "stukken"}
-                    </span>
+                    <div className="flex items-center gap-2 font-medium drop-shadow-xs">
+                      <span className="flex items-center gap-1">
+                        <FileText className="w-3.5 h-3.5" />
+                        {dossier.documentCount} {dossier.documentCount === 1 ? "stuk" : "stukken"}
+                      </span>
+                      {dossier.subdossierCount ? (
+                        <span className="flex items-center gap-1 text-[11px] bg-black/40 px-1.5 py-0.5 rounded backdrop-blur-xs text-white/90">
+                          <FolderTree className="w-3 h-3 text-accent" />
+                          {dossier.subdossierCount} subdossiers
+                        </span>
+                      ) : null}
+                    </div>
                     {dossier.uploadedCount > 0 ? (
                       <span className="flex items-center gap-1 font-semibold text-emerald-300 drop-shadow-xs text-[11px]">
                         <CheckCircle2 className="w-3.5 h-3.5" />

@@ -5,6 +5,8 @@ export interface RaadsstukMetadata {
   datum: string | null;
   entiteiten: string;
   relaties: string;
+  subdossier?: string;
+  wijk_of_kern?: string;
 }
 
 export interface GraphNode {
@@ -14,6 +16,7 @@ export interface GraphNode {
   type: "Raadsstuk" | "Relatie" | string;
   date: string | null;
   dossier?: string;
+  subdossier?: string;
   bestandsnaam?: string;
   x?: number;
   y?: number;
@@ -38,6 +41,9 @@ export interface DossierDocument {
   bestandsnaam: string;
   titel: string;
   dossier: string;
+  subdossier?: string;
+  wijk_of_kern?: string;
+  wijken?: string[];
   datum: string | null;
   entiteiten: string[];
   relaties: string[];
@@ -46,6 +52,23 @@ export interface DossierDocument {
   fileSize?: number;
   uploadedAt?: string;
   summary?: string;
+}
+
+export interface DossierSubdossier {
+  id: string;
+  title: string;
+  slug: string;
+  hoofddossier: string;
+  documentCount: number;
+  uploadedCount: number;
+  dateRange: {
+    start: string | null;
+    end: string | null;
+  };
+  wijken: string[];
+  tags: string[];
+  description?: string;
+  thumbnail: string;
 }
 
 export interface Dossier {
@@ -63,6 +86,9 @@ export interface Dossier {
     end: string | null;
   };
   documents: DossierDocument[];
+  subdossiers?: DossierSubdossier[];
+  subdossierCount?: number;
+  wijken?: string[];
   isCustom?: boolean;
   wijkSlug?: string;
   wijkNaam?: string;

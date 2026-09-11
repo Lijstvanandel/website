@@ -22,6 +22,10 @@ import {
   HeartHandshake,
   CheckCircle2,
   Calendar as CalIcon,
+  FolderTree,
+  Layers,
+  Search,
+  Filter,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,6 +41,7 @@ import { NewsItem } from "@/data/news";
 import { WijkItem } from "@/types/wijk";
 import { Dossier } from "@/types/dossier";
 import { useAuth } from "@/context/AuthContext";
+import { getSubdossierClientThumbnail } from "@/lib/dossierClientUtils";
 
 function formatSocialUrl(platform: string, value?: string): string | undefined {
   if (!value) return undefined;
@@ -96,6 +101,8 @@ const WijkDetail = () => {
   const [videos, setVideos] = useState<WijkVideo[]>([]);
   const [wijkNews, setWijkNews] = useState<NewsItem[]>([]);
   const [wijkDossiers, setWijkDossiers] = useState<Dossier[]>([]);
+  const [selectedHoofddossierSlug, setSelectedHoofddossierSlug] = useState<string | null>(null);
+  const [subSearch, setSubSearch] = useState("");
 
   const handleHelpClick = () => {
     if (!wijk) return;
@@ -156,6 +163,9 @@ const WijkDetail = () => {
       .then((data) => {
         if (data && Array.isArray(data.dossiers)) {
           setWijkDossiers(data.dossiers);
+          if (data.dossiers.length > 0) {
+            setSelectedHoofddossierSlug(data.dossiers[0].slug || data.dossiers[0].id);
+          }
         }
       })
       .catch(() => setWijkDossiers([]));
@@ -591,73 +601,289 @@ const WijkDetail = () => {
         )}
 
         {/* ========================================================
-            DOSSIERS IN DEZE WIJK / KERN (MET THUMBNAILS)
+            HOOFDDOSSIERS & SUBDOSSIERS IN DEZE WIJK / KERN
             ======================================================== */}
         {wijkDossiers.length > 0 ? (
-          <CarouselSection
-            icon={<FileText className="w-3.5 h-3.5" />}
-            eyebrow="Lopende zaken"
-            title={`Dossiers in ${wijk.naam}`}
-            ctaHref="/raadspaneel?tab=dossiers"
-          >
-            {wijkDossiers.map((d) => (
-              <CarouselItem key={d.id || d.slug} className="md:basis-1/2 lg:basis-1/3">
-                <Link
-                  to={`/raadspaneel?tab=dossiers&dossier=${encodeURIComponent(d.slug || d.id)}`}
-                  className="block group bg-card border border-border h-full flex flex-col hover-lift overflow-hidden rounded-2xl transition-all shadow-xs"
-                >
-                  <div className="relative aspect-[16/10] overflow-hidden bg-muted">
-                    <img
-                      src={d.thumbnail}
-                      alt={d.title}
-                      loading="lazy"
-                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src =
-                          "https://images.unsplash.com/photo-1541872703-74c5e44368f9?w=800&auto=format&fit=crop&q=80";
-                      }}
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-                    <div className="absolute top-3 left-3">
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-black/60 text-white backdrop-blur-xs border border-white/20">
-                        {d.category}
-                      </span>
-                    </div>
-                    <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-white text-xs">
-                      <span className="flex items-center gap-1.5 font-medium drop-shadow-xs">
-                        <FileText className="w-3 h-3 text-accent" />
-                        {d.documentCount} {d.documentCount === 1 ? "stuk" : "stukken"}
-                      </span>
-                      {d.uploadedCount > 0 && (
-                        <span className="flex items-center gap-1 font-semibold text-emerald-300 drop-shadow-xs text-[11px]">
-                          <CheckCircle2 className="w-3 h-3" />
-                          {d.uploadedCount} PDF's
+          <section className="space-y-6">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.3em] text-accent mb-2 flex items-center gap-2">
+                  <Layers className="w-3.5 h-3.5" /> Lopende zaken & raadsstukken
+                </div>
+                <h2 className="font-display text-3xl md:text-4xl border-gold-line pb-2">
+                  Dossiers in {wijk.naam}
+                </h2>
+                <p className="text-xs text-muted-foreground mt-1 max-w-2xl">
+                  Klik op een hoofddossier om direct alle bijbehorende subdossiers en raadsstukken specifiek voor {wijk.naam} te bekijken.
+                </p>
+              </div>
+
+              <Button
+                asChild
+                variant="outline"
+                className="border-accent/40 text-accent hover:bg-accent hover:text-accent-foreground uppercase tracking-wider text-xs font-semibold shrink-0"
+              >
+                <Link to="/raadspaneel?tab=dossiers">
+                  Volledig Raadsarchief <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                </Link>
+              </Button>
+            </div>
+
+            {/* Hoofddossiers Tabs / Selector Tiles with Thumbnails */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {wijkDossiers.map((d) => {
+                const isSelected = (d.slug || d.id) === (selectedHoofddossierSlug || wijkDossiers[0]?.slug);
+                return (
+                  <button
+                    key={d.id || d.slug}
+                    onClick={() => setSelectedHoofddossierSlug(d.slug || d.id)}
+                    className={`text-left rounded-2xl border transition-all flex flex-col justify-between relative overflow-hidden cursor-pointer group ${
+                      isSelected
+                        ? "bg-card border-accent shadow-md ring-2 ring-accent/40"
+                        : "bg-card border-border hover:border-accent/40 hover:shadow-xs"
+                    }`}
+                  >
+                    {/* Thumbnail banner */}
+                    <div className="relative aspect-[16/10] w-full overflow-hidden bg-muted">
+                      <img
+                        src={d.thumbnail}
+                        alt={d.title}
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
+                      <div className="absolute top-2 right-2">
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 bg-black/60 text-white backdrop-blur-xs rounded-md border border-white/20">
+                          {d.documentCount} {d.documentCount === 1 ? "stuk" : "st."}
                         </span>
-                      )}
+                      </div>
+                      <div className="absolute bottom-1.5 left-2 right-2">
+                        <span className="text-[10px] font-semibold flex items-center gap-1 text-white/90">
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              isSelected ? "bg-accent ring-2 ring-white/50" : "bg-white/50"
+                            }`}
+                          />
+                          {d.subdossiers?.length || 0} subdossiers
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="p-2.5">
+                      <h4 className={`font-bold text-xs line-clamp-2 leading-tight ${isSelected ? "text-accent" : "text-foreground"}`}>
+                        {d.title}
+                      </h4>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Active Hoofddossier Overview & Subdossiers Grid */}
+            {(() => {
+              const activeHoofddossier =
+                wijkDossiers.find(
+                  (d) => (d.slug || d.id) === (selectedHoofddossierSlug || wijkDossiers[0]?.slug)
+                ) || wijkDossiers[0];
+
+              if (!activeHoofddossier) return null;
+
+              return (
+                <div className="bg-card border border-border rounded-3xl p-6 sm:p-7 space-y-6 shadow-xs">
+                  {/* Active Hoofddossier Banner with Thumbnail */}
+                  <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-5 pb-5 border-b border-border">
+                    <div className="flex items-start gap-4">
+                      <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden shrink-0 border border-border shadow-xs">
+                        <img
+                          src={activeHoofddossier.thumbnail}
+                          alt={activeHoofddossier.title}
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 text-xs font-semibold text-accent">
+                          <FolderTree className="w-4 h-4" />
+                          <span>Geselecteerd hoofddossier voor {wijk.naam}</span>
+                        </div>
+                        <h3 className="text-xl sm:text-2xl font-bold text-foreground">
+                          {activeHoofddossier.title}
+                        </h3>
+                        <p className="text-xs text-muted-foreground max-w-2xl leading-relaxed">
+                          {activeHoofddossier.description ||
+                            `Bekijk alle specifieke deelonderwerpen en raadsstukken die spelen in ${wijk.naam}.`}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Button
+                        asChild
+                        size="sm"
+                        className="bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-semibold rounded-xl h-9"
+                      >
+                        <Link
+                          to={`/raadspaneel?tab=dossiers&dossier=${encodeURIComponent(
+                            activeHoofddossier.slug || activeHoofddossier.id
+                          )}&wijk=${encodeURIComponent(wijk.naam)}`}
+                        >
+                          <FileText className="w-3.5 h-3.5 mr-1.5" />
+                          Open in Raadspaneel ({activeHoofddossier.documentCount})
+                        </Link>
+                      </Button>
                     </div>
                   </div>
-                  <div className="p-5 flex flex-col flex-1">
-                    {d.dateRange?.start && (
-                      <div className="flex items-center gap-1 text-[10px] text-muted-foreground mb-1.5 font-medium">
-                        <CalIcon className="w-3 h-3" />
-                        {d.dateRange.start} {d.dateRange.end && `– ${d.dateRange.end}`}
+
+                  {/* Subdossiers Section */}
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="text-sm font-bold text-foreground flex items-center gap-2">
+                        <FolderTree className="w-4 h-4 text-accent" />
+                        Subdossiers binnen {activeHoofddossier.title} ({activeHoofddossier.subdossiers?.length || 0})
+                      </h4>
+                      <span className="text-xs text-muted-foreground">
+                        Betrekking hebbend op {wijk.naam}
+                      </span>
+                    </div>
+
+                    {activeHoofddossier.subdossiers && activeHoofddossier.subdossiers.length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {activeHoofddossier.subdossiers.map((sub, sIdx) => {
+                          const subThumbnail =
+                            sub.thumbnail ||
+                            getSubdossierClientThumbnail(
+                              sub.title,
+                              activeHoofddossier.title,
+                              activeHoofddossier.thumbnail
+                            );
+                          // Docs in this subdossier
+                          const subDocs = (activeHoofddossier.documents || []).filter(
+                            (sd) =>
+                              (sd.subdossier || "Algemeen").toLowerCase() === sub.title.toLowerCase() ||
+                              (sd.subdossier || "").toLowerCase().includes(sub.title.toLowerCase())
+                          );
+
+                          return (
+                            <div
+                              key={sub.id || sIdx}
+                              className="group bg-background border border-border hover:border-accent/50 rounded-2xl overflow-hidden transition-all flex flex-col justify-between shadow-2xs hover:shadow-xs"
+                            >
+                              <div>
+                                {/* Subdossier Thumbnail Banner */}
+                                <div className="relative aspect-[16/9] w-full overflow-hidden bg-muted">
+                                  <img
+                                    src={subThumbnail}
+                                    alt={sub.title}
+                                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                  />
+                                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
+                                  <div className="absolute top-2 left-2">
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-black/60 text-white backdrop-blur-xs border border-white/20 flex items-center gap-1">
+                                      <FolderTree className="w-3 h-3 text-accent" /> Subdossier
+                                    </span>
+                                  </div>
+                                  <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-white text-[11px]">
+                                    <span className="font-semibold drop-shadow-xs flex items-center gap-1">
+                                      <FileText className="w-3 h-3 text-accent" />
+                                      {sub.documentCount} {sub.documentCount === 1 ? "stuk" : "stukken"}
+                                    </span>
+                                    {sub.uploadedCount > 0 && (
+                                      <span className="font-bold text-emerald-300 drop-shadow-xs flex items-center gap-1">
+                                        <CheckCircle2 className="w-3 h-3" />
+                                        {sub.uploadedCount} PDF's
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="p-4">
+                                  <h5 className="font-bold text-sm text-foreground group-hover:text-accent transition-colors mb-1.5">
+                                    {sub.title}
+                                  </h5>
+
+                                  {sub.description && (
+                                    <p className="text-xs text-muted-foreground line-clamp-2 mb-3 leading-relaxed">
+                                      {sub.description}
+                                    </p>
+                                  )}
+
+                                  {/* Document title preview */}
+                                  {subDocs.length > 0 && (
+                                    <div className="p-2.5 rounded-xl bg-muted/40 border border-border/50 space-y-1 mb-3">
+                                      <div className="text-[10px] font-semibold text-muted-foreground">
+                                        Recente stukken in {wijk.naam}:
+                                      </div>
+                                      {subDocs.slice(0, 2).map((sd, sdi) => (
+                                        <div
+                                          key={sdi}
+                                          className="text-[11px] text-foreground truncate flex items-center gap-1.5"
+                                        >
+                                          <FileText className="w-3 h-3 text-accent shrink-0" />
+                                          <span className="truncate">{sd.titel}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  {/* Tags */}
+                                  {sub.tags && sub.tags.length > 0 && (
+                                    <div className="flex flex-wrap gap-1">
+                                      {sub.tags.slice(0, 3).map((t, ti) => (
+                                        <span
+                                          key={ti}
+                                          className="px-1.5 py-0.5 rounded text-[10px] bg-secondary text-secondary-foreground"
+                                        >
+                                          #{t}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="p-4 pt-0 border-t border-border flex items-center justify-between gap-2 mt-2">
+                                <Button
+                                  asChild
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 text-xs rounded-xl flex-1 border-accent/30 text-accent hover:bg-accent/15 font-semibold"
+                                >
+                                  <Link
+                                    to={`/raadspaneel?tab=dossiers&dossier=${encodeURIComponent(
+                                      activeHoofddossier.slug || activeHoofddossier.id
+                                    )}&subdossier=${encodeURIComponent(sub.slug)}&wijk=${encodeURIComponent(
+                                      wijk.naam
+                                    )}`}
+                                  >
+                                    Bekijk subdossier ({sub.documentCount})
+                                    <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                                  </Link>
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="p-6 text-center bg-background border border-border rounded-2xl">
+                        <p className="text-xs text-muted-foreground">
+                          Geen specifieke subdossiers ingedeeld; alle {activeHoofddossier.documentCount} stukken vallen onder het algemene thema.
+                        </p>
+                        <Button asChild size="sm" variant="outline" className="mt-3 text-xs">
+                          <Link
+                            to={`/raadspaneel?tab=dossiers&dossier=${encodeURIComponent(
+                              activeHoofddossier.slug || activeHoofddossier.id
+                            )}&wijk=${encodeURIComponent(wijk.naam)}`}
+                          >
+                            Bekijk stukken in Raadspaneel
+                          </Link>
+                        </Button>
                       </div>
                     )}
-                    <h3 className="font-display text-lg mb-2 leading-snug group-hover:text-accent transition-colors">
-                      {d.title}
-                    </h3>
-                    <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 mb-4 flex-1">
-                      {d.description || "Geen beschrijving opgegeven."}
-                    </p>
-                    <div className="flex items-center text-xs font-semibold text-accent gap-1 pt-2 border-t border-border/60">
-                      <span>Bekijk dossier & netwerkgraaf</span>
-                      <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                    </div>
                   </div>
-                </Link>
-              </CarouselItem>
-            ))}
-          </CarouselSection>
+                </div>
+              );
+            })()}
+          </section>
         ) : (
           <section className="space-y-4">
             <div className="flex items-end justify-between gap-4">
