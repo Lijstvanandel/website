@@ -805,7 +805,7 @@ const dossierDocStorage = multer.diskStorage({
     cb(null, name);
   }
 });
-const uploadDossierDocs = multer({ storage: dossierDocStorage, limits: { fileSize: 100 * 1024 * 1024 } });
+const uploadDossierDocs = multer({ storage: dossierDocStorage, limits: { fileSize: 1024 * 1024 * 1024 } }); // 1GB limit for large ZIP archives
 
 const dossierThumbnailStorage = multer.diskStorage({
   destination: function (req, file, cb) {

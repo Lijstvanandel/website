@@ -54,6 +54,12 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatusText, setUploadStatusText] = useState("");
   const [uploadStage, setUploadStage] = useState<"idle" | "uploading" | "unpacking" | "matching" | "indexing" | "completed">("idle");
+  const [uploadBytesInfo, setUploadBytesInfo] = useState<{
+    loadedBytes: number;
+    totalBytes: number;
+    speedMbS: number;
+    timeRemainingSec: number | null;
+  } | null>(null);
   const [filterQuery, setFilterQuery] = useState("");
   const [resultFilterTab, setResultFilterTab] = useState<"all" | "matched" | "unmatched">("all");
 
@@ -183,12 +189,75 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
 
   const hasZipFile = selectedFiles.some((f) => f.name.toLowerCase().endsWith(".zip"));
 
+  const uploadBatchXhr = (
+    batch: File[],
+    token: string | null,
+    onProgress: (loaded: number, total: number, speedMbS: number, remainingSec: number | null) => void
+  ): Promise<any> => {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const formData = new FormData();
+      batch.forEach((file) => formData.append("files", file));
+
+      const startTime = Date.now();
+
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable && event.total > 0) {
+          const now = Date.now();
+          const elapsedSec = (now - startTime) / 1000;
+          const currentSpeedMbS = elapsedSec > 0.2 ? (event.loaded / (1024 * 1024)) / elapsedSec : 0;
+
+          const remainingBytes = Math.max(0, event.total - event.loaded);
+          const remainingSec = currentSpeedMbS > 0 ? Math.ceil((remainingBytes / (1024 * 1024)) / currentSpeedMbS) : null;
+
+          onProgress(event.loaded, event.total, currentSpeedMbS, remainingSec);
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            resolve(data);
+          } catch (e) {
+            resolve({ success: true });
+          }
+        } else {
+          let errorMsg = `Serverfout (${xhr.status})`;
+          try {
+            const errObj = JSON.parse(xhr.responseText);
+            if (errObj.error) errorMsg = errObj.error;
+          } catch {}
+          if (xhr.status === 413) {
+            errorMsg = "Het bestand overschrijdt de maximale servergrootte (1GB).";
+          }
+          reject(new Error(errorMsg));
+        }
+      };
+
+      xhr.onerror = () => {
+        reject(new Error("Netwerkfout tijdens het uploaden. Controleer de verbinding naar de server."));
+      };
+
+      xhr.ontimeout = () => {
+        reject(new Error("Upload timeout: het uploaden duurde langer dan verwacht."));
+      };
+
+      xhr.open("POST", "/api/council/dossiers/bulk-upload");
+      if (token) {
+        xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      }
+      xhr.send(formData);
+    });
+  };
+
   const handleUpload = async () => {
     if (selectedFiles.length === 0) return;
 
     setIsUploading(true);
     setUploadStage("uploading");
-    setUploadProgress(5);
+    setUploadProgress(1);
+    setUploadBytesInfo(null);
     setUploadStatusText(`Upload voorbereiden voor ${selectedFiles.length} bestand(en)...`);
 
     const token = getToken();
@@ -205,54 +274,51 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
       for (let i = 0; i < batches.length; i++) {
         const batch = batches[i];
         const isCurrentZip = batch.some((f) => f.name.toLowerCase().endsWith(".zip"));
+        const batchSizeBytes = batch.reduce((acc, f) => acc + f.size, 0);
 
-        if (isCurrentZip) {
-          setUploadStage("unpacking");
-          setUploadStatusText(
-            `ZIP-archief uploaden en uitpakken op de server (${i + 1}/${batches.length})...`
-          );
-        } else {
-          setUploadStage("uploading");
-          setUploadStatusText(
-            `Deel ${i + 1} van ${batches.length} uploaden: ${completedFiles} van de ${selectedFiles.length} bestanden gereed...`
-          );
-        }
+        setUploadStage("uploading");
+        setUploadStatusText(
+          isCurrentZip
+            ? `ZIP-archief uploaden (${(batchSizeBytes / (1024 * 1024)).toFixed(1)} MB)...`
+            : `Deel ${i + 1} van ${batches.length} uploaden (${(batchSizeBytes / (1024 * 1024)).toFixed(1)} MB)...`
+        );
 
-        const formData = new FormData();
-        batch.forEach((file) => {
-          formData.append("files", file);
-        });
+        const data = await uploadBatchXhr(
+          batch,
+          token,
+          (loaded, total, speedMbS, remainingSec) => {
+            const loadedMb = (loaded / (1024 * 1024)).toFixed(1);
+            const totalMb = (total / (1024 * 1024)).toFixed(1);
+            const pct = Math.min(99, Math.round((loaded / total) * 100));
 
-        const res = await fetch("/api/council/dossiers/bulk-upload", {
-          method: "POST",
-          headers: {
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: formData,
-        });
+            setUploadBytesInfo({
+              loadedBytes: loaded,
+              totalBytes: total,
+              speedMbS,
+              timeRemainingSec: remainingSec,
+            });
+
+            if (loaded >= total) {
+              setUploadStage(isCurrentZip ? "unpacking" : "matching");
+              setUploadProgress(98);
+              setUploadStatusText(
+                isCurrentZip
+                  ? `${totalMb} MB geüpload! Server is nu het ZIP-archief aan het uitpakken en structureren...`
+                  : `${totalMb} MB geüpload! Server koppelt documenten aan dossiers...`
+              );
+            } else {
+              setUploadProgress(Math.max(1, pct));
+              const speedText = speedMbS > 0 ? ` • ${speedMbS.toFixed(1)} MB/s` : "";
+              const etaText = remainingSec !== null && remainingSec > 0 ? ` • Nog ~${remainingSec}s` : "";
+              setUploadStatusText(
+                `Uploaden: ${loadedMb} MB van ${totalMb} MB (${pct}%)${speedText}${etaText}`
+              );
+            }
+          }
+        );
 
         setUploadStage("matching");
-        setUploadStatusText(`Bestanden vergelijken met raadsdossiers en netwerkgrafiek...`);
-
-        const responseText = await res.text();
-        let data: any = null;
-        try {
-          data = JSON.parse(responseText);
-        } catch (_jsonErr) {
-          if (res.status === 413 || responseText.includes("413") || responseText.toLowerCase().includes("too large")) {
-            throw new Error(
-              `Eén van de bestanden in deel ${i + 1} is te groot voor de server. Upload bestanden kleiner dan 100 MB per stuk.`
-            );
-          }
-          if (!res.ok) {
-            throw new Error(`Serverfout (${res.status}): het verzoek kon niet worden verwerkt.`);
-          }
-          throw new Error("Ongeldig antwoord van de server ontvangen.");
-        }
-
-        if (!res.ok) {
-          throw new Error(data?.error || `Uploaden van deel ${i + 1} mislukt (status ${res.status}).`);
-        }
+        setUploadStatusText(`Documenten verwerkt door server...`);
 
         completedFiles += batch.length;
         accumulatedMatchedCount += data.matchedCount || 0;
@@ -266,12 +332,6 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
         if (Array.isArray(data.unmatchedDocuments)) {
           accumulatedUnmatchedDocs.push(...data.unmatchedDocuments);
         }
-
-        const calculatedProgress = Math.min(
-          95,
-          Math.round((completedFiles / selectedFiles.length) * 100)
-        );
-        setUploadProgress(calculatedProgress);
       }
 
       setUploadStage("indexing");
@@ -319,7 +379,7 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
       }
     } finally {
       setIsUploading(false);
-      setUploadStatusText("");
+      setUploadBytesInfo(null);
     }
   };
 
@@ -635,44 +695,76 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
 
                 {/* Progress Bar & Stage Flow */}
                 {isUploading && (
-                  <div className="space-y-3 bg-accent/5 p-4 rounded-xl border border-accent/20">
+                  <div className="space-y-3.5 bg-accent/5 p-4 rounded-xl border border-accent/20">
                     <div className="flex items-center justify-between text-xs text-foreground">
-                      <span className="flex items-center gap-2 font-medium text-accent truncate pr-2">
+                      <span className="flex items-center gap-2 font-semibold text-accent truncate pr-2">
                         <Loader2 className="w-4 h-4 animate-spin text-accent shrink-0" />
                         {uploadStatusText || "Bestanden verwerken..."}
                       </span>
-                      <span className="font-bold text-accent shrink-0">{uploadProgress}%</span>
+                      <span className="font-bold text-accent shrink-0 text-sm">{uploadProgress}%</span>
                     </div>
 
                     <div className="h-2.5 rounded-full bg-muted overflow-hidden">
                       <div
-                        className="h-full bg-accent transition-all duration-300"
+                        className="h-full bg-accent transition-all duration-200"
                         style={{ width: `${uploadProgress}%` }}
                       />
                     </div>
 
+                    {/* Detailed Live MB & Speed stats when uploading */}
+                    {uploadBytesInfo && uploadBytesInfo.totalBytes > 0 && (
+                      <div className="flex items-center justify-between text-[11px] text-muted-foreground bg-background/60 px-3 py-1.5 rounded-lg border border-border/50">
+                        <span className="font-medium text-foreground">
+                          {(uploadBytesInfo.loadedBytes / (1024 * 1024)).toFixed(1)} MB van{" "}
+                          {(uploadBytesInfo.totalBytes / (1024 * 1024)).toFixed(1)} MB
+                        </span>
+                        <div className="flex items-center gap-3">
+                          {uploadBytesInfo.speedMbS > 0 && (
+                            <span className="text-accent font-medium">
+                              {uploadBytesInfo.speedMbS.toFixed(1)} MB/s
+                            </span>
+                          )}
+                          {uploadBytesInfo.timeRemainingSec !== null && uploadBytesInfo.timeRemainingSec > 0 && (
+                            <span>Nog ~{uploadBytesInfo.timeRemainingSec} sec</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* When in server unpacking / matching phase */}
+                    {(uploadStage === "unpacking" || uploadStage === "matching" || uploadStage === "indexing") && (
+                      <div className="flex items-center gap-2 text-[11px] text-accent bg-accent/10 px-3 py-2 rounded-lg border border-accent/20">
+                        <Archive className="w-4 h-4 text-accent shrink-0 animate-pulse" />
+                        <span className="leading-snug">
+                          {uploadStage === "unpacking" && "ZIP-archief is ontvangen. Server pakt nu alle documenten uit..."}
+                          {uploadStage === "matching" && "Documenten worden vergeleken en gekoppeld aan raadsdossiers..."}
+                          {uploadStage === "indexing" && "Zoekindex wordt bijgewerkt voor razendsnel zoeken..."}
+                        </span>
+                      </div>
+                    )}
+
                     {/* Step indicator pills */}
                     <div className="grid grid-cols-4 gap-2 pt-1">
-                      <div className={`p-2 rounded-lg text-center text-[10px] font-semibold flex flex-col items-center gap-1 ${
-                        uploadStage === "uploading" ? "bg-accent/20 text-accent border border-accent/40" : "bg-muted/40 text-muted-foreground"
+                      <div className={`p-2 rounded-lg text-center text-[10px] font-semibold flex flex-col items-center gap-1 transition-all ${
+                        uploadStage === "uploading" ? "bg-accent/25 text-accent border border-accent/40 shadow-xs" : "bg-muted/40 text-muted-foreground"
                       }`}>
                         <Upload className="w-3 h-3" />
-                        <span>1. Upload</span>
+                        <span>1. Upload ({uploadProgress}%)</span>
                       </div>
-                      <div className={`p-2 rounded-lg text-center text-[10px] font-semibold flex flex-col items-center gap-1 ${
-                        uploadStage === "unpacking" ? "bg-accent/20 text-accent border border-accent/40" : "bg-muted/40 text-muted-foreground"
+                      <div className={`p-2 rounded-lg text-center text-[10px] font-semibold flex flex-col items-center gap-1 transition-all ${
+                        uploadStage === "unpacking" ? "bg-accent/25 text-accent border border-accent/40 shadow-xs" : "bg-muted/40 text-muted-foreground"
                       }`}>
                         <Archive className="w-3 h-3" />
                         <span>2. Uitpakken</span>
                       </div>
-                      <div className={`p-2 rounded-lg text-center text-[10px] font-semibold flex flex-col items-center gap-1 ${
-                        uploadStage === "matching" ? "bg-accent/20 text-accent border border-accent/40" : "bg-muted/40 text-muted-foreground"
+                      <div className={`p-2 rounded-lg text-center text-[10px] font-semibold flex flex-col items-center gap-1 transition-all ${
+                        uploadStage === "matching" ? "bg-accent/25 text-accent border border-accent/40 shadow-xs" : "bg-muted/40 text-muted-foreground"
                       }`}>
                         <FolderCheck className="w-3 h-3" />
                         <span>3. Verdelen</span>
                       </div>
-                      <div className={`p-2 rounded-lg text-center text-[10px] font-semibold flex flex-col items-center gap-1 ${
-                        uploadStage === "indexing" || uploadStage === "completed" ? "bg-accent/20 text-accent border border-accent/40" : "bg-muted/40 text-muted-foreground"
+                      <div className={`p-2 rounded-lg text-center text-[10px] font-semibold flex flex-col items-center gap-1 transition-all ${
+                        uploadStage === "indexing" || uploadStage === "completed" ? "bg-accent/25 text-accent border border-accent/40 shadow-xs" : "bg-muted/40 text-muted-foreground"
                       }`}>
                         <Search className="w-3 h-3" />
                         <span>4. Indexeren</span>

@@ -1804,6 +1804,12 @@ export function processUploadedCouncilDocuments(
               processSingleFileRecord(entry.entryName, entryBuffer, true);
             }
           }
+          // Clean up the temporary uploaded zip file from documents folder
+          if (filePath && fs.existsSync(filePath)) {
+            try {
+              fs.unlinkSync(filePath);
+            } catch (_e) {}
+          }
         }
       } catch (zipErr) {
         console.error(`[ZIP UNPACK ERROR for ${rawName}]:`, zipErr);
