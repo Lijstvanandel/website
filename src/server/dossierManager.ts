@@ -1,11 +1,29 @@
 import fs from "fs";
 import path from "path";
 import type { Dossier, DossierDocument, GraphNode, GraphEdge, NetworkGraphData, RaadsstukMetadata } from "../types/dossier.js";
+import { getKv, setKv } from "./sqliteDatabase.js";
 
 const METADATA_PATH = path.join(process.cwd(), "public", "data", "raadsstukken_metadata_tussentijds.json");
+const METADATA_CSV_PATH = path.join(process.cwd(), "public", "data", "raadsstukken_metadata_tussentijds.csv");
 const GRAPH_PATH = path.join(process.cwd(), "public", "data", "network_graph.json");
 const DOCUMENTS_DIR = path.join(process.cwd(), "public", "uploads", "documents");
 const DIST_DOCUMENTS_DIR = path.join(process.cwd(), "dist", "uploads", "documents");
+const DIST_DATA_DIR = path.join(process.cwd(), "dist", "data");
+const DIST_METADATA_PATH = path.join(DIST_DATA_DIR, "raadsstukken_metadata_tussentijds.json");
+const DIST_GRAPH_PATH = path.join(DIST_DATA_DIR, "network_graph.json");
+
+// Persistent metadata paths outside git-tracked directory (survives git pull & container updates)
+const MASTER_METADATA_DIR = path.join(process.cwd(), "data");
+const MASTER_METADATA_PATH = path.join(MASTER_METADATA_DIR, "raadsstukken_metadata_master.json");
+const MASTER_METADATA_BACKUP_PATH = path.join(DOCUMENTS_DIR, "raadsstukken_metadata_master.json");
+
+function ensureMasterDirs() {
+  try {
+    if (!fs.existsSync(MASTER_METADATA_DIR)) {
+      fs.mkdirSync(MASTER_METADATA_DIR, { recursive: true });
+    }
+  } catch (_e) {}
+}
 
 // Helper to sanitize slug
 export function slugify(text: string): string {
@@ -316,16 +334,53 @@ const DOSSIER_PRESETS: Record<
 
 const DEFAULT_THUMBNAIL = "https://images.unsplash.com/photo-1497366216548-37526070297c?w=800&auto=format&fit=crop&q=80";
 
-// Read raw metadata from file
+// Read raw metadata from persistent master, sqlite, or file
 export function getRawMetadata(): RaadsstukMetadata[] {
+  // 1. Check persistent master file in data/ (gitignored, survives git pull)
+  try {
+    if (fs.existsSync(MASTER_METADATA_PATH)) {
+      const data = fs.readFileSync(MASTER_METADATA_PATH, "utf-8");
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn("Could not read MASTER_METADATA_PATH:", err);
+  }
+
+  // 2. Check SQLite kv_store (gitignored, persistent in database.sqlite)
+  try {
+    const kvMaster = getKv("raadsstukken_metadata_master");
+    if (Array.isArray(kvMaster) && kvMaster.length > 0) {
+      return kvMaster;
+    }
+  } catch (_e) {}
+
+  // 3. Check documents backup path
+  try {
+    if (fs.existsSync(MASTER_METADATA_BACKUP_PATH)) {
+      const data = fs.readFileSync(MASTER_METADATA_BACKUP_PATH, "utf-8");
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (_e) {}
+
+  // 4. Fallback to standard METADATA_PATH
   try {
     if (fs.existsSync(METADATA_PATH)) {
       const data = fs.readFileSync(METADATA_PATH, "utf-8");
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
     }
   } catch (err) {
     console.error("Error reading metadata file:", err);
   }
+
   return [];
 }
 
@@ -342,43 +397,564 @@ export function getRawNetworkGraph(): NetworkGraphData {
   return { nodes: [], edges: [] };
 }
 
-// Check if a physical document exists in the uploads directory
+// Check if a physical document exists in the uploads directory or subdirectories (waterschap, overijssel, etc.)
 export function checkFileExists(filename: string): { exists: boolean; fileUrl?: string; fileSize?: number } {
+  if (!filename) return { exists: false };
   const cleanFilename = path.basename(filename);
-  const targetPath = path.join(DOCUMENTS_DIR, cleanFilename);
-  const distPath = path.join(DIST_DOCUMENTS_DIR, cleanFilename);
 
-  if (fs.existsSync(targetPath)) {
-    try {
-      const stat = fs.statSync(targetPath);
-      return {
-        exists: true,
-        fileUrl: `/uploads/documents/${encodeURIComponent(cleanFilename)}`,
-        fileSize: stat.size,
-      };
-    } catch (_e) {
-      return { exists: true, fileUrl: `/uploads/documents/${encodeURIComponent(cleanFilename)}` };
-    }
-  }
+  // Locations to check in order of priority
+  const candidates: Array<{ path: string; url: string }> = [
+    // 1. Exact path relative to DOCUMENTS_DIR (handles e.g. "waterschap/doc.pdf" or "overijssel/doc.pdf")
+    {
+      path: path.join(DOCUMENTS_DIR, filename),
+      url: `/uploads/documents/${filename.split("/").map(encodeURIComponent).join("/")}`,
+    },
+    // 2. Direct root in public/uploads/documents/
+    {
+      path: path.join(DOCUMENTS_DIR, cleanFilename),
+      url: `/uploads/documents/${encodeURIComponent(cleanFilename)}`,
+    },
+    // 3. Waterschap subfolder
+    {
+      path: path.join(DOCUMENTS_DIR, "waterschap", cleanFilename),
+      url: `/uploads/documents/waterschap/${encodeURIComponent(cleanFilename)}`,
+    },
+    // 4. Overijssel subfolder
+    {
+      path: path.join(DOCUMENTS_DIR, "overijssel", cleanFilename),
+      url: `/uploads/documents/overijssel/${encodeURIComponent(cleanFilename)}`,
+    },
+    // 5. Dist mirrors
+    {
+      path: path.join(DIST_DOCUMENTS_DIR, filename),
+      url: `/uploads/documents/${filename.split("/").map(encodeURIComponent).join("/")}`,
+    },
+    {
+      path: path.join(DIST_DOCUMENTS_DIR, cleanFilename),
+      url: `/uploads/documents/${encodeURIComponent(cleanFilename)}`,
+    },
+    {
+      path: path.join(DIST_DOCUMENTS_DIR, "waterschap", cleanFilename),
+      url: `/uploads/documents/waterschap/${encodeURIComponent(cleanFilename)}`,
+    },
+    {
+      path: path.join(DIST_DOCUMENTS_DIR, "overijssel", cleanFilename),
+      url: `/uploads/documents/overijssel/${encodeURIComponent(cleanFilename)}`,
+    },
+  ];
 
-  if (fs.existsSync(distPath)) {
-    try {
-      const stat = fs.statSync(distPath);
-      return {
-        exists: true,
-        fileUrl: `/uploads/documents/${encodeURIComponent(cleanFilename)}`,
-        fileSize: stat.size,
-      };
-    } catch (_e) {
-      return { exists: true, fileUrl: `/uploads/documents/${encodeURIComponent(cleanFilename)}` };
+  for (const cand of candidates) {
+    if (fs.existsSync(cand.path)) {
+      try {
+        const stat = fs.statSync(cand.path);
+        if (stat.isFile()) {
+          return {
+            exists: true,
+            fileUrl: cand.url,
+            fileSize: stat.size,
+          };
+        }
+      } catch (_e) {
+        return { exists: true, fileUrl: cand.url };
+      }
     }
   }
 
   return { exists: false };
 }
 
+// Count physical document files residing on the server's disk
+export function countPhysicalFilesOnDisk(): {
+  rootCount: number;
+  waterschapCount: number;
+  overijsselCount: number;
+  otherSubdirsCount: number;
+  totalFiles: number;
+} {
+  let rootCount = 0;
+  let waterschapCount = 0;
+  let overijsselCount = 0;
+  let otherSubdirsCount = 0;
+
+  const isDocFile = (fn: string) => {
+    const l = fn.toLowerCase();
+    return (
+      !l.endsWith(".json") &&
+      !l.endsWith(".csv") &&
+      !l.endsWith(".log") &&
+      !l.endsWith(".sqlite") &&
+      !l.startsWith(".") &&
+      !l.endsWith(".tmp")
+    );
+  };
+
+  try {
+    if (fs.existsSync(DOCUMENTS_DIR)) {
+      const entries = fs.readdirSync(DOCUMENTS_DIR, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isFile() && isDocFile(entry.name)) {
+          rootCount++;
+        } else if (entry.isDirectory()) {
+          const subDirName = entry.name.toLowerCase();
+          const subDirPath = path.join(DOCUMENTS_DIR, entry.name);
+          try {
+            const subEntries = fs.readdirSync(subDirPath, { withFileTypes: true });
+            const subCount = subEntries.filter((s) => s.isFile() && isDocFile(s.name)).length;
+            if (subDirName === "waterschap") {
+              waterschapCount += subCount;
+            } else if (subDirName === "overijssel") {
+              overijsselCount += subCount;
+            } else {
+              otherSubdirsCount += subCount;
+            }
+          } catch (_e) {}
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Error counting physical files on disk:", err);
+  }
+
+  const totalFiles = rootCount + waterschapCount + overijsselCount + otherSubdirsCount;
+  return { rootCount, waterschapCount, overijsselCount, otherSubdirsCount, totalFiles };
+}
+
+// Save master metadata safely across persistent storage, SQLite, dist and public directories
+export function saveMasterMetadata(items: RaadsstukMetadata[], csvContent?: string): void {
+  ensureMasterDirs();
+
+  // 1. Save to master JSON in data/ (gitignored)
+  try {
+    fs.writeFileSync(MASTER_METADATA_PATH, JSON.stringify(items, null, 2), "utf-8");
+  } catch (err) {
+    console.error("Error saving MASTER_METADATA_PATH:", err);
+  }
+
+  // 2. Save to master backup in uploads/documents (gitignored)
+  try {
+    fs.writeFileSync(MASTER_METADATA_BACKUP_PATH, JSON.stringify(items, null, 2), "utf-8");
+  } catch (_e) {}
+
+  // 3. Save to SQLite kv_store (gitignored & persistent in database.sqlite)
+  try {
+    setKv("raadsstukken_metadata_master", items);
+  } catch (err) {
+    console.error("Error saving to sqlite kv_store:", err);
+  }
+
+  // 4. Save to public/data/ and dist/data/
+  try {
+    fs.writeFileSync(METADATA_PATH, JSON.stringify(items, null, 2), "utf-8");
+    if (!fs.existsSync(DIST_DATA_DIR)) {
+      fs.mkdirSync(DIST_DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(DIST_METADATA_PATH, JSON.stringify(items, null, 2), "utf-8");
+  } catch (err) {
+    console.warn("Error saving to public/data metadata path:", err);
+  }
+
+  // 5. Save CSV with all master records
+  try {
+    const csv = csvContent || generateMasterMetadataCsv(items);
+    fs.writeFileSync(METADATA_CSV_PATH, csv, "utf-8");
+    fs.writeFileSync(path.join(DIST_DATA_DIR, path.basename(METADATA_CSV_PATH)), csv, "utf-8");
+  } catch (err) {
+    console.warn("Error saving metadata CSV:", err);
+  }
+
+  // 6. Rebuild network graph with all nodes & relationships
+  try {
+    rebuildNetworkGraph(items);
+  } catch (err) {
+    console.warn("Error rebuilding network graph:", err);
+  }
+}
+
+// Clean document titles for auto-indexed files
+export function cleanDocumentTitle(fileName: string): string {
+  let title = fileName.replace(/\.[a-zA-Z0-9]+$/i, "");
+  title = title.replace(/[-_]+/g, " ");
+  // Remove leading YYYY MM DD or YYYYMMDD
+  title = title.replace(/^\b\d{4}\s*\d{2}\s*\d{2}\b\s*/, "");
+  title = title.replace(/^\b\d{4}\b\s*/, "");
+  // Replace document codes
+  title = title.replace(/^(doc|rv|rb|ib|notitie|bijlage|raadsvoorstel|besluit)\s*\d*\s*/i, (m) => m.toUpperCase() + ": ");
+  title = title.replace(/\s+/g, " ").trim();
+  if (title.length < 3) {
+    return fileName.replace(/\.[a-zA-Z0-9]+$/i, "");
+  }
+  return title.charAt(0).toUpperCase() + title.slice(1);
+}
+
+// Extract date from filename or modification time
+export function extractDateFromFilename(fileName: string, mtime?: Date): string {
+  const m1 = fileName.match(/\b(19\d\d|20\d\d)[-_](0[1-9]|1[0-2])[-_](0[1-9]|[12]\d|3[01])\b/);
+  if (m1) return `${m1[1]}-${m1[2]}-${m1[3]}`;
+
+  const m2 = fileName.match(/\b(0[1-9]|[12]\d|3[01])[-_](0[1-9]|1[0-2])[-_](19\d\d|20\d\d)\b/);
+  if (m2) return `${m2[3]}-${m2[2]}-${m2[1]}`;
+
+  const m3 = fileName.match(/\b(19\d\d|20\d\d)(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\b/);
+  if (m3) return `${m3[1]}-${m3[2]}-${m3[3]}`;
+
+  const m4 = fileName.match(/\b(20[12]\d)\b/);
+  if (m4) return `${m4[1]}-01-01`;
+
+  if (mtime && !isNaN(mtime.getTime())) {
+    return mtime.toISOString().slice(0, 10);
+  }
+
+  return new Date().toISOString().slice(0, 10);
+}
+
+// Steenwijkerland kernen & wijken list
+const STEENWIJKERLAND_KERNEN = [
+  "Centrum Steenwijk", "Steenwijk", "Tuk", "Giethoorn", "Vollenhove", "Blokzijl",
+  "Oldemarkt", "Kuinre", "Steenwijkerwold", "Sint Jansklooster", "Wanneperveen",
+  "Belt-Schutsloot", "Scheerwolde", "Willemsoord", "Eesveen", "Kalenberg",
+  "Ossenzijl", "Blankenham", "Onna", "Kallenkote", "Basse", "Baarlo",
+  "Muggenbeet", "Nederland", "Groot Verlaat", "Oostermeenthe", "De Meenthe",
+  "Clingenborgh", "Westerclinge", "Dolderkanaal", "Wetering", "Zuidveen",
+  "Marijenkampen", "Heetveld", "Barsbeek", "Doosje", "Dwarsgracht", "Ronduite", "IJsselham"
+];
+
+// Detect wijk or kern from text
+export function detectWijkOrKern(text: string): string | undefined {
+  const l = text.toLowerCase();
+  for (const kern of STEENWIJKERLAND_KERNEN) {
+    const kLower = kern.toLowerCase();
+    const regex = new RegExp(`\\b${kLower.replace("-", "[- ]")}\\b`, "i");
+    if (regex.test(l)) {
+      return kern;
+    }
+  }
+  return undefined;
+}
+
+// Detect dossier and subdossier from keywords and subdirectory
+export function detectDossierAndSubdossier(text: string, subFolder?: string): { dossier: string; subdossier: string } {
+  if (subFolder === "waterschap") {
+    return { dossier: "Waterschap & Waterbeheer", subdossier: "Waterschap Drents Overijsselse Delta" };
+  }
+  if (subFolder === "overijssel") {
+    return { dossier: "Provincie Overijssel", subdossier: "Provinciale Staten & Besluiten" };
+  }
+
+  const l = text.toLowerCase();
+
+  if (l.includes("icebear") || l.includes("ice bear") || (l.includes("groot verlaat") && (l.includes("geur") || l.includes("emissie")))) {
+    return { dossier: "Handhaving en Vergunningplicht IceBear", subdossier: "Handhaving en Geurmetingen" };
+  }
+  if (l.includes("woningbouw") || l.includes("woonvisie") || l.includes("nieuwbouw") || l.includes("kavels") || l.includes("starterslening") || l.includes("huurwoning")) {
+    return { dossier: "Woningbouw & Volkshuisvesting", subdossier: "Woonvisie en Bouwprojecten" };
+  }
+  if (l.includes("stikstof") || l.includes("aerius") || l.includes("natura 2000") || l.includes("weerribben") || l.includes("pfas")) {
+    return { dossier: "Stikstof", subdossier: "Natura 2000 en Aerius-metingen" };
+  }
+  if (l.includes("zonne") || l.includes("zonnepark") || l.includes("zonneweide") || l.includes("eeserwold") || l.includes("de hoop blokzijl")) {
+    return { dossier: "Zonne-energie", subdossier: "Zonneparken & Landschappelijke Inpassing" };
+  }
+  if (l.includes("windenergie") || l.includes("windturbine") || l.includes("windmolen") || l.includes("windpark")) {
+    return { dossier: "Windenergie", subdossier: "Windlocaties en Programmering" };
+  }
+  if (l.includes("jeugdzorg") || l.includes("jeugdhulp") || l.includes("rsj") || l.includes("ijsselland") || l.includes("kindermishandeling")) {
+    return { dossier: "Jeugdzorg (RSJ IJsselland)", subdossier: "Regionale Samenwerking & Inkoop" };
+  }
+  if (l.includes("museum") || l.includes("spijkervetstallen") || l.includes("cultuur") || l.includes("theater") || l.includes("meenthe")) {
+    return { dossier: "Nieuw museum", subdossier: "Masterplan en Realisatie" };
+  }
+  if (l.includes("asiel") || l.includes("oekraïne") || l.includes("oekraine") || l.includes("vluchteling") || l.includes("spreidingswet") || l.includes("fletcher")) {
+    return { dossier: "Asiel- en Oekraïneopvang", subdossier: "Opvanglocaties & Participatie" };
+  }
+  if (l.includes("verkeer") || l.includes("wegen") || l.includes("n333") || l.includes("n334") || l.includes("rondweg") || l.includes("fietspad") || l.includes("parkeer")) {
+    return { dossier: "Wegen en Infrastructuur", subdossier: "Wegenbeheer & Bereikbaarheid" };
+  }
+  if (l.includes("begroting") || l.includes("kadernota") || l.includes("jaarrekening") || l.includes("belasting") || l.includes("ozb") || l.includes("financi")) {
+    return { dossier: "Financiën & Bedrijfsvoering", subdossier: "Begroting en Jaarstukken" };
+  }
+  if (l.includes("bestemmingsplan") || l.includes("omgevingsplan") || l.includes("omgevingsvisie") || l.includes("omgevingsvergunning") || l.includes("ruimtelij")) {
+    return { dossier: "Bestemmingsplan", subdossier: "Ruimtelijke Plannen en Wijzigingen" };
+  }
+  if (l.includes("openbare ruimte") || l.includes("groen") || l.includes("bomen") || l.includes("speelplek") || l.includes("beschoeiing")) {
+    return { dossier: "Openbare ruimte", subdossier: "Onderhoud en Inrichting" };
+  }
+  if (l.includes("spoorzone") || l.includes("gebiedsontwikkeling") || l.includes("vrije veld") || l.includes("steenwijk oost")) {
+    return { dossier: "Gebiedsontwikkeling", subdossier: "Visies en Gebiedsplannen" };
+  }
+  if (l.includes("pacht") || l.includes("landbouw") || l.includes("agrarisch") || l.includes("didam")) {
+    return { dossier: "Pachtbeleid", subdossier: "Pachtcriteria en Grondzaken" };
+  }
+  if (l.includes("schuldhulp") || l.includes("armoede") || l.includes("kredietbank") || l.includes("sociaal werk")) {
+    return { dossier: "Schuldhulpverlening", subdossier: "Beleid en Uitvoering" };
+  }
+  if (l.includes("participatiewet") || l.includes("aan de slag") || l.includes("werkvoorziening") || l.includes("bijstand")) {
+    return { dossier: "Participatiewet", subdossier: "Arbeidsmarkt en Re-integratie" };
+  }
+  if (l.includes("toerisme") || l.includes("recreatie") || l.includes("haven") || l.includes("woonschepen") || l.includes("rondvaart")) {
+    return { dossier: "Economie, Recreatie & Toerisme", subdossier: "Recreatie en Waterbeheer" };
+  }
+  if (l.includes("veiligheid") || l.includes("brandweer") || l.includes("apv") || l.includes("politie") || l.includes("handhaving")) {
+    return { dossier: "Veiligheid & Openbare Orde", subdossier: "Handhaving en Naleving" };
+  }
+
+  return { dossier: "Gemeenteraad & Beleid", subdossier: "Algemeen" };
+}
+
+// Generate Excel-compatible master metadata CSV with Dutch formatting
+export function generateMasterMetadataCsv(items: RaadsstukMetadata[]): string {
+  const headers = [
+    "bestandsnaam",
+    "titel",
+    "dossier",
+    "subdossier",
+    "wijk_of_kern",
+    "datum",
+    "entiteiten",
+    "relaties"
+  ];
+  const escapeCsv = (val: any) => {
+    if (val === null || val === undefined) return '""';
+    const str = String(val).replace(/"/g, '""');
+    return `"${str}"`;
+  };
+
+  const rows = items.map((item) => [
+    escapeCsv(item.bestandsnaam),
+    escapeCsv(item.titel || item.bestandsnaam),
+    escapeCsv(item.dossier || "Algemeen"),
+    escapeCsv(item.subdossier || "Algemeen"),
+    escapeCsv(item.wijk_of_kern || ""),
+    escapeCsv(item.datum || ""),
+    escapeCsv(item.entiteiten || ""),
+    escapeCsv(item.relaties || "")
+  ].join(";"));
+
+  return "\uFEFF" + headers.join(";") + "\r\n" + rows.join("\r\n");
+}
+
+// Scan the physical filesystem and synchronize all 5000+ files into master metadata catalog
+export function syncPhysicalFilesystemDocuments(): {
+  success: boolean;
+  totalFilesOnDisk: number;
+  rootFilesCount: number;
+  waterschapFilesCount: number;
+  overijsselFilesCount: number;
+  previousMetadataCount: number;
+  newlyIndexedCount: number;
+  totalMasterDocuments: number;
+  message: string;
+} {
+  ensureMasterDirs();
+  const counts = countPhysicalFilesOnDisk();
+
+  interface DiskFile {
+    fileName: string;
+    subFolder: string;
+    relPath: string;
+    fullPath: string;
+    fileSize: number;
+    mtime: Date;
+  }
+  const diskFiles: DiskFile[] = [];
+
+  const isDocFile = (fn: string) => {
+    const l = fn.toLowerCase();
+    return (
+      !l.endsWith(".json") &&
+      !l.endsWith(".csv") &&
+      !l.endsWith(".log") &&
+      !l.endsWith(".sqlite") &&
+      !l.startsWith(".") &&
+      !l.endsWith(".tmp")
+    );
+  };
+
+  if (fs.existsSync(DOCUMENTS_DIR)) {
+    try {
+      const rootEntries = fs.readdirSync(DOCUMENTS_DIR, { withFileTypes: true });
+      for (const entry of rootEntries) {
+        if (entry.isFile() && isDocFile(entry.name)) {
+          const fullPath = path.join(DOCUMENTS_DIR, entry.name);
+          try {
+            const st = fs.statSync(fullPath);
+            diskFiles.push({
+              fileName: entry.name,
+              subFolder: "",
+              relPath: entry.name,
+              fullPath,
+              fileSize: st.size,
+              mtime: st.mtime,
+            });
+          } catch (_e) {}
+        } else if (entry.isDirectory()) {
+          const subDirName = entry.name;
+          const subDirPath = path.join(DOCUMENTS_DIR, subDirName);
+          try {
+            const subEntries = fs.readdirSync(subDirPath, { withFileTypes: true });
+            for (const sub of subEntries) {
+              if (sub.isFile() && isDocFile(sub.name)) {
+                const subFullPath = path.join(subDirPath, sub.name);
+                try {
+                  const subSt = fs.statSync(subFullPath);
+                  diskFiles.push({
+                    fileName: sub.name,
+                    subFolder: subDirName,
+                    relPath: `${subDirName}/${sub.name}`,
+                    fullPath: subFullPath,
+                    fileSize: subSt.size,
+                    mtime: subSt.mtime,
+                  });
+                } catch (_e) {}
+              }
+            }
+          } catch (_e) {}
+        }
+      }
+    } catch (err) {
+      console.error("Error reading DOCUMENTS_DIR:", err);
+    }
+  }
+
+  // Load existing metadata
+  const existingMetadata = getRawMetadata();
+  const previousMetadataCount = existingMetadata.length;
+
+  const itemMap = new Map<string, RaadsstukMetadata>();
+  const baseNameMap = new Map<string, RaadsstukMetadata>();
+
+  for (const item of existingMetadata) {
+    if (!item || !item.bestandsnaam) continue;
+    const cleanKey = item.bestandsnaam.toLowerCase().trim();
+    const baseKey = path.basename(item.bestandsnaam).toLowerCase().trim();
+    itemMap.set(cleanKey, { ...item });
+    baseNameMap.set(baseKey, itemMap.get(cleanKey)!);
+  }
+
+  // Check specialized Waterschap metadata JSON
+  const waterschapJsonPath = path.join(DOCUMENTS_DIR, "raadsstukken_metadata_waterschap.json");
+  if (fs.existsSync(waterschapJsonPath)) {
+    try {
+      const raw = fs.readFileSync(waterschapJsonPath, "utf-8");
+      const wsDocs = JSON.parse(raw);
+      if (Array.isArray(wsDocs)) {
+        for (const ws of wsDocs) {
+          const fn = ws.bestandsnaam || ws.filename || (ws.document_id ? `waterschap_${ws.document_id}.pdf` : "");
+          if (!fn) continue;
+          const wsKey = fn.toLowerCase().trim();
+          const wsBase = path.basename(fn).toLowerCase().trim();
+          if (!itemMap.has(wsKey) && !baseNameMap.has(wsBase)) {
+            const wsItem: RaadsstukMetadata = {
+              bestandsnaam: fn.includes("/") ? fn : `waterschap/${fn}`,
+              titel: ws.titel || cleanDocumentTitle(fn),
+              dossier: "Waterschap & Waterbeheer",
+              subdossier: "Waterschap Drents Overijsselse Delta",
+              wijk_of_kern: ws.wijk_of_kern || detectWijkOrKern(ws.titel || fn) || "",
+              datum: ws.datum || extractDateFromFilename(fn),
+              entiteiten: ws.entiteiten || "Waterschap Drents Overijsselse Delta, Waterbeheer, Dijken",
+              relaties: ws.relaties || "",
+            };
+            itemMap.set(wsKey, wsItem);
+            baseNameMap.set(wsBase, wsItem);
+          }
+        }
+      }
+    } catch (_e) {}
+  }
+
+  // Check specialized Overijssel metadata JSON
+  const overijsselJsonPath = path.join(DOCUMENTS_DIR, "raadsstukken_metadata_overijssel.json");
+  if (fs.existsSync(overijsselJsonPath)) {
+    try {
+      const raw = fs.readFileSync(overijsselJsonPath, "utf-8");
+      const ovDocs = JSON.parse(raw);
+      if (Array.isArray(ovDocs)) {
+        for (const ov of ovDocs) {
+          const fn = ov.bestandsnaam || ov.filename || (ov.document_id ? `overijssel_${ov.document_id}.pdf` : "");
+          if (!fn) continue;
+          const ovKey = fn.toLowerCase().trim();
+          const ovBase = path.basename(fn).toLowerCase().trim();
+          if (!itemMap.has(ovKey) && !baseNameMap.has(ovBase)) {
+            const ovItem: RaadsstukMetadata = {
+              bestandsnaam: fn.includes("/") ? fn : `overijssel/${fn}`,
+              titel: ov.titel || cleanDocumentTitle(fn),
+              dossier: "Provincie Overijssel",
+              subdossier: "Provinciale Staten & Besluiten",
+              wijk_of_kern: ov.wijk_of_kern || detectWijkOrKern(ov.titel || fn) || "",
+              datum: ov.datum || extractDateFromFilename(fn),
+              entiteiten: ov.entiteiten || "Provincie Overijssel, Provinciale Staten, Regionaal Beleid",
+              relaties: ov.relaties || "",
+            };
+            itemMap.set(ovKey, ovItem);
+            baseNameMap.set(ovBase, ovItem);
+          }
+        }
+      }
+    } catch (_e) {}
+  }
+
+  // Check all physical disk files and reconcile or add
+  let newlyIndexedCount = 0;
+
+  for (const df of diskFiles) {
+    const fullKey = df.relPath.toLowerCase().trim();
+    const baseKey = df.fileName.toLowerCase().trim();
+
+    const matchedItem = itemMap.get(fullKey) || baseNameMap.get(baseKey);
+
+    if (matchedItem) {
+      // Existing item: ensure correct relative path
+      matchedItem.bestandsnaam = df.relPath;
+    } else {
+      // New file on disk that was not indexed in metadata!
+      const cleanTitle = cleanDocumentTitle(df.fileName);
+      const date = extractDateFromFilename(df.fileName, df.mtime);
+      const detectedTopic = detectDossierAndSubdossier(cleanTitle + " " + df.fileName, df.subFolder);
+      const detectedWijk = detectWijkOrKern(cleanTitle + " " + df.fileName);
+
+      const newItem: RaadsstukMetadata = {
+        bestandsnaam: df.relPath,
+        titel: cleanTitle,
+        datum: date,
+        dossier: detectedTopic.dossier,
+        subdossier: detectedTopic.subdossier,
+        wijk_of_kern: detectedWijk || "",
+        entiteiten: [detectedTopic.dossier, detectedTopic.subdossier, detectedWijk, "Raadsstuk"].filter(Boolean).join(", "),
+        relaties: "",
+      };
+
+      itemMap.set(fullKey, newItem);
+      baseNameMap.set(baseKey, newItem);
+      newlyIndexedCount++;
+    }
+  }
+
+  const masterItems = Array.from(itemMap.values());
+
+  // Save master metadata permanently across data/, sqlite, and public/data/
+  saveMasterMetadata(masterItems);
+
+  const msg = `Succesvol gesynchroniseerd: ${counts.totalFiles} bestanden op server schijf gescand (${counts.rootCount} root, ${counts.waterschapCount} waterschap, ${counts.overijsselCount} overijssel). ${newlyIndexedCount} nieuwe documenten geïndexeerd. Totaal catalogus bevat nu ${masterItems.length} documenten.`;
+  console.log("[FILESYSTEM SYNC]:", msg);
+
+  return {
+    success: true,
+    totalFilesOnDisk: counts.totalFiles,
+    rootFilesCount: counts.rootCount,
+    waterschapFilesCount: counts.waterschapCount,
+    overijsselFilesCount: counts.overijsselCount,
+    previousMetadataCount,
+    newlyIndexedCount,
+    totalMasterDocuments: masterItems.length,
+    message: msg,
+  };
+}
+
 // Build complete list of Dossiers from metadata + SQLite custom dossiers
-export function getAllDossiers(customDossiers: Dossier[] = [], deletedSlugs: string[] = []): Dossier[] {
+export function getAllDossiers(
+  customDossiers: Dossier[] = [],
+  deletedSlugs: string[] = [],
+  customSubdossiers?: Record<string, any>
+): Dossier[] {
   const metadataList = getRawMetadata();
   const dossierMap = new Map<string, { title: string; docs: DossierDocument[] }>();
 
@@ -495,9 +1071,12 @@ export function getAllDossiers(customDossiers: Dossier[] = [], deletedSlugs: str
         sd.entiteiten.slice(0, 3).forEach((e) => subTags.add(e));
       });
 
+      const subKey = `${slug}:${slugify(subTitle)}`;
+      const customSub = customSubdossiers?.[subKey] || customSubdossiers?.[slugify(subTitle)];
+
       return {
         id: slugify(subTitle),
-        title: subTitle,
+        title: customSub?.title || subTitle,
         slug: slugify(subTitle),
         hoofddossier: title,
         documentCount: subDocs.length,
@@ -507,9 +1086,9 @@ export function getAllDossiers(customDossiers: Dossier[] = [], deletedSlugs: str
           end: subDates.length > 0 ? subDates[subDates.length - 1] : null,
         },
         wijken: Array.from(subWijken),
-        tags: Array.from(subTags).slice(0, 5),
-        description: `${subDocs.length} raadsstukken en besluiten binnen ${subTitle}.`,
-        thumbnail: getSubdossierThumbnail(subTitle, title),
+        tags: customSub?.tags || Array.from(subTags).slice(0, 5),
+        description: customSub?.description || `${subDocs.length} raadsstukken en besluiten binnen ${subTitle}.`,
+        thumbnail: customSub?.thumbnail || getSubdossierThumbnail(subTitle, title),
       };
     });
 
@@ -630,9 +1209,13 @@ export function getAllDossiers(customDossiers: Dossier[] = [], deletedSlugs: str
   return dossiers;
 }
 
-// Get subnetwork graph for a specific dossier - ONLY documents connected to each other
-export function getDossierGraph(dossierTitleOrSlug: string, db?: any): NetworkGraphData {
-  const allDossiers = getAllDossiers(db?.customDossiers || [], db?.deletedDossierSlugs || []);
+// Get subnetwork graph for a specific dossier - ONLY documents connected to each other, with optional subdossier filtering
+export function getDossierGraph(dossierTitleOrSlug: string, db?: any, subdossierSlugOrTitle?: string): NetworkGraphData {
+  const allDossiers = getAllDossiers(
+    db?.customDossiers || [],
+    db?.deletedDossierSlugs || [],
+    db?.customSubdossiers || {}
+  );
   const matchedDossier = allDossiers.find(
     (d) => d.id === dossierTitleOrSlug || d.slug === dossierTitleOrSlug || d.title.toLowerCase() === dossierTitleOrSlug.toLowerCase()
   );
@@ -642,7 +1225,19 @@ export function getDossierGraph(dossierTitleOrSlug: string, db?: any): NetworkGr
     return { nodes: [], edges: [] };
   }
 
-  const docs = matchedDossier.documents;
+  let docs = matchedDossier.documents;
+  if (subdossierSlugOrTitle) {
+    const sClean = subdossierSlugOrTitle.toLowerCase().trim();
+    const subFiltered = docs.filter(
+      (d) =>
+        (d.subdossier && d.subdossier.toLowerCase() === sClean) ||
+        slugify(d.subdossier || "") === slugify(sClean)
+    );
+    if (subFiltered.length > 0) {
+      docs = subFiltered;
+    }
+  }
+
   const docFileNames = new Set(docs.map((d) => d.bestandsnaam));
   const docEdgesMap = new Map<string, { source: string; target: string; reasons: string[] }>();
 
@@ -1148,11 +1743,6 @@ export function processUploadedCouncilDocuments(
   };
 }
 
-const METADATA_CSV_PATH = path.join(process.cwd(), "public", "data", "raadsstukken_metadata_tussentijds.csv");
-const DIST_DATA_DIR = path.join(process.cwd(), "dist", "data");
-const DIST_METADATA_PATH = path.join(DIST_DATA_DIR, "raadsstukken_metadata_tussentijds.json");
-const DIST_GRAPH_PATH = path.join(DIST_DATA_DIR, "network_graph.json");
-
 // Helper to parse CSV lines with quote support
 export function parseMetadataCsv(csvContent: string): RaadsstukMetadata[] {
   const lines = csvContent.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -1299,27 +1889,9 @@ export function processMetadataOrGraphUpload(
       throw new Error("Geen geldige raadsstukken rijen gevonden in de geüploade CSV.");
     }
 
-    // Save CSV
-    fs.writeFileSync(METADATA_CSV_PATH, fileContent, "utf-8");
-    if (!fs.existsSync(DIST_DATA_DIR)) {
-      fs.mkdirSync(DIST_DATA_DIR, { recursive: true });
-    }
-    try {
-      fs.writeFileSync(path.join(DIST_DATA_DIR, path.basename(METADATA_CSV_PATH)), fileContent, "utf-8");
-    } catch (e) {
-      console.warn("Could not write CSV to dist:", e);
-    }
-
-    // Save JSON
-    fs.writeFileSync(METADATA_PATH, JSON.stringify(items, null, 2), "utf-8");
-    try {
-      fs.writeFileSync(DIST_METADATA_PATH, JSON.stringify(items, null, 2), "utf-8");
-    } catch (e) {
-      console.warn("Could not write JSON to dist:", e);
-    }
-
-    // Rebuild network graph automatically
-    const graph = rebuildNetworkGraph(items);
+    // Save to master persistent storage, SQLite, public and dist
+    saveMasterMetadata(items, fileContent);
+    const graph = getRawNetworkGraph();
 
     return {
       success: true,
@@ -1327,7 +1899,7 @@ export function processMetadataOrGraphUpload(
       itemsCount: items.length,
       nodesCount: graph.nodes.length,
       edgesCount: graph.edges.length,
-      message: `${items.length} documenten ingelezen en opgeslagen. Netwerkgraaf automatisch bijgewerkt met ${graph.nodes.length} knooppunten en ${graph.edges.length} relaties.`,
+      message: `${items.length} documenten ingelezen en permanent opgeslagen in master catalogus. Netwerkgraaf automatisch bijgewerkt met ${graph.nodes.length} knooppunten en ${graph.edges.length} relaties.`,
     };
   } else if (lowerName.includes("network_graph") || lowerName.includes("graph")) {
     // Network graph JSON
@@ -1361,17 +1933,8 @@ export function processMetadataOrGraphUpload(
       throw new Error("Ongeldig metadata JSON formaat: geen document array gevonden.");
     }
 
-    fs.writeFileSync(METADATA_PATH, JSON.stringify(items, null, 2), "utf-8");
-    if (!fs.existsSync(DIST_DATA_DIR)) {
-      fs.mkdirSync(DIST_DATA_DIR, { recursive: true });
-    }
-    try {
-      fs.writeFileSync(DIST_METADATA_PATH, JSON.stringify(items, null, 2), "utf-8");
-    } catch (e) {
-      console.warn("Could not write metadata JSON to dist:", e);
-    }
-
-    const graph = rebuildNetworkGraph(items);
+    saveMasterMetadata(items);
+    const graph = getRawNetworkGraph();
 
     return {
       success: true,
@@ -1379,7 +1942,7 @@ export function processMetadataOrGraphUpload(
       itemsCount: items.length,
       nodesCount: graph.nodes.length,
       edgesCount: graph.edges.length,
-      message: `${items.length} documenten bijgewerkt via metadata JSON. Netwerkgraaf gesynchroniseerd.`,
+      message: `${items.length} documenten permanent opgeslagen via master metadata JSON. Netwerkgraaf gesynchroniseerd.`,
     };
   }
 }

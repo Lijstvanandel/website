@@ -369,6 +369,36 @@ export function getSqliteFilePath(): string {
 }
 
 /**
+ * Get custom value from kv_store
+ */
+export function getKv(key: string): any {
+  if (!sqliteDb || !key) return null;
+  try {
+    const res = sqliteDb.exec("SELECT value FROM kv_store WHERE key = ?", [key]);
+    if (res.length > 0 && res[0].values && res[0].values[0]) {
+      return JSON.parse(res[0].values[0][0]);
+    }
+  } catch (_e) {}
+  return null;
+}
+
+/**
+ * Set custom value in kv_store and persist atomically
+ */
+export function setKv(key: string, value: any): void {
+  if (!sqliteDb || !key) return;
+  try {
+    sqliteDb.run("INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)", [
+      key,
+      JSON.stringify(value),
+    ]);
+    schedulePersist();
+  } catch (err) {
+    console.error(`[SQLITE setKv FOUT] voor key ${key}:`, err);
+  }
+}
+
+/**
  * Get all favorited documents for a specific user
  */
 export function getUserDocumentFavorites(userId: string): any[] {

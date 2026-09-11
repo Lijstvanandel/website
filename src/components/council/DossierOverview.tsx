@@ -20,6 +20,7 @@ import {
   FileSpreadsheet,
   AlertTriangle,
   FolderTree,
+  Download,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -160,6 +161,15 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
   const [isEditDossierOpen, setIsEditDossierOpen] = useState(false);
   const [editingDossier, setEditingDossier] = useState<Dossier | null>(null);
   const [isClassifying, setIsClassifying] = useState(false);
+  const [filesystemScan, setFilesystemScan] = useState<{
+    totalFiles: number;
+    rootCount: number;
+    waterschapCount: number;
+    overijsselCount: number;
+    metadataCount: number;
+    needsSync: boolean;
+  } | null>(null);
+  const [isSyncingFilesystem, setIsSyncingFilesystem] = useState(false);
   const [bulkStatus, setBulkStatus] = useState<{
     isRunning: boolean;
     total: number;
@@ -239,6 +249,55 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
       }
     } catch (err: any) {
       toast.error("Kon annulering niet verzenden");
+    }
+  };
+
+  const fetchFilesystemScanStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/council/filesystem-scan-status");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.diskStats) {
+          setFilesystemScan({
+            totalFiles: data.diskStats.totalFiles,
+            rootCount: data.diskStats.rootCount,
+            waterschapCount: data.diskStats.waterschapCount,
+            overijsselCount: data.diskStats.overijsselCount,
+            metadataCount: data.metadataCount,
+            needsSync: !!data.needsSync,
+          });
+        }
+      }
+    } catch (_e) {
+      // Ignore background filesystem scan fetch errors
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchFilesystemScanStatus();
+  }, [fetchFilesystemScanStatus]);
+
+  const handleSyncFilesystem = async () => {
+    setIsSyncingFilesystem(true);
+    const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
+    try {
+      const res = await fetch("/api/council/sync-filesystem-documents", {
+        method: "POST",
+        headers: {
+          Authorization: token ? `Bearer ${token}` : "",
+        },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Fout bij synchroniseren");
+      }
+      toast.success(data.message || "Serverbestanden succesvol gesynchroniseerd!");
+      await fetchFilesystemScanStatus();
+      await fetchDossiers();
+    } catch (err: any) {
+      toast.error(err.message || "Fout bij synchroniseren serverbestanden");
+    } finally {
+      setIsSyncingFilesystem(false);
     }
   };
 
@@ -511,37 +570,57 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
   return (
     <div id="dossier-overview-page" className="space-y-6">
       {/* Top Banner with Actions */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-card border border-border p-6 rounded-3xl shadow-xs">
-        <div>
-          <div className="flex items-center gap-2 text-accent font-bold text-xs uppercase tracking-wider mb-1">
-            <FolderOpen className="w-4 h-4" />
-            {isCouncilOrAdmin ? "Raadspaneel Dossiersysteem" : "Openbaar Dossierarchief"}
+      <div className="bg-card border border-border p-6 rounded-3xl shadow-xs space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 text-accent font-bold text-xs uppercase tracking-wider mb-1">
+              <FolderOpen className="w-4 h-4" />
+              {isCouncilOrAdmin ? "Raadspaneel Dossiersysteem" : "Openbaar Dossierarchief"}
+            </div>
+            <h2 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">
+              Raadsdossiers & Stukkenarchief
+            </h2>
+            <p className="text-xs sm:text-sm text-muted-foreground mt-1 max-w-2xl leading-relaxed">
+              {isCouncilOrAdmin
+                ? "Interactief netwerk van gemeentelijke dossiers, besluitvormingslijnen en gekoppelde raadsstukken uit de Steenwijkerlandse raad."
+                : "Bekijk gemeentelijke dossiers, besluitvorming, tijdlijnen en officiële raadsstukken van Steenwijkerland en haar wijken en kernen."}
+            </p>
           </div>
-          <h2 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">
-            Raadsdossiers & Stukkenarchief
-          </h2>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-1 max-w-2xl">
-            {isCouncilOrAdmin
-              ? "Interactief netwerk van gemeentelijke dossiers, besluitvormingslijnen en gekoppelde raadsstukken uit de Steenwijkerlandse raad."
-              : "Bekijk gemeentelijke dossiers, besluitvorming, tijdlijnen en officiële raadsstukken van Steenwijkerland en haar wijken en kernen."}
-          </p>
+
+          {isCouncilOrAdmin && (
+            <div className="shrink-0 flex items-center gap-2">
+              <Button
+                id="btn-open-create-dossier"
+                onClick={() => setIsCreateDossierOpen(true)}
+                className="bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-semibold h-9 rounded-xl shadow-xs"
+              >
+                <FolderPlus className="w-3.5 h-3.5 mr-1.5" />
+                Dossier Aanmaken
+              </Button>
+            </div>
+          )}
         </div>
 
-        {/* Global Action Buttons */}
+        {/* Global Beheer & Synchronisatie Toolbar */}
         {isCouncilOrAdmin && (
-          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <div className="pt-4 border-t border-border/70 flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mr-1">
+              Beheer & Data:
+            </span>
+
             <Button
-              id="btn-export-missing-files"
-              onClick={() => setIsMissingFilesModalOpen(true)}
+              id="btn-sync-filesystem-docs"
+              onClick={handleSyncFilesystem}
+              disabled={isSyncingFilesystem}
               variant="outline"
-              className="border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 text-xs font-semibold h-9 rounded-xl shadow-xs"
-              title="Exporteer en bekijk de raadsstukken die gekoppeld zijn maar ontbreken op de server"
+              className="border-sky-500/40 text-sky-600 dark:text-sky-400 hover:bg-sky-500/10 text-xs font-semibold h-8 rounded-xl shadow-2xs"
+              title="Scan direct alle 5000+ fysieke bestanden op de server en neem ze op in de master metadata catalogus"
             >
-              <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5 text-amber-500" />
-              Export Ontbrekende Bestanden
-              {stats.totalDocuments > stats.totalUploadedFiles && (
-                <span className="ml-1.5 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500 text-white">
-                  {stats.totalDocuments - stats.totalUploadedFiles}
+              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isSyncingFilesystem ? 'animate-spin' : ''}`} />
+              {isSyncingFilesystem ? "Scannen..." : "Serverbestanden Scannen"}
+              {filesystemScan && (
+                <span className={`ml-1.5 px-1.5 py-0.2 rounded-full text-[10px] font-bold ${filesystemScan.needsSync ? 'bg-amber-500 text-white animate-pulse' : 'bg-sky-500/20 text-sky-600 dark:text-sky-300'}`}>
+                  {filesystemScan.totalFiles > 0 ? `${filesystemScan.totalFiles}` : "Scan"}
                 </span>
               )}
             </Button>
@@ -550,7 +629,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
               id="btn-open-bulk-upload"
               onClick={() => setIsBulkUploadOpen(true)}
               variant="outline"
-              className="border-accent/40 text-accent hover:bg-accent/15 text-xs font-semibold h-9 rounded-xl shadow-xs"
+              className="border-accent/40 text-accent hover:bg-accent/15 text-xs font-semibold h-8 rounded-xl shadow-2xs"
               title="Upload alle bestanden herkenbaar door de metadata in één keer"
             >
               <Upload className="w-3.5 h-3.5 mr-1.5" />
@@ -561,24 +640,68 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
               id="btn-run-bulk-classify"
               onClick={handleBulkClassify}
               disabled={isClassifying}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold h-9 rounded-xl shadow-xs"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold h-8 rounded-xl shadow-2xs"
               title="Breng alle documenten in overijssel, waterschap en algemene uploads samen in dossiers op basis van de taxonomie-richtlijnen"
             >
               <Sparkles className={`w-3.5 h-3.5 mr-1.5 ${isClassifying ? 'animate-spin' : ''}`} />
               {isClassifying ? "Samenbrengen..." : "Breng Samen in Dossiers"}
             </Button>
 
-            <Button
-              id="btn-open-create-dossier"
-              onClick={() => setIsCreateDossierOpen(true)}
-              className="bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-semibold h-9 rounded-xl shadow-xs"
+            <a
+              id="btn-download-master-csv"
+              href="/api/council/metadata.csv"
+              download
+              className="inline-flex items-center justify-center border border-border bg-card hover:bg-muted text-foreground text-xs font-semibold h-8 px-3 rounded-xl shadow-2xs transition-colors"
+              title="Download het complete master CSV-bestand met alle geregistreerde bestanden"
             >
-              <FolderPlus className="w-3.5 h-3.5 mr-1.5" />
-              Dossier Aanmaken
+              <Download className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
+              Complete CSV
+            </a>
+
+            <Button
+              id="btn-export-missing-files"
+              onClick={() => setIsMissingFilesModalOpen(true)}
+              variant="outline"
+              className="border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 text-xs font-semibold h-8 rounded-xl shadow-2xs"
+              title="Exporteer en bekijk de raadsstukken die gekoppeld zijn maar ontbreken op de server"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5 text-amber-500" />
+              Ontbrekende Bestanden
+              {stats.totalDocuments > stats.totalUploadedFiles && (
+                <span className="ml-1.5 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500 text-white">
+                  {stats.totalDocuments - stats.totalUploadedFiles}
+                </span>
+              )}
             </Button>
           </div>
         )}
       </div>
+
+      {/* Alert banner if physical files on disk exceed metadata catalog */}
+      {isCouncilOrAdmin && filesystemScan && filesystemScan.needsSync && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div className="text-xs">
+              <p className="font-bold text-amber-900 dark:text-amber-200">
+                Serverbestanden niet volledig gesynchroniseerd ({filesystemScan.totalFiles} bestanden op server vs {filesystemScan.metadataCount} in catalogus)
+              </p>
+              <p className="text-amber-800 dark:text-amber-300 mt-0.5">
+                Er staan {filesystemScan.totalFiles} documenten op de server (waarvan {filesystemScan.rootCount} algemeen, {filesystemScan.waterschapCount} waterschap, {filesystemScan.overijsselCount} overijssel).
+              </p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            onClick={handleSyncFilesystem}
+            disabled={isSyncingFilesystem}
+            className="bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs rounded-xl shrink-0"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isSyncingFilesystem ? 'animate-spin' : ''}`} />
+            {isSyncingFilesystem ? "Synchroniseren..." : "Nu Alles Synchroniseren"}
+          </Button>
+        </div>
+      )}
       
       {/* Realtime Bulk Classification Progress Panel */}
       {bulkStatus && (bulkStatus.isRunning || bulkStatus.processed > 0) && (

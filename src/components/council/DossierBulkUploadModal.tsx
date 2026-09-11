@@ -14,6 +14,7 @@ import {
   Trash2,
   Plus,
   Info,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -49,6 +50,7 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
   // Metadata upload state
   const [selectedMetaFile, setSelectedMetaFile] = useState<File | null>(null);
   const [isUploadingMeta, setIsUploadingMeta] = useState(false);
+  const [isSyncingFs, setIsSyncingFs] = useState(false);
   const [metaResult, setMetaResult] = useState<{
     itemsCount?: number;
     nodesCount?: number;
@@ -278,6 +280,35 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
       toast.error(err.message || "Fout bij uploaden van metadata");
     } finally {
       setIsUploadingMeta(false);
+    }
+  };
+
+  // Sync physical files already residing on the server
+  const handleSyncServerFiles = async () => {
+    setIsSyncingFs(true);
+    const token = getToken();
+    try {
+      const res = await fetch("/api/council/sync-filesystem-documents", {
+        method: "POST",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || "Fout bij synchroniseren van serverbestanden.");
+      }
+      setMetaResult({
+        message: data.message || "Serverbestanden succesvol gesynchroniseerd!",
+        itemsCount: data.metadataCount,
+      });
+      toast.success(data.message || "Serverbestanden succesvol gesynchroniseerd!");
+      onUploadSuccess();
+    } catch (err: any) {
+      console.error("[SERVER FILES SYNC ERROR]:", err);
+      toast.error(err.message || "Fout bij synchroniseren van serverbestanden");
+    } finally {
+      setIsSyncingFs(false);
     }
   };
 
@@ -581,6 +612,31 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
                 <p>
                   Upload een nieuw <code className="text-accent">raadsstukken_metadata_tussentijds.csv</code> bestand of een geüpdatete <code className="text-accent">network_graph.json</code>. De site verwerkt alle rijen, hercalculeert alle relaties en bouwt de netwerkgrafiek direct automatisch op.
                 </p>
+              </div>
+
+              {/* Direct Server Files Scan Section */}
+              <div className="p-4 rounded-2xl bg-sky-500/10 border border-sky-500/20 text-xs space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <RefreshCw className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                    <span className="font-bold text-foreground">Direct Serverbestanden Scannen (5000+ Bestanden)</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-700 dark:text-sky-300 font-semibold text-[10px]">
+                    Aanbevolen voor VPS
+                  </span>
+                </div>
+                <p className="text-muted-foreground">
+                  Er bevinden zich ruim 5.000 PDF-bestanden in de servermappen (<code className="text-sky-600 dark:text-sky-400">/public/uploads/documents/</code>, <code className="text-sky-600 dark:text-sky-400">waterschap/</code> en <code className="text-sky-600 dark:text-sky-400">overijssel/</code>). Klik op onderstaande knop om alle bestanden direct te indexeren en op te slaan in de centrale master-catalogus.
+                </p>
+                <Button
+                  onClick={handleSyncServerFiles}
+                  disabled={isSyncingFs}
+                  size="sm"
+                  className="w-full bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs rounded-xl h-9 shadow-xs"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 mr-2 ${isSyncingFs ? 'animate-spin' : ''}`} />
+                  {isSyncingFs ? "Servermappen indexeren..." : "Scan & Synchroniseer Alle Serverbestanden"}
+                </Button>
               </div>
 
               {!metaResult ? (

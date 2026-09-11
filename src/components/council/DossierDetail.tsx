@@ -27,6 +27,7 @@ import {
   Folder,
   X,
   Filter,
+  FileCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +36,9 @@ import { DossierDocumentViewer } from "./DossierDocumentViewer";
 import { EditDossierModal } from "./EditDossierModal";
 import { EditDocumentModal } from "./EditDocumentModal";
 import { AddDocumentModal } from "./AddDocumentModal";
+import { EditSubdossierModal } from "./EditSubdossierModal";
+import { SubdossierDetailView } from "./SubdossierDetailView";
+import { getSubdossierClientThumbnail } from "@/lib/dossierClientUtils";
 import type { Dossier, DossierDocument, GraphNode, GraphEdge, DossierSubdossier } from "@/types/dossier";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
@@ -66,6 +70,7 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
   // Active view tab: "subdossiers" | "documents" | "overview" | "timeline"
   const [activeTab, setActiveTab] = useState<"subdossiers" | "documents" | "overview" | "timeline">("subdossiers");
   const [selectedSubdossier, setSelectedSubdossier] = useState<string | null>(initialSubdossierSlug || null);
+  const [subdossierInitialTab, setSubdossierInitialTab] = useState<"graph" | "documents" | "timeline" | "wijken">("graph");
   const [selectedWijkFilter, setSelectedWijkFilter] = useState<string | null>(null);
   const [docSearch, setDocSearch] = useState("");
   const [subSearch, setSubSearch] = useState("");
@@ -80,6 +85,8 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
   const [addDocInitialMode, setAddDocInitialMode] = useState<"upload" | "link">("upload");
   const [isEditDocOpen, setIsEditDocOpen] = useState(false);
   const [activeDocForEdit, setActiveDocForEdit] = useState<DossierDocument | null>(null);
+  const [isEditSubdossierOpen, setIsEditSubdossierOpen] = useState(false);
+  const [activeSubdossierForEdit, setActiveSubdossierForEdit] = useState<DossierSubdossier | null>(null);
 
   const fetchDossierData = useCallback(async () => {
     setLoading(true);
@@ -294,22 +301,109 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
     fetchDossierData();
   };
 
-  // Helper slugify
-  const slugify = (text: string) =>
-    text
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/(^-|-$)/g, "");
+  const handleSubdossierUpdated = (updatedSub: any) => {
+    if (!dossier) return;
+    const updatedSubs = (dossier.subdossiers || []).map((s) =>
+      s.id === updatedSub.id || s.slug === updatedSub.slug ? { ...s, ...updatedSub } : s
+    );
+    setDossier({
+      ...dossier,
+      subdossiers: updatedSubs,
+    });
+    fetchDossierData();
+  };
 
-  // Auto-set tab when dossier loads or when initialSubdossierSlug changes
+  // Helper slugify
+  const slugify = useCallback(
+    (text: string) =>
+      (text || "")
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, ""),
+    []
+  );
+
+  // Sync initialSubdossierSlug when set or changed from outside
   useEffect(() => {
     if (initialSubdossierSlug) {
       setSelectedSubdossier(initialSubdossierSlug);
-      setActiveTab("documents");
-    } else if (dossier?.subdossiers && dossier.subdossiers.length > 0) {
-      setActiveTab("subdossiers");
     }
-  }, [initialSubdossierSlug, dossier?.id]);
+  }, [initialSubdossierSlug]);
+
+  // Resolve active subdossier object if selected
+  const activeSubdossierObj = useMemo(() => {
+    if (!selectedSubdossier || !dossier) return null;
+    const target = selectedSubdossier.toLowerCase().trim();
+    const targetSlug = slugify(selectedSubdossier);
+
+    const found = (dossier.subdossiers || []).find(
+      (s) =>
+        s.slug?.toLowerCase() === target ||
+        s.slug?.toLowerCase() === targetSlug ||
+        s.id?.toLowerCase() === target ||
+        s.title.toLowerCase().trim() === target ||
+        slugify(s.title) === targetSlug
+    );
+
+    if (found) return found;
+
+    // Check if there are any documents mentioning this subdossier
+    const matchingDocs = (dossier.documents || []).filter(
+      (d) =>
+        (d.subdossier && d.subdossier.toLowerCase().trim() === target) ||
+        slugify(d.subdossier || "") === targetSlug
+    );
+
+    if (matchingDocs.length > 0) {
+      return {
+        id: targetSlug,
+        slug: targetSlug,
+        title: selectedSubdossier,
+        description: `Zelfstandig subdossier binnen ${dossier.title}`,
+        documentCount: matchingDocs.length,
+        uploadedCount: matchingDocs.filter((d) => d.fileExists).length,
+        dateRange: { start: "", end: "" },
+        tags: [dossier.category],
+        wijken: Array.from(
+          new Set(
+            matchingDocs.flatMap((d) =>
+              d.wijken || (d.wijk_of_kern ? [d.wijk_of_kern] : [])
+            )
+          )
+        ),
+        thumbnail: getSubdossierClientThumbnail(
+          selectedSubdossier,
+          dossier.title,
+          dossier.thumbnail
+        ),
+      } as DossierSubdossier;
+    }
+
+    return null;
+  }, [selectedSubdossier, dossier, slugify]);
+
+  const handleSelectSubdossier = (
+    sub: DossierSubdossier | string,
+    tab: "graph" | "documents" | "timeline" | "wijken" = "graph"
+  ) => {
+    const subIdentifier = typeof sub === "string" ? sub : sub.slug || sub.title;
+    setSelectedSubdossier(subIdentifier);
+    setSubdossierInitialTab(tab);
+
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", "dossiers");
+    url.searchParams.set("dossier", dossierSlug);
+    url.searchParams.set("subdossier", subIdentifier);
+    window.history.pushState({}, "", url.toString());
+  };
+
+  const handleBackFromSubdossier = () => {
+    setSelectedSubdossier(null);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("subdossier");
+    window.history.pushState({}, "", url.toString());
+  };
 
   // All unique wijken across documents in this dossier
   const availableWijken = useMemo(() => {
@@ -394,7 +488,7 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
       );
     }
     return list;
-  }, [dossier?.documents, selectedSubdossier, selectedWijkFilter, docSearch]);
+  }, [dossier?.documents, selectedSubdossier, selectedWijkFilter, docSearch, slugify]);
 
   // Chronological timeline sorted newest -> oldest
   const timelineDocuments = useMemo(() => {
@@ -427,6 +521,84 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
           <ArrowLeft className="w-3.5 h-3.5 mr-1.5" />
           Terug naar Dossieroverzicht
         </Button>
+      </div>
+    );
+  }
+
+  // Standalone Subdossier Page View
+  if (activeSubdossierObj && dossier) {
+    return (
+      <div id="subdossier-standalone-container" className="space-y-6">
+        <SubdossierDetailView
+          hoofddossier={dossier}
+          subdossier={activeSubdossierObj}
+          allDossierDocuments={dossier.documents || []}
+          onBackToHoofddossier={handleBackFromSubdossier}
+          onBackToOverview={onBack}
+          onOpenDocumentViewer={openDocumentViewer}
+          onOpenDocumentEditor={openDocumentEditor}
+          onOpenAddDocument={(subTitle, mode) => {
+            setAddDocInitialMode(mode);
+            setIsAddDocOpen(true);
+          }}
+          onEditSubdossier={(sub) => {
+            setActiveSubdossierForEdit(sub);
+            setIsEditSubdossierOpen(true);
+          }}
+          isCouncilOrAdmin={isCouncilOrAdmin}
+          user={user}
+          favoritesSet={favoritesSet}
+          onToggleFavorite={handleToggleFavorite}
+          initialTab={subdossierInitialTab}
+        />
+
+        {/* Global Modals for Standalone Subdossier View */}
+        <DossierDocumentViewer
+          document={activeDocForViewer}
+          isOpen={isViewerOpen}
+          onClose={() => setIsViewerOpen(false)}
+          onDocumentUpdated={handleDocumentUpdated}
+        />
+
+        <EditDossierModal
+          isOpen={isEditDossierOpen}
+          dossier={dossier}
+          onClose={() => setIsEditDossierOpen(false)}
+          onUpdated={handleDossierUpdated}
+          onDeleted={handleDossierDeleted}
+        />
+
+        <EditDocumentModal
+          isOpen={isEditDocOpen}
+          dossierSlug={dossierSlug}
+          document={activeDocForEdit}
+          onClose={() => {
+            setIsEditDocOpen(false);
+            setActiveDocForEdit(null);
+          }}
+          onDocumentUpdated={handleDocumentUpdated}
+          onDocumentDeleted={handleDocumentDeleted}
+        />
+
+        <AddDocumentModal
+          isOpen={isAddDocOpen}
+          dossier={dossier}
+          initialMode={addDocInitialMode}
+          onClose={() => setIsAddDocOpen(false)}
+          onAdded={handleDocsAddedOrLinked}
+        />
+
+        <EditSubdossierModal
+          isOpen={isEditSubdossierOpen}
+          dossierSlug={dossierSlug}
+          hoofddossierTitle={dossier?.title || ""}
+          subdossier={activeSubdossierForEdit || activeSubdossierObj}
+          onClose={() => {
+            setIsEditSubdossierOpen(false);
+            setActiveSubdossierForEdit(null);
+          }}
+          onUpdated={handleSubdossierUpdated}
+        />
       </div>
     );
   }
@@ -811,145 +983,201 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
                     slugify(d.subdossier || "") === sub.slug.toLowerCase()
                 );
 
+                const subThumbnail =
+                  sub.thumbnail ||
+                  getSubdossierClientThumbnail(sub.title, dossier?.title, dossier?.thumbnail);
+
                 return (
                   <div
                     key={sub.id || idx}
                     id={`subdossier-card-${sub.slug}`}
-                    className="group bg-card border border-border hover:border-accent/50 rounded-2xl p-5 transition-all duration-200 shadow-2xs hover:shadow-xs flex flex-col justify-between"
+                    className="group bg-card border border-border hover:border-accent/50 rounded-2xl overflow-hidden transition-all duration-200 shadow-2xs hover:shadow-xs flex flex-col justify-between"
                   >
                     <div>
-                      {/* Header badges */}
-                      <div className="flex items-start justify-between gap-2 mb-3">
-                        <div className="w-9 h-9 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center text-accent shrink-0">
-                          <FolderTree className="w-4 h-4" />
+                      {/* Image Thumbnail Header Banner */}
+                      <div
+                        className="relative aspect-[16/9] w-full overflow-hidden bg-muted group/thumb cursor-pointer"
+                        onClick={() => handleSelectSubdossier(sub, "graph")}
+                        title={`Open zelfstandig subdossier: ${sub.title}`}
+                      >
+                        <img
+                          src={subThumbnail}
+                          alt={sub.title}
+                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src =
+                              "https://images.unsplash.com/photo-1541872703-74c5e44368f9?w=800&auto=format&fit=crop&q=80";
+                          }}
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
+
+                        {/* Badges on thumbnail */}
+                        <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-black/60 text-white backdrop-blur-xs border border-white/20 flex items-center gap-1">
+                            <FolderTree className="w-3 h-3 text-accent" /> Zelfstandig Subdossier
+                          </span>
+
+                          <div className="flex items-center gap-1.5">
+                            {isCouncilOrAdmin && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveSubdossierForEdit(sub);
+                                  setIsEditSubdossierOpen(true);
+                                }}
+                                className="p-1.5 rounded-lg bg-black/60 hover:bg-black/90 text-white backdrop-blur-xs border border-white/20 transition-all hover:text-accent cursor-pointer"
+                                title="Subdossier & thumbnail bewerken"
+                              >
+                                <Edit3 className="w-3 h-3" />
+                              </button>
+                            )}
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-accent text-accent-foreground shadow-xs">
+                              {sub.documentCount} {sub.documentCount === 1 ? "stuk" : "stukken"}
+                            </span>
+                          </div>
                         </div>
 
-                        <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-accent/15 text-accent border border-accent/20">
-                            {sub.documentCount} {sub.documentCount === 1 ? "stuk" : "stukken"}
-                          </span>
-                          {sub.uploadedCount > 0 && (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                        <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between text-white text-[11px]">
+                          {sub.uploadedCount > 0 ? (
+                            <span className="font-semibold drop-shadow-xs flex items-center gap-1 text-emerald-400">
+                              <FileCheck className="w-3 h-3" />
                               {sub.uploadedCount} live PDF
+                            </span>
+                          ) : (
+                            <span className="font-semibold drop-shadow-xs flex items-center gap-1 text-white/80">
+                              <FileText className="w-3 h-3 text-accent" />
+                              {sub.documentCount} besluiten
                             </span>
                           )}
                         </div>
                       </div>
 
-                      {/* Title & Description */}
-                      <h4
-                        className="text-sm font-bold text-foreground group-hover:text-accent transition-colors mb-1.5 cursor-pointer line-clamp-2"
-                        onClick={() => {
-                          setSelectedSubdossier(sub.title);
-                          setActiveTab("documents");
-                        }}
-                      >
-                        {sub.title}
-                      </h4>
+                      {/* Card Content Body */}
+                      <div className="p-5 pb-0">
+                        {/* Title & Description */}
+                        <h4
+                          className="text-sm font-bold text-foreground group-hover:text-accent transition-colors mb-1.5 cursor-pointer line-clamp-2"
+                          onClick={() => handleSelectSubdossier(sub, "graph")}
+                          title={`Open ${sub.title}`}
+                        >
+                          {sub.title}
+                        </h4>
 
-                      {sub.description && (
-                        <p className="text-xs text-muted-foreground line-clamp-2 mb-3 leading-relaxed">
-                          {sub.description}
-                        </p>
-                      )}
+                        {sub.description && (
+                          <p className="text-xs text-muted-foreground line-clamp-2 mb-3 leading-relaxed">
+                            {sub.description}
+                          </p>
+                        )}
 
-                      {/* Date Range if available */}
-                      {(sub.dateRange.start || sub.dateRange.end) && (
-                        <div className="flex items-center gap-1 text-[11px] text-muted-foreground mb-3 font-mono">
-                          <Calendar className="w-3 h-3 text-muted-foreground shrink-0" />
-                          <span>
-                            {sub.dateRange.start || "—"} t/m {sub.dateRange.end || "heden"}
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Wijken chips */}
-                      {sub.wijken && sub.wijken.length > 0 && (
-                        <div className="mb-3">
-                          <div className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground mb-1">
-                            Wijken & kernen ({sub.wijken.length})
+                        {/* Date Range if available */}
+                        {(sub.dateRange.start || sub.dateRange.end) && (
+                          <div className="flex items-center gap-1 text-[11px] text-muted-foreground mb-3 font-mono">
+                            <Calendar className="w-3 h-3 text-muted-foreground shrink-0" />
+                            <span>
+                              {sub.dateRange.start || "—"} t/m {sub.dateRange.end || "heden"}
+                            </span>
                           </div>
-                          <div className="flex flex-wrap gap-1">
-                            {sub.wijken.slice(0, 3).map((w, wi) => (
+                        )}
+
+                        {/* Wijken chips */}
+                        {sub.wijken && sub.wijken.length > 0 && (
+                          <div className="mb-3">
+                            <div className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground mb-1">
+                              Wijken & kernen ({sub.wijken.length})
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {sub.wijken.slice(0, 3).map((w, wi) => (
+                                <span
+                                  key={wi}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted text-foreground border border-border/60"
+                                >
+                                  <MapPin className="w-2.5 h-2.5 text-accent" />
+                                  {w}
+                                </span>
+                              ))}
+                              {sub.wijken.length > 3 && (
+                                <span className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-muted text-muted-foreground">
+                                  +{sub.wijken.length - 3}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Top tags */}
+                        {sub.tags && sub.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mb-3">
+                            {sub.tags.slice(0, 3).map((t, ti) => (
                               <span
-                                key={wi}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted text-foreground border border-border/60"
+                                key={ti}
+                                className="px-1.5 py-0.5 rounded text-[10px] bg-secondary text-secondary-foreground"
                               >
-                                <MapPin className="w-2.5 h-2.5 text-accent" />
-                                {w}
+                                #{t}
                               </span>
                             ))}
-                            {sub.wijken.length > 3 && (
-                              <span className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-muted text-muted-foreground">
-                                +{sub.wijken.length - 3}
-                              </span>
-                            )}
                           </div>
-                        </div>
-                      )}
+                        )}
 
-                      {/* Top tags */}
-                      {sub.tags && sub.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mb-3">
-                          {sub.tags.slice(0, 3).map((t, ti) => (
-                            <span
-                              key={ti}
-                              className="px-1.5 py-0.5 rounded text-[10px] bg-secondary text-secondary-foreground"
-                            >
-                              #{t}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Quick Document snippet */}
-                      {subDocs.length > 0 && (
-                        <div className="p-2.5 rounded-xl bg-muted/40 border border-border/60 mb-3 space-y-1">
-                          <div className="text-[10px] font-semibold text-muted-foreground flex items-center justify-between">
-                            <span>Recente stukken:</span>
-                            <span>{subDocs.length} totaal</span>
-                          </div>
-                          {subDocs.slice(0, 2).map((sd, sdi) => (
-                            <div
-                              key={sdi}
-                              onClick={() => openDocumentViewer(sd)}
-                              className="text-[11px] text-foreground hover:text-accent truncate cursor-pointer flex items-center gap-1.5 transition-colors"
-                            >
-                              <FileText className="w-3 h-3 text-accent shrink-0" />
-                              <span className="truncate">{sd.titel}</span>
+                        {/* Quick Document snippet */}
+                        {subDocs.length > 0 && (
+                          <div className="p-2.5 rounded-xl bg-muted/40 border border-border/60 mb-1 space-y-1">
+                            <div className="text-[10px] font-semibold text-muted-foreground flex items-center justify-between">
+                              <span>Recente stukken:</span>
+                              <span>{subDocs.length} totaal</span>
                             </div>
-                          ))}
-                        </div>
-                      )}
+                            {subDocs.slice(0, 2).map((sd, sdi) => (
+                              <div
+                                key={sdi}
+                                onClick={() => openDocumentViewer(sd)}
+                                className="text-[11px] text-foreground hover:text-accent truncate cursor-pointer flex items-center gap-1.5 transition-colors"
+                              >
+                                <FileText className="w-3 h-3 text-accent shrink-0" />
+                                <span className="truncate">{sd.titel}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* Card Action Buttons */}
-                    <div className="pt-3 border-t border-border flex items-center justify-between gap-2 mt-2">
+                    <div className="p-5 pt-3 border-t border-border flex items-center justify-between gap-2 mt-3">
                       <Button
                         size="sm"
                         variant="outline"
                         className="h-8 text-xs rounded-xl flex-1 border-accent/30 text-accent hover:bg-accent/15 font-semibold"
-                        onClick={() => {
-                          setSelectedSubdossier(sub.title);
-                          setActiveTab("documents");
-                        }}
+                        onClick={() => handleSelectSubdossier(sub, "documents")}
                       >
                         <FileText className="w-3.5 h-3.5 mr-1" />
-                        Bekijk {sub.documentCount} stukken
+                        Bekijk Subdossier ({sub.documentCount})
                       </Button>
 
                       <Button
                         size="sm"
-                        variant="ghost"
-                        className="h-8 px-2.5 text-xs rounded-xl text-muted-foreground hover:text-foreground"
-                        title="Bekijk relatiekaart gefilterd op dit subdossier"
-                        onClick={() => {
-                          setSelectedSubdossier(sub.title);
-                          setActiveTab("overview");
-                        }}
+                        variant="outline"
+                        className="h-8 px-2.5 text-xs rounded-xl border-sky-500/30 text-sky-600 dark:text-sky-400 hover:bg-sky-500/15 font-semibold flex items-center gap-1 cursor-pointer"
+                        title="Open direct de interactieve relatiekaart van dit subdossier"
+                        onClick={() => handleSelectSubdossier(sub, "graph")}
                       >
                         <Link2 className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Relatiekaart</span>
                       </Button>
+
+                      {isCouncilOrAdmin && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 px-2 text-xs rounded-xl text-muted-foreground hover:text-accent"
+                          title="Subdossier & thumbnail bewerken"
+                          onClick={() => {
+                            setActiveSubdossierForEdit(sub);
+                            setIsEditSubdossierOpen(true);
+                          }}
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 );
@@ -1314,7 +1542,11 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
                   <select
                     id="select-subdossier-in-docs-table"
                     value={selectedSubdossier || ""}
-                    onChange={(e) => setSelectedSubdossier(e.target.value || null)}
+                    onChange={(e) =>
+                      e.target.value
+                        ? handleSelectSubdossier(e.target.value, "graph")
+                        : setSelectedSubdossier(null)
+                    }
                     className="bg-transparent text-foreground text-xs focus:outline-hidden cursor-pointer max-w-[180px] truncate"
                   >
                     <option value="">Alle subdossiers ({dossier.subdossiers.length})</option>
@@ -1427,8 +1659,8 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
                           {doc.subdossier ? (
                             <span
                               className="inline-flex items-center gap-1 text-[10px] font-medium text-foreground hover:text-accent cursor-pointer truncate max-w-[180px]"
-                              onClick={() => setSelectedSubdossier(doc.subdossier || null)}
-                              title={`Filter op ${doc.subdossier}`}
+                              onClick={() => handleSelectSubdossier(doc.subdossier!, "graph")}
+                              title={`Open zelfstandig subdossier: ${doc.subdossier}`}
                             >
                               <FolderTree className="w-3 h-3 text-accent shrink-0" />
                               <span className="truncate">{doc.subdossier}</span>
@@ -1599,6 +1831,19 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
         initialMode={addDocInitialMode}
         onClose={() => setIsAddDocOpen(false)}
         onAdded={handleDocsAddedOrLinked}
+      />
+
+      {/* Subdossier Bewerken & Thumbnail Modal */}
+      <EditSubdossierModal
+        isOpen={isEditSubdossierOpen}
+        dossierSlug={dossierSlug}
+        hoofddossierTitle={dossier?.title || ""}
+        subdossier={activeSubdossierForEdit}
+        onClose={() => {
+          setIsEditSubdossierOpen(false);
+          setActiveSubdossierForEdit(null);
+        }}
+        onUpdated={handleSubdossierUpdated}
       />
     </div>
   );

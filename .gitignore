@@ -43,4 +43,6 @@ public/uploads/
 *.csv
 public/*.csv
 dist/*.csv
+data/
+*metadata_master*
 

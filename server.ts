@@ -87,6 +87,10 @@ import {
   getMissingCouncilDocuments,
   generateMissingDocumentsCsv,
   getSubdossierThumbnail,
+  countPhysicalFilesOnDisk,
+  syncPhysicalFilesystemDocuments,
+  generateMasterMetadataCsv,
+  getRawMetadata,
 } from "./src/server/dossierManager.js";
 import {
   compileSupportDossierForTopic,
@@ -8008,7 +8012,7 @@ Sitemap: ${baseUrl}/sitemap.xml
   app.get("/api/council/dossiers", optionalAuth, (req: any, res: any) => {
     try {
       const db = getDb();
-      const allDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || []);
+      const allDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || [], db.customSubdossiers || {});
 
       const search = (req.query.search || "").toString().toLowerCase().trim();
       const category = (req.query.category || "").toString().trim();
@@ -8242,7 +8246,7 @@ Sitemap: ${baseUrl}/sitemap.xml
     try {
       const rawSlug = decodeURIComponent(req.params.slug || "").trim();
       const db = getDb();
-      const allDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || []);
+      const allDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || [], db.customSubdossiers || {});
       
       const searchSlug = rawSlug.toLowerCase();
       let dossier = allDossiers.find(
@@ -8356,7 +8360,8 @@ Sitemap: ${baseUrl}/sitemap.xml
         return res.status(404).json({ error: `Dossier met kenmerk '${rawSlug}' niet gevonden` });
       }
 
-      const graph = getDossierGraph(dossier.slug || dossier.id, db);
+      const subdossierFilter = (req.query.subdossier || "").toString().trim() || undefined;
+      const graph = getDossierGraph(dossier.slug || dossier.id, db, subdossierFilter);
 
       res.json({
         dossier,
@@ -8431,6 +8436,36 @@ Sitemap: ${baseUrl}/sitemap.xml
     } catch (err: any) {
       console.error("[COUNCIL DOSSIER DELETE ERROR]:", err);
       res.status(500).json({ error: "Fout bij verwijderen dossier: " + err.message });
+    }
+  });
+
+  // 5A. Update subdossier metadata (custom thumbnail, description, tags)
+  app.put("/api/council/dossiers/:slug/subdossiers/:subSlug", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    try {
+      const { slug, subSlug } = req.params;
+      const { title, description, thumbnail, tags } = req.body;
+      const db = getDb();
+      if (!db.customSubdossiers) db.customSubdossiers = {};
+
+      const key = `${slug}:${subSlug}`;
+      db.customSubdossiers[key] = {
+        ...(db.customSubdossiers[key] || {}),
+        ...(title ? { title: title.trim() } : {}),
+        ...(description !== undefined ? { description: description.trim() } : {}),
+        ...(thumbnail ? { thumbnail: thumbnail.trim() } : {}),
+        ...(Array.isArray(tags) ? { tags } : {}),
+        updatedAt: new Date().toISOString(),
+      };
+      saveDb(db);
+
+      res.json({
+        success: true,
+        message: "Subdossier bijgewerkt",
+        subdossier: db.customSubdossiers[key],
+      });
+    } catch (err: any) {
+      console.error("[SUBDOSSIER UPDATE ERROR]:", err);
+      res.status(500).json({ error: "Fout bij bijwerken subdossier: " + err.message });
     }
   });
 
@@ -8793,6 +8828,54 @@ Sitemap: ${baseUrl}/sitemap.xml
       }
     }
   );
+
+  // Trigger scan of physical filesystem (public/uploads/documents) and sync all 5000+ documents
+  app.post(
+    "/api/council/sync-filesystem-documents",
+    requireAuth,
+    requireCouncilOrAdmin,
+    (req: any, res: any) => {
+      try {
+        const syncResult = syncPhysicalFilesystemDocuments();
+        res.json(syncResult);
+      } catch (err: any) {
+        console.error("[FILESYSTEM SYNC ERROR]:", err);
+        res.status(500).json({ error: "Fout bij synchroniseren van bestanden op de server: " + err.message });
+      }
+    }
+  );
+
+  // Status of physical filesystem vs metadata catalog
+  app.get("/api/council/filesystem-scan-status", optionalAuth, (req: any, res: any) => {
+    try {
+      const diskStats = countPhysicalFilesOnDisk();
+      const metadata = getRawMetadata();
+      res.json({
+        success: true,
+        diskStats,
+        metadataCount: metadata.length,
+        needsSync: diskStats.totalFiles > metadata.length,
+      });
+    } catch (err: any) {
+      console.error("[FILESYSTEM SCAN STATUS ERROR]:", err);
+      res.status(500).json({ error: "Fout bij controleren serverbestanden: " + err.message });
+    }
+  });
+
+  // Download complete master metadata CSV containing all 5000+ documents
+  app.get(["/api/council/metadata.csv", "/api/council/metadata/download"], optionalAuth, (req: any, res: any) => {
+    try {
+      const metadata = getRawMetadata();
+      const csv = generateMasterMetadataCsv(metadata);
+      const dateStr = new Date().toISOString().slice(0, 10);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="raadsstukken_metadata_compleet_${dateStr}.csv"`);
+      res.send(csv);
+    } catch (err: any) {
+      console.error("[METADATA CSV DOWNLOAD ERROR]:", err);
+      res.status(500).json({ error: "Fout bij genereren van CSV: " + err.message });
+    }
+  });
 
   // 8. Get favorited documents for logged-in user
   app.get("/api/council/documents/favorites", requireAuth, (req: any, res: any) => {
@@ -9483,6 +9566,21 @@ Sitemap: ${baseUrl}/sitemap.xml
     console.log(`Server running on port ${PORT}`);
     // Start automated 24-hour council agenda scraper
     startDailyCouncilScraper();
+
+    // Auto-verify and sync server documents if disk contains more files than metadata
+    try {
+      const diskStats = countPhysicalFilesOnDisk();
+      const currentMeta = getRawMetadata();
+      if (diskStats.totalFiles > currentMeta.length) {
+        console.log(`[DOCUMENTS AUTO-SYNC] Server heeft ${diskStats.totalFiles} bestanden op schijf, maar metadata heeft ${currentMeta.length} items. Automatische synchronisatie wordt gestart...`);
+        const syncRes = syncPhysicalFilesystemDocuments();
+        console.log(`[DOCUMENTS AUTO-SYNC VOLTOOID]: ${syncRes.message}`);
+      } else {
+        console.log(`[DOCUMENTS STATUS] ${diskStats.totalFiles} bestanden op schijf, ${currentMeta.length} documenten in actieve metadata catalogus.`);
+      }
+    } catch (syncBootErr) {
+      console.warn("[DOCUMENTS AUTO-SYNC WARNING]:", syncBootErr);
+    }
   });
 }
 
