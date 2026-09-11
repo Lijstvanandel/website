@@ -76,6 +76,94 @@ export function resolveDocumentPath(filename: string): string | null {
 }
 
 /**
+ * Safely parse a PDF buffer using pdf-parse or fallback methods
+ */
+export async function parsePdfBuffer(buf: Buffer): Promise<string> {
+  if (!buf || buf.length === 0) return "";
+
+  try {
+    const pdfParseModule = await import("pdf-parse");
+    const pdfDefault = (pdfParseModule as any).default || pdfParseModule;
+    const PDFParseClass = (pdfParseModule as any).PDFParse || (pdfParseModule as any).default?.PDFParse;
+
+    let extractedText = "";
+
+    // 1. Try PDFParse class constructor if explicitly exported
+    if (PDFParseClass && typeof PDFParseClass === "function") {
+      try {
+        const parser = new PDFParseClass(buf);
+        if (typeof parser.getText === "function") {
+          const res = await parser.getText();
+          if (res?.text) extractedText = String(res.text);
+          else if (typeof res === "string") extractedText = res;
+        } else if (typeof parser.parse === "function") {
+          const res = await parser.parse();
+          if (res?.text) extractedText = String(res.text);
+        }
+      } catch (_e1) {
+        try {
+          const parser = new PDFParseClass({ data: buf });
+          if (typeof parser.getText === "function") {
+            const res = await parser.getText();
+            if (res?.text) extractedText = String(res.text);
+          }
+        } catch (_e2) {
+          // Avoid calling class constructor without new
+        }
+      }
+    }
+
+    // 2. Try pdfDefault as function or class constructor
+    if (!extractedText && typeof pdfDefault === "function") {
+      try {
+        // Try standard function invocation: pdfParse(buf)
+        const res = await (pdfDefault as Function)(buf);
+        if (res?.text) extractedText = String(res.text);
+        else if (typeof res === "string") extractedText = res;
+      } catch (fnErr: any) {
+        const errStr = String(fnErr);
+        if (errStr.includes("cannot be invoked without 'new'") || errStr.includes("Class constructor")) {
+          try {
+            const parser = new (pdfDefault as any)(buf);
+            if (typeof parser.getText === "function") {
+              const res = await parser.getText();
+              if (res?.text) extractedText = String(res.text);
+            } else if (typeof parser.parse === "function") {
+              const res = await parser.parse();
+              if (res?.text) extractedText = String(res.text);
+            }
+          } catch (_e3) {
+            try {
+              const parser = new (pdfDefault as any)({ data: buf });
+              if (typeof parser.getText === "function") {
+                const res = await parser.getText();
+                if (res?.text) extractedText = String(res.text);
+              }
+            } catch (_e4) {}
+          }
+        }
+      }
+    }
+
+    // 3. Fallback: try pdfParseModule(buf) directly if it's a function
+    if (!extractedText && typeof (pdfParseModule as any) === "function") {
+      try {
+        const res = await (pdfParseModule as any)(buf);
+        if (res?.text) extractedText = String(res.text);
+      } catch (_e5) {}
+    }
+
+    if (extractedText && extractedText.trim().length > 0) {
+      return extractedText.trim();
+    }
+  } catch (err) {
+    console.warn("[TEXT EXTRACTOR] PDF parsing failed:", err);
+  }
+
+  return "";
+}
+
+/**
  * Extract text from a document buffer or file
  */
 export async function extractTextFromFile(filePath: string): Promise<string> {
@@ -96,26 +184,7 @@ export async function extractTextFromFile(filePath: string): Promise<string> {
   if (ext === ".pdf") {
     try {
       const buf = fs.readFileSync(filePath);
-      // Try PDFParse class from pdf-parse
-      const pdfParseModule = await import("pdf-parse");
-      const PDFParseClass = (pdfParseModule as any).PDFParse || (pdfParseModule as any).default?.PDFParse || (pdfParseModule as any).default;
-
-      if (typeof PDFParseClass === "function") {
-        try {
-          const parser = new PDFParseClass({ data: buf });
-          const res = await parser.getText();
-          if (res && res.text) {
-            return String(res.text);
-          }
-        } catch {
-          // Might be standard function
-          const res = await (PDFParseClass as any)(buf);
-          if (res && res.text) return String(res.text);
-        }
-      } else if (typeof (pdfParseModule as any) === "function") {
-        const res = await (pdfParseModule as any)(buf);
-        if (res && res.text) return String(res.text);
-      }
+      return await parsePdfBuffer(buf);
     } catch (err) {
       console.warn(`[TEXT EXTRACTOR] PDF extraction failed for ${path.basename(filePath)}:`, err);
     }
@@ -273,23 +342,7 @@ export async function getCouncilDocumentContent(doc: {
       if (res.ok) {
         const buf = Buffer.from(await res.arrayBuffer());
         if (buf.length > 0) {
-          const pdfParseModule = await import("pdf-parse");
-          const PDFParseClass = (pdfParseModule as any).PDFParse || (pdfParseModule as any).default?.PDFParse || (pdfParseModule as any).default;
-
-          let extractedText = "";
-          if (typeof PDFParseClass === "function") {
-            try {
-              const parser = new PDFParseClass({ data: buf });
-              const result = await parser.getText();
-              extractedText = result?.text || "";
-            } catch {
-              const result = await (PDFParseClass as any)(buf);
-              extractedText = result?.text || "";
-            }
-          } else if (typeof (pdfParseModule as any) === "function") {
-            const result = await (pdfParseModule as any)(buf);
-            extractedText = result?.text || "";
-          }
+          const extractedText = await parsePdfBuffer(buf);
 
           if (extractedText && extractedText.trim().length > 0) {
             const cleanText = extractedText.replace(/\r\n/g, "\n").trim();

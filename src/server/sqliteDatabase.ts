@@ -378,7 +378,9 @@ export function getKv(key: string): any {
     if (res.length > 0 && res[0].values && res[0].values[0]) {
       return JSON.parse(res[0].values[0][0]);
     }
-  } catch (_e) {}
+  } catch (_e) {
+    // ignore parse error
+  }
   return null;
 }
 
