@@ -141,17 +141,37 @@ export const SupportDossierPanel: React.FC<SupportDossierPanelProps> = ({
 
   // Helper to open document at exact page
   const handleVerifyAtPage = (filename: string, page: number, quote?: string) => {
+    // Look if there's an original document in the agenda topic with a matching title or filename
+    const cleanFilename = filename.toLowerCase().replace(/\.pdf$/i, "");
+    const matchingTopicDoc = topic.documents?.find((d) => {
+      const cleanTitle = d.title.toLowerCase().replace(/\.pdf$/i, "");
+      // Check if title or id matches
+      return (
+        cleanTitle.includes(cleanFilename) ||
+        cleanFilename.includes(cleanTitle) ||
+        d.id === filename
+      );
+    });
+
+    let targetUrl = `/uploads/fractiestukken/${encodeURIComponent(filename)}`;
+    let docTitle = filename.replace(/\.pdf$/i, "").replace(/^[\d\s.\-_]+/, "");
+    
+    if (matchingTopicDoc) {
+      targetUrl = matchingTopicDoc.url || targetUrl;
+      docTitle = matchingTopicDoc.title;
+    }
+
     // Construct MemberDocument object for viewer
     const docObj: MemberDocument = {
-      id: `doc_verify_${filename.replace(/\W+/g, "_")}`,
-      title: filename.replace(/\.pdf$/i, "").replace(/^[\d\s.\-_]+/, ""),
-      fileUrl: `/uploads/fractiestukken/${encodeURIComponent(filename)}`,
+      id: matchingTopicDoc?.id || `doc_verify_${filename.replace(/\W+/g, "_")}`,
+      title: docTitle,
+      fileUrl: targetUrl,
       fileType: "pdf",
-      classification: "intern",
+      classification: matchingTopicDoc ? "openbaar" : "intern",
       description: quote ? `Verificatiepassage pagina ${page}: "${quote.slice(0, 80)}..."` : `Bronverificatie pagina ${page}`,
       pageCount: Math.max(page, 16),
       uploadedAt: new Date().toISOString(),
-      uploadedBy: "Gemeente Steenwijkerland",
+      uploadedBy: matchingTopicDoc ? "iBabs Steenwijkerland" : "Gemeente Steenwijkerland",
       tags: ["Ondersteuningsdossier", "Verificatie"],
     };
 
