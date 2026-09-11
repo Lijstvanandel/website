@@ -189,7 +189,102 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
 
   const hasZipFile = selectedFiles.some((f) => f.name.toLowerCase().endsWith(".zip"));
 
-  const uploadBatchXhr = (
+  const uploadFileInChunks = async (
+    file: File,
+    token: string | null,
+    onProgress: (loaded: number, total: number, speedMbS: number, remainingSec: number | null) => void
+  ): Promise<any> => {
+    const CHUNK_SIZE = 8 * 1024 * 1024; // 8 MB per chunk
+    const uploadId = `upload_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
+    const startTime = Date.now();
+
+    let finalResult: any = null;
+
+    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+      const startByte = chunkIndex * CHUNK_SIZE;
+      const endByte = Math.min(file.size, startByte + CHUNK_SIZE);
+      const chunkBlob = file.slice(startByte, endByte);
+
+      let attempts = 0;
+      let success = false;
+      let lastError: any = null;
+
+      while (attempts < 3 && !success) {
+        attempts++;
+        try {
+          const chunkResult = await new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            const formData = new FormData();
+            formData.append("uploadId", uploadId);
+            formData.append("chunkIndex", String(chunkIndex));
+            formData.append("totalChunks", String(totalChunks));
+            formData.append("fileName", file.name);
+            formData.append("chunk", chunkBlob, file.name);
+
+            xhr.upload.onprogress = (event) => {
+              if (event.lengthComputable) {
+                const currentLoaded = Math.min(file.size, startByte + event.loaded);
+                const now = Date.now();
+                const elapsedSec = (now - startTime) / 1000;
+                const currentSpeedMbS = elapsedSec > 0.2 ? (currentLoaded / (1024 * 1024)) / elapsedSec : 0;
+                const remainingBytes = Math.max(0, file.size - currentLoaded);
+                const remainingSec = currentSpeedMbS > 0 ? Math.ceil((remainingBytes / (1024 * 1024)) / currentSpeedMbS) : null;
+
+                onProgress(currentLoaded, file.size, currentSpeedMbS, remainingSec);
+              }
+            };
+
+            xhr.onload = () => {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                  const data = JSON.parse(xhr.responseText);
+                  resolve(data);
+                } catch (_e) {
+                  resolve({ success: true });
+                }
+              } else {
+                let errorMsg = `Serverfout (${xhr.status})`;
+                try {
+                  const errObj = JSON.parse(xhr.responseText);
+                  if (errObj.error) errorMsg = errObj.error;
+                } catch {}
+                reject(new Error(errorMsg));
+              }
+            };
+
+            xhr.onerror = () => reject(new Error("Netwerkonderbreking tijdens deelupload."));
+            xhr.ontimeout = () => reject(new Error("Timeout tijdens deelupload."));
+
+            xhr.open("POST", "/api/council/dossiers/chunk-upload");
+            if (token) {
+              xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+            }
+            xhr.send(formData);
+          });
+
+          success = true;
+          if (chunkIndex === totalChunks - 1) {
+            finalResult = chunkResult;
+          }
+        } catch (err: any) {
+          lastError = err;
+          console.warn(`[CHUNK RETRY ${attempts}/3] op chunk ${chunkIndex + 1}/${totalChunks}:`, err);
+          if (attempts < 3) {
+            await new Promise((r) => setTimeout(r, 1000 * attempts));
+          }
+        }
+      }
+
+      if (!success) {
+        throw lastError || new Error(`Uploaden van deel ${chunkIndex + 1}/${totalChunks} is na 3 pogingen mislukt.`);
+      }
+    }
+
+    return finalResult || { success: true };
+  };
+
+  const uploadBatchDirect = (
     batch: File[],
     token: string | null,
     onProgress: (loaded: number, total: number, speedMbS: number, remainingSec: number | null) => void
@@ -228,9 +323,6 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
             const errObj = JSON.parse(xhr.responseText);
             if (errObj.error) errorMsg = errObj.error;
           } catch {}
-          if (xhr.status === 413) {
-            errorMsg = "Het bestand overschrijdt de maximale servergrootte (1GB).";
-          }
           reject(new Error(errorMsg));
         }
       };
@@ -258,10 +350,9 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
     setUploadStage("uploading");
     setUploadProgress(1);
     setUploadBytesInfo(null);
-    setUploadStatusText(`Upload voorbereiden voor ${selectedFiles.length} bestand(en)...`);
+    setUploadStatusText(`Upload initialiseren voor ${selectedFiles.length} bestand(en)...`);
 
     const token = getToken();
-    const batches = createBatches(selectedFiles);
     let completedFiles = 0;
     let accumulatedMatchedCount = 0;
     let accumulatedUnmatchedCount = 0;
@@ -271,20 +362,25 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
     const accumulatedUnmatchedDocs: string[] = [];
 
     try {
-      for (let i = 0; i < batches.length; i++) {
-        const batch = batches[i];
-        const isCurrentZip = batch.some((f) => f.name.toLowerCase().endsWith(".zip"));
-        const batchSizeBytes = batch.reduce((acc, f) => acc + f.size, 0);
+      // If we have large files (> 10MB) or ZIP files, process them with chunked upload!
+      const largeOrZipFiles = selectedFiles.filter((f) => f.name.toLowerCase().endsWith(".zip") || f.size > 10 * 1024 * 1024);
+      const smallFiles = selectedFiles.filter((f) => !f.name.toLowerCase().endsWith(".zip") && f.size <= 10 * 1024 * 1024);
+
+      // 1. Process Large / ZIP files one by one with 8MB chunking & auto-retry
+      for (let idx = 0; idx < largeOrZipFiles.length; idx++) {
+        const file = largeOrZipFiles[idx];
+        const isZip = file.name.toLowerCase().endsWith(".zip");
+        const fileMb = (file.size / (1024 * 1024)).toFixed(1);
 
         setUploadStage("uploading");
         setUploadStatusText(
-          isCurrentZip
-            ? `ZIP-archief uploaden (${(batchSizeBytes / (1024 * 1024)).toFixed(1)} MB)...`
-            : `Deel ${i + 1} van ${batches.length} uploaden (${(batchSizeBytes / (1024 * 1024)).toFixed(1)} MB)...`
+          isZip
+            ? `ZIP-archief uploaden in stabiele chunks: ${file.name} (${fileMb} MB)...`
+            : `Groot document uploaden in chunks: ${file.name} (${fileMb} MB)...`
         );
 
-        const data = await uploadBatchXhr(
-          batch,
+        const data = await uploadFileInChunks(
+          file,
           token,
           (loaded, total, speedMbS, remainingSec) => {
             const loadedMb = (loaded / (1024 * 1024)).toFixed(1);
@@ -299,10 +395,10 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
             });
 
             if (loaded >= total) {
-              setUploadStage(isCurrentZip ? "unpacking" : "matching");
+              setUploadStage(isZip ? "unpacking" : "matching");
               setUploadProgress(98);
               setUploadStatusText(
-                isCurrentZip
+                isZip
                   ? `${totalMb} MB geüpload! Server is nu het ZIP-archief aan het uitpakken en structureren...`
                   : `${totalMb} MB geüpload! Server koppelt documenten aan dossiers...`
               );
@@ -317,13 +413,10 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
           }
         );
 
-        setUploadStage("matching");
-        setUploadStatusText(`Documenten verwerkt door server...`);
-
-        completedFiles += batch.length;
+        completedFiles += 1;
         accumulatedMatchedCount += data.matchedCount || 0;
         accumulatedUnmatchedCount += data.unmatchedCount || 0;
-        accumulatedZipCount += data.zipCount || 0;
+        accumulatedZipCount += data.zipCount || (isZip ? 1 : 0);
         accumulatedExtractedFromZipCount += data.extractedFromZipCount || 0;
 
         if (Array.isArray(data.matchedDocuments)) {
@@ -331,6 +424,50 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
         }
         if (Array.isArray(data.unmatchedDocuments)) {
           accumulatedUnmatchedDocs.push(...data.unmatchedDocuments);
+        }
+      }
+
+      // 2. Process any remaining small files in standard batches
+      if (smallFiles.length > 0) {
+        const smallBatches = createBatches(smallFiles);
+        for (let i = 0; i < smallBatches.length; i++) {
+          const batch = smallBatches[i];
+          const batchSizeBytes = batch.reduce((acc, f) => acc + f.size, 0);
+
+          setUploadStage("uploading");
+          setUploadStatusText(
+            `Deel ${i + 1} van ${smallBatches.length} uploaden (${(batchSizeBytes / (1024 * 1024)).toFixed(1)} MB)...`
+          );
+
+          const data = await uploadBatchDirect(
+            batch,
+            token,
+            (loaded, total, speedMbS, remainingSec) => {
+              const loadedMb = (loaded / (1024 * 1024)).toFixed(1);
+              const totalMb = (total / (1024 * 1024)).toFixed(1);
+              const pct = Math.min(99, Math.round((loaded / total) * 100));
+
+              setUploadBytesInfo({
+                loadedBytes: loaded,
+                totalBytes: total,
+                speedMbS,
+                timeRemainingSec: remainingSec,
+              });
+
+              setUploadProgress(Math.max(1, pct));
+            }
+          );
+
+          completedFiles += batch.length;
+          accumulatedMatchedCount += data.matchedCount || 0;
+          accumulatedUnmatchedCount += data.unmatchedCount || 0;
+
+          if (Array.isArray(data.matchedDocuments)) {
+            accumulatedMatchedDocs.push(...data.matchedDocuments);
+          }
+          if (Array.isArray(data.unmatchedDocuments)) {
+            accumulatedUnmatchedDocs.push(...data.unmatchedDocuments);
+          }
         }
       }
 
@@ -364,7 +501,7 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
       onUploadSuccess();
     } catch (err: any) {
       console.error("[BULK UPLOAD CLIENT ERROR]:", err);
-      toast.error(err.message || "Fout bij bulk upload");
+      toast.error(err.message || "Fout bij uploaden.");
       if (completedFiles > 0) {
         setUploadResult({
           totalUploaded: completedFiles,

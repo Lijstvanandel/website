@@ -823,6 +823,24 @@ const dossierThumbnailStorage = multer.diskStorage({
 });
 const uploadDossierThumbnail = multer({ storage: dossierThumbnailStorage, limits: { fileSize: 15 * 1024 * 1024 } });
 
+const chunkStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadId = (req.body && req.body.uploadId) || (req.headers["x-upload-id"] as string) || "default";
+    const cleanId = String(uploadId).replace(/[^a-zA-Z0-9_-]/g, "_");
+    const tempDir = path.join(process.cwd(), "data/temp_chunks", cleanId);
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    cb(null, tempDir);
+  },
+  filename: function (req, file, cb) {
+    const chunkIndex = (req.body && req.body.chunkIndex) || (req.headers["x-chunk-index"] as string) || "0";
+    const cleanIndex = String(chunkIndex).padStart(6, "0");
+    cb(null, `chunk_${cleanIndex}.part`);
+  }
+});
+const uploadChunkMulter = multer({ storage: chunkStorage, limits: { fileSize: 100 * 1024 * 1024 } });
+
 function syncFileAcrossUploadDirs(relPathOrAbsPath: string) {
   try {
     let relPath = relPathOrAbsPath;
@@ -8818,6 +8836,144 @@ Sitemap: ${baseUrl}/sitemap.xml
       } catch (err: any) {
         console.error("[COUNCIL DOSSIER BULK UPLOAD ERROR]:", err);
         res.status(500).json({ error: "Fout bij bulk upload: " + err.message });
+      }
+    }
+  );
+
+  // 5b. Chunked upload for large council files and multi-100MB ZIP archives
+  app.post(
+    "/api/council/dossiers/chunk-upload",
+    requireAuth,
+    requireCouncilOrAdmin,
+    (req: any, res: any, next: any) => {
+      uploadChunkMulter.single("chunk")(req, res, (err: any) => {
+        if (err) {
+          console.error("[CHUNK MULTER ERROR]:", err);
+          return res.status(400).json({ error: "Fout bij uploaden chunk: " + (err.message || String(err)) });
+        }
+        next();
+      });
+    },
+    async (req: any, res: any) => {
+      try {
+        const uploadId = req.body.uploadId || (req.headers["x-upload-id"] as string);
+        const chunkIndex = parseInt(req.body.chunkIndex || (req.headers["x-chunk-index"] as string) || "0", 10);
+        const totalChunks = parseInt(req.body.totalChunks || (req.headers["x-total-chunks"] as string) || "1", 10);
+        let fileName = req.body.fileName || (req.headers["x-file-name"] as string) || "uploaded_file.zip";
+
+        try {
+          const fixed = Buffer.from(fileName, "latin1").toString("utf8");
+          if (fixed && !fixed.includes("\ufffd")) {
+            fileName = fixed;
+          }
+        } catch (_e) {}
+
+        if (!uploadId) {
+          return res.status(400).json({ error: "uploadId is verplicht" });
+        }
+
+        const cleanId = String(uploadId).replace(/[^a-zA-Z0-9_-]/g, "_");
+        const tempDir = path.join(process.cwd(), "data/temp_chunks", cleanId);
+
+        if (!fs.existsSync(tempDir)) {
+          return res.status(400).json({ error: "Chunk directory not found" });
+        }
+
+        // Check how many chunks are present
+        const chunkFiles = fs.readdirSync(tempDir).filter((f) => f.startsWith("chunk_") && f.endsWith(".part"));
+
+        if (chunkFiles.length < totalChunks) {
+          return res.json({
+            success: true,
+            isComplete: false,
+            receivedChunks: chunkFiles.length,
+            totalChunks,
+            chunkIndex,
+          });
+        }
+
+        // Verify all chunks from 0 to totalChunks - 1 are present
+        let allPresent = true;
+        for (let i = 0; i < totalChunks; i++) {
+          const expectedFile = path.join(tempDir, `chunk_${String(i).padStart(6, "0")}.part`);
+          if (!fs.existsSync(expectedFile)) {
+            allPresent = false;
+            break;
+          }
+        }
+
+        if (!allPresent) {
+          return res.json({
+            success: true,
+            isComplete: false,
+            receivedChunks: chunkFiles.length,
+            totalChunks,
+            chunkIndex,
+          });
+        }
+
+        // All chunks are present! Merge them together into target destination
+        const documentsDir = path.join(process.cwd(), "public/uploads/documents");
+        if (!fs.existsSync(documentsDir)) {
+          fs.mkdirSync(documentsDir, { recursive: true });
+        }
+
+        const cleanFileName = path.basename(fileName);
+        const mergedFilePath = path.join(documentsDir, cleanFileName);
+
+        const writeStream = fs.createWriteStream(mergedFilePath);
+
+        for (let i = 0; i < totalChunks; i++) {
+          const partFile = path.join(tempDir, `chunk_${String(i).padStart(6, "0")}.part`);
+          const data = fs.readFileSync(partFile);
+          writeStream.write(data);
+        }
+        writeStream.end();
+
+        await new Promise((resolve) => writeStream.on("finish", resolve));
+
+        // Clean up temporary chunk files
+        try {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        } catch (_e) {}
+
+        // Process the merged file through dossier manager
+        const mockMulterFile: Express.Multer.File = {
+          fieldname: "file",
+          originalname: cleanFileName,
+          encoding: "7bit",
+          mimetype: cleanFileName.toLowerCase().endsWith(".zip") ? "application/zip" : "application/pdf",
+          size: fs.statSync(mergedFilePath).size,
+          destination: documentsDir,
+          filename: cleanFileName,
+          path: mergedFilePath,
+          buffer: Buffer.alloc(0),
+        };
+
+        const result = processUploadedCouncilDocuments([mockMulterFile], syncFileAcrossUploadDirs);
+
+        // Background indexing
+        if (Array.isArray((result as any).allSavedFiles) && (result as any).allSavedFiles.length > 0) {
+          for (const item of (result as any).allSavedFiles) {
+            indexUploadedFile(item.filename, item.path).catch((idxErr) => {
+              console.warn("[BACKGROUND INDEX ERR]:", idxErr);
+            });
+          }
+        } else {
+          indexUploadedFile(cleanFileName, mergedFilePath).catch((idxErr) => {
+            console.warn("[BACKGROUND INDEX ERR]:", idxErr);
+          });
+        }
+
+        res.json({
+          success: true,
+          isComplete: true,
+          ...result,
+          message: `${result.matchedCount} van de ${result.totalUploaded} geüploade documenten zijn direct herkend en gekoppeld aan de raadsdossiers!`,
+        });
+      } catch (err: any) {
+        console.error("[CHUNK MERGE/PROCESS ERROR]:", err);
+        res.status(500).json({ error: "Fout bij samenvoegen/verwerken van chunks: " + err.message });
       }
     }
   );
