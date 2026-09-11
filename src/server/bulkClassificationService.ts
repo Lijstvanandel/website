@@ -599,6 +599,9 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
           break;
         }
 
+        // Yield control to the Node.js event loop to keep Express server responsive
+        await new Promise((resolve) => setTimeout(resolve, 15));
+
         const fnLower = file.filename.toLowerCase().trim();
         activeProgress.activeFile = file.filename;
         activeProgress.processed++;
