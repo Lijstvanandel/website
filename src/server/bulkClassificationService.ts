@@ -376,6 +376,215 @@ async function classifyWithGemini(
   return parsed;
 }
 
+export interface ClassificationProgress {
+  isRunning: boolean;
+  total: number;
+  processed: number;
+  newlyClassified: number;
+  alreadyProcessed: number;
+  activeFile: string;
+  logs: string[];
+}
+
+let activeProgress: ClassificationProgress = {
+  isRunning: false,
+  total: 0,
+  processed: 0,
+  newlyClassified: 0,
+  alreadyProcessed: 0,
+  activeFile: "",
+  logs: []
+};
+
+export function getBulkClassificationStatus(): ClassificationProgress {
+  return activeProgress;
+}
+
+export function cancelBulkClassification(): void {
+  if (activeProgress.isRunning) {
+    activeProgress.isRunning = false;
+    activeProgress.logs.push("Proces geannuleerd door de gebruiker.");
+  }
+}
+
+export function startBulkClassificationInBackground(options: { force?: boolean } = {}): void {
+  if (activeProgress.isRunning) {
+    return;
+  }
+
+  activeProgress = {
+    isRunning: true,
+    total: 0,
+    processed: 0,
+    newlyClassified: 0,
+    alreadyProcessed: 0,
+    activeFile: "",
+    logs: ["Inladen van bestanden en metadata gestart..."]
+  };
+
+  // Run asynchronously in the background
+  Promise.resolve().then(async () => {
+    try {
+      const currentMetadata = getRawMetadata();
+      const processedSet = new Set<string>();
+      currentMetadata.forEach((item) => {
+        if (item.bestandsnaam) {
+          processedSet.add(item.bestandsnaam.toLowerCase().trim());
+        }
+      });
+
+      const allFiles = scanPdfFiles();
+      activeProgress.total = allFiles.length;
+      activeProgress.logs.push(`Totaal aantal PDF-bestanden gevonden in uploads: ${allFiles.length}`);
+
+      for (const file of allFiles) {
+        if (!activeProgress.isRunning) {
+          activeProgress.logs.push("Classificatie handmatig gestopt.");
+          break;
+        }
+
+        const fnLower = file.filename.toLowerCase().trim();
+        activeProgress.activeFile = file.filename;
+        activeProgress.processed++;
+
+        if (!options.force && processedSet.has(fnLower)) {
+          activeProgress.alreadyProcessed++;
+          // Skip logging every single file to prevent log overflow
+          if (activeProgress.processed % 50 === 0 || activeProgress.processed === allFiles.length) {
+            activeProgress.logs.push(`[${activeProgress.processed}/${activeProgress.total}] Reeds verwerkt bestand overgeslagen: ${file.filename}`);
+          }
+          continue;
+        }
+
+        // Determine origin folder
+        let origin = "Algemeen";
+        if (file.relativePath.startsWith("overijssel")) {
+          origin = "Provincie Overijssel";
+        } else if (file.relativePath.startsWith("waterschap")) {
+          origin = "Waterschap WDODelta";
+        }
+
+        const timestamp = new Date().toLocaleTimeString();
+        activeProgress.logs.push(`[${timestamp}] [${activeProgress.processed}/${activeProgress.total}] Analyseren: ${file.filename} (${origin})`);
+        
+        // Limit log array size to prevent memory bloat
+        if (activeProgress.logs.length > 300) {
+          activeProgress.logs.shift();
+        }
+
+        let text = "";
+        try {
+          text = await extractTextFromFile(file.absolutePath);
+        } catch (err) {
+          console.warn(`[BULK CLASS] Failed text extraction for ${file.filename}:`, err);
+        }
+
+        let meta: Partial<RaadsstukMetadata> = {};
+        try {
+          meta = await classifyWithGemini(text, file.filename, file.relativePath);
+        } catch (err) {
+          console.warn(`[BULK CLASS] Gemini failed for ${file.filename}. Using fallback:`, err);
+          meta = runFallbackClassification(text, file.filename);
+        }
+
+        // Prepare complete metadata record
+        const record: RaadsstukMetadata = {
+          bestandsnaam: file.filename,
+          titel: meta.titel || file.filename.replace(/\.pdf$/i, "").replace(/[_-]/g, " "),
+          dossier: meta.dossier || "Bestuur, Financiën & Organisatie",
+          subdossier: meta.subdossier || "",
+          datum: meta.datum || new Date().toISOString().split("T")[0],
+          wijk_of_kern: meta.wijk_of_kern || "",
+          entiteiten: meta.entiteiten || (origin !== "Algemeen" ? origin : ""),
+          relaties: meta.relaties || ""
+        };
+
+        // Add to our current metadata list (avoid duplicates)
+        const existingIndex = currentMetadata.findIndex(
+          (item) => (item.bestandsnaam || "").toLowerCase().trim() === fnLower
+        );
+
+        if (existingIndex !== -1) {
+          currentMetadata[existingIndex] = record;
+        } else {
+          currentMetadata.push(record);
+        }
+
+        activeProgress.newlyClassified++;
+        activeProgress.logs.push(`  ↳ Succes! Indeling: "${record.dossier}" ➔ Titel: "${record.titel}"`);
+        
+        if (activeProgress.logs.length > 300) {
+          activeProgress.logs.shift();
+        }
+
+        // Periodic safe saving to persist progress in case of crash/restart
+        if (activeProgress.newlyClassified % 5 === 0 || activeProgress.processed === allFiles.length) {
+          fs.writeFileSync(METADATA_PATH, JSON.stringify(currentMetadata, null, 2), "utf-8");
+          try {
+            if (!fs.existsSync(path.dirname(DIST_METADATA_PATH))) {
+              fs.mkdirSync(path.dirname(DIST_METADATA_PATH), { recursive: true });
+            }
+            fs.writeFileSync(DIST_METADATA_PATH, JSON.stringify(currentMetadata, null, 2), "utf-8");
+          } catch (e) {
+            // ignore
+          }
+        }
+      }
+
+      // Final save and CSV construction if anything changed
+      if (activeProgress.newlyClassified > 0) {
+        fs.writeFileSync(METADATA_PATH, JSON.stringify(currentMetadata, null, 2), "utf-8");
+        try {
+          if (!fs.existsSync(path.dirname(DIST_METADATA_PATH))) {
+            fs.mkdirSync(path.dirname(DIST_METADATA_PATH), { recursive: true });
+          }
+          fs.writeFileSync(DIST_METADATA_PATH, JSON.stringify(currentMetadata, null, 2), "utf-8");
+        } catch (e) {
+          // ignore
+        }
+
+        // Build and save CSV as well
+        const csvRows = [
+          "bestandsnaam;titel;dossier;subdossier;datum;wijk_of_kern;entiteiten;relaties"
+        ];
+        currentMetadata.forEach((item) => {
+          const row = [
+            item.bestandsnaam || "",
+            (item.titel || "").replace(/;/g, ","),
+            item.dossier || "",
+            (item.subdossier || "").replace(/;/g, ","),
+            item.datum || "",
+            (item.wijk_of_kern || "").replace(/;/g, ","),
+            (item.entiteiten || "").replace(/;/g, ","),
+            (item.relaties || "").replace(/;/g, ",")
+          ].join(";");
+          csvRows.push(row);
+        });
+
+        const csvContent = csvRows.join("\n");
+        fs.writeFileSync(METADATA_CSV_PATH, csvContent, "utf-8");
+        try {
+          fs.writeFileSync(DIST_METADATA_CSV_PATH, csvContent, "utf-8");
+        } catch (e) {
+          // ignore
+        }
+
+        // Rebuild network graph
+        rebuildNetworkGraph(currentMetadata);
+      }
+
+      activeProgress.logs.push(`[VOLTOOID] Bulk-classificatie succesvol afgerond! Totaal: ${activeProgress.processed}/${activeProgress.total}. Nieuw ingedeeld: ${activeProgress.newlyClassified}.`);
+      activeProgress.isRunning = false;
+      activeProgress.activeFile = "";
+
+    } catch (err: any) {
+      console.error("[BACKGROUND BULK CLASSIFICATION ERROR]:", err);
+      activeProgress.logs.push(`[FOUT] Proces afgebroken wegens kritieke fout: ${err.message || err}`);
+      activeProgress.isRunning = false;
+    }
+  });
+}
+
 /**
  * Perform bulk classification on all pdf files in public/uploads/documents/ (recursively)
  * and update the master metadata file.

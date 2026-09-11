@@ -150,6 +150,45 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
   const [isEditDossierOpen, setIsEditDossierOpen] = useState(false);
   const [editingDossier, setEditingDossier] = useState<Dossier | null>(null);
   const [isClassifying, setIsClassifying] = useState(false);
+  const [bulkStatus, setBulkStatus] = useState<{
+    isRunning: boolean;
+    total: number;
+    processed: number;
+    newlyClassified: number;
+    alreadyProcessed: number;
+    activeFile: string;
+    logs: string[];
+  } | null>(null);
+
+  const fetchBulkStatus = useCallback(async () => {
+    const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
+    try {
+      const res = await fetch("/api/council/classify-bulk-status", {
+        headers: {
+          Authorization: token ? `Bearer ${token}` : "",
+        },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setBulkStatus(data);
+        if (data && data.isRunning) {
+          setIsClassifying(true);
+        } else {
+          setIsClassifying(false);
+        }
+      }
+    } catch (err) {
+      console.error("Fout bij ophalen bulkstatus:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchBulkStatus();
+    const interval = setInterval(() => {
+      fetchBulkStatus();
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [fetchBulkStatus]);
 
   const handleBulkClassify = async () => {
     setIsClassifying(true);
@@ -167,15 +206,29 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
       if (!res.ok) {
         throw new Error(data.error || "Fout bij bulk-classificatie");
       }
-      toast.success(
-        `Bulk-classificatie succesvol! ${data.newlyClassified} nieuwe documenten ingedeeld in dossiers volgens de taxonomie.`
-      );
-      // Refresh dossiers and stats
-      fetchDossiers();
+      toast.info("Bulk-classificatie gestart in de achtergrond.");
+      fetchBulkStatus();
     } catch (err: any) {
       toast.error(err.message || "Fout bij uitvoeren bulk-classificatie");
-    } finally {
       setIsClassifying(false);
+    }
+  };
+
+  const handleCancelBulkClassify = async () => {
+    const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
+    try {
+      const res = await fetch("/api/council/classify-bulk-cancel", {
+        method: "POST",
+        headers: {
+          Authorization: token ? `Bearer ${token}` : "",
+        },
+      });
+      if (res.ok) {
+        toast.success("Bulk-classificatie wordt geannuleerd...");
+        fetchBulkStatus();
+      }
+    } catch (err: any) {
+      toast.error("Kon annulering niet verzenden");
     }
   };
 
@@ -515,7 +568,134 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
           </div>
         )}
       </div>
+      
+      {/* Realtime Bulk Classification Progress Panel */}
+      {bulkStatus && (bulkStatus.isRunning || bulkStatus.processed > 0) && (
+        <div className="bg-card border-2 border-emerald-600/20 p-6 rounded-3xl shadow-sm space-y-4">
+          <div className="flex items-center justify-between border-b border-border pb-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-xl">
+                <Sparkles className={`w-5 h-5 ${bulkStatus.isRunning ? "animate-spin" : ""}`} />
+              </div>
+              <div>
+                <h3 className="font-bold text-foreground text-sm sm:text-base flex items-center gap-2">
+                  Dossier Samenbrengingsproces (Taxonomie-AI)
+                  {!bulkStatus.isRunning && (
+                    <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-800 rounded-full dark:bg-emerald-950 dark:text-emerald-300">
+                      Voltooid
+                    </span>
+                  )}
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {bulkStatus.isRunning 
+                    ? `Actief bezig met analyseren en classificeren van bestanden volgens de Steenwijkerlandse datataxonomie...` 
+                    : "Alle bestanden zijn geanalyseerd en ingedeeld volgens de ontologische routeringsregels."}
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              {bulkStatus.isRunning ? (
+                <Button 
+                  onClick={handleCancelBulkClassify}
+                  variant="destructive"
+                  className="h-8 text-xs font-semibold rounded-xl px-3"
+                >
+                  Annuleren
+                </Button>
+              ) : (
+                <Button 
+                  onClick={() => setBulkStatus(null)}
+                  variant="ghost"
+                  className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground rounded-full"
+                >
+                  ✕
+                </Button>
+              )}
+            </div>
+          </div>
 
+          {/* Counts Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-muted/30 p-3 rounded-2xl border border-border">
+            <div className="text-center p-2">
+              <span className="block text-[11px] text-muted-foreground font-medium">Voortgang</span>
+              <span className="text-lg font-bold text-foreground">
+                {bulkStatus.processed} <span className="text-xs text-muted-foreground">/ {bulkStatus.total}</span>
+              </span>
+            </div>
+            <div className="text-center p-2 border-l border-border">
+              <span className="block text-[11px] text-muted-foreground font-medium">Nieuw Ingedeeld</span>
+              <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+                {bulkStatus.newlyClassified}
+              </span>
+            </div>
+            <div className="text-center p-2 border-l border-border">
+              <span className="block text-[11px] text-muted-foreground font-medium">Reeds Verwerkt</span>
+              <span className="text-lg font-bold text-muted-foreground">
+                {bulkStatus.alreadyProcessed}
+              </span>
+            </div>
+            <div className="text-center p-2 border-l border-border">
+              <span className="block text-[11px] text-muted-foreground font-medium">Status</span>
+              <span className="text-sm font-bold flex items-center justify-center gap-1.5 mt-1">
+                {bulkStatus.isRunning ? (
+                  <>
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
+                    <span className="text-emerald-600 dark:text-emerald-400">Bezig...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 inline-block" />
+                    <span className="text-foreground">Klaar</span>
+                  </>
+                )}
+              </span>
+            </div>
+          </div>
+
+          {/* Progress Bar */}
+          {bulkStatus.total > 0 && (
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs font-semibold text-muted-foreground px-1">
+                <span className="truncate max-w-[70%]">
+                  {bulkStatus.activeFile ? `Verwerkt nu: ${bulkStatus.activeFile}` : "Bestanden verwerkt"}
+                </span>
+                <span>
+                  {Math.round((bulkStatus.processed / bulkStatus.total) * 100)}%
+                </span>
+              </div>
+              <div className="w-full bg-muted rounded-full h-2.5 overflow-hidden border border-border">
+                <div 
+                  className="bg-emerald-600 h-2.5 rounded-full transition-all duration-300"
+                  style={{ width: `${(bulkStatus.processed / bulkStatus.total) * 100}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Realtime Terminal Log */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 bg-foreground rounded-full" />
+              Activiteitenlog (Realtime)
+            </span>
+            <div className="bg-neutral-900 text-neutral-100 font-mono text-[11px] p-4 rounded-xl h-44 overflow-y-auto space-y-1 border border-neutral-800 shadow-inner scrollbar-thin scrollbar-thumb-neutral-800">
+              {bulkStatus.logs && bulkStatus.logs.length > 0 ? (
+                bulkStatus.logs.map((log, index) => (
+                  <div key={index} className="leading-relaxed whitespace-pre-wrap select-text selection:bg-emerald-600/50">
+                    {log}
+                  </div>
+                ))
+              ) : (
+                <div className="text-neutral-500 italic">Nog geen logs beschikbaar...</div>
+              )}
+              {/* Scroll anchor */}
+              <div ref={(el) => el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })} />
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* KPI Stats Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="p-4 rounded-2xl bg-card border border-border shadow-xs">

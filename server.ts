@@ -91,7 +91,12 @@ import {
   compileSupportDossierForTopic,
   ensureVerifiablePdfFile,
 } from "./src/server/supportDossierService.js";
-import { runBulkClassification } from "./src/server/bulkClassificationService.js";
+import {
+  runBulkClassification,
+  startBulkClassificationInBackground,
+  getBulkClassificationStatus,
+  cancelBulkClassification
+} from "./src/server/bulkClassificationService.js";
 import { enrichTopicWithStandpunten } from "./src/lib/standpuntMatcher.js";
 import { scanTopicDocumentsAndMatchStandpunten } from "./src/server/standpuntScannerService.js";
 import {
@@ -8353,19 +8358,43 @@ Sitemap: ${baseUrl}/sitemap.xml
     }
   });
 
-  // 5B. Bulk classify documents into dossiers according to PDFs' taxonomy principles
+  // 5B. Bulk classify documents into dossiers according to PDFs' taxonomy principles (Background processing)
   app.post("/api/council/classify-bulk-documents", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
     try {
       const { force } = req.body || {};
-      const result = await runBulkClassification({ force: !!force });
+      
+      const currentStatus = getBulkClassificationStatus();
+      if (currentStatus.isRunning) {
+        return res.status(400).json({ error: "Er is al een bulk-classificatieproces actief." });
+      }
+
+      startBulkClassificationInBackground({ force: !!force });
+      
       res.json({
         success: true,
-        message: "Bulk-classificatie succesvol afgerond",
-        ...result
+        message: "Bulk-classificatie gestart in de achtergrond"
       });
     } catch (err: any) {
       console.error("[COUNCIL BULK CLASSIFY ERROR]:", err);
-      res.status(500).json({ error: "Fout tijdens bulk-classificatie: " + err.message });
+      res.status(500).json({ error: "Fout tijdens starten bulk-classificatie: " + err.message });
+    }
+  });
+
+  app.get("/api/council/classify-bulk-status", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    try {
+      const status = getBulkClassificationStatus();
+      res.json(status);
+    } catch (err: any) {
+      res.status(500).json({ error: "Fout bij ophalen status: " + err.message });
+    }
+  });
+
+  app.post("/api/council/classify-bulk-cancel", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    try {
+      cancelBulkClassification();
+      res.json({ success: true, message: "Proces geannuleerd" });
+    } catch (err: any) {
+      res.status(500).json({ error: "Fout bij annuleren: " + err.message });
     }
   });
 
