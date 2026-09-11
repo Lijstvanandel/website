@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { execSync } from "child_process";
 import AdmZip from "adm-zip";
 import type { Dossier, DossierDocument, GraphNode, GraphEdge, NetworkGraphData, RaadsstukMetadata } from "../types/dossier.js";
 import { getKv, setKv } from "./sqliteDatabase.js";
@@ -1785,35 +1786,97 @@ export function processUploadedCouncilDocuments(
 
     if (isZip) {
       zipCount++;
-      try {
-        const filePath = file.path;
-        const zip = filePath && fs.existsSync(filePath) ? new AdmZip(filePath) : (file.buffer ? new AdmZip(file.buffer) : null);
+      let zipExtractedSuccessfully = false;
 
-        if (zip) {
-          const zipEntries = zip.getEntries();
-          for (const entry of zipEntries) {
-            // Ignore directories, hidden files and macOS metadata files
-            if (entry.isDirectory || entry.entryName.includes("__MACOSX") || path.basename(entry.entryName).startsWith(".")) {
-              continue;
-            }
+      // 1. First try native Linux /usr/bin/unzip (most robust for large 100MB-1GB+ ZIP archives)
+      const tempExtractDir = path.join(process.cwd(), "data/temp_extract", `zip_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+      let sourceZipPath = file.path;
 
-            const ext = path.extname(entry.entryName).toLowerCase();
-            // Accept PDF and other council document formats
-            if ([".pdf", ".docx", ".doc", ".xlsx", ".csv", ".txt", ".json"].includes(ext) || !ext) {
-              const entryBuffer = entry.getData();
-              processSingleFileRecord(entry.entryName, entryBuffer, true);
-            }
-          }
-          // Clean up the temporary uploaded zip file from documents folder
-          if (filePath && fs.existsSync(filePath)) {
-            try {
-              fs.unlinkSync(filePath);
-            } catch (_e) {}
-          }
+      if (!sourceZipPath || !fs.existsSync(sourceZipPath)) {
+        if (file.buffer && file.buffer.length > 0) {
+          const tempZipDir = path.join(process.cwd(), "data/temp_extract");
+          if (!fs.existsSync(tempZipDir)) fs.mkdirSync(tempZipDir, { recursive: true });
+          sourceZipPath = path.join(tempZipDir, `upload_${Date.now()}.zip`);
+          fs.writeFileSync(sourceZipPath, file.buffer);
         }
-      } catch (zipErr) {
-        console.error(`[ZIP UNPACK ERROR for ${rawName}]:`, zipErr);
-        unmatchedDocuments.push(`${rawName} (ZIP uitpakfout)`);
+      }
+
+      if (sourceZipPath && fs.existsSync(sourceZipPath)) {
+        try {
+          fs.mkdirSync(tempExtractDir, { recursive: true });
+          execSync(`unzip -o -q "${sourceZipPath}" -d "${tempExtractDir}"`, { timeout: 120000 });
+
+          // Recursively read all files in tempExtractDir
+          const readAllFiles = (dir: string, base: string): Array<{ full: string; rel: string }> => {
+            const list: Array<{ full: string; rel: string }> = [];
+            if (!fs.existsSync(dir)) return list;
+            const entries = fs.readdirSync(dir);
+            for (const entry of entries) {
+              if (entry === "__MACOSX" || entry.startsWith("._")) continue;
+              const fullPath = path.join(dir, entry);
+              const stat = fs.statSync(fullPath);
+              if (stat.isDirectory()) {
+                list.push(...readAllFiles(fullPath, base));
+              } else {
+                const rel = path.relative(base, fullPath).replace(/\\/g, "/");
+                list.push({ full: fullPath, rel });
+              }
+            }
+            return list;
+          };
+
+          const extractedFiles = readAllFiles(tempExtractDir, tempExtractDir);
+
+          if (extractedFiles.length > 0) {
+            for (const item of extractedFiles) {
+              const ext = path.extname(item.rel).toLowerCase();
+              if ([".pdf", ".docx", ".doc", ".xlsx", ".csv", ".txt", ".json"].includes(ext) || !ext) {
+                processSingleFileRecord(item.rel, item.full, true);
+              }
+            }
+            zipExtractedSuccessfully = true;
+          }
+        } catch (unzipCliErr) {
+          console.warn(`[NATIVE UNZIP FAILED, FALLING BACK TO ADMZIP for ${rawName}]:`, unzipCliErr);
+        } finally {
+          // Clean up temp extraction folder
+          try {
+            if (fs.existsSync(tempExtractDir)) {
+              fs.rmSync(tempExtractDir, { recursive: true, force: true });
+            }
+          } catch (_e) {}
+        }
+      }
+
+      // 2. Fallback to AdmZip if native unzip did not extract files
+      if (!zipExtractedSuccessfully) {
+        try {
+          const zip = sourceZipPath && fs.existsSync(sourceZipPath) ? new AdmZip(sourceZipPath) : (file.buffer ? new AdmZip(file.buffer) : null);
+          if (zip) {
+            const zipEntries = zip.getEntries();
+            for (const entry of zipEntries) {
+              if (entry.isDirectory || entry.entryName.includes("__MACOSX") || path.basename(entry.entryName).startsWith(".")) {
+                continue;
+              }
+              const ext = path.extname(entry.entryName).toLowerCase();
+              if ([".pdf", ".docx", ".doc", ".xlsx", ".csv", ".txt", ".json"].includes(ext) || !ext) {
+                const entryBuffer = entry.getData();
+                processSingleFileRecord(entry.entryName, entryBuffer, true);
+              }
+            }
+            zipExtractedSuccessfully = true;
+          }
+        } catch (zipErr) {
+          console.error(`[ADMZIP UNPACK ERROR for ${rawName}]:`, zipErr);
+          unmatchedDocuments.push(`${rawName} (ZIP uitpakfout)`);
+        }
+      }
+
+      // Clean up the uploaded zip file
+      if (sourceZipPath && fs.existsSync(sourceZipPath)) {
+        try {
+          fs.unlinkSync(sourceZipPath);
+        } catch (_e) {}
       }
     } else {
       // Regular single file

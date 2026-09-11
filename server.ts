@@ -8859,14 +8859,18 @@ Sitemap: ${baseUrl}/sitemap.xml
         const uploadId = req.body.uploadId || (req.headers["x-upload-id"] as string);
         const chunkIndex = parseInt(req.body.chunkIndex || (req.headers["x-chunk-index"] as string) || "0", 10);
         const totalChunks = parseInt(req.body.totalChunks || (req.headers["x-total-chunks"] as string) || "1", 10);
-        let fileName = req.body.fileName || (req.headers["x-file-name"] as string) || "uploaded_file.zip";
-
+        let rawHeaderName = (req.headers["x-file-name"] as string) || req.body.fileName || "uploaded_file.zip";
+        let fileName = rawHeaderName;
         try {
-          const fixed = Buffer.from(fileName, "latin1").toString("utf8");
-          if (fixed && !fixed.includes("\ufffd")) {
-            fileName = fixed;
-          }
-        } catch (_e) {}
+          fileName = decodeURIComponent(rawHeaderName);
+        } catch (_e) {
+          try {
+            const fixed = Buffer.from(rawHeaderName, "latin1").toString("utf8");
+            if (fixed && !fixed.includes("\ufffd")) {
+              fileName = fixed;
+            }
+          } catch (_err) {}
+        }
 
         if (!uploadId) {
           return res.status(400).json({ error: "uploadId is verplicht" });

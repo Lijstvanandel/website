@@ -260,6 +260,10 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
             if (token) {
               xhr.setRequestHeader("Authorization", `Bearer ${token}`);
             }
+            xhr.setRequestHeader("X-Upload-Id", uploadId);
+            xhr.setRequestHeader("X-Chunk-Index", String(chunkIndex));
+            xhr.setRequestHeader("X-Total-Chunks", String(totalChunks));
+            xhr.setRequestHeader("X-File-Name", encodeURIComponent(file.name));
             xhr.send(formData);
           });
 
