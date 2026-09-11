@@ -181,6 +181,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
     activeFile: string;
     logs: string[];
   } | null>(null);
+  const [isBulkStatusDismissed, setIsBulkStatusDismissed] = useState(false);
 
   const fetchBulkStatus = useCallback(async () => {
     const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
@@ -191,16 +192,20 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
         },
       });
       if (res.ok) {
-        const data = await res.json();
-        setBulkStatus(data);
-        if (data && data.isRunning) {
-          setIsClassifying(true);
-        } else {
-          setIsClassifying(false);
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const data = await res.json();
+          setBulkStatus(data);
+          if (data && data.isRunning) {
+            setIsClassifying(true);
+            setIsBulkStatusDismissed(false);
+          } else {
+            setIsClassifying(false);
+          }
         }
       }
-    } catch (err) {
-      console.error("Fout bij ophalen bulkstatus:", err);
+    } catch (_err) {
+      // Silently ignore transient network or parsing errors during polling
     }
   }, []);
 
@@ -208,7 +213,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
     fetchBulkStatus();
     const interval = setInterval(() => {
       fetchBulkStatus();
-    }, 2000);
+    }, 4000);
     return () => clearInterval(interval);
   }, [fetchBulkStatus]);
 
@@ -706,7 +711,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
       )}
       
       {/* Realtime Bulk Classification Progress Panel */}
-      {bulkStatus && (bulkStatus.isRunning || bulkStatus.processed > 0) && (
+      {bulkStatus && (bulkStatus.isRunning || bulkStatus.processed > 0) && !isBulkStatusDismissed && (
         <div className="bg-card border-2 border-emerald-600/20 p-6 rounded-3xl shadow-sm space-y-4">
           <div className="flex items-center justify-between border-b border-border pb-3">
             <div className="flex items-center gap-3">
@@ -741,7 +746,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
                 </Button>
               ) : (
                 <Button 
-                  onClick={() => setBulkStatus(null)}
+                  onClick={() => setIsBulkStatusDismissed(true)}
                   variant="ghost"
                   className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground rounded-full"
                 >
