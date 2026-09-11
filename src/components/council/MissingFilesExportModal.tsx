@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   X,
   Download,
@@ -14,6 +14,15 @@ import {
   Filter,
   RefreshCw,
   ExternalLink,
+  Bot,
+  Sparkles,
+  StopCircle,
+  Play,
+  Terminal,
+  ChevronDown,
+  ChevronUp,
+  CloudDownload,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -39,16 +48,40 @@ interface UniqueMissingFile {
   linkCount: number;
 }
 
+interface RepairLogEntry {
+  timestamp: string;
+  filename: string;
+  type: "success" | "warning" | "error" | "info";
+  message: string;
+  sourceUrl?: string;
+  sizeBytes?: number;
+}
+
+interface RepairState {
+  isRunning: boolean;
+  total: number;
+  processed: number;
+  successful: number;
+  failed: number;
+  alreadyExisted: number;
+  currentFilename: string;
+  startTime: number | null;
+  endTime: number | null;
+  logs: RepairLogEntry[];
+}
+
 interface MissingFilesExportModalProps {
   isOpen: boolean;
   onClose: () => void;
   onOpenBulkUpload?: () => void;
+  onRepairCompleted?: () => void;
 }
 
 export const MissingFilesExportModal: React.FC<MissingFilesExportModalProps> = ({
   isOpen,
   onClose,
   onOpenBulkUpload,
+  onRepairCompleted,
 }) => {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
@@ -68,16 +101,27 @@ export const MissingFilesExportModal: React.FC<MissingFilesExportModalProps> = (
   const [page, setPage] = useState(1);
   const pageSize = 50;
 
+  // Scraper repair state
+  const [repairState, setRepairState] = useState<RepairState | null>(null);
+  const [isStartingRepair, setIsStartingRepair] = useState(false);
+  const [showRepairLogs, setShowRepairLogs] = useState(true);
+  const [repairingSingleFile, setRepairingSingleFile] = useState<string | null>(null);
+  const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const getAuthHeader = () => {
+    const token =
+      localStorage.getItem("auth_token") ||
+      sessionStorage.getItem("auth_token") ||
+      localStorage.getItem("token");
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
   const fetchMissingData = async () => {
     setLoading(true);
     try {
-      const token =
-        localStorage.getItem("auth_token") ||
-        sessionStorage.getItem("auth_token") ||
-        localStorage.getItem("token");
       const res = await fetch("/api/council/dossiers/missing-files", {
         headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...getAuthHeader(),
         },
       });
       if (!res.ok) throw new Error("Kon ontbrekende documenten niet ophalen");
@@ -93,12 +137,130 @@ export const MissingFilesExportModal: React.FC<MissingFilesExportModalProps> = (
     }
   };
 
+  const fetchRepairStatus = async () => {
+    try {
+      const res = await fetch("/api/council/dossiers/repair-missing-files/status", {
+        headers: { ...getAuthHeader() },
+      });
+      if (res.ok) {
+        const data: RepairState = await res.json();
+        setRepairState(data);
+        return data;
+      }
+    } catch (err) {
+      console.error("Error fetching repair status:", err);
+    }
+    return null;
+  };
+
   useEffect(() => {
     if (isOpen) {
       fetchMissingData();
+      fetchRepairStatus();
       setPage(1);
+    } else {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     }
   }, [isOpen]);
+
+  // Polling loop when repair is active
+  useEffect(() => {
+    if (repairState?.isRunning) {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      pollTimerRef.current = setInterval(async () => {
+        const status = await fetchRepairStatus();
+        if (status && !status.isRunning) {
+          if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+          fetchMissingData();
+          if (onRepairCompleted) onRepairCompleted();
+          toast.success(
+            `Scraper herstel voltooid: ${status.successful} bestanden gedownload!`
+          );
+        }
+      }, 1500);
+    } else {
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+    }
+
+    return () => {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    };
+  }, [repairState?.isRunning]);
+
+  // Start scraper missing files batch download
+  const handleStartRepair = async () => {
+    setIsStartingRepair(true);
+    try {
+      const res = await fetch("/api/council/dossiers/repair-missing-files", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeader(),
+        },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Kon herstel niet starten");
+
+      toast.info(data.message || "Scrapers gestart om ontbrekende stukken op te halen...");
+      setShowRepairLogs(true);
+      await fetchRepairStatus();
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Fout bij starten van scraper herstel");
+    } finally {
+      setIsStartingRepair(false);
+    }
+  };
+
+  // Cancel scraper repair
+  const handleCancelRepair = async () => {
+    try {
+      const res = await fetch("/api/council/dossiers/repair-missing-files/cancel", {
+        method: "POST",
+        headers: { ...getAuthHeader() },
+      });
+      if (res.ok) {
+        toast.warning("Scraper downloadproces geannuleerd.");
+        await fetchRepairStatus();
+        await fetchMissingData();
+      }
+    } catch (err: any) {
+      toast.error("Fout bij annuleren: " + err.message);
+    }
+  };
+
+  // Download a single missing file on demand
+  const handleRepairSingleFile = async (filename: string) => {
+    setRepairingSingleFile(filename);
+    try {
+      const res = await fetch("/api/council/dossiers/repair-single-file", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeader(),
+        },
+        body: JSON.stringify({ filename }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Download mislukt");
+
+      if (data.success) {
+        toast.success(`'${filename}' succesvol gedownload (${Math.round((data.sizeBytes || 0) / 1024)} KB)!`);
+        await fetchMissingData();
+        if (onRepairCompleted) onRepairCompleted();
+      } else {
+        toast.error(`Kon '${filename}' niet ophalen: ${data.message || "Niet gevonden"}`);
+      }
+    } catch (err: any) {
+      toast.error(`Fout: ${err.message}`);
+    } finally {
+      setRepairingSingleFile(null);
+    }
+  };
 
   // Unique dossiers for filter dropdown
   const dossierOptions = useMemo(() => {
@@ -218,6 +380,12 @@ export const MissingFilesExportModal: React.FC<MissingFilesExportModalProps> = (
     toast.success("JSON audit bestand gedownload!");
   };
 
+  const isRepairActive = Boolean(repairState?.isRunning);
+  const repairProgressPercent =
+    repairState && repairState.total > 0
+      ? Math.round((repairState.processed / repairState.total) * 100)
+      : 0;
+
   if (!isOpen) return null;
 
   return (
@@ -237,7 +405,7 @@ export const MissingFilesExportModal: React.FC<MissingFilesExportModalProps> = (
             </div>
             <div>
               <h2 className="text-lg sm:text-xl font-bold text-foreground flex items-center gap-2">
-                <span>Ontbrekende Raadsstukken Export & Audit</span>
+                <span>Ontbrekende Raadsstukken & Scraper Herstel</span>
                 {stats.totalMissingLinks > 0 && (
                   <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500 text-white shadow-xs">
                     {stats.totalMissingLinks} koppelingen ontbreken
@@ -246,8 +414,7 @@ export const MissingFilesExportModal: React.FC<MissingFilesExportModalProps> = (
               </h2>
               <p className="text-xs text-muted-foreground mt-1 max-w-2xl">
                 Vergelijking tussen de geregistreerde stukken in de metadata netwerkgraaf en de
-                fysieke bestanden live op de server. Download de export om direct te zien welke PDF-bestanden
-                nog moeten worden geüpload.
+                fysieke bestanden live op de server. Haal ontbrekende PDF's in 1-klik automatisch op via de NotuBiz/iBabs scrapers, of download een CSV-auditlijst.
               </p>
             </div>
           </div>
@@ -258,6 +425,119 @@ export const MissingFilesExportModal: React.FC<MissingFilesExportModalProps> = (
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Live Scraper Repair Progress Banner */}
+        {repairState && (repairState.isRunning || (repairState.logs && repairState.logs.length > 0)) && (
+          <div className="p-4 sm:p-5 bg-blue-50/80 dark:bg-blue-950/30 border-b border-blue-200 dark:border-blue-900/60 transition-all">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-2.5">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg bg-blue-600/15 text-blue-600 dark:text-blue-400">
+                  <Bot className={`w-4 h-4 ${isRepairActive ? "animate-pulse" : ""}`} />
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-foreground flex items-center gap-2">
+                    <span>Automatische Scraper-Download</span>
+                    {isRepairActive ? (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500 text-white animate-pulse">
+                        Actief ({repairProgressPercent}%)
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">
+                        Voltooid
+                      </span>
+                    )}
+                  </span>
+                  {repairState.currentFilename && isRepairActive && (
+                    <p className="text-[11px] text-blue-700 dark:text-blue-300 font-mono truncate max-w-md sm:max-w-xl mt-0.5">
+                      Bezig met: {repairState.currentFilename}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {isRepairActive ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleCancelRepair}
+                    className="border-red-300 text-red-600 dark:text-red-400 hover:bg-red-500/10 text-xs h-7.5 rounded-xl"
+                  >
+                    <StopCircle className="w-3.5 h-3.5 mr-1" />
+                    Annuleren
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    onClick={handleStartRepair}
+                    disabled={isStartingRepair || stats.uniqueMissingFilesCount === 0}
+                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs h-7.5 rounded-xl"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 mr-1" />
+                    Opnieuw Uitvoeren
+                  </Button>
+                )}
+
+                <button
+                  onClick={() => setShowRepairLogs((v) => !v)}
+                  className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors text-xs flex items-center gap-1"
+                >
+                  <Terminal className="w-3.5 h-3.5" />
+                  <span className="text-[11px] font-medium hidden sm:inline">Log</span>
+                  {showRepairLogs ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="w-full bg-blue-200/60 dark:bg-blue-900/40 h-2 rounded-full overflow-hidden mb-2">
+              <div
+                className="bg-blue-600 h-full rounded-full transition-all duration-300"
+                style={{ width: `${repairProgressPercent}%` }}
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between text-[11px] text-muted-foreground">
+              <div className="flex items-center gap-3 font-medium">
+                <span>
+                  Voortgang: <strong className="text-foreground">{repairState.processed}</strong> / {repairState.total} bestanden
+                </span>
+                <span className="text-emerald-600 dark:text-emerald-400">
+                  ✓ Gedownload: <strong>{repairState.successful}</strong>
+                </span>
+                {repairState.failed > 0 && (
+                  <span className="text-amber-600 dark:text-amber-400">
+                    ⚠ Niet gevonden: <strong>{repairState.failed}</strong>
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Expandable Live Log Stream */}
+            {showRepairLogs && repairState.logs && repairState.logs.length > 0 && (
+              <div className="mt-2.5 p-2.5 rounded-xl bg-black/90 text-green-400 font-mono text-[10.5px] max-h-32 overflow-y-auto space-y-1 shadow-inner border border-border/40">
+                {repairState.logs.slice(0, 30).map((log, lIdx) => (
+                  <div key={lIdx} className="leading-tight flex items-start gap-1.5">
+                    <span className="text-muted-foreground select-none">[{log.timestamp}]</span>
+                    <span
+                      className={
+                        log.type === "success"
+                          ? "text-emerald-400 font-semibold"
+                          : log.type === "warning"
+                          ? "text-amber-400"
+                          : log.type === "error"
+                          ? "text-red-400"
+                          : "text-blue-300"
+                      }
+                    >
+                      {log.message}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* KPI Strip */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 sm:p-6 bg-muted/10 border-b border-border">
@@ -315,10 +595,31 @@ export const MissingFilesExportModal: React.FC<MissingFilesExportModalProps> = (
         {/* Action Buttons Toolbar */}
         <div className="p-4 sm:px-6 bg-card border-b border-border flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
+            {/* Primary Scraper Repair 1-Click Button */}
             <Button
               size="sm"
+              onClick={handleStartRepair}
+              disabled={isStartingRepair || isRepairActive || stats.uniqueMissingFilesCount === 0}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold h-8.5 rounded-xl shadow-xs"
+              title="Haal automatisch alle ontbrekende stukken op via de NotuBiz/iBabs scrapers van Provincie, Waterschap en Raad"
+            >
+              {isStartingRepair || isRepairActive ? (
+                <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+              ) : (
+                <Bot className="w-3.5 h-3.5 mr-1.5" />
+              )}
+              <span>
+                {isRepairActive
+                  ? "Bezig met binnenhalen..."
+                  : `Alles Binnenhalen via Scrapers (${stats.uniqueMissingFilesCount})`}
+              </span>
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
               onClick={() => handleDownloadCsv("detailed")}
-              className="bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-semibold h-8.5 rounded-xl shadow-xs"
+              className="border-border text-foreground hover:bg-muted text-xs font-semibold h-8.5 rounded-xl shadow-2xs"
               title="Exporteer alle regels (inclusief dossiernaam) naar Excel CSV met UTF-8 ondersteuning"
             >
               <Download className="w-3.5 h-3.5 mr-1.5" />
@@ -329,7 +630,7 @@ export const MissingFilesExportModal: React.FC<MissingFilesExportModalProps> = (
               size="sm"
               variant="outline"
               onClick={() => handleDownloadCsv("unique")}
-              className="border-border text-foreground hover:bg-muted text-xs font-semibold h-8.5 rounded-xl"
+              className="border-border text-foreground hover:bg-muted text-xs font-semibold h-8.5 rounded-xl shadow-2xs"
               title="Exporteer alleen unieke bestandsnamen naar CSV"
             >
               <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5 text-emerald-500" />
@@ -452,7 +753,7 @@ export const MissingFilesExportModal: React.FC<MissingFilesExportModalProps> = (
                   setSelectedDossier(e.target.value);
                   setPage(1);
                 }}
-                className="w-full px-3 py-1.5 rounded-xl border border-border bg-card text-xs text-foreground focus:outline-hidden focus:ring-1 focus:ring-accent appearance-none cursor-pointer"
+                className="w-full px-3 py-1.5 rounded-xl border border-border bg-card text-xs text-foreground focus:outline-hidden focus:ring-1 focus:ring-accent"
               >
                 <option value="all">Alle Dossiers ({dossierOptions.length})</option>
                 {dossierOptions.map((d) => (
@@ -461,22 +762,16 @@ export const MissingFilesExportModal: React.FC<MissingFilesExportModalProps> = (
                   </option>
                 ))}
               </select>
-              <Filter className="w-3 h-3 absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
             </div>
           </div>
         </div>
 
-        {/* Content Table / List */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 min-h-[260px]">
+        {/* Table Body */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           {loading ? (
-            <div className="py-16 text-center space-y-3">
-              <RefreshCw className="w-8 h-8 text-accent animate-spin mx-auto" />
-              <div className="text-sm font-semibold text-foreground">
-                Ontbrekende raadsstukken analyseren...
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Documenten uit dossiers worden vergeleken met de uploads map.
-              </p>
+            <div className="py-16 text-center text-muted-foreground space-y-2">
+              <RefreshCw className="w-8 h-8 animate-spin mx-auto text-accent" />
+              <div className="text-xs font-semibold">Ontbrekende bestanden controleren...</div>
             </div>
           ) : currentItems.length === 0 ? (
             <div className="py-16 text-center space-y-2">
@@ -503,7 +798,7 @@ export const MissingFilesExportModal: React.FC<MissingFilesExportModalProps> = (
                     <th className="py-2.5 px-3">Gekoppeld Dossier</th>
                     <th className="py-2.5 px-3 w-28">Datum</th>
                     <th className="py-2.5 px-3 w-24 text-center">Koppelingen</th>
-                    <th className="py-2.5 px-3 w-20 text-right">Actie</th>
+                    <th className="py-2.5 px-3 w-28 text-right">Actie</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
@@ -514,6 +809,7 @@ export const MissingFilesExportModal: React.FC<MissingFilesExportModalProps> = (
                     const dossiersText: string = isUnique
                       ? item.dossiers.map((d: any) => d.title).join(", ")
                       : item.dossier;
+                    const isSingleDownloading = repairingSingleFile === filename;
 
                     return (
                       <tr
@@ -554,19 +850,35 @@ export const MissingFilesExportModal: React.FC<MissingFilesExportModalProps> = (
                           </span>
                         </td>
                         <td className="py-2.5 px-3 text-right">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleCopySingle(filename)}
-                            className="h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground"
-                            title="Kopieer bestandsnaam"
-                          >
-                            {copiedFile === filename ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-500" />
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
-                          </Button>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleRepairSingleFile(filename)}
+                              disabled={isSingleDownloading || isRepairActive}
+                              className="h-7 px-2 text-[11px] text-blue-600 dark:text-blue-400 hover:bg-blue-500/10"
+                              title="Download dit bestand direct via de scraper"
+                            >
+                              {isSingleDownloading ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <CloudDownload className="w-3.5 h-3.5" />
+                              )}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleCopySingle(filename)}
+                              className="h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                              title="Kopieer bestandsnaam"
+                            >
+                              {copiedFile === filename ? (
+                                <Check className="w-3.5 h-3.5 text-emerald-500" />
+                              ) : (
+                                <Copy className="w-3.5 h-3.5" />
+                              )}
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     );

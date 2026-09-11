@@ -1298,6 +1298,10 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
         isOpen={isMissingFilesModalOpen}
         onClose={() => setIsMissingFilesModalOpen(false)}
         onOpenBulkUpload={() => setIsBulkUploadOpen(true)}
+        onRepairCompleted={() => {
+          fetchDossiers();
+          fetchFilesystemScanStatus();
+        }}
       />
 
       {/* Create Dossier Modal */}

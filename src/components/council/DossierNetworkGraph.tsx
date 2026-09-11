@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from "react";
+import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import {
   ZoomIn,
   ZoomOut,
@@ -10,6 +10,8 @@ import {
   Link2,
   Eye,
   Filter,
+  Move,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +33,11 @@ interface SimNode extends GraphNode {
   radius: number;
 }
 
+type SpacingMode = "compact" | "ruim" | "extra-ruim";
+
+const VIRTUAL_CENTER_X = 1400;
+const VIRTUAL_CENTER_Y = 950;
+
 export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
   nodes,
   edges,
@@ -45,11 +52,17 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
   const [selectedNode, setSelectedNode] = useState<SimNode | null>(null);
   const [hoveredNode, setHoveredNode] = useState<SimNode | null>(null);
   const [onlyConnected, setOnlyConnected] = useState(true);
+  const [spacingMode, setSpacingMode] = useState<SpacingMode>("ruim");
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Dragging state
+  const dragModeRef = useRef<"none" | "pan" | "node">("none");
+  const draggedNodeRef = useRef<SimNode | null>(null);
+  const dragStartPosRef = useRef({ x: 0, y: 0 });
+  const hasMovedSignificantRef = useRef(false);
+  const [isCursorGrabbing, setIsCursorGrabbing] = useState(false);
 
   // Simulation state stored in ref for fast 60fps canvas rendering
   const simNodesRef = useRef<SimNode[]>([]);
@@ -85,61 +98,167 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
     return (edges || []).filter((e) => activeIds.has(e.source) && activeIds.has(e.target));
   }, [activeNodes, edges]);
 
-  // Initialize simulation nodes with circular layout
+  // Spacing multiplier: default "ruim" provides generous breathing space
+  const spacingMultiplier = useMemo(() => {
+    switch (spacingMode) {
+      case "compact":
+        return 1.0;
+      case "extra-ruim":
+        return 2.35;
+      case "ruim":
+      default:
+        return 1.75;
+    }
+  }, [spacingMode]);
+
+  // Fit view automatically to encompass settled nodes with comfortable margins
+  const fitView = useCallback((customNodes?: SimNode[]) => {
+    const targetNodes = customNodes || simNodesRef.current;
+    if (!targetNodes || targetNodes.length === 0) {
+      setZoom(1);
+      setPan({ x: 0, y: 0 });
+      return;
+    }
+
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    targetNodes.forEach((n) => {
+      minX = Math.min(minX, n.x - 140);
+      maxX = Math.max(maxX, n.x + 140);
+      minY = Math.min(minY, n.y - 70);
+      maxY = Math.max(maxY, n.y + 70);
+    });
+
+    const bWidth = Math.max(maxX - minX + 160, 450);
+    const bHeight = Math.max(maxY - minY + 160, 350);
+
+    const rect = containerRef.current?.getBoundingClientRect();
+    const viewWidth = rect?.width || 800;
+    const viewHeight = rect?.height || 650;
+
+    const scaleX = viewWidth / bWidth;
+    const scaleY = viewHeight / bHeight;
+    // Keep scale between 0.35 and 1.12 to prevent extreme zoom-in for single files
+    const idealZoom = Math.min(Math.max(Math.min(scaleX, scaleY) * 0.9, 0.35), 1.12);
+
+    const bCenterX = (minX + maxX) / 2;
+    const bCenterY = (minY + maxY) / 2;
+
+    setZoom(idealZoom);
+    setPan({
+      x: (VIRTUAL_CENTER_X - bCenterX) * idealZoom,
+      y: (VIRTUAL_CENTER_Y - bCenterY) * idealZoom,
+    });
+  }, []);
+
+  // Initialize simulation nodes with spacious circular / phyllotaxis layout and run spring relaxation
   useEffect(() => {
     if (!activeNodes || activeNodes.length === 0) {
       simNodesRef.current = [];
       return;
     }
 
-    const width = 800;
-    const height = 500;
-    const centerX = width / 2;
-    const centerY = height / 2;
+    const count = activeNodes.length;
+    const mult = spacingMultiplier;
 
+    // Initial placement with generous distance based on count
     const simNodes: SimNode[] = activeNodes.map((node, i) => {
-      const count = Math.max(1, activeNodes.length);
-      const angle = (i / count) * 2 * Math.PI - Math.PI / 2;
-      const radius = count > 10 ? 180 : count > 5 ? 140 : count > 2 ? 100 : 60;
+      let x = VIRTUAL_CENTER_X;
+      let y = VIRTUAL_CENTER_Y;
+
+      if (count === 1) {
+        x = VIRTUAL_CENTER_X;
+        y = VIRTUAL_CENTER_Y;
+      } else if (count <= 7) {
+        // Single wide ring
+        const radius = Math.max(220, count * 55) * mult;
+        const angle = (i / count) * 2 * Math.PI - Math.PI / 2;
+        x = VIRTUAL_CENTER_X + Math.cos(angle) * radius;
+        y = VIRTUAL_CENTER_Y + Math.sin(angle) * radius * 0.85;
+      } else if (count <= 18) {
+        // Two concentric rings
+        const innerCount = Math.ceil(count * 0.4);
+        const isInner = i < innerCount;
+        const ringIndex = isInner ? i : i - innerCount;
+        const ringTotal = isInner ? innerCount : count - innerCount;
+        const radius = (isInner ? 250 : 480) * mult;
+        const angleOffset = isInner ? 0 : Math.PI / ringTotal;
+        const angle = (ringIndex / ringTotal) * 2 * Math.PI - Math.PI / 2 + angleOffset;
+        x = VIRTUAL_CENTER_X + Math.cos(angle) * radius;
+        y = VIRTUAL_CENTER_Y + Math.sin(angle) * radius * 0.85;
+      } else {
+        // Golden phyllotaxis spiral distribution
+        const spiralRadius = 110 * mult * Math.sqrt(i + 1);
+        const spiralAngle = i * 2.399963; // 137.508 degrees
+        x = VIRTUAL_CENTER_X + Math.cos(spiralAngle) * spiralRadius;
+        y = VIRTUAL_CENTER_Y + Math.sin(spiralAngle) * spiralRadius * 0.85;
+      }
+
+      // Add gentle random jitter so symmetrical collinear nodes break apart cleanly
+      x += (Math.random() - 0.5) * 16;
+      y += (Math.random() - 0.5) * 16;
+
       return {
         ...node,
-        x: centerX + Math.cos(angle) * radius + (Math.random() - 0.5) * 10,
-        y: centerY + Math.sin(angle) * radius + (Math.random() - 0.5) * 10,
+        x,
+        y,
         vx: 0,
         vy: 0,
-        radius: 15,
+        radius: 17,
       };
     });
 
     simNodesRef.current = simNodes;
 
-    // Run simple spring relaxation
-    let iteration = 0;
-    const maxIterations = 80;
+    // Run generous force relaxation with cooling
+    const maxIterations = 130;
+    const nodeMap = new Map<string, SimNode>();
+    simNodes.forEach((n) => nodeMap.set(n.id, n));
 
-    const relax = () => {
-      const sNodes = simNodesRef.current;
-      const nodeMap = new Map<string, SimNode>();
-      sNodes.forEach((n) => nodeMap.set(n.id, n));
+    const minDist = 240 * mult;
+    const targetDist = 320 * mult;
 
-      // Repulsion between all nodes
-      for (let i = 0; i < sNodes.length; i++) {
-        for (let j = i + 1; j < sNodes.length; j++) {
-          const dx = sNodes[j].x - sNodes[i].x;
-          const dy = sNodes[j].y - sNodes[i].y;
+    for (let iter = 0; iter < maxIterations; iter++) {
+      const alpha = Math.pow((maxIterations - iter) / maxIterations, 1.4);
+
+      // 1. Repulsion between all node pairs
+      for (let i = 0; i < simNodes.length; i++) {
+        for (let j = i + 1; j < simNodes.length; j++) {
+          const dx = simNodes[j].x - simNodes[i].x;
+          const dy = simNodes[j].y - simNodes[i].y;
           const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-          const minDist = sNodes[i].radius + sNodes[j].radius + 50;
+
+          // Inverse-square Coulomb repulsion
+          const repForce = (44000 * mult) / (dist * dist + 400);
+          let fx = (dx / dist) * repForce;
+          let fy = (dy / dist) * repForce;
+
+          // Proximity collision repulsion
           if (dist < minDist) {
-            const force = ((minDist - dist) / dist) * 0.15;
-            sNodes[i].x -= dx * force;
-            sNodes[i].y -= dy * force;
-            sNodes[j].x += dx * force;
-            sNodes[j].y += dy * force;
+            const push = ((minDist - dist) / dist) * 0.5 * minDist;
+            fx += (dx / dist) * push;
+            fy += (dy / dist) * push;
           }
+
+          // Horizontal clearance for wide document labels
+          const horizontalTarget = 280 * mult;
+          const hDist = Math.abs(dx);
+          if (Math.abs(dy) < 65 && hDist < horizontalTarget) {
+            const hPush = ((horizontalTarget - hDist) / horizontalTarget) * 45 * (dx >= 0 ? 1 : -1);
+            fx += hPush;
+          }
+
+          simNodes[i].x -= fx * alpha * 0.5;
+          simNodes[i].y -= fy * alpha * 0.5;
+          simNodes[j].x += fx * alpha * 0.5;
+          simNodes[j].y += fy * alpha * 0.5;
         }
       }
 
-      // Attraction along edges
+      // 2. Edge attraction between connected documents
       activeEdges.forEach((edge) => {
         const source = nodeMap.get(edge.source);
         const target = nodeMap.get(edge.target);
@@ -147,26 +266,26 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
           const dx = target.x - source.x;
           const dy = target.y - source.y;
           const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-          const targetDist = 140;
-          const force = (dist - targetDist) * 0.02;
-          source.x += (dx / dist) * force;
-          source.y += (dy / dist) * force;
-          target.x -= (dx / dist) * force;
-          target.y -= (dy / dist) * force;
+          const pull = ((dist - targetDist) / dist) * 0.04 * alpha * dist;
+          source.x += (dx / dist) * pull;
+          source.y += (dy / dist) * pull;
+          target.x -= (dx / dist) * pull;
+          target.y -= (dy / dist) * pull;
         }
       });
 
-      iteration++;
-      if (iteration < maxIterations) {
-        requestAnimationFrame(relax);
-      }
-    };
+      // 3. Gentle center gravity to keep entire graph centered
+      simNodes.forEach((node) => {
+        node.x += (VIRTUAL_CENTER_X - node.x) * 0.003 * alpha;
+        node.y += (VIRTUAL_CENTER_Y - node.y) * 0.003 * alpha;
+      });
+    }
 
-    relax();
-    resetView();
-  }, [activeNodes, activeEdges]);
+    // Auto-fit to view with comfortable bounds
+    fitView(simNodes);
+  }, [activeNodes, activeEdges, spacingMultiplier, fitView]);
 
-  // Handle canvas drawing
+  // Handle canvas drawing (60fps requestAnimationFrame loop)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -187,10 +306,10 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
       ctx.scale(dpr, dpr);
       ctx.clearRect(0, 0, rect.width, rect.height);
 
-      // Apply Pan and Zoom
+      // Apply Pan and Zoom centered around VIRTUAL_CENTER
       ctx.translate(rect.width / 2 + pan.x, rect.height / 2 + pan.y);
       ctx.scale(zoom, zoom);
-      ctx.translate(-400, -250); // center of virtual 800x500 space
+      ctx.translate(-VIRTUAL_CENTER_X, -VIRTUAL_CENTER_Y);
 
       const sNodes = simNodesRef.current;
       const nodeMap = new Map<string, SimNode>();
@@ -224,33 +343,48 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
 
         if (isHighlighted) {
           ctx.strokeStyle = "#c6a858"; // gold accent for active document connection
-          ctx.lineWidth = 2.8;
+          ctx.lineWidth = 3;
           ctx.globalAlpha = 0.95;
         } else if (activeHighlightId) {
           ctx.strokeStyle = "#475569";
           ctx.lineWidth = 1;
-          ctx.globalAlpha = 0.15;
+          ctx.globalAlpha = 0.12;
         } else {
           ctx.strokeStyle = "#64748b";
-          ctx.lineWidth = 1.6;
-          ctx.globalAlpha = 0.45;
+          ctx.lineWidth = 1.8;
+          ctx.globalAlpha = 0.4;
         }
         ctx.stroke();
 
-        // If highlighted, draw label on the edge
+        // If highlighted, draw label badge on the edge
         if (isHighlighted && edge.label) {
           const midX = (source.x + target.x) / 2;
           const midY = (source.y + target.y) / 2;
-          const edgeText = edge.label.length > 35 ? edge.label.substring(0, 32) + "..." : edge.label;
+          const edgeText = edge.label.length > 40 ? edge.label.substring(0, 37) + "..." : edge.label;
 
           ctx.save();
-          ctx.font = "600 10px system-ui, sans-serif";
+          ctx.font = "600 11px system-ui, sans-serif";
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
 
           const textWidth = ctx.measureText(edgeText).width;
-          ctx.fillStyle = "rgba(15, 23, 42, 0.92)";
-          ctx.fillRect(midX - textWidth / 2 - 5, midY - 8, textWidth + 10, 16);
+          const badgeW = textWidth + 14;
+          const badgeH = 20;
+
+          ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
+          if (ctx.roundRect) {
+            ctx.roundRect(midX - badgeW / 2, midY - badgeH / 2, badgeW, badgeH, 6);
+          } else {
+            ctx.fillRect(midX - badgeW / 2, midY - badgeH / 2, badgeW, badgeH);
+          }
+          ctx.fill();
+
+          ctx.strokeStyle = "#c6a858";
+          ctx.lineWidth = 1;
+          if (ctx.roundRect) {
+            ctx.roundRect(midX - badgeW / 2, midY - badgeH / 2, badgeW, badgeH, 6);
+            ctx.stroke();
+          }
 
           ctx.fillStyle = "#fef08a";
           ctx.fillText(edgeText, midX, midY);
@@ -288,54 +422,64 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
         ctx.fill();
 
         // Border ring
-        ctx.lineWidth = isSelected ? 3 : isHovered ? 2.5 : 1.5;
+        ctx.lineWidth = isSelected ? 3.5 : isHovered ? 3 : 1.8;
         ctx.strokeStyle = isSelected
           ? "#ffffff"
           : isHovered
           ? "#fef08a"
           : isConnectedToActive
           ? "#7dd3fc"
-          : "rgba(255,255,255,0.8)";
+          : "rgba(255,255,255,0.85)";
         ctx.stroke();
 
-        // Inner document icon mark (tiny document outline)
+        // Inner document icon mark (mini document outline)
         ctx.fillStyle = isSelected ? "#0f172a" : "#ffffff";
-        ctx.fillRect(node.x - 3.5, node.y - 4.5, 7, 9);
+        ctx.fillRect(node.x - 4, node.y - 5.5, 8, 11);
         ctx.fillStyle = isSelected ? "#c6a858" : "#1e40af";
-        ctx.fillRect(node.x - 2, node.y - 2.5, 4, 1.2);
-        ctx.fillRect(node.x - 2, node.y - 0.5, 4, 1.2);
-        ctx.fillRect(node.x - 2, node.y + 1.5, 2.5, 1.2);
+        ctx.fillRect(node.x - 2.5, node.y - 3.5, 5, 1.4);
+        ctx.fillRect(node.x - 2.5, node.y - 1, 5, 1.4);
+        ctx.fillRect(node.x - 2.5, node.y + 1.5, 3, 1.4);
 
         // Document Label below node
         const showFull = isHovered || isSelected;
         const cleanName = node.label.replace(/\.pdf$/i, "");
         const labelText =
-          cleanName.length > 26 && !showFull ? cleanName.substring(0, 24) + "..." : cleanName;
+          cleanName.length > 34 && !showFull ? cleanName.substring(0, 32) + "..." : cleanName;
 
-        ctx.font = isSelected || isHovered ? "700 11px system-ui, sans-serif" : "600 10.5px system-ui, sans-serif";
+        ctx.font = isSelected || isHovered ? "700 11.5px system-ui, sans-serif" : "600 11px system-ui, sans-serif";
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
 
-        // Label background pill for readability
+        // Label background pill with crisp contrast
         const textMetrics = ctx.measureText(labelText);
-        const bgWidth = textMetrics.width + 10;
-        const bgHeight = 16;
+        const bgWidth = textMetrics.width + 14;
+        const bgHeight = 18;
         const bgX = node.x - bgWidth / 2;
-        const bgY = node.y + r + 4;
+        const bgY = node.y + r + 6;
 
         ctx.fillStyle =
           isHovered || isSelected
-            ? "rgba(15, 23, 42, 0.95)"
-            : "rgba(255, 255, 255, 0.9)";
+            ? "rgba(15, 23, 42, 0.96)"
+            : "rgba(255, 255, 255, 0.94)";
         if (ctx.roundRect) {
-          ctx.roundRect(bgX, bgY, bgWidth, bgHeight, 4);
+          ctx.roundRect(bgX, bgY, bgWidth, bgHeight, 5);
         } else {
           ctx.fillRect(bgX, bgY, bgWidth, bgHeight);
         }
         ctx.fill();
 
+        ctx.strokeStyle =
+          isHovered || isSelected
+            ? "#c6a858"
+            : "rgba(148, 163, 184, 0.4)";
+        ctx.lineWidth = 1;
+        if (ctx.roundRect) {
+          ctx.roundRect(bgX, bgY, bgWidth, bgHeight, 5);
+          ctx.stroke();
+        }
+
         ctx.fillStyle = isHovered || isSelected ? "#ffffff" : "#0f172a";
-        ctx.fillText(labelText, node.x, bgY + 2);
+        ctx.fillText(labelText, node.x, bgY + 2.5);
 
         ctx.restore();
       });
@@ -352,7 +496,7 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
     };
   }, [activeEdges, zoom, pan, search, hoveredNode, selectedNode]);
 
-  // Convert client mouse pos to virtual canvas pos
+  // Convert client mouse pos to virtual canvas pos (fixing Retina DPR offset)
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
@@ -360,28 +504,42 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    const virtX = (mouseX - (canvas.width / 2 + pan.x)) / zoom + 400;
-    const virtY = (mouseY - (canvas.height / 2 + pan.y)) / zoom + 250;
+    const virtX = (mouseX - (rect.width / 2 + pan.x)) / zoom + VIRTUAL_CENTER_X;
+    const virtY = (mouseY - (rect.height / 2 + pan.y)) / zoom + VIRTUAL_CENTER_Y;
 
     return { x: virtX, y: virtY };
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (isDragging) {
-      setPan((prev) => ({
-        x: prev.x + (e.clientX - dragStart.x),
-        y: prev.y + (e.clientY - dragStart.y),
-      }));
-      setDragStart({ x: e.clientX, y: e.clientY });
+    const { x, y } = getCanvasCoords(e);
+
+    if (dragModeRef.current === "node" && draggedNodeRef.current) {
+      hasMovedSignificantRef.current = true;
+      draggedNodeRef.current.x = x;
+      draggedNodeRef.current.y = y;
       return;
     }
 
-    const { x, y } = getCanvasCoords(e);
+    if (dragModeRef.current === "pan") {
+      const dx = e.clientX - dragStartPosRef.current.x;
+      const dy = e.clientY - dragStartPosRef.current.y;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        hasMovedSignificantRef.current = true;
+      }
+      setPan((prev) => ({
+        x: prev.x + dx,
+        y: prev.y + dy,
+      }));
+      dragStartPosRef.current = { x: e.clientX, y: e.clientY };
+      return;
+    }
+
+    // Hit-test nodes on hover
     let hit: SimNode | null = null;
     for (const node of simNodesRef.current) {
       const dx = node.x - x;
       const dy = node.y - y;
-      if (dx * dx + dy * dy <= (node.radius + 8) * (node.radius + 8)) {
+      if (dx * dx + dy * dy <= (node.radius + 10) * (node.radius + 10)) {
         hit = node;
         break;
       }
@@ -390,29 +548,37 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
   };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    setIsDragging(true);
-    setDragStart({ x: e.clientX, y: e.clientY });
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
-
-  const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const { x, y } = getCanvasCoords(e);
-    let clicked: SimNode | null = null;
+    dragStartPosRef.current = { x: e.clientX, y: e.clientY };
+    hasMovedSignificantRef.current = false;
+
+    // Check if clicked directly on a node to drag it
+    let hit: SimNode | null = null;
     for (const node of simNodesRef.current) {
       const dx = node.x - x;
       const dy = node.y - y;
-      if (dx * dx + dy * dy <= (node.radius + 8) * (node.radius + 8)) {
-        clicked = node;
+      if (dx * dx + dy * dy <= (node.radius + 10) * (node.radius + 10)) {
+        hit = node;
         break;
       }
     }
 
-    if (clicked) {
+    if (hit) {
+      dragModeRef.current = "node";
+      draggedNodeRef.current = hit;
+      setIsCursorGrabbing(true);
+    } else {
+      dragModeRef.current = "pan";
+      draggedNodeRef.current = null;
+      setIsCursorGrabbing(true);
+    }
+  };
+
+  const handleMouseUp = () => {
+    if (dragModeRef.current === "node" && draggedNodeRef.current && !hasMovedSignificantRef.current) {
+      // Pure click on node without dragging: open the document!
+      const clicked = draggedNodeRef.current;
       setSelectedNode(clicked);
-      // Open document directly in viewer
       const docMatch = documents.find((d) => d.bestandsnaam === clicked.id);
       if (docMatch) {
         onSelectDocument(docMatch);
@@ -423,21 +589,25 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
           dossier: clicked.dossier,
         });
       }
-    } else {
+    } else if (dragModeRef.current === "pan" && !hasMovedSignificantRef.current) {
+      // Clicked on blank canvas
       setSelectedNode(null);
     }
+
+    dragModeRef.current = "none";
+    draggedNodeRef.current = null;
+    setIsCursorGrabbing(false);
   };
 
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
     e.preventDefault();
-    const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-    setZoom((z) => Math.min(Math.max(z * zoomFactor, 0.3), 3.5));
+    const zoomFactor = e.deltaY < 0 ? 1.12 : 0.89;
+    setZoom((z) => Math.min(Math.max(z * zoomFactor, 0.25), 3.5));
   };
 
   const resetView = () => {
-    setZoom(1);
-    setPan({ x: 0, y: 0 });
     setSelectedNode(null);
+    fitView();
   };
 
   // Connected documents for selected node, including specific edge reason
@@ -467,11 +637,11 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
       id="dossier-network-graph-container"
       ref={containerRef}
       className={`relative bg-card border border-border rounded-2xl shadow-xs overflow-hidden flex flex-col transition-all duration-300 ${
-        isFullscreen ? "fixed inset-2 z-50 h-[96vh] shadow-2xl" : "h-[560px] w-full"
+        isFullscreen ? "fixed inset-2 z-50 h-[96vh] shadow-2xl" : "h-[650px] sm:h-[680px] w-full"
       }`}
     >
       {/* Top Header Bar */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30 shrink-0">
+      <div className="flex flex-wrap items-center justify-between gap-2.5 px-4 py-3 border-b border-border bg-muted/30 shrink-0">
         <div className="flex items-center gap-2.5">
           <div className="p-1.5 rounded-lg bg-blue-600/15 text-blue-600 dark:text-blue-400">
             <FileText className="w-4 h-4" />
@@ -480,17 +650,64 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
             <h4 className="text-xs sm:text-sm font-bold text-foreground flex items-center gap-2">
               <span>Interactieve Relatiekaart & Netwerkgraaf</span>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium">
-                Alleen documenten
+                Ruime weergave
               </span>
             </h4>
             <p className="text-[11px] text-muted-foreground">
-              {activeNodes.length} documenten • {activeEdges.length} onderlinge verbindingen • Klik op een document om direct te openen
+              {activeNodes.length} documenten • {activeEdges.length} onderlinge verbindingen • Sleep om te herschikken
             </p>
           </div>
         </div>
 
-        {/* Search & Controls */}
-        <div className="flex items-center gap-2">
+        {/* Spacing & Controls Toolbar */}
+        <div className="flex items-center flex-wrap gap-2">
+          {/* Spacing selector (Compact / Ruim / Extra Ruim) */}
+          <div className="flex items-center gap-1 bg-background border border-border rounded-xl p-1 text-xs shadow-2xs">
+            <span className="text-[10px] text-muted-foreground px-1.5 font-medium flex items-center gap-1">
+              <SlidersHorizontal className="w-3 h-3 text-accent" />
+              Spreiding:
+            </span>
+            <button
+              type="button"
+              id="btn-spacing-compact"
+              onClick={() => setSpacingMode("compact")}
+              className={`px-2 py-0.5 rounded-lg text-[11px] font-medium transition-colors ${
+                spacingMode === "compact"
+                  ? "bg-accent/20 text-accent font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              title="Compacte weergave"
+            >
+              Compact
+            </button>
+            <button
+              type="button"
+              id="btn-spacing-ruim"
+              onClick={() => setSpacingMode("ruim")}
+              className={`px-2 py-0.5 rounded-lg text-[11px] font-medium transition-colors ${
+                spacingMode === "ruim"
+                  ? "bg-accent/20 text-accent font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              title="Ruime opzet (aanbevolen)"
+            >
+              Ruim
+            </button>
+            <button
+              type="button"
+              id="btn-spacing-extra-ruim"
+              onClick={() => setSpacingMode("extra-ruim")}
+              className={`px-2 py-0.5 rounded-lg text-[11px] font-medium transition-colors ${
+                spacingMode === "extra-ruim"
+                  ? "bg-accent/20 text-accent font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              title="Extra ruime opzet voor grote dossiers"
+            >
+              Extra ruim
+            </button>
+          </div>
+
           {/* Toggle only connected vs all */}
           {docOnlyNodes.length > activeNodes.length && (
             <Button
@@ -504,7 +721,7 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
             </Button>
           )}
 
-          <div className="relative w-36 sm:w-48 hidden md:block">
+          <div className="relative w-36 sm:w-44 hidden md:block">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
               id="graph-search-input"
@@ -521,7 +738,7 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
               variant="ghost"
               size="icon"
               className="h-7 w-7 text-muted-foreground hover:text-foreground"
-              onClick={() => setZoom((z) => Math.min(z * 1.2, 3.5))}
+              onClick={() => setZoom((z) => Math.min(z * 1.25, 3.5))}
               title="Inzoomen"
             >
               <ZoomIn className="w-3.5 h-3.5" />
@@ -531,7 +748,7 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
               variant="ghost"
               size="icon"
               className="h-7 w-7 text-muted-foreground hover:text-foreground"
-              onClick={() => setZoom((z) => Math.max(z / 1.2, 0.3))}
+              onClick={() => setZoom((z) => Math.max(z / 1.25, 0.25))}
               title="Uitzoomen"
             >
               <ZoomOut className="w-3.5 h-3.5" />
@@ -542,7 +759,7 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
               size="icon"
               className="h-7 w-7 text-muted-foreground hover:text-foreground"
               onClick={resetView}
-              title="Weergave herstellen"
+              title="Centreren & Weergave herstellen"
             >
               <RotateCcw className="w-3.5 h-3.5" />
             </Button>
@@ -561,7 +778,11 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
       </div>
 
       {/* Main Canvas Stage */}
-      <div className="relative flex-1 bg-slate-950/5 dark:bg-black/40 overflow-hidden cursor-grab active:cursor-grabbing">
+      <div
+        className={`relative flex-1 bg-slate-950/5 dark:bg-black/40 overflow-hidden ${
+          isCursorGrabbing ? "cursor-grabbing" : hoveredNode ? "cursor-pointer" : "cursor-grab"
+        }`}
+      >
         <canvas
           id="dossier-graph-canvas"
           ref={canvasRef}
@@ -569,14 +790,13 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
           onMouseMove={handleMouseMove}
           onMouseDown={handleMouseDown}
           onMouseUp={handleMouseUp}
-          onClick={handleClick}
           onWheel={handleWheel}
         />
 
         {/* Legend Overlay */}
         <div className="absolute bottom-3 left-3 p-2.5 rounded-xl bg-card/90 backdrop-blur-xs border border-border text-[11px] shadow-sm space-y-1.5 pointer-events-none">
           <div className="font-semibold text-foreground text-[10px] uppercase tracking-wider mb-1">
-            Legenda
+            Legenda & Bediening
           </div>
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-full bg-blue-600 inline-block shrink-0" />
@@ -588,12 +808,16 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
           </div>
           <div className="flex items-center gap-2">
             <span className="w-4 h-0.5 bg-amber-500 inline-block shrink-0" />
-            <span className="text-muted-foreground">Onderlinge documentverbinding</span>
+            <span className="text-muted-foreground">Onderlinge verbinding</span>
+          </div>
+          <div className="text-[10px] text-muted-foreground/80 pt-1 border-t border-border flex items-center gap-1">
+            <Move className="w-3 h-3 text-accent" />
+            <span>Sleep een document om vrij te verplaatsen</span>
           </div>
         </div>
 
         {/* Node Hover Tooltip Card */}
-        {hoveredNode && (
+        {hoveredNode && !isCursorGrabbing && (
           <div className="absolute top-3 right-3 p-3 rounded-xl bg-card/95 backdrop-blur-xs border border-border shadow-lg max-w-xs pointer-events-none transition-opacity duration-150">
             <div className="flex items-center gap-2 mb-1">
               <FileText className="w-4 h-4 text-blue-500 shrink-0" />
@@ -611,7 +835,7 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
             )}
             <div className="text-[11px] text-accent mt-1 flex items-center gap-1 font-medium">
               <Eye className="w-3 h-3" />
-              Klik om document te openen
+              Klik om document te openen • Sleep om te verplaatsen
             </div>
           </div>
         )}

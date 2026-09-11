@@ -118,6 +118,12 @@ import {
   getSavedWaterschapDocuments,
   saveWaterschapMetadata
 } from "./src/server/waterschapService.js";
+import {
+  startMissingFilesRepair,
+  cancelMissingFilesRepair,
+  getMissingFilesRepairStatus,
+  repairSingleMissingFile,
+} from "./src/server/missingFilesRepairService.js";
 
 // Ensure .env is explicitly loaded from working directory in case of PM2 or systemd execution
 function ensureEnvLoaded() {
@@ -8240,6 +8246,54 @@ Sitemap: ${baseUrl}/sitemap.xml
 
   app.get("/api/council/dossiers/missing-files", optionalAuth, handleMissingDocumentsRoute);
   app.get("/api/council/missing-documents", optionalAuth, handleMissingDocumentsRoute);
+
+  // Trigger automated scraper download for missing files
+  app.post("/api/council/dossiers/repair-missing-files", optionalAuth, async (req: any, res: any) => {
+    try {
+      const { files } = req.body || {};
+      const result = await startMissingFilesRepair(Array.isArray(files) ? files : undefined);
+      res.json(result);
+    } catch (err: any) {
+      console.error("[REPAIR MISSING FILES START ERROR]:", err);
+      res.status(500).json({ error: "Fout bij starten herstelproces: " + err.message });
+    }
+  });
+
+  // Get current status of scraper missing files repair
+  app.get("/api/council/dossiers/repair-missing-files/status", optionalAuth, (_req: any, res: any) => {
+    try {
+      const status = getMissingFilesRepairStatus();
+      res.json(status);
+    } catch (err: any) {
+      console.error("[REPAIR MISSING FILES STATUS ERROR]:", err);
+      res.status(500).json({ error: "Fout bij ophalen herstelstatus: " + err.message });
+    }
+  });
+
+  // Cancel running missing files repair
+  app.post("/api/council/dossiers/repair-missing-files/cancel", optionalAuth, (_req: any, res: any) => {
+    try {
+      const cancelled = cancelMissingFilesRepair();
+      res.json({ success: cancelled, message: cancelled ? "Proces geannuleerd" : "Geen actief proces" });
+    } catch (err: any) {
+      res.status(500).json({ error: "Fout bij annuleren: " + err.message });
+    }
+  });
+
+  // Repair single missing document on demand
+  app.post("/api/council/dossiers/repair-single-file", optionalAuth, async (req: any, res: any) => {
+    try {
+      const { filename } = req.body || {};
+      if (!filename) {
+        return res.status(400).json({ error: "Bestandsnaam is verplicht" });
+      }
+      const result = await repairSingleMissingFile(filename);
+      res.json(result);
+    } catch (err: any) {
+      console.error("[REPAIR SINGLE FILE ERROR]:", err);
+      res.status(500).json({ error: "Fout bij ophalen document: " + err.message });
+    }
+  });
 
   // 2. Get single dossier detail with documents and its network graph
   app.get("/api/council/dossiers/:slug", optionalAuth, (req: any, res: any) => {
