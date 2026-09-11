@@ -149,6 +149,35 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
   const [isCreateDossierOpen, setIsCreateDossierOpen] = useState(false);
   const [isEditDossierOpen, setIsEditDossierOpen] = useState(false);
   const [editingDossier, setEditingDossier] = useState<Dossier | null>(null);
+  const [isClassifying, setIsClassifying] = useState(false);
+
+  const handleBulkClassify = async () => {
+    setIsClassifying(true);
+    const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
+    try {
+      const res = await fetch("/api/council/classify-bulk-documents", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: token ? `Bearer ${token}` : "",
+        },
+        body: JSON.stringify({ force: false }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Fout bij bulk-classificatie");
+      }
+      toast.success(
+        `Bulk-classificatie succesvol! ${data.newlyClassified} nieuwe documenten ingedeeld in dossiers volgens de taxonomie.`
+      );
+      // Refresh dossiers and stats
+      fetchDossiers();
+    } catch (err: any) {
+      toast.error(err.message || "Fout bij uitvoeren bulk-classificatie");
+    } finally {
+      setIsClassifying(false);
+    }
+  };
 
   const fetchDossiers = useCallback(async () => {
     setLoading(true);
@@ -462,6 +491,17 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
             >
               <Upload className="w-3.5 h-3.5 mr-1.5" />
               Documenten Bulk-Uploaden
+            </Button>
+
+            <Button
+              id="btn-run-bulk-classify"
+              onClick={handleBulkClassify}
+              disabled={isClassifying}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold h-9 rounded-xl shadow-xs"
+              title="Breng alle documenten in overijssel, waterschap en algemene uploads samen in dossiers op basis van de taxonomie-richtlijnen"
+            >
+              <Sparkles className={`w-3.5 h-3.5 mr-1.5 ${isClassifying ? 'animate-spin' : ''}`} />
+              {isClassifying ? "Samenbrengen..." : "Breng Samen in Dossiers"}
             </Button>
 
             <Button

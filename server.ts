@@ -91,6 +91,7 @@ import {
   compileSupportDossierForTopic,
   ensureVerifiablePdfFile,
 } from "./src/server/supportDossierService.js";
+import { runBulkClassification } from "./src/server/bulkClassificationService.js";
 import { enrichTopicWithStandpunten } from "./src/lib/standpuntMatcher.js";
 import { scanTopicDocumentsAndMatchStandpunten } from "./src/server/standpuntScannerService.js";
 import {
@@ -8349,6 +8350,22 @@ Sitemap: ${baseUrl}/sitemap.xml
     } catch (err: any) {
       console.error("[COUNCIL DOSSIER DELETE ERROR]:", err);
       res.status(500).json({ error: "Fout bij verwijderen dossier: " + err.message });
+    }
+  });
+
+  // 5B. Bulk classify documents into dossiers according to PDFs' taxonomy principles
+  app.post("/api/council/classify-bulk-documents", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
+    try {
+      const { force } = req.body || {};
+      const result = await runBulkClassification({ force: !!force });
+      res.json({
+        success: true,
+        message: "Bulk-classificatie succesvol afgerond",
+        ...result
+      });
+    } catch (err: any) {
+      console.error("[COUNCIL BULK CLASSIFY ERROR]:", err);
+      res.status(500).json({ error: "Fout tijdens bulk-classificatie: " + err.message });
     }
   });
 
