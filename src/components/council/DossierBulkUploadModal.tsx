@@ -294,8 +294,9 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
               }
             };
 
+            xhr.timeout = 600000; // 10 minutes timeout for large file chunks & zip unzipping
             xhr.onerror = () => reject(new Error("Netwerkonderbreking tijdens deelupload."));
-            xhr.ontimeout = () => reject(new Error("Timeout tijdens deelupload."));
+            xhr.ontimeout = () => reject(new Error("Timeout tijdens deelupload (duurde langer dan 10 minuten)."));
 
             xhr.open("POST", "/api/council/dossiers/chunk-upload");
             if (token) {
@@ -322,6 +323,12 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
               "SERVER",
               `✅ Alle ${totalChunks} chunks van "${file.name}" ontvangen! Server voert samenvoeging en ${isZip ? "ZIP-extractie" : "analyse"} uit...`
             );
+
+            if (chunkResult && Array.isArray(chunkResult.serverLogs)) {
+              chunkResult.serverLogs.forEach((slog: any) => {
+                addLog(slog.level || "info", slog.tag || (isZip ? "UNZIP" : "MATCH"), slog.message);
+              });
+            }
           }
         } catch (err: any) {
           lastError = err;
@@ -485,13 +492,7 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
           }
         );
 
-        // Incorporate server-side logs if provided
-        if (Array.isArray(data.serverLogs)) {
-          data.serverLogs.forEach((slog: any) => {
-            addLog(slog.level || "info", slog.tag || (isZip ? "UNZIP" : "MATCH"), slog.message);
-          });
-        }
-
+        // Completed processing for this large / zip file
         completedFiles += 1;
         accumulatedMatchedCount += data.matchedCount || 0;
         accumulatedUnmatchedCount += data.unmatchedCount || 0;

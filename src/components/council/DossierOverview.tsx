@@ -64,10 +64,12 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
   const [categories, setCategories] = useState<string[]>([]);
   const [stats, setStats] = useState<{
     totalDossiers: number;
+    totalSubdossiers?: number;
     totalDocuments: number;
     totalUploadedFiles: number;
   }>({
     totalDossiers: 0,
+    totalSubdossiers: 0,
     totalDocuments: 0,
     totalUploadedFiles: 0,
   });
@@ -831,7 +833,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
       )}
       
       {/* KPI Stats Strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="p-4 rounded-2xl bg-card border border-border shadow-xs">
           <div className="flex items-center justify-between text-muted-foreground mb-1">
             <span className="text-xs font-semibold">Totaal Dossiers</span>
@@ -841,7 +843,20 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
             {stats.totalDossiers}
           </div>
           <span className="text-[11px] text-muted-foreground">
-            Gedefinieerde dossiers & beleidsthema's
+            Gedefinieerde hoofddossiers
+          </span>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-card border border-border shadow-xs">
+          <div className="flex items-center justify-between text-muted-foreground mb-1">
+            <span className="text-xs font-semibold">Totaal Subdossiers</span>
+            <FolderTree className="w-4 h-4 text-amber-500" />
+          </div>
+          <div className="text-2xl font-bold text-foreground">
+            {stats.totalSubdossiers ?? 0}
+          </div>
+          <span className="text-[11px] text-muted-foreground">
+            Deeldossiers & beleidsthema's
           </span>
         </div>
 

@@ -8049,11 +8049,13 @@ Sitemap: ${baseUrl}/sitemap.xml
       const categoriesSet = new Set<string>();
       let totalDocuments = 0;
       let totalUploadedFiles = 0;
+      let totalSubdossiers = 0;
 
       allDossiers.forEach((d) => {
         if (d.category) categoriesSet.add(d.category);
         totalDocuments += d.documentCount;
         totalUploadedFiles += d.uploadedCount;
+        totalSubdossiers += (d.subdossiers ? d.subdossiers.length : 0);
       });
 
       // Filter & Wijk tailor
@@ -8200,6 +8202,7 @@ Sitemap: ${baseUrl}/sitemap.xml
         categories: Array.from(categoriesSet).sort(),
         stats: {
           totalDossiers: allDossiers.length,
+          totalSubdossiers,
           totalDocuments,
           totalUploadedFiles,
         },
@@ -8796,7 +8799,7 @@ Sitemap: ${baseUrl}/sitemap.xml
         next();
       });
     },
-    (req: any, res: any) => {
+    async (req: any, res: any) => {
       try {
         let files: Express.Multer.File[] = [];
         if (Array.isArray(req.files)) {
@@ -8811,7 +8814,7 @@ Sitemap: ${baseUrl}/sitemap.xml
           return res.status(400).json({ error: "Geen bestanden ontvangen voor upload" });
         }
 
-        const result = processUploadedCouncilDocuments(files, syncFileAcrossUploadDirs);
+        const result = await processUploadedCouncilDocuments(files, syncFileAcrossUploadDirs);
 
         // Background extract and index text for instant full-text search
         if (Array.isArray((result as any).allSavedFiles) && (result as any).allSavedFiles.length > 0) {
@@ -8839,6 +8842,28 @@ Sitemap: ${baseUrl}/sitemap.xml
       }
     }
   );
+
+  // In-flight chunk merge job tracker (prevents race conditions from HTTP retries on the final chunk)
+  const inFlightChunkMerges = new Map<
+    string,
+    {
+      status: "processing" | "completed" | "failed";
+      result?: any;
+      error?: string;
+      promise: Promise<any>;
+      timestamp: number;
+    }
+  >();
+
+  // Cleanup old jobs after 15 minutes
+  setInterval(() => {
+    const now = Date.now();
+    for (const [id, job] of inFlightChunkMerges.entries()) {
+      if (now - job.timestamp > 15 * 60 * 1000) {
+        inFlightChunkMerges.delete(id);
+      }
+    }
+  }, 5 * 60 * 1000);
 
   // 5b. Chunked upload for large council files and multi-100MB ZIP archives
   app.post(
@@ -8877,6 +8902,31 @@ Sitemap: ${baseUrl}/sitemap.xml
         }
 
         const cleanId = String(uploadId).replace(/[^a-zA-Z0-9_-]/g, "_");
+
+        // If this uploadId is already being processed or has finished processing, return that result
+        if (inFlightChunkMerges.has(cleanId)) {
+          const existingJob = inFlightChunkMerges.get(cleanId)!;
+          if (existingJob.status === "completed") {
+            return res.json({
+              success: true,
+              isComplete: true,
+              ...existingJob.result,
+              message: `${existingJob.result.matchedCount} van de ${existingJob.result.totalUploaded} geüploade documenten zijn direct herkend en gekoppeld aan de raadsdossiers!`,
+            });
+          } else if (existingJob.status === "failed") {
+            return res.status(500).json({ error: existingJob.error || "Fout bij eerdere verwerking van chunks" });
+          } else {
+            // Wait for in-flight processing to finish
+            const finalResult = await existingJob.promise;
+            return res.json({
+              success: true,
+              isComplete: true,
+              ...finalResult,
+              message: `${finalResult.matchedCount} van de ${finalResult.totalUploaded} geüploade documenten zijn direct herkend en gekoppeld aan de raadsdossiers!`,
+            });
+          }
+        }
+
         const tempDir = path.join(process.cwd(), "data/temp_chunks", cleanId);
 
         if (!fs.existsSync(tempDir)) {
@@ -8916,65 +8966,91 @@ Sitemap: ${baseUrl}/sitemap.xml
           });
         }
 
-        // All chunks are present! Merge them together into target destination
-        const documentsDir = path.join(process.cwd(), "public/uploads/documents");
-        if (!fs.existsSync(documentsDir)) {
-          fs.mkdirSync(documentsDir, { recursive: true });
-        }
+        // All chunks are present! Start the merge process in-flight promise
+        const mergePromise = (async () => {
+          const documentsDir = path.join(process.cwd(), "public/uploads/documents");
+          if (!fs.existsSync(documentsDir)) {
+            fs.mkdirSync(documentsDir, { recursive: true });
+          }
 
-        const cleanFileName = path.basename(fileName);
-        const mergedFilePath = path.join(documentsDir, cleanFileName);
+          const cleanFileName = path.basename(fileName);
+          const mergedFilePath = path.join(documentsDir, cleanFileName);
 
-        const writeStream = fs.createWriteStream(mergedFilePath);
+          const writeStream = fs.createWriteStream(mergedFilePath);
 
-        for (let i = 0; i < totalChunks; i++) {
-          const partFile = path.join(tempDir, `chunk_${String(i).padStart(6, "0")}.part`);
-          const data = fs.readFileSync(partFile);
-          writeStream.write(data);
-        }
-        writeStream.end();
+          for (let i = 0; i < totalChunks; i++) {
+            const partFile = path.join(tempDir, `chunk_${String(i).padStart(6, "0")}.part`);
+            const data = fs.readFileSync(partFile);
+            writeStream.write(data);
+          }
+          writeStream.end();
 
-        await new Promise((resolve) => writeStream.on("finish", resolve));
+          await new Promise((resolve) => writeStream.on("finish", resolve));
 
-        // Clean up temporary chunk files
-        try {
-          fs.rmSync(tempDir, { recursive: true, force: true });
-        } catch (_e) {}
+          // Clean up temporary chunk files
+          try {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+          } catch (_e) {}
 
-        // Process the merged file through dossier manager
-        const mockMulterFile: Express.Multer.File = {
-          fieldname: "file",
-          originalname: cleanFileName,
-          encoding: "7bit",
-          mimetype: cleanFileName.toLowerCase().endsWith(".zip") ? "application/zip" : "application/pdf",
-          size: fs.statSync(mergedFilePath).size,
-          destination: documentsDir,
-          filename: cleanFileName,
-          path: mergedFilePath,
-          buffer: Buffer.alloc(0),
-        };
+          // Process the merged file through dossier manager
+          const mockMulterFile: Express.Multer.File = {
+            fieldname: "file",
+            originalname: cleanFileName,
+            encoding: "7bit",
+            mimetype: cleanFileName.toLowerCase().endsWith(".zip") ? "application/zip" : "application/pdf",
+            size: fs.statSync(mergedFilePath).size,
+            destination: documentsDir,
+            filename: cleanFileName,
+            path: mergedFilePath,
+            buffer: Buffer.alloc(0),
+          };
 
-        const result = processUploadedCouncilDocuments([mockMulterFile], syncFileAcrossUploadDirs);
+          const result = await processUploadedCouncilDocuments([mockMulterFile], syncFileAcrossUploadDirs);
 
-        // Background indexing
-        if (Array.isArray((result as any).allSavedFiles) && (result as any).allSavedFiles.length > 0) {
-          for (const item of (result as any).allSavedFiles) {
-            indexUploadedFile(item.filename, item.path).catch((idxErr) => {
+          // Background indexing
+          if (Array.isArray((result as any).allSavedFiles) && (result as any).allSavedFiles.length > 0) {
+            for (const item of (result as any).allSavedFiles) {
+              indexUploadedFile(item.filename, item.path).catch((idxErr) => {
+                console.warn("[BACKGROUND INDEX ERR]:", idxErr);
+              });
+            }
+          } else {
+            indexUploadedFile(cleanFileName, mergedFilePath).catch((idxErr) => {
               console.warn("[BACKGROUND INDEX ERR]:", idxErr);
             });
           }
-        } else {
-          indexUploadedFile(cleanFileName, mergedFilePath).catch((idxErr) => {
-            console.warn("[BACKGROUND INDEX ERR]:", idxErr);
-          });
-        }
 
-        res.json({
-          success: true,
-          isComplete: true,
-          ...result,
-          message: `${result.matchedCount} van de ${result.totalUploaded} geüploade documenten zijn direct herkend en gekoppeld aan de raadsdossiers!`,
+          return result;
+        })();
+
+        inFlightChunkMerges.set(cleanId, {
+          status: "processing",
+          promise: mergePromise,
+          timestamp: Date.now(),
         });
+
+        try {
+          const result = await mergePromise;
+          const job = inFlightChunkMerges.get(cleanId);
+          if (job) {
+            job.status = "completed";
+            job.result = result;
+          }
+
+          res.json({
+            success: true,
+            isComplete: true,
+            ...result,
+            message: `${result.matchedCount} van de ${result.totalUploaded} geüploade documenten zijn direct herkend en gekoppeld aan de raadsdossiers!`,
+          });
+        } catch (mergeErr: any) {
+          const job = inFlightChunkMerges.get(cleanId);
+          if (job) {
+            job.status = "failed";
+            job.error = mergeErr.message;
+          }
+          throw mergeErr;
+        }
       } catch (err: any) {
         console.error("[CHUNK MERGE/PROCESS ERROR]:", err);
         res.status(500).json({ error: "Fout bij samenvoegen/verwerken van chunks: " + err.message });
