@@ -195,11 +195,16 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
         const contentType = res.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
           const data = await res.json();
+          const wasRunning = isClassifying;
           setBulkStatus(data);
           if (data && data.isRunning) {
             setIsClassifying(true);
             setIsBulkStatusDismissed(false);
           } else {
+            if (wasRunning && !data.isRunning) {
+              fetchDossiers();
+              toast.success("Herstructurering en taxonomie-classificatie succesvol voltooid!");
+            }
             setIsClassifying(false);
           }
         }
