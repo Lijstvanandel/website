@@ -166,6 +166,20 @@ async function classifyWithGemini(
      - Fysiek onderhoud, riolering, openbare verlichting, begraafplaatsen, gladheidbestrijding, speelplaatsen, bomenkap.
      - Planning & Control (Programmabegroting, Jaarstukken), Belastingverordeningen, Rekenkamerverordeningen, Gemeenschappelijke Regelingen (GR).
 
+  === SUBDOSSIER EXTRACTIE (Gebaseerd op de SKOS Matrix) ===
+  Analyseer de kern/gebeurtenis uit de tekst en koppel dit aan specifieke concepten/SKOS-labels uit de volgende lijst. Combineer of kies de meest relevante als subdossier:
+  - Woningbouw (Inbreiding, Streekcentrum, Architectuur, Participatie)
+  - Waterkwaliteit / Peilbeheer / Natuurwetgeving / Ecologisch Herstel
+  - Stikstof (Jurisprudentie, Landbouw)
+  - Bestuursrechtelijke Handhaving / Procedures / Planschade
+  - Infrastructuur (Onderwijs, Verkeer, Energie, Wegenonderhoud)
+  - Ruimtelijke Ordening (Transformatie, Bedrijven, Buitengebied)
+  - Netcongestie (Transitie, Netuitbreiding)
+  - Erfgoed (Bufferzone)
+  - Economie (Agrarisch, Industriële Uitbreiding)
+  - Sociale Volkshuisvesting / Asielopvang / Leefbaarheid Krimp
+  - Toerisme Overlast / Lokale Belastingen / Mijnbouw / Bodemdaling
+
   === ONTOLOGISCHE ROUTERINGSREGELS (Bypass ambtelijk jargon!) ===
   1. Gemeenschappelijke Regeling (GR) Paradox: Documenten over "GGD IJsselland" moeten naar "Sociaal Domein, Zorg & Jeugd". Documenten over "RSJ IJsselland" moeten naar "Sociaal Domein, Zorg & Jeugd". Documenten over "Omgevingsdienst IJsselland (ODIJ)" moeten naar "Klimaat, Water & Natuur" of "Bestuur, Financiën & Openbare Orde". ALLEEN statutaire of pure procesmatige financiële stukken van een GR gaan naar "Bestuur, Financiën & Openbare Orde".
   2. Zienswijzen en Inspraak: Nooit in een aparte categorie plaatsen. Routeer altijd naar het onderliggende hoofdonderwerp.

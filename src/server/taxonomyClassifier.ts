@@ -308,8 +308,9 @@ export function normalizeSubdossier(
     if (matched) return matched;
   }
 
-  // Exactly one primary subdossier per Hoofddossier unless custom registered
-  return primarySub;
+  // Allow multiple subdossiers (removed the exact 1 primary subdossier restriction)
+  // Any provided subdossier name that is not a generic placeholder is preserved.
+  return s;
 }
 
 function _unusedLegacyTaxonomy(hoofddossier: any, combined: string): string {
