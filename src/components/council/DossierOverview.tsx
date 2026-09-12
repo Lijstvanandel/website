@@ -21,6 +21,8 @@ import {
   AlertTriangle,
   FolderTree,
   Download,
+  Clock,
+  PauseCircle,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -219,6 +221,11 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
   const [isSyncingFilesystem, setIsSyncingFilesystem] = useState(false);
   const [bulkStatus, setBulkStatus] = useState<{
     isRunning: boolean;
+    isPaused?: boolean;
+    pauseReason?: string;
+    pauseRemainingSeconds?: number;
+    pauseResumesAt?: string;
+    ratePerMinute?: number;
     total: number;
     processed: number;
     newlyClassified: number;
@@ -263,11 +270,13 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
 
   useEffect(() => {
     fetchBulkStatus();
+    // Poll every 1.5s while active/paused for responsive countdown, otherwise every 5s
+    const pollTime = bulkStatus?.isRunning || isClassifying ? 1500 : 5000;
     const interval = setInterval(() => {
       fetchBulkStatus();
-    }, 4000);
+    }, pollTime);
     return () => clearInterval(interval);
-  }, [fetchBulkStatus]);
+  }, [fetchBulkStatus, bulkStatus?.isRunning, isClassifying]);
 
   const handleBulkClassify = async () => {
     isClassifyingRef.current = true;
@@ -725,21 +734,35 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
         <div className="bg-card border-2 border-emerald-600/20 p-6 rounded-3xl shadow-sm space-y-4">
           <div className="flex items-center justify-between border-b border-border pb-3">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-xl">
-                <Sparkles className={`w-5 h-5 ${bulkStatus.isRunning ? "animate-spin" : ""}`} />
+              <div className={`p-2 rounded-xl ${bulkStatus.isPaused ? "bg-amber-500/15 text-amber-600 dark:text-amber-400" : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"}`}>
+                {bulkStatus.isPaused ? (
+                  <Clock className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Sparkles className={`w-5 h-5 ${bulkStatus.isRunning ? "animate-spin" : ""}`} />
+                )}
               </div>
               <div>
                 <h3 className="font-bold text-foreground text-sm sm:text-base flex items-center gap-2">
                   Dossier Samenbrengingsproces (Taxonomie-AI)
-                  {!bulkStatus.isRunning && (
+                  {bulkStatus.isPaused ? (
+                    <span className="px-2.5 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 rounded-full dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800 animate-pulse">
+                      ⏸️ Quotum Pauze ({bulkStatus.pauseRemainingSeconds || 60}s)
+                    </span>
+                  ) : !bulkStatus.isRunning ? (
                     <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-800 rounded-full dark:bg-emerald-950 dark:text-emerald-300">
                       Voltooid
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
+                      ~55 docs/min
                     </span>
                   )}
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {bulkStatus.isRunning 
-                    ? `Actief bezig met analyseren en classificeren van bestanden volgens de Steenwijkerlandse datataxonomie...` 
+                  {bulkStatus.isPaused
+                    ? `Gepauzeerd wegens Gemini API rate limit. Het script wacht op quotum-reset en hervat automatisch met de AI...`
+                    : bulkStatus.isRunning 
+                    ? `Actief bezig met analyseren en classificeren van bestanden volgens de Steenwijkerlandse datataxonomie (rate-limiting queue actief)...` 
                     : "Alle bestanden zijn geanalyseerd en ingedeeld volgens de ontologische routeringsregels."}
                 </p>
               </div>
@@ -766,6 +789,38 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
             </div>
           </div>
 
+          {/* Prominent Rate-Limit Pause Banner with Live Countdown */}
+          {bulkStatus.isPaused && (
+            <div className="bg-amber-500/10 border-2 border-amber-500/40 text-amber-950 dark:text-amber-100 p-4 rounded-2xl flex items-start gap-3.5 shadow-xs animate-in fade-in duration-300">
+              <div className="p-2.5 bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded-xl shrink-0 mt-0.5">
+                <Clock className="w-5 h-5 animate-spin" />
+              </div>
+              <div className="space-y-1.5 text-xs flex-1">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <span className="font-bold text-sm text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                    <PauseCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                    Gemini API Quotum Pauze (429 RESOURCE_EXHAUSTED)
+                  </span>
+                  {bulkStatus.pauseRemainingSeconds !== undefined && bulkStatus.pauseRemainingSeconds > 0 && (
+                    <span className="px-2.5 py-1 rounded-lg bg-amber-200/90 dark:bg-amber-950 text-amber-950 dark:text-amber-100 font-mono font-bold text-xs tracking-wider border border-amber-400/50 shadow-2xs">
+                      Hervatting in {bulkStatus.pauseRemainingSeconds}s
+                    </span>
+                  )}
+                </div>
+                <p className="text-amber-800 dark:text-amber-300 leading-relaxed text-xs">
+                  {bulkStatus.pauseReason || "De Gemini API heeft het aantal toegestane verzoeken bereikt. Het proces pauzeert en wacht tot het quotum is gereset (vaak na 1 minuut). De data wordt NIET overgeslagen of gedegradeerd naar trefwoordherkenning, maar zuiver verwerkt met de daadwerkelijke AI."}
+                </p>
+                {bulkStatus.pauseResumesAt && (
+                  <div className="flex items-center gap-3 text-[11px] text-amber-700 dark:text-amber-400 font-mono pt-1.5 border-t border-amber-500/20">
+                    <span>Verwachte hervatting: <strong>{bulkStatus.pauseResumesAt}</strong></span>
+                    <span>•</span>
+                    <span className="truncate max-w-[280px]">In de AI-wachtrij: <strong>{bulkStatus.activeFile}</strong></span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Counts Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-muted/30 p-3 rounded-2xl border border-border">
             <div className="text-center p-2">
@@ -789,7 +844,14 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
             <div className="text-center p-2 border-l border-border">
               <span className="block text-[11px] text-muted-foreground font-medium">Status</span>
               <span className="text-sm font-bold flex items-center justify-center gap-1.5 mt-1">
-                {bulkStatus.isRunning ? (
+                {bulkStatus.isPaused ? (
+                  <>
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping inline-block" />
+                    <span className="text-amber-600 dark:text-amber-400 font-bold">
+                      Pauze ({bulkStatus.pauseRemainingSeconds !== undefined ? `${bulkStatus.pauseRemainingSeconds}s` : "60s"})
+                    </span>
+                  </>
+                ) : bulkStatus.isRunning ? (
                   <>
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
                     <span className="text-emerald-600 dark:text-emerald-400">Bezig...</span>
@@ -809,7 +871,11 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
             <div className="space-y-1.5">
               <div className="flex justify-between text-xs font-semibold text-muted-foreground px-1">
                 <span className="truncate max-w-[70%]">
-                  {bulkStatus.activeFile ? `Verwerkt nu: ${bulkStatus.activeFile}` : "Bestanden verwerkt"}
+                  {bulkStatus.isPaused 
+                    ? `⏸️ Gepauzeerd voor: ${bulkStatus.activeFile} (wachten op quotum)`
+                    : bulkStatus.activeFile 
+                    ? `Verwerkt nu: ${bulkStatus.activeFile}` 
+                    : "Bestanden verwerkt"}
                 </span>
                 <span>
                   {Math.round((bulkStatus.processed / bulkStatus.total) * 100)}%
@@ -817,7 +883,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
               </div>
               <div className="w-full bg-muted rounded-full h-2.5 overflow-hidden border border-border">
                 <div 
-                  className="bg-emerald-600 h-2.5 rounded-full transition-all duration-300"
+                  className={`h-2.5 rounded-full transition-all duration-300 ${bulkStatus.isPaused ? "bg-amber-500 animate-pulse" : "bg-emerald-600"}`}
                   style={{ width: `${(bulkStatus.processed / bulkStatus.total) * 100}%` }}
                 />
               </div>

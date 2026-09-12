@@ -28,6 +28,19 @@ let geminiClient: GoogleGenAI | null = null;
 let isGeminiQuotaExhausted = false;
 let geminiQuotaExhaustedMessage = "";
 
+export const RATE_LIMIT_DELAY_MS = 1100; // ~55 requests per minute, staying safely under the 60 RPM limit
+
+export class GeminiQuotaExceededError extends Error {
+  retryAfterSeconds: number;
+  isPrepaymentDepleted: boolean;
+  constructor(message: string, retryAfterSeconds = 60, isPrepaymentDepleted = false) {
+    super(message);
+    this.name = "GeminiQuotaExceededError";
+    this.retryAfterSeconds = retryAfterSeconds;
+    this.isPrepaymentDepleted = isPrepaymentDepleted;
+  }
+}
+
 export function getGeminiQuotaStatus(): { exhausted: boolean; message: string } {
   return {
     exhausted: isGeminiQuotaExhausted,
@@ -41,7 +54,6 @@ export function resetGeminiQuotaStatus(): void {
 }
 
 function getGemini(): GoogleGenAI | null {
-  if (isGeminiQuotaExhausted) return null;
   if (!geminiClient && process.env.GEMINI_API_KEY) {
     geminiClient = new GoogleGenAI({
       apiKey: process.env.GEMINI_API_KEY,
@@ -234,18 +246,15 @@ async function classifyWithGemini(
       errMsg.includes("RESOURCE_EXHAUSTED") ||
       errMsg.includes("prepayment") ||
       errMsg.includes("depleted") ||
-      errMsg.includes("quota");
+      errMsg.includes("quota") ||
+      errMsg.includes("rate limit") ||
+      errMsg.includes("Too Many Requests");
 
     if (isQuota) {
-      if (!isGeminiQuotaExhausted) {
-        isGeminiQuotaExhausted = true;
-        geminiQuotaExhaustedMessage = "Gemini API credits opgebruikt of quota bereikt (429 RESOURCE_EXHAUSTED). Heuristische taxonomie-classificatie geactiveerd.";
-        console.warn(`[BULK CLASS] ${geminiQuotaExhaustedMessage}`);
-      }
-    } else {
-      console.warn(`[BULK CLASS] Gemini failed for ${filename}:`, errMsg);
+      const isPrepayment = errMsg.includes("prepayment") || errMsg.includes("depleted");
+      throw new GeminiQuotaExceededError(errMsg, 60, isPrepayment);
     }
-    return runFallbackClassification(text, filename);
+    throw err;
   }
 
   const parsed = JSON.parse(response?.text || "{}");
@@ -254,6 +263,11 @@ async function classifyWithGemini(
 
 export interface ClassificationProgress {
   isRunning: boolean;
+  isPaused: boolean;
+  pauseReason?: string;
+  pauseRemainingSeconds?: number;
+  pauseResumesAt?: string;
+  ratePerMinute: number;
   total: number;
   processed: number;
   newlyClassified: number;
@@ -264,6 +278,11 @@ export interface ClassificationProgress {
 
 let activeProgress: ClassificationProgress = {
   isRunning: false,
+  isPaused: false,
+  pauseReason: undefined,
+  pauseRemainingSeconds: 0,
+  pauseResumesAt: undefined,
+  ratePerMinute: 55,
   total: 0,
   processed: 0,
   newlyClassified: 0,
@@ -279,6 +298,10 @@ export function getBulkClassificationStatus(): ClassificationProgress {
 export function cancelBulkClassification(): void {
   if (activeProgress.isRunning) {
     activeProgress.isRunning = false;
+    activeProgress.isPaused = false;
+    activeProgress.pauseRemainingSeconds = 0;
+    activeProgress.pauseReason = undefined;
+    activeProgress.pauseResumesAt = undefined;
     activeProgress.logs.push("Proces geannuleerd door de gebruiker.");
   }
 }
@@ -392,14 +415,96 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
         }
 
         let meta: Partial<RaadsstukMetadata> = {};
-        if (isGeminiQuotaExhausted) {
+        let success = false;
+        let attempts = 0;
+        const maxNonQuotaRetries = 3;
+
+        // If no API key configured, use heuristic
+        if (!process.env.GEMINI_API_KEY) {
           meta = runFallbackClassification(text, file.filename);
-        } else {
+          success = true;
+        }
+
+        while (!success && activeProgress.isRunning) {
+          attempts++;
           try {
+            // Respect rate limiting queue delay (~55 requests/min)
+            await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_DELAY_MS));
+            if (!activeProgress.isRunning) break;
+
             meta = await classifyWithGemini(text, file.filename, file.relativePath);
-          } catch (_err) {
+            success = true;
+          } catch (err: any) {
+            if (err instanceof GeminiQuotaExceededError || err?.name === "GeminiQuotaExceededError") {
+              const waitSeconds = err.retryAfterSeconds || 60;
+              const resumeDate = new Date(Date.now() + waitSeconds * 1000);
+              const resumeAt = resumeDate.toLocaleTimeString("nl-NL", {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit"
+              });
+
+              activeProgress.isPaused = true;
+              activeProgress.pauseRemainingSeconds = waitSeconds;
+              activeProgress.pauseResumesAt = resumeAt;
+              activeProgress.pauseReason = err.isPrepaymentDepleted
+                ? `Gemini API melding: Prepayment credits / quotum bereikt (429 RESOURCE_EXHAUSTED). Pauzeert ${waitSeconds}s tot herstel...`
+                : `Gemini API rate limit per minuut bereikt (429 RESOURCE_EXHAUSTED). Pauzeert ${waitSeconds}s tot quotum-reset...`;
+
+              activeProgress.logs.push(`================================================================`);
+              activeProgress.logs.push(`[RATE LIMIT PAUZE] ⏸️ 429 RESOURCE_EXHAUSTED van Gemini API.`);
+              activeProgress.logs.push(`[RATE LIMIT PAUZE] Wachten voor ${waitSeconds} seconden tot quotum reset (hervatting om ${resumeAt}).`);
+              activeProgress.logs.push(`[RATE LIMIT PAUZE] Bestand "${file.filename}" blijft in de AI-wachtrij en wordt direct opnieuw geanalyseerd met AI.`);
+              activeProgress.logs.push(`================================================================`);
+              if (activeProgress.logs.length > 300) activeProgress.logs.shift();
+
+              // Checkpoint save during pause so all processed files are committed
+              saveMasterMetadata(reclassifiedMetadata);
+
+              // Live countdown ticks
+              for (let sec = waitSeconds; sec > 0; sec--) {
+                if (!activeProgress.isRunning) break;
+                activeProgress.pauseRemainingSeconds = sec;
+                if (sec === 45 || sec === 30 || sec === 15 || sec === 5) {
+                  activeProgress.logs.push(`[PAUZE-TIMER] ⏳ Nog ${sec}s wachten tot herstart Gemini AI (hervat om ${resumeAt})...`);
+                  if (activeProgress.logs.length > 300) activeProgress.logs.shift();
+                }
+                await new Promise((r) => setTimeout(r, 1000));
+              }
+
+              if (!activeProgress.isRunning) {
+                activeProgress.isPaused = false;
+                break;
+              }
+
+              activeProgress.isPaused = false;
+              activeProgress.pauseReason = undefined;
+              activeProgress.pauseRemainingSeconds = 0;
+              activeProgress.pauseResumesAt = undefined;
+              activeProgress.logs.push(`[HERVAT] ▶️ Quotum wachttijd verstreken (${resumeAt}). Gemini AI classificatie wordt nu hervat voor "${file.filename}"...`);
+              if (activeProgress.logs.length > 300) activeProgress.logs.shift();
+
+              // Retry this same file in the while loop with Gemini!
+              continue;
+            }
+
+            // Transient network error (500, 503, connection reset)
+            if (attempts < maxNonQuotaRetries && (err?.message?.includes("503") || err?.message?.includes("500") || err?.message?.includes("ECONNRESET") || err?.message?.includes("fetch failed"))) {
+              activeProgress.logs.push(`  ↳ Tijdelijke netwerkfout (${err?.message || 500}). Herkansen over 5s (poging ${attempts}/${maxNonQuotaRetries})...`);
+              await new Promise((r) => setTimeout(r, 5000));
+              continue;
+            }
+
+            // Other unrecoverable error on this file
+            activeProgress.logs.push(`  ↳ [WAARSCHUWING] AI-analyse mislukt voor "${file.filename}" (${err?.message || "fout"}). Heuristiek gebruikt voor dit specifieke bestand.`);
             meta = runFallbackClassification(text, file.filename);
+            success = true;
           }
+        }
+
+        if (!activeProgress.isRunning) {
+          activeProgress.logs.push("Classificatie handmatig gestopt.");
+          break;
         }
 
         // Prepare complete metadata record with strict taxonomy normalization
@@ -431,6 +536,11 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
         
         if (activeProgress.logs.length > 300) {
           activeProgress.logs.shift();
+        }
+
+        // Periodic checkpoint save every 20 newly classified items
+        if (activeProgress.newlyClassified > 0 && activeProgress.newlyClassified % 20 === 0) {
+          saveMasterMetadata(reclassifiedMetadata);
         }
       }
 
@@ -499,13 +609,36 @@ export async function runBulkClassification(options: { force?: boolean } = {}): 
     }
 
     let meta: Partial<RaadsstukMetadata> = {};
-    if (isGeminiQuotaExhausted) {
+    let success = false;
+    let attempts = 0;
+    const maxNonQuotaRetries = 3;
+
+    if (!process.env.GEMINI_API_KEY) {
       meta = runFallbackClassification(text, file.filename);
-    } else {
+      success = true;
+    }
+
+    while (!success) {
+      attempts++;
       try {
+        await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_DELAY_MS));
         meta = await classifyWithGemini(text, file.filename, file.relativePath);
-      } catch (_err) {
+        success = true;
+      } catch (err: any) {
+        if (err instanceof GeminiQuotaExceededError || err?.name === "GeminiQuotaExceededError") {
+          const waitSeconds = err.retryAfterSeconds || 60;
+          console.warn(`[BULK CLASS] Quota 429 encountered. Waiting ${waitSeconds}s before retrying...`);
+          await new Promise((r) => setTimeout(r, waitSeconds * 1000));
+          continue;
+        }
+
+        if (attempts < maxNonQuotaRetries && (err?.message?.includes("503") || err?.message?.includes("500") || err?.message?.includes("ECONNRESET"))) {
+          await new Promise((r) => setTimeout(r, 5000));
+          continue;
+        }
+
         meta = runFallbackClassification(text, file.filename);
+        success = true;
       }
     }
 
