@@ -257,15 +257,12 @@ const WijkDetail = () => {
               <div className="inline-flex items-center gap-2 px-3 py-1 border border-accent/40 bg-black/60 backdrop-blur rounded mb-4">
                 <MapPin className="w-3 h-3 text-accent" />
                 <span className="text-xs uppercase tracking-[0.25em] text-accent font-semibold">
-                  {wijk.type === "Wijk" ? "Wijk in Steenwijk" : `Kern in ${wijk.gemeente}`}
+                  {wijk.type === "Kern" ? "Kern" : "Wijk"}
                 </span>
               </div>
               <h1 className="font-display text-5xl md:text-7xl lg:text-8xl text-white tracking-tight leading-none mb-3">
                 {wijk.naam}
               </h1>
-              <p className="text-xs text-white/70 uppercase tracking-widest">
-                Gemeente {wijk.gemeente}
-              </p>
             </div>
 
             <div className="bg-black/40 backdrop-blur border border-white/10 p-6 rounded-lg">

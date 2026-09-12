@@ -30,14 +30,18 @@ function ensureMasterDirs() {
 
 // Helper to sanitize slug
 export function slugify(text: string): string {
+  if (!text) return "";
   return text
     .toString()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim()
     .replace(/\s+/g, "-")
     .replace(/&/g, "-en-")
     .replace(/[^\w-]+/g, "")
-    .replace(/--+/g, "-");
+    .replace(/--+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 // Curated high-resolution thumbnails for Subdossiers
@@ -516,108 +520,11 @@ export function detectWijkOrKern(text: string): string | undefined {
   return undefined;
 }
 
-// Detect dossier and subdossier from keywords and subdirectory
+// Detect dossier and subdossier from keywords and subdirectory using canonical 10-hoofddossier taxonomy
 export function detectDossierAndSubdossier(text: string, subFolder?: string): { dossier: string; subdossier: string } {
-  const l = text.toLowerCase();
-
-  // 1. Ruimte, Wonen & Bereikbaarheid
-  if (l.includes("woningbouw") || l.includes("woonvisie") || l.includes("nieuwbouw") || l.includes("kavels") || l.includes("starterslening") || l.includes("huurwoning") || l.includes("woonwagen") || l.includes("spoorzone") || l.includes("gebiedsontwikkeling") || l.includes("vrije veld") || l.includes("steenwijk oost") || l.includes("bestemmingsplan") || l.includes("omgevingsplan") || l.includes("omgevingsvisie") || l.includes("omgevingsvergunning") || l.includes("ruimtelij")) {
-    if (l.includes("spoorzone") || l.includes("gebiedsontwikkeling") || l.includes("vrije veld") || l.includes("steenwijk oost")) {
-      return { dossier: "Ruimte, Wonen & Bereikbaarheid", subdossier: "Gebiedsontwikkeling Steenwijk Oost" };
-    }
-    if (l.includes("woonwagen")) {
-      return { dossier: "Ruimte, Wonen & Bereikbaarheid", subdossier: "Woonwagenbeleid & Standplaatsen" };
-    }
-    return { dossier: "Ruimte, Wonen & Bereikbaarheid", subdossier: "Woningbouw & Ruimtelijke Ordening" };
-  }
-  if (l.includes("verkeer") || l.includes("wegen") || l.includes("n333") || l.includes("n334") || l.includes("rondweg") || l.includes("fietspad") || l.includes("parkeer")) {
-    return { dossier: "Ruimte, Wonen & Bereikbaarheid", subdossier: "Wegen, Verkeer & Infrastructuur" };
-  }
-
-  // 2. Klimaat, Water & Natuur
-  if (l.includes("stikstof") || l.includes("aerius") || l.includes("natura 2000") || l.includes("weerribben") || l.includes("pfas") || l.includes("water") || l.includes("peilbesluit") || l.includes("bodem") || l.includes("natuur")) {
-    if (l.includes("stikstof") || l.includes("aerius")) {
-      return { dossier: "Klimaat, Water & Natuur", subdossier: "Stikstof & Natura 2000" };
-    }
-    if (l.includes("weerribben") || l.includes("wieden") || l.includes("peilbesluit") || l.includes("water")) {
-      return { dossier: "Klimaat, Water & Natuur", subdossier: "Waterbeheer & Weerribben-Wieden" };
-    }
-    return { dossier: "Klimaat, Water & Natuur", subdossier: "Natuur, Bodem & Milieu" };
-  }
-  if (l.includes("zonne") || l.includes("zonnepark") || l.includes("zonneweide") || l.includes("eeserwold") || l.includes("de hoop blokzijl") || l.includes("windenergie") || l.includes("windturbine") || l.includes("windmolen") || l.includes("windpark") || l.includes("energie")) {
-    if (l.includes("wind")) {
-      return { dossier: "Klimaat, Water & Natuur", subdossier: "Windenergie & Programmering" };
-    }
-    return { dossier: "Klimaat, Water & Natuur", subdossier: "Zonne-energie & Energietransitie" };
-  }
-  if (l.includes("icebear") || l.includes("ice bear") || (l.includes("groot verlaat") && (l.includes("geur") || l.includes("emissie")))) {
-    return { dossier: "Klimaat, Water & Natuur", subdossier: "Handhaving IceBear" };
-  }
-
-  // 3. Sociaal Domein, Zorg & Jeugd
-  if (l.includes("jeugdzorg") || l.includes("jeugdhulp") || l.includes("rsj") || l.includes("ijsselland") || l.includes("kindermishandeling") || l.includes("huiselijk geweld")) {
-    if (l.includes("huiselijk geweld") || l.includes("kindermishandeling")) {
-      return { dossier: "Sociaal Domein, Zorg & Jeugd", subdossier: "Aanpak Huiselijk Geweld" };
-    }
-    return { dossier: "Sociaal Domein, Zorg & Jeugd", subdossier: "Jeugdzorg (RSJ IJsselland)" };
-  }
-  if (l.includes("schuldhulp") || l.includes("armoede") || l.includes("kredietbank") || l.includes("sociaal werk") || l.includes("participatiewet") || l.includes("aan de slag") || l.includes("werkvoorziening") || l.includes("bijstand")) {
-    if (l.includes("participatiewet") || l.includes("aan de slag") || l.includes("bijstand") || l.includes("werkvoorziening")) {
-      return { dossier: "Sociaal Domein, Zorg & Jeugd", subdossier: "Participatiewet & Werk" };
-    }
-    return { dossier: "Sociaal Domein, Zorg & Jeugd", subdossier: "Schuldhulpverlening & Armoede" };
-  }
-  if (l.includes("asiel") || l.includes("oekraïne") || l.includes("oekraine") || l.includes("vluchteling") || l.includes("spreidingswet") || l.includes("fletcher")) {
-    return { dossier: "Sociaal Domein, Zorg & Jeugd", subdossier: "Asiel- en Oekraïneopvang" };
-  }
-  if (l.includes("zorg") || l.includes("wmo") || l.includes("gezondheid") || l.includes("ggd") || l.includes("welzijn")) {
-    return { dossier: "Sociaal Domein, Zorg & Jeugd", subdossier: "Zorg, WMO & Gezondheid" };
-  }
-
-  // 4. Lokale Economie, Toerisme & Cultuur
-  if (l.includes("toerisme") || l.includes("recreatie") || l.includes("haven") || l.includes("woonschepen") || l.includes("rondvaart") || l.includes("pacht") || l.includes("landbouw") || l.includes("agrarisch") || l.includes("didam") || l.includes("economie")) {
-    if (l.includes("pacht") || l.includes("agrarisch") || l.includes("didam")) {
-      return { dossier: "Lokale Economie, Toerisme & Cultuur", subdossier: "Pachtbeleid & Agrarische Zaken" };
-    }
-    return { dossier: "Lokale Economie, Toerisme & Cultuur", subdossier: "Recreatie & Toerisme" };
-  }
-  if (l.includes("museum") || l.includes("spijkervetstallen") || l.includes("cultuur") || l.includes("theater") || l.includes("meenthe") || l.includes("kunst") || l.includes("monument")) {
-    if (l.includes("museum") || l.includes("spijkervetstallen")) {
-      return { dossier: "Lokale Economie, Toerisme & Cultuur", subdossier: "Nieuw museum Steenwijkerland" };
-    }
-    return { dossier: "Lokale Economie, Toerisme & Cultuur", subdossier: "Kunst, Cultuur & Erfgoed" };
-  }
-
-  // 5. Bestuur, Financiën & Openbare Orde
-  if (l.includes("veiligheid") || l.includes("brandweer") || l.includes("apv") || l.includes("politie") || l.includes("handhaving") || l.includes("openbare orde") || l.includes("crisis")) {
-    return { dossier: "Bestuur, Financiën & Openbare Orde", subdossier: "Veiligheid, Toezicht & Handhaving" };
-  }
-  if (l.includes("begroting") || l.includes("kadernota") || l.includes("jaarrekening") || l.includes("belasting") || l.includes("ozb") || l.includes("financi") || l.includes("subsidie")) {
-    return { dossier: "Bestuur, Financiën & Openbare Orde", subdossier: "Financiën & Bedrijfsvoering" };
-  }
-  if (l.includes("openbare ruimte") || l.includes("groen") || l.includes("bomen") || l.includes("speelplek") || l.includes("beschoeiing") || l.includes("onderhoud")) {
-    return { dossier: "Bestuur, Financiën & Openbare Orde", subdossier: "Beheer Openbare Ruimte" };
-  }
-  if (l.includes("archief") || l.includes("gr ") || l.includes("gemeenschappelijke regeling") || l.includes("zienswijze") || l.includes("bestuur") || l.includes("raad")) {
-    if (l.includes("archief")) {
-      return { dossier: "Bestuur, Financiën & Openbare Orde", subdossier: "Archiefbeheer" };
-    }
-    if (l.includes("gr ") || l.includes("gemeenschappelijke regeling")) {
-      return { dossier: "Bestuur, Financiën & Openbare Orde", subdossier: "Gemeenschappelijke Regelingen (GR)" };
-    }
-    return { dossier: "Bestuur, Financiën & Openbare Orde", subdossier: "Algemeen Bestuur & Organisatie" };
-  }
-
-  // Fallbacks based on subFolders if not caught by keywords
-  if (subFolder === "waterschap") {
-    return { dossier: "Klimaat, Water & Natuur", subdossier: "Waterbeheer & Weerribben-Wieden" };
-  }
-  if (subFolder === "overijssel") {
-    return { dossier: "Bestuur, Financiën & Openbare Orde", subdossier: "Provinciaal Beleid & Kaders" };
-  }
-
-  // Absolute fallback
-  return { dossier: "Bestuur, Financiën & Openbare Orde", subdossier: "Algemeen Bestuur & Organisatie" };
+  const hoofddossier = normalizeHoofddossier(subFolder, text, "", text);
+  const subdossier = normalizeSubdossier(hoofddossier, undefined, text, "", text);
+  return { dossier: hoofddossier, subdossier };
 }
 
 // Generate Excel-compatible master metadata CSV with Dutch formatting
@@ -1172,15 +1079,23 @@ export function getAllDossiers(
   return dossiers;
 }
 
-// Get subnetwork graph for a specific dossier - ONLY documents connected to each other, with optional subdossier filtering
+// Get subnetwork graph for a specific dossier - fast inverted index, optimized for large document collections
 export function getDossierGraph(dossierTitleOrSlug: string, db?: any, subdossierSlugOrTitle?: string): NetworkGraphData {
   const allDossiers = getAllDossiers(
     db?.customDossiers || [],
     db?.deletedDossierSlugs || [],
     db?.customSubdossiers || {}
   );
+  const cleanSearch = (dossierTitleOrSlug || "").toLowerCase().trim();
+  const searchSlug = slugify(cleanSearch);
   const matchedDossier = allDossiers.find(
-    (d) => d.id === dossierTitleOrSlug || d.slug === dossierTitleOrSlug || d.title.toLowerCase() === dossierTitleOrSlug.toLowerCase()
+    (d) =>
+      d.id?.toLowerCase() === cleanSearch ||
+      d.slug?.toLowerCase() === cleanSearch ||
+      d.title.toLowerCase() === cleanSearch ||
+      slugify(d.slug || "") === searchSlug ||
+      slugify(d.title || "") === searchSlug ||
+      (d.id && slugify(d.id) === searchSlug)
   );
 
   const fullGraph = getRawNetworkGraph();
@@ -1201,24 +1116,27 @@ export function getDossierGraph(dossierTitleOrSlug: string, db?: any, subdossier
     }
   }
 
-  const docFileNames = new Set(docs.map((d) => d.bestandsnaam));
+  // To guarantee sub-50ms performance and fluid rendering when a dossier contains thousands of documents,
+  // we sample the active graph nodes up to 150 items and build connections via an inverted index.
+  const MAX_GRAPH_DOCS = 150;
+  const sampleDocs = docs.length > MAX_GRAPH_DOCS ? docs.slice(0, MAX_GRAPH_DOCS) : docs;
+  const docFileNames = new Set(sampleDocs.map((d) => d.bestandsnaam));
   const docEdgesMap = new Map<string, { source: string; target: string; reasons: string[] }>();
 
-  // Map intermediary targets (legislation, references, relations) to documents in this dossier
-  const targetToDocs = new Map<string, Set<string>>();
+  // 1. Intermediary targets from full graph
+  const targetToDocs = new Map<string, string[]>();
   fullGraph.edges.forEach((e) => {
     if (docFileNames.has(e.source)) {
-      if (!targetToDocs.has(e.target)) targetToDocs.set(e.target, new Set());
-      targetToDocs.get(e.target)!.add(e.source);
+      if (!targetToDocs.has(e.target)) targetToDocs.set(e.target, []);
+      targetToDocs.get(e.target)!.push(e.source);
     }
   });
 
-  // 1. Connect documents that share references, legislation, or joint schemes
-  for (const [target, docSet] of targetToDocs.entries()) {
-    const matchingDocs = Array.from(docSet);
+  for (const [target, matchingDocs] of targetToDocs.entries()) {
     if (matchingDocs.length > 1) {
-      for (let i = 0; i < matchingDocs.length; i++) {
-        for (let j = i + 1; j < matchingDocs.length; j++) {
+      const limit = Math.min(matchingDocs.length, 8);
+      for (let i = 0; i < limit; i++) {
+        for (let j = i + 1; j < limit; j++) {
           const key = [matchingDocs[i], matchingDocs[j]].sort().join("|||");
           if (!docEdgesMap.has(key)) {
             docEdgesMap.set(key, { source: matchingDocs[i], target: matchingDocs[j], reasons: [] });
@@ -1229,55 +1147,59 @@ export function getDossierGraph(dossierTitleOrSlug: string, db?: any, subdossier
     }
   }
 
-  // 2. Connect documents via direct mentions in relaties
-  docs.forEach((docA) => {
-    const relStr = Array.isArray(docA.relaties)
-      ? docA.relaties.join(" ")
-      : typeof docA.relaties === "string"
-      ? docA.relaties
-      : "";
-    docs.forEach((docB) => {
-      if (docA.bestandsnaam !== docB.bestandsnaam) {
-        if (relStr && (relStr.includes(docB.bestandsnaam) || (docB.titel && relStr.includes(docB.titel)))) {
-          const key = [docA.bestandsnaam, docB.bestandsnaam].sort().join("|||");
+  // 2. Inverted index for entity matching (O(N) instead of O(N^2))
+  const entityToDocs = new Map<string, string[]>();
+  sampleDocs.forEach((doc) => {
+    const ents = (Array.isArray(doc.entiteiten) ? doc.entiteiten : [])
+      .map((s) => s.trim().toLowerCase())
+      .filter((s) => s.length > 3 && s !== "gemeente" && s !== "steenwijkerland");
+    ents.forEach((ent) => {
+      if (!entityToDocs.has(ent)) entityToDocs.set(ent, []);
+      entityToDocs.get(ent)!.push(doc.bestandsnaam);
+    });
+  });
+
+  for (const [ent, matchingDocs] of entityToDocs.entries()) {
+    if (matchingDocs.length > 1 && matchingDocs.length <= 40) {
+      const limit = Math.min(matchingDocs.length, 6);
+      for (let i = 0; i < limit; i++) {
+        for (let j = i + 1; j < limit; j++) {
+          const key = [matchingDocs[i], matchingDocs[j]].sort().join("|||");
           if (!docEdgesMap.has(key)) {
-            docEdgesMap.set(key, { source: docA.bestandsnaam, target: docB.bestandsnaam, reasons: [] });
+            docEdgesMap.set(key, { source: matchingDocs[i], target: matchingDocs[j], reasons: [] });
+          }
+          docEdgesMap.get(key)!.reasons.push(`Gedeeld onderwerp: ${ent}`);
+        }
+      }
+    }
+  }
+
+  // 3. Direct references / relations
+  const filenameSet = new Set(sampleDocs.map((d) => d.bestandsnaam.toLowerCase()));
+  sampleDocs.forEach((docA) => {
+    const relStr = (Array.isArray(docA.relaties) ? docA.relaties.join(" ") : (docA.relaties || "")).toLowerCase();
+    if (relStr) {
+      for (const fn of filenameSet) {
+        if (fn !== docA.bestandsnaam.toLowerCase() && relStr.includes(fn)) {
+          const key = [docA.bestandsnaam, fn].sort().join("|||");
+          if (!docEdgesMap.has(key)) {
+            docEdgesMap.set(key, { source: docA.bestandsnaam, target: fn, reasons: [] });
           }
           docEdgesMap.get(key)!.reasons.push("Directe verwijzing");
         }
       }
-    });
-  });
-
-  // 3. Connect documents that share significant entities/topics
-  docs.forEach((docA, idxA) => {
-    const entA = (Array.isArray(docA.entiteiten) ? docA.entiteiten : [])
-      .map((s) => s.trim().toLowerCase())
-      .filter((s) => s.length > 3);
-    for (let idxB = idxA + 1; idxB < docs.length; idxB++) {
-      const docB = docs[idxB];
-      const entB = (Array.isArray(docB.entiteiten) ? docB.entiteiten : [])
-        .map((s) => s.trim().toLowerCase())
-        .filter((s) => s.length > 3);
-      const common = entA.filter((e) => entB.includes(e));
-      if (common.length > 0) {
-        const key = [docA.bestandsnaam, docB.bestandsnaam].sort().join("|||");
-        if (!docEdgesMap.has(key)) {
-          docEdgesMap.set(key, { source: docA.bestandsnaam, target: docB.bestandsnaam, reasons: [] });
-        }
-        docEdgesMap.get(key)!.reasons.push(`Gedeeld onderwerp: ${common.slice(0, 2).join(", ")}`);
-      }
     }
   });
 
-  // 4. If multiple documents exist in this dossier and some have no connections, link sequentially in procedural order
-  if (docs.length > 1) {
-    for (let i = 0; i < docs.length - 1; i++) {
-      const key = [docs[i].bestandsnaam, docs[i + 1].bestandsnaam].sort().join("|||");
+  // 4. Sequential connection for first items if edges are sparse
+  if (sampleDocs.length > 1 && docEdgesMap.size < 5) {
+    const seqLimit = Math.min(sampleDocs.length - 1, 20);
+    for (let i = 0; i < seqLimit; i++) {
+      const key = [sampleDocs[i].bestandsnaam, sampleDocs[i + 1].bestandsnaam].sort().join("|||");
       if (!docEdgesMap.has(key)) {
         docEdgesMap.set(key, {
-          source: docs[i].bestandsnaam,
-          target: docs[i + 1].bestandsnaam,
+          source: sampleDocs[i].bestandsnaam,
+          target: sampleDocs[i + 1].bestandsnaam,
           reasons: ["Procedurele opvolging"],
         });
       }
@@ -1303,9 +1225,9 @@ export function getDossierGraph(dossierTitleOrSlug: string, db?: any, subdossier
     connectedDocIds.add(e.target);
   });
 
-  // Return ONLY documents that are connected to each other (or single document if dossier only has 1 document)
-  const finalDocNodes: GraphNode[] = docs
-    .filter((d) => connectedDocIds.has(d.bestandsnaam) || docs.length === 1)
+  // Return connected document nodes (or all sampled docs if <= 10)
+  const finalDocNodes: GraphNode[] = sampleDocs
+    .filter((d) => connectedDocIds.has(d.bestandsnaam) || sampleDocs.length <= 10)
     .map((d) => ({
       id: d.bestandsnaam,
       label: d.titel || d.bestandsnaam,

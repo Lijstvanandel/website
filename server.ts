@@ -8330,13 +8330,29 @@ Sitemap: ${baseUrl}/sitemap.xml
       const allDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || [], db.customSubdossiers || {});
       
       const searchSlug = rawSlug.toLowerCase();
+      const normalizeClean = (str: string) => (str || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const cleanSearch = normalizeClean(rawSlug);
+
       let dossier = allDossiers.find(
         (d) =>
           d.slug?.toLowerCase() === searchSlug ||
           d.id?.toLowerCase() === searchSlug ||
           slugify(d.slug || "") === slugify(rawSlug) ||
           slugify(d.title || "") === slugify(rawSlug) ||
-          (d.id && slugify(d.id) === slugify(rawSlug))
+          (d.id && slugify(d.id) === slugify(rawSlug)) ||
+          normalizeClean(d.slug || "") === cleanSearch ||
+          normalizeClean(d.title || "") === cleanSearch ||
+          (d.id && normalizeClean(d.id) === cleanSearch) ||
+          (cleanSearch.includes("financ") && (d.slug?.includes("financ") || d.title?.toLowerCase().includes("financ"))) ||
+          (cleanSearch.includes("wonen") && (d.slug?.includes("wonen") || d.title?.toLowerCase().includes("wonen"))) ||
+          (cleanSearch.includes("natuur") && (d.slug?.includes("natuur") || d.title?.toLowerCase().includes("natuur"))) ||
+          (cleanSearch.includes("zorg") && (d.slug?.includes("zorg") || d.title?.toLowerCase().includes("zorg"))) ||
+          (cleanSearch.includes("jeugd") && (d.slug?.includes("jeugd") || d.title?.toLowerCase().includes("jeugd"))) ||
+          (cleanSearch.includes("verkeer") && (d.slug?.includes("verkeer") || d.title?.toLowerCase().includes("verkeer"))) ||
+          (cleanSearch.includes("cultuur") && (d.slug?.includes("cultuur") || d.title?.toLowerCase().includes("cultuur"))) ||
+          (cleanSearch.includes("veilig") && (d.slug?.includes("veilig") || d.title?.toLowerCase().includes("veilig"))) ||
+          (cleanSearch.includes("samenleving") && (d.slug?.includes("samenleving") || d.title?.toLowerCase().includes("samenleving"))) ||
+          (cleanSearch.includes("economie") && (d.slug?.includes("economie") || d.title?.toLowerCase().includes("economie")))
       );
 
       // Fallback: If not found in standard/custom catalog, check if an agenda topic has this compiled support dossier
