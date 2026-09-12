@@ -55,6 +55,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
   initialWijkSlug,
 }) => {
   const { user } = useAuth();
+  const isAdmin = Boolean(user && user.role === "admin");
   const isCouncilOrAdmin = Boolean(
     user && (user.role === "admin" || user.role === "raadslid" || user.role === "fractielid")
   );
@@ -953,7 +954,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
             <span className="text-[11px] text-muted-foreground">
               Stukken in metadata netwerkgraaf
             </span>
-            {stats.totalDocuments > stats.totalUploadedFiles && (
+            {isAdmin && stats.totalDocuments > stats.totalUploadedFiles && (
               <button
                 onClick={() => setIsMissingFilesModalOpen(true)}
                 className="text-[10px] font-bold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
@@ -978,7 +979,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
             <span className="text-[11px] text-muted-foreground">
               Fysiek aanwezig en direct leesbaar
             </span>
-            {stats.totalDocuments > stats.totalUploadedFiles && (
+            {isAdmin && stats.totalDocuments > stats.totalUploadedFiles && (
               <button
                 onClick={() => setIsMissingFilesModalOpen(true)}
                 className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 hover:underline"
@@ -990,8 +991,8 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
         </div>
       </div>
 
-      {/* Missing Files Reconciliation Banner */}
-      {stats.totalDocuments > stats.totalUploadedFiles && (
+      {/* Missing Files Reconciliation Banner (Alleen zichtbaar voor beheerders/admins) */}
+      {isAdmin && stats.totalDocuments > stats.totalUploadedFiles && (
         <div className="p-4 rounded-2xl bg-amber-500/10 border-2 border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs animate-fade-in">
           <div className="flex items-start sm:items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/40 flex items-center justify-center shrink-0">
