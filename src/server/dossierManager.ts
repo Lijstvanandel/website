@@ -169,7 +169,20 @@ const DEFAULT_THUMBNAIL = "https://images.unsplash.com/photo-1497366216548-37526
 
 // Read raw metadata from persistent master, sqlite, or file
 export function getRawMetadata(): RaadsstukMetadata[] {
-  // 1. Check persistent master file in data/ (gitignored, survives git pull)
+  // 1. Check standard METADATA_PATH (updated by bulk classification and reorganize scripts)
+  try {
+    if (fs.existsSync(METADATA_PATH)) {
+      const data = fs.readFileSync(METADATA_PATH, "utf-8");
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn("Could not read METADATA_PATH:", err);
+  }
+
+  // 2. Check persistent master file in data/ (gitignored, survives git pull)
   try {
     if (fs.existsSync(MASTER_METADATA_PATH)) {
       const data = fs.readFileSync(MASTER_METADATA_PATH, "utf-8");
@@ -182,7 +195,7 @@ export function getRawMetadata(): RaadsstukMetadata[] {
     console.warn("Could not read MASTER_METADATA_PATH:", err);
   }
 
-  // 2. Check SQLite kv_store (gitignored, persistent in database.sqlite)
+  // 3. Check SQLite kv_store (gitignored, persistent in database.sqlite)
   try {
     const kvMaster = getKv("raadsstukken_metadata_master");
     if (Array.isArray(kvMaster) && kvMaster.length > 0) {
@@ -190,7 +203,7 @@ export function getRawMetadata(): RaadsstukMetadata[] {
     }
   } catch (_e) {}
 
-  // 3. Check documents backup path
+  // 4. Check documents backup path
   try {
     if (fs.existsSync(MASTER_METADATA_BACKUP_PATH)) {
       const data = fs.readFileSync(MASTER_METADATA_BACKUP_PATH, "utf-8");
@@ -200,19 +213,6 @@ export function getRawMetadata(): RaadsstukMetadata[] {
       }
     }
   } catch (_e) {}
-
-  // 4. Fallback to standard METADATA_PATH
-  try {
-    if (fs.existsSync(METADATA_PATH)) {
-      const data = fs.readFileSync(METADATA_PATH, "utf-8");
-      const parsed = JSON.parse(data);
-      if (Array.isArray(parsed)) {
-        return parsed;
-      }
-    }
-  } catch (err) {
-    console.error("Error reading metadata file:", err);
-  }
 
   return [];
 }
