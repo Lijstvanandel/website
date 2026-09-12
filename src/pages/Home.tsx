@@ -8,6 +8,7 @@ import lisaImg from "@/assets/lisa.png";
 import { BelafspraakDialog } from "@/components/BelafspraakDialog";
 import { HeroBuurtkaart } from "@/components/HeroBuurtkaart";
 import { news } from "@/data/news";
+import { WijkItem } from "@/types/wijk";
 import { format, parseISO } from "date-fns";
 import { nl } from "date-fns/locale";
 
@@ -24,6 +25,8 @@ const formatDateSafe = (dateStr?: string) => {
 const Home = () => {
   const [belOpen, setBelOpen] = useState(false);
   const [homeNews, setHomeNews] = useState<any[]>(() => news.filter((n: any) => !n.wijkSlug));
+  const [wijken, setWijken] = useState<WijkItem[]>([]);
+  const [hoveredWijkSlug, setHoveredWijkSlug] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -35,33 +38,66 @@ const Home = () => {
         }
       })
       .catch(() => {});
+
+    fetch("/api/wijken")
+      .then((res) => (res.ok ? res.json().catch(() => []) : []))
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setWijken(data);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
     const slugify = (s: string) =>
       s.toLowerCase().replace(/[,]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+
     const handler = (e: MessageEvent) => {
-      if (e.data && e.data.type === "wijk-click" && typeof e.data.slug === "string") {
+      if (!e.data || typeof e.data !== "object") return;
+      if (e.data.type === "wijk-click" && typeof e.data.slug === "string") {
         navigate(`/wijken-en-kernen/${slugify(e.data.slug)}`);
+      } else if (e.data.type === "wijk-hover" && typeof e.data.slug === "string") {
+        setHoveredWijkSlug(slugify(e.data.slug));
+      } else if (e.data.type === "wijk-unhover") {
+        setHoveredWijkSlug(null);
       }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
   }, [navigate]);
 
+  // Find hovered wijk and its custom hero background image if available
+  const hoveredWijk = hoveredWijkSlug ? wijken.find((w) => w.slug === hoveredWijkSlug) : null;
+  const customHeroBackground = hoveredWijk?.heroBannerUrl?.trim() || null;
+
   return (
     <>
-      {/* HERO — Verticaal compact met minimale afstand tot de navbar */}
-      <section className="relative overflow-hidden pt-2 sm:pt-3 lg:pt-4 pb-0 bg-background">
+      {/* HERO — Verticaal compact met minimale afstand tot de navbar & interactieve achtergrond */}
+      <section className="relative overflow-hidden pt-2 sm:pt-3 lg:pt-4 pb-0 bg-background transition-colors">
+        {/* Standaard achtergrondfoto (Steenwijk aerial) */}
         <img
           src={heroBanner}
           alt="Luchtfoto van Steenwijk bij zonsondergang"
           width={1920}
           height={1080}
-          className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+          className="absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity duration-700"
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-twente-black via-twente-black/85 to-transparent pointer-events-none" />
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent pointer-events-none" />
+
+        {/* Dynamische hover achtergrondfoto van de geselecteerde wijk / kern indien geconfigureerd */}
+        {customHeroBackground && (
+          <img
+            key={customHeroBackground}
+            src={customHeroBackground}
+            alt={`Sfeerbeeld van ${hoveredWijk?.naam || "wijk"}`}
+            width={1920}
+            height={1080}
+            className="absolute inset-0 w-full h-full object-cover pointer-events-none animate-fade-in transition-opacity duration-700 z-[1]"
+          />
+        )}
+
+        <div className="absolute inset-0 bg-gradient-to-r from-twente-black via-twente-black/85 to-transparent pointer-events-none z-[2]" />
+        <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent pointer-events-none z-[2]" />
 
         <div className="container relative z-10 py-1 sm:py-2">
           <div className="grid lg:grid-cols-[1.1fr_1.3fr] xl:grid-cols-[1fr_1.2fr] gap-6 lg:gap-8 xl:gap-12 items-center">
@@ -70,7 +106,7 @@ const Home = () => {
               <div className="inline-flex items-center gap-2 px-3 py-1 border border-accent/40 bg-twente-black/70 backdrop-blur rounded-xs">
                 <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
                 <span className="text-xs uppercase tracking-[0.25em] text-accent font-medium">
-                  In de Gemeenteraad — Steenwijkerland
+                  {hoveredWijk ? `Wijk in beeld — ${hoveredWijk.naam}` : "In de Gemeenteraad — Steenwijkerland"}
                 </span>
               </div>
               <h1 className="font-display text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl leading-[0.93] tracking-tight">
@@ -98,7 +134,7 @@ const Home = () => {
 
             {/* Buurtkaart: Statisch voor SEO, dynamisch interactief bij hoveren */}
             <div className="hidden lg:block relative h-[460px] lg:h-[500px] xl:h-[550px] animate-fade-up">
-              <HeroBuurtkaart />
+              <HeroBuurtkaart onWijkHover={setHoveredWijkSlug} />
             </div>
           </div>
         </div>

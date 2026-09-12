@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { MapPin } from "lucide-react";
 import { BUURTKAART_PATHS, BuurtPath } from "@/data/buurtkaartPaths";
@@ -9,10 +9,32 @@ const OUTER_MASK_PATH =
 const slugify = (s: string) =>
   s.toLowerCase().replace(/[,]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
-export const HeroBuurtkaart: React.FC = () => {
+export interface HeroBuurtkaartProps {
+  onWijkHover?: (slug: string | null) => void;
+}
+
+export const HeroBuurtkaart: React.FC<HeroBuurtkaartProps> = ({ onWijkHover }) => {
   const [isInteractive, setIsInteractive] = useState(false);
   const [hoveredName, setHoveredName] = useState<string | null>(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === "wijk-hover") {
+        const slug = event.data.slug;
+        const matching = BUURTKAART_PATHS.find(
+          (p) => slugify(p.slug) === slugify(slug) || p.id === slug
+        );
+        setHoveredName(matching ? matching.name : slug ? slug.replace(/-/g, " ") : null);
+        onWijkHover?.(slug);
+      } else if (event.data?.type === "wijk-unhover") {
+        setHoveredName(null);
+        onWijkHover?.(null);
+      }
+    };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [onWijkHover]);
 
   const handleActivate = () => {
     if (!isInteractive) {
@@ -30,6 +52,10 @@ export const HeroBuurtkaart: React.FC = () => {
       onMouseEnter={handleActivate}
       onTouchStart={handleActivate}
       onFocus={handleActivate}
+      onMouseLeave={() => {
+        setHoveredName(null);
+        onWijkHover?.(null);
+      }}
     >
       {/* Dynamic interactive Leaflet map (loaded only on hover/interaction for SEO) */}
       {isInteractive ? (
@@ -95,8 +121,14 @@ export const HeroBuurtkaart: React.FC = () => {
                         fillOpacity={isCurrentHover ? 0.45 : buurt.opacity}
                         fillRule="evenodd"
                         className="leaflet-interactive transition-all duration-200 cursor-pointer"
-                        onMouseEnter={() => setHoveredName(buurt.name)}
-                        onMouseLeave={() => setHoveredName(null)}
+                        onMouseEnter={() => {
+                          setHoveredName(buurt.name);
+                          onWijkHover?.(buurt.slug);
+                        }}
+                        onMouseLeave={() => {
+                          setHoveredName(null);
+                          onWijkHover?.(null);
+                        }}
                         onClick={() => handleWijkClick(buurt.slug)}
                         tabIndex={0}
                         role="button"

@@ -60,6 +60,7 @@ export const WijkManager: React.FC<WijkManagerProps> = ({ token }) => {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploadingBanner, setUploadingBanner] = useState(false);
+  const [uploadingHeroBanner, setUploadingHeroBanner] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   // New Wijk dialog state
@@ -70,6 +71,7 @@ export const WijkManager: React.FC<WijkManagerProps> = ({ token }) => {
 
   // Form states for the currently edited wijk
   const [bannerUrl, setBannerUrl] = useState("");
+  const [heroBannerUrl, setHeroBannerUrl] = useState("");
   const [beschrijving, setBeschrijving] = useState("");
   const [hasRep, setHasRep] = useState(false);
   const [voornaam, setVoornaam] = useState("");
@@ -86,6 +88,7 @@ export const WijkManager: React.FC<WijkManagerProps> = ({ token }) => {
   const [tiktok, setTiktok] = useState("");
 
   const bannerFileInputRef = useRef<HTMLInputElement>(null);
+  const heroBannerFileInputRef = useRef<HTMLInputElement>(null);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchWijken = async () => {
@@ -110,6 +113,7 @@ export const WijkManager: React.FC<WijkManagerProps> = ({ token }) => {
   const handleOpenEdit = (wijk: WijkItem) => {
     setEditingWijk(wijk);
     setBannerUrl(wijk.bannerUrl || "");
+    setHeroBannerUrl(wijk.heroBannerUrl || "");
     setBeschrijving(wijk.beschrijving || "");
 
     if (wijk.vertegenwoordiger) {
@@ -145,7 +149,7 @@ export const WijkManager: React.FC<WijkManagerProps> = ({ token }) => {
     setIsEditDialogOpen(true);
   };
 
-  const handleUploadFile = async (file: File, type: "banner" | "avatar") => {
+  const handleUploadFile = async (file: File, type: "banner" | "heroBanner" | "avatar") => {
     if (!token) {
       toast.error("Niet geauthenticeerd");
       return;
@@ -155,6 +159,7 @@ export const WijkManager: React.FC<WijkManagerProps> = ({ token }) => {
     formData.append("file", file);
 
     if (type === "banner") setUploadingBanner(true);
+    else if (type === "heroBanner") setUploadingHeroBanner(true);
     else setUploadingAvatar(true);
 
     try {
@@ -172,6 +177,9 @@ export const WijkManager: React.FC<WijkManagerProps> = ({ token }) => {
       if (type === "banner") {
         setBannerUrl(data.url);
         toast.success("Achtergrondfoto geüpload");
+      } else if (type === "heroBanner") {
+        setHeroBannerUrl(data.url);
+        toast.success("Homepagina hero-achtergrondfoto geüpload");
       } else {
         setFotoUrl(data.url);
         toast.success("Foto van vertegenwoordiger geüpload");
@@ -181,6 +189,7 @@ export const WijkManager: React.FC<WijkManagerProps> = ({ token }) => {
       toast.error(message);
     } finally {
       if (type === "banner") setUploadingBanner(false);
+      else if (type === "heroBanner") setUploadingHeroBanner(false);
       else setUploadingAvatar(false);
     }
   };
@@ -222,6 +231,7 @@ export const WijkManager: React.FC<WijkManagerProps> = ({ token }) => {
 
       const payload = {
         bannerUrl: bannerUrl.trim(),
+        heroBannerUrl: heroBannerUrl.trim(),
         beschrijving: beschrijving.trim(),
         vertegenwoordiger: vertegenwoordigerPayload,
         removeVertegenwoordiger: !hasRep,
@@ -505,7 +515,7 @@ export const WijkManager: React.FC<WijkManagerProps> = ({ token }) => {
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
 
                   {/* Badges top */}
-                  <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                  <div className="absolute top-2.5 left-2.5 flex flex-wrap items-center gap-1.5">
                     <Badge
                       variant="secondary"
                       className={`text-[10px] font-semibold uppercase tracking-wider ${
@@ -519,6 +529,11 @@ export const WijkManager: React.FC<WijkManagerProps> = ({ token }) => {
                     <span className="text-[10px] px-2 py-0.5 rounded bg-black/60 text-white backdrop-blur">
                       {wijk.gemeente}
                     </span>
+                    {wijk.heroBannerUrl && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/80 text-black font-semibold backdrop-blur">
+                        Hero Hover Foto ✓
+                      </span>
+                    )}
                   </div>
 
                   {/* Title over bottom of banner */}
@@ -734,6 +749,102 @@ export const WijkManager: React.FC<WijkManagerProps> = ({ token }) => {
                       key={preset.url}
                       type="button"
                       onClick={() => setBannerUrl(preset.url)}
+                      className="text-[10px] px-2 py-0.5 rounded bg-muted hover:bg-muted/80 border border-border/80 text-foreground transition-colors"
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Homepagina Hero Hover Achtergrondfoto */}
+              <div className="pt-4 border-t border-border/60">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-accent" />
+                    Homepagina Hero Hover Achtergrondfoto
+                  </label>
+                  {heroBannerUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setHeroBannerUrl("")}
+                      className="text-[10px] text-destructive hover:underline flex items-center gap-1"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      Reset naar standaardfoto
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground mb-2">
+                  Deze foto wordt op de homepagina als sfeervolle achtergrond geactiveerd wanneer bezoekers over {editingWijk?.naam} bewegen op de interactieve buurtkaart. Als dit leeg is, toont de homepagina automatisch de standaardfoto.
+                </p>
+
+                <div className="relative h-40 w-full rounded-md border border-border overflow-hidden bg-black/20 mb-3">
+                  <img
+                    src={heroBannerUrl || "/assets/steenwijk-aerial.jpg"}
+                    alt="Hero Hover preview"
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = "/assets/steenwijk-aerial.jpg";
+                    }}
+                  />
+                  <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => heroBannerFileInputRef.current?.click()}
+                      disabled={uploadingHeroBanner}
+                      className="gap-1.5 text-xs shadow-lg"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      {uploadingHeroBanner ? "Uploaden..." : "Nieuwe hero-foto uploaden"}
+                    </Button>
+                  </div>
+                  <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/75 text-[10px] text-white backdrop-blur">
+                    {heroBannerUrl ? "Aangepaste hero-foto actief" : "Standaard luchtfoto actief"}
+                  </div>
+                </div>
+
+                {/* Upload & URL Input */}
+                <div className="flex flex-col sm:flex-row gap-2 items-center">
+                  <Input
+                    value={heroBannerUrl}
+                    onChange={(e) => setHeroBannerUrl(e.target.value)}
+                    placeholder="URL naar hero-hover foto (bijv. /assets/... of geüploade foto)"
+                    className="text-xs flex-1"
+                  />
+                  <input
+                    type="file"
+                    ref={heroBannerFileInputRef}
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleUploadFile(file, "heroBanner");
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => heroBannerFileInputRef.current?.click()}
+                    disabled={uploadingHeroBanner}
+                    className="text-xs shrink-0 gap-1.5"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    {uploadingHeroBanner ? "Uploaden..." : "Bladeren"}
+                  </Button>
+                </div>
+
+                {/* Preset quick picker */}
+                <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] text-muted-foreground mr-1">Snelle keuze:</span>
+                  {PRESET_BANNERS.map((preset) => (
+                    <button
+                      key={preset.url}
+                      type="button"
+                      onClick={() => setHeroBannerUrl(preset.url)}
                       className="text-[10px] px-2 py-0.5 rounded bg-muted hover:bg-muted/80 border border-border/80 text-foreground transition-colors"
                     >
                       {preset.label}

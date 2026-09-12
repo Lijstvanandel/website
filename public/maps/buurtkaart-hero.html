@@ -94,6 +94,15 @@ html,body,.folium-map,.leaflet-container{background:transparent !important;}
                         if(e.target._path) {
                             e.target._path.style.cursor = 'pointer';
                         }
+                        var url = layer.feature.properties.redirect_url;
+                        if (url) {
+                            var slug = url.split('/').pop();
+                            window.parent.postMessage({type:'wijk-hover', slug: decodeURIComponent(slug)}, '*');
+                        }
+                    });
+
+                    layer.on('mouseout', function(e) {
+                        window.parent.postMessage({type:'wijk-unhover'}, '*');
                     });
                 }
             });

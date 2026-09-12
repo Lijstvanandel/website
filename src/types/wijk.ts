@@ -23,6 +23,7 @@ export interface WijkItem {
   type: "Wijk" | "Kern";
   gemeente: string;
   bannerUrl?: string;
+  heroBannerUrl?: string;
   beschrijving?: string;
   vertegenwoordiger?: WijkVertegenwoordiger | null;
   updatedAt?: string;

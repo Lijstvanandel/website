@@ -6004,6 +6004,7 @@ async function startServer() {
 
     const {
       bannerUrl,
+      heroBannerUrl,
       beschrijving,
       vertegenwoordiger,
       naam,
@@ -6014,6 +6015,7 @@ async function startServer() {
     const wijk = db.wijken[wijkIndex];
 
     if (bannerUrl !== undefined) wijk.bannerUrl = String(bannerUrl).trim();
+    if (heroBannerUrl !== undefined) wijk.heroBannerUrl = String(heroBannerUrl).trim();
     if (beschrijving !== undefined) wijk.beschrijving = String(beschrijving).trim();
     if (naam !== undefined && naam) wijk.naam = String(naam).trim();
     if (type !== undefined && (type === "Wijk" || type === "Kern")) wijk.type = type;
@@ -6048,7 +6050,7 @@ async function startServer() {
 
   // Admin: Add custom wijk/kern
   app.post("/api/admin/wijken", requireAuth, requireAdmin, (req: any, res: any) => {
-    const { naam, type, gemeente, bannerUrl, beschrijving, vertegenwoordiger } = req.body;
+    const { naam, type, gemeente, bannerUrl, heroBannerUrl, beschrijving, vertegenwoordiger } = req.body;
     if (!naam || !type) {
       return res.status(400).json({ error: "Naam en type zijn verplicht" });
     }
@@ -6073,6 +6075,7 @@ async function startServer() {
       type: type === "Kern" ? "Kern" : "Wijk",
       gemeente: String(gemeente || (type === "Wijk" ? "Steenwijk" : "Steenwijkerland")).trim(),
       bannerUrl: String(bannerUrl || "/assets/hero-banner.jpg").trim(),
+      heroBannerUrl: heroBannerUrl ? String(heroBannerUrl).trim() : "",
       beschrijving: String(beschrijving || "").trim(),
       vertegenwoordiger: vertegenwoordiger ? {
         voornaam: String(vertegenwoordiger.voornaam || "").trim(),
