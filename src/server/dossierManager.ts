@@ -138,199 +138,30 @@ const DOSSIER_PRESETS: Record<
     wijkNaam?: string;
   }
 > = {
-  "Wonen, Bouwen & Ontwikkeling": {
-    category: "Ruimte & Wonen",
+  "Ruimte, Wonen & Bereikbaarheid": {
+    category: "Ruimte, Wonen & Bereikbaarheid",
     thumbnail: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800&auto=format&fit=crop&q=80",
-    description: "Woningbouw, gebiedsontwikkeling, bestemmingsplannen, leefbaarheid en vergunningen in Steenwijk en alle kernen."
+    description: "Woningbouw, bestemmingsplannen, gebiedsontwikkeling, verkeer en ruimtelijke ordening in de kernen."
   },
-  "Natuur, Milieu & Klimaat": {
-    category: "Natuur & Milieu",
+  "Klimaat, Water & Natuur": {
+    category: "Klimaat, Water & Natuur",
     thumbnail: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=800&auto=format&fit=crop&q=80",
-    description: "Nationale Parken De Weerribben-Wieden, stikstof, biodiversiteit, energietransitie, zonne- en windparken."
+    description: "Waterbeheer, stikstof, energietransitie, en natuurbeheer waaronder Nationaal Park Weerribben-Wieden."
   },
-  "Verkeer, Wegen & Bereikbaarheid": {
-    category: "Mobiliteit & Infrastructuur",
-    thumbnail: "https://images.unsplash.com/photo-1519817650390-64a93db51149?w=800&auto=format&fit=crop&q=80",
-    description: "Wegonderhoud, verkeersveiligheid, fietspaden, openbaar vervoer, laadpalen en bereikbaarheid van de kernen."
+  "Sociaal Domein, Zorg & Jeugd": {
+    category: "Sociaal Domein, Zorg & Jeugd",
+    thumbnail: "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=800&auto=format&fit=crop&q=80",
+    description: "Jeugdzorg, WMO, armoedebeleid, participatiewet, volksgezondheid en asielopvang."
   },
-  "Openbare Ruimte & Onderhoud": {
-    category: "Leefomgeving & Beheer",
-    thumbnail: "https://images.unsplash.com/photo-1477959858617-67f30bc75b82?w=800&auto=format&fit=crop&q=80",
-    description: "Onderhoud van straten, dorpspleinen, watergangen, beschoeiing, parkeerbeleid en openbaar groen."
-  },
-  "Economie, Ondernemen & Toerisme": {
-    category: "Economie & Toerisme",
+  "Lokale Economie, Toerisme & Cultuur": {
+    category: "Lokale Economie, Toerisme & Cultuur",
     thumbnail: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=800&auto=format&fit=crop&q=80",
-    description: "Bedrijventerreinen, lokale middenstand, recreatie & watertoerisme in Giethoorn en de regio, innovatie."
+    description: "Recreatie, toerisme, lokale economie, landbouw/pacht, kunst, cultuur en erfgoed."
   },
-  "Werk, Inkomen & Armoede": {
-    category: "Werk & Sociale Zekerheid",
-    thumbnail: "https://images.unsplash.com/photo-1521791136064-7986c2920216?w=800&auto=format&fit=crop&q=80",
-    description: "Participatiewet, sociale werkgelegenheid, armoederegelingen, schuldhulpverlening en inkomensondersteuning."
-  },
-  "Zorg, Gezondheid & Welzijn": {
-    category: "Zorg & Welzijn",
-    thumbnail: "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=800&auto=format&fit=crop&q=80",
-    description: "Wmo, publieke gezondheidszorg (GGD), ouderenzorg, mantelzorg, welzijnswerk en preventie."
-  },
-  "Jeugd, Gezin & Onderwijs": {
-    category: "Jeugd & Gezin",
-    thumbnail: "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=800&auto=format&fit=crop&q=80",
-    description: "Jeugdhulp, Regionaal Serviceteam Jeugd (RSJ), kinderopvang, onderwijshuisvesting en jeugdvoorzieningen."
-  },
-  "Veiligheid, Toezicht & Handhaving": {
-    category: "Veiligheid & Handhaving",
-    thumbnail: "https://images.unsplash.com/photo-1532996122724-e3c354a0b15b?w=800&auto=format&fit=crop&q=80",
-    description: "Openbare orde, APV, toezicht & handhaving (o.a. IceBear), Veiligheidsregio IJsselland en brandweerzorg."
-  },
-  "Kunst, Cultuur & Sport": {
-    category: "Cultuur & Sport",
-    thumbnail: "https://images.unsplash.com/photo-1566127444979-b3d2b654e3d7?w=800&auto=format&fit=crop&q=80",
-    description: "Museum Steenwijkerland, Rabo Theater De Meenthe, monumenten, bibliotheken en sportaccommodaties."
-  },
-  "Samenleving, Inclusie & Wijken": {
-    category: "Samenleving & Participatie",
-    thumbnail: "https://images.unsplash.com/photo-1532629345422-7515f3d16bb6?w=800&auto=format&fit=crop&q=80",
-    description: "Wijkgericht werken, dorpsbelangen, burgerparticipatie, inclusie, asiel- en vluchtelingenopvang."
-  },
-  "Bestuur, Financiën & Organisatie": {
-    category: "Bestuur & Financiën",
+  "Bestuur, Financiën & Openbare Orde": {
+    category: "Bestuur, Financiën & Openbare Orde",
     thumbnail: "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=800&auto=format&fit=crop&q=80",
-    description: "Gemeentebegroting, jaarrekening, belastingen, Gemeenschappelijke Regelingen (GR), integriteit en raadszaken."
-  },
-  "Wijziging gemeenschappelijke regelingen": {
-    category: "Bestuur & Regelingen",
-    thumbnail: "https://images.unsplash.com/photo-1450133064473-71024230f91b?w=800&auto=format&fit=crop&q=80",
-    description: "Evaluaties, zienswijzen en wijzigingsvoorstellen voor regionale samenwerkingsverbanden (GGD, Omgevingsdienst, Veiligheidsregio en RSJ)."
-  },
-  "Ingekomen stukken": {
-    category: "Raad & Bestuur",
-    thumbnail: "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=800&auto=format&fit=crop&q=80",
-    description: "Ingekomen brieven, circulaires, bewonersverzoeken en officiële mededelingen voor de gemeenteraad."
-  },
-  "Zienswijze GR": {
-    category: "Bestuur & Regelingen",
-    thumbnail: "https://images.unsplash.com/photo-1450133064473-71024230f91b?w=800&auto=format&fit=crop&q=80",
-    description: "Officiële moties en zienswijzen op de ontwerpen van gemeenschappelijke regelingen in de regio IJsselland."
-  },
-  "Woningbouw": {
-    category: "Ruimte & Wonen",
-    thumbnail: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800&auto=format&fit=crop&q=80",
-    description: "Bestemmingsplannen, gebiedsvisies, geur- en milieuhinderonderzoeken voor nieuwe woonlocaties in Steenwijk en kernen."
-  },
-  "Nieuw museum": {
-    category: "Cultuur & Erfgoed",
-    thumbnail: "https://images.unsplash.com/photo-1566127444979-b3d2b654e3d7?w=800&auto=format&fit=crop&q=80",
-    description: "Masterplan en stichtingskosten voor het nieuwe museum Steenwijkerland en de Spijkervetstallen.",
-    wijkSlug: "centrum-steenwijk",
-    wijkNaam: "Centrum Steenwijk"
-  },
-  "Handhaving en Vergunningplicht IceBear": {
-    category: "Milieu & Handhaving",
-    thumbnail: "https://images.unsplash.com/photo-1532996122724-e3c354a0b15b?w=800&auto=format&fit=crop&q=80",
-    description: "Handhavingsverzoeken, geur- en emissiemetingen, GGD-gezondheidsadviezen en collegebesluiten aangaande IceBear Steenwijk.",
-    wijkSlug: "groot-verlaat",
-    wijkNaam: "Groot Verlaat"
-  },
-  "Jeugdzorg (RSJ IJsselland)": {
-    category: "Sociaal Domein & Jeugd",
-    thumbnail: "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=800&auto=format&fit=crop&q=80",
-    description: "Regionale visie, kadernota's, inkoopmodellen en begrotingen van het Regionaal Serviceteam Jeugd IJsselland."
-  },
-  "Jeugdhulp": {
-    category: "Sociaal Domein & Jeugd",
-    thumbnail: "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=800&auto=format&fit=crop&q=80",
-    description: "Beleidsplannen, jaarstukken en verordeningen rond jeugdhulp en kind- en gezinsbescherming."
-  },
-  "Stikstof": {
-    category: "Natuur & Milieu",
-    thumbnail: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=800&auto=format&fit=crop&q=80",
-    description: "AERIUS-berekeningen, stikstofdepositie-onderzoeken en effecten op Natura 2000-gebieden zoals De Weerribben en De Wieden."
-  },
-  "Asiel- en Oekraïneopvang": {
-    category: "Samenleving & Opvang",
-    thumbnail: "https://images.unsplash.com/photo-1532629345422-7515f3d16bb6?w=800&auto=format&fit=crop&q=80",
-    description: "Opvanglocaties, Spreidingswet-uitvoering en tijdelijke opvang in het Fletcher Hotel en Steenwijkerland."
-  },
-  "Windenergie": {
-    category: "Energie & Duurzaamheid",
-    thumbnail: "https://images.unsplash.com/photo-1466611653911-95081537e5b7?w=800&auto=format&fit=crop&q=80",
-    description: "Programmeringsafspraken met de provincie Overijssel en locatieonderzoeken voor windturbines (o.a. Groot Verlaat).",
-    wijkSlug: "groot-verlaat",
-    wijkNaam: "Groot Verlaat"
-  },
-  "Zonne-energie": {
-    category: "Energie & Duurzaamheid",
-    thumbnail: "https://images.unsplash.com/photo-1509391365360-2e959784a276?w=800&auto=format&fit=crop&q=80",
-    description: "Aanvragen en inpassing van zonneparken (o.a. De Hoop Blokzijl en Eeserwold) inclusief participatie en landschapsplannen.",
-    wijkSlug: "blokzijl",
-    wijkNaam: "Blokzijl"
-  },
-  "Gebiedsontwikkeling": {
-    category: "Ruimte & Wonen",
-    thumbnail: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=800&auto=format&fit=crop&q=80",
-    description: "Ambitiedocument Spoorzone Steenwijk 2040, Gebiedsvisie Steenwijk Oost ('Het Vrije Veld') en centrumontwikkeling.",
-    wijkSlug: "oostermeenthe",
-    wijkNaam: "Oostermeenthe"
-  },
-  "Huiselijk Geweld en Kindermishandeling": {
-    category: "Sociaal Domein & Zorg",
-    thumbnail: "https://images.unsplash.com/photo-1573497620053-ea5300f94f21?w=800&auto=format&fit=crop&q=80",
-    description: "Regiovisie IJsselland 'Samen tegen huiselijk geweld - Lokaal Sterk' 2026-2030 en ketenaanpak."
-  },
-  "Schuldhulpverlening": {
-    category: "Sociaal Domein & Zorg",
-    thumbnail: "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=800&auto=format&fit=crop&q=80",
-    description: "Vaststelling beleidsplan Schuldhulpverlening 2026-2029 en basisdienstverlening samen met Kredietbank en Sociaal Werk De Kop."
-  },
-  "Pachtbeleid": {
-    category: "Grondzaken & Landbouw",
-    thumbnail: "https://images.unsplash.com/photo-1500937386664-56d1dfef3854?w=800&auto=format&fit=crop&q=80",
-    description: "Collegebesluit en criteria pachtbeleid gemeente Steenwijkerland (Didam-arrest richtlijnen)."
-  },
-  "Bestemmingsplan": {
-    category: "Ruimtelijke Ordening",
-    thumbnail: "https://images.unsplash.com/photo-1524813686514-a57563d77d61?w=800&auto=format&fit=crop&q=80",
-    description: "Bestemmingsplannen voor kernen en buitengebied (o.a. Willemsoord, Giethoorn, Sint Jansklooster en Zuidveen).",
-    wijkSlug: "giethoorn",
-    wijkNaam: "Giethoorn"
-  },
-  "Openbare ruimte": {
-    category: "Beheer & Infrastructuur",
-    thumbnail: "https://images.unsplash.com/photo-1477959858617-67f30bc75b82?w=800&auto=format&fit=crop&q=80",
-    description: "Beschoeiing Belt-Schutsloot, parkeerbeleid bezoekerscentrum Natuurmonumenten en onderhoud van de fysieke leefomgeving.",
-    wijkSlug: "belt-schutsloot",
-    wijkNaam: "Belt-Schutsloot"
-  },
-  "Wegen en Infrastructuur": {
-    category: "Verkeer & Vervoer",
-    thumbnail: "https://images.unsplash.com/photo-1519817650390-64a93db51149?w=800&auto=format&fit=crop&q=80",
-    description: "Beleidsplan Beheer en Onderhoud Wegen & Paden Steenwijkerland, veilige bermen en fietscorridors."
-  },
-  "Participatiewet": {
-    category: "Werk & Inkomen",
-    thumbnail: "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=800&auto=format&fit=crop&q=80",
-    description: "Participatiewet in Balans, giftenregeling en leidraad algemene bijstand 2026."
-  },
-  "Cao Aan de slag": {
-    category: "Werk & Inkomen",
-    thumbnail: "https://images.unsplash.com/photo-1521791136064-7986c2920216?w=800&auto=format&fit=crop&q=80",
-    description: "Ledenraadpleging VNG over het onderhandelaarsresultaat Cao Aan de slag 2026-2027 en sociale werkvoorziening."
-  },
-  "Beeldende Kunst": {
-    category: "Cultuur & Erfgoed",
-    thumbnail: "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=800&auto=format&fit=crop&q=80",
-    description: "Verordening Commissie Beeldende Kunst Steenwijkerland en advisering over kunst in de openbare ruimte."
-  },
-  "Woonwagenbeleid": {
-    category: "Ruimte & Wonen",
-    thumbnail: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800&auto=format&fit=crop&q=80",
-    description: "Woonwagenbeleid Steenwijkerland richting 2035 en standplaatsen in Steenwijk, Giethoorn en Vollenhove."
-  },
-  "Archiefbeheer": {
-    category: "Bestuur & Informatie",
-    thumbnail: "https://images.unsplash.com/photo-1507842229452-957cdb27b38d?w=800&auto=format&fit=crop&q=80",
-    description: "Toezichtverslagen op het beheer van de niet-overgebrachte archieven volgens de Archiefwet 1995."
+    description: "Gemeentefinanciën, veiligheid, handhaving, onderhoud openbare ruimte en regionale samenwerkingen (GR)."
   }
 };
 
@@ -635,71 +466,106 @@ export function detectWijkOrKern(text: string): string | undefined {
 
 // Detect dossier and subdossier from keywords and subdirectory
 export function detectDossierAndSubdossier(text: string, subFolder?: string): { dossier: string; subdossier: string } {
-  if (subFolder === "waterschap") {
-    return { dossier: "Waterschap & Waterbeheer", subdossier: "Waterschap Drents Overijsselse Delta" };
-  }
-  if (subFolder === "overijssel") {
-    return { dossier: "Provincie Overijssel", subdossier: "Provinciale Staten & Besluiten" };
-  }
-
   const l = text.toLowerCase();
 
-  if (l.includes("icebear") || l.includes("ice bear") || (l.includes("groot verlaat") && (l.includes("geur") || l.includes("emissie")))) {
-    return { dossier: "Handhaving en Vergunningplicht IceBear", subdossier: "Handhaving en Geurmetingen" };
-  }
-  if (l.includes("woningbouw") || l.includes("woonvisie") || l.includes("nieuwbouw") || l.includes("kavels") || l.includes("starterslening") || l.includes("huurwoning")) {
-    return { dossier: "Woningbouw & Volkshuisvesting", subdossier: "Woonvisie en Bouwprojecten" };
-  }
-  if (l.includes("stikstof") || l.includes("aerius") || l.includes("natura 2000") || l.includes("weerribben") || l.includes("pfas")) {
-    return { dossier: "Stikstof", subdossier: "Natura 2000 en Aerius-metingen" };
-  }
-  if (l.includes("zonne") || l.includes("zonnepark") || l.includes("zonneweide") || l.includes("eeserwold") || l.includes("de hoop blokzijl")) {
-    return { dossier: "Zonne-energie", subdossier: "Zonneparken & Landschappelijke Inpassing" };
-  }
-  if (l.includes("windenergie") || l.includes("windturbine") || l.includes("windmolen") || l.includes("windpark")) {
-    return { dossier: "Windenergie", subdossier: "Windlocaties en Programmering" };
-  }
-  if (l.includes("jeugdzorg") || l.includes("jeugdhulp") || l.includes("rsj") || l.includes("ijsselland") || l.includes("kindermishandeling")) {
-    return { dossier: "Jeugdzorg (RSJ IJsselland)", subdossier: "Regionale Samenwerking & Inkoop" };
-  }
-  if (l.includes("museum") || l.includes("spijkervetstallen") || l.includes("cultuur") || l.includes("theater") || l.includes("meenthe")) {
-    return { dossier: "Nieuw museum", subdossier: "Masterplan en Realisatie" };
-  }
-  if (l.includes("asiel") || l.includes("oekraïne") || l.includes("oekraine") || l.includes("vluchteling") || l.includes("spreidingswet") || l.includes("fletcher")) {
-    return { dossier: "Asiel- en Oekraïneopvang", subdossier: "Opvanglocaties & Participatie" };
+  // 1. Ruimte, Wonen & Bereikbaarheid
+  if (l.includes("woningbouw") || l.includes("woonvisie") || l.includes("nieuwbouw") || l.includes("kavels") || l.includes("starterslening") || l.includes("huurwoning") || l.includes("woonwagen") || l.includes("spoorzone") || l.includes("gebiedsontwikkeling") || l.includes("vrije veld") || l.includes("steenwijk oost") || l.includes("bestemmingsplan") || l.includes("omgevingsplan") || l.includes("omgevingsvisie") || l.includes("omgevingsvergunning") || l.includes("ruimtelij")) {
+    if (l.includes("spoorzone") || l.includes("gebiedsontwikkeling") || l.includes("vrije veld") || l.includes("steenwijk oost")) {
+      return { dossier: "Ruimte, Wonen & Bereikbaarheid", subdossier: "Gebiedsontwikkeling Steenwijk Oost" };
+    }
+    if (l.includes("woonwagen")) {
+      return { dossier: "Ruimte, Wonen & Bereikbaarheid", subdossier: "Woonwagenbeleid & Standplaatsen" };
+    }
+    return { dossier: "Ruimte, Wonen & Bereikbaarheid", subdossier: "Woningbouw & Ruimtelijke Ordening" };
   }
   if (l.includes("verkeer") || l.includes("wegen") || l.includes("n333") || l.includes("n334") || l.includes("rondweg") || l.includes("fietspad") || l.includes("parkeer")) {
-    return { dossier: "Wegen en Infrastructuur", subdossier: "Wegenbeheer & Bereikbaarheid" };
-  }
-  if (l.includes("begroting") || l.includes("kadernota") || l.includes("jaarrekening") || l.includes("belasting") || l.includes("ozb") || l.includes("financi")) {
-    return { dossier: "Financiën & Bedrijfsvoering", subdossier: "Begroting en Jaarstukken" };
-  }
-  if (l.includes("bestemmingsplan") || l.includes("omgevingsplan") || l.includes("omgevingsvisie") || l.includes("omgevingsvergunning") || l.includes("ruimtelij")) {
-    return { dossier: "Bestemmingsplan", subdossier: "Ruimtelijke Plannen en Wijzigingen" };
-  }
-  if (l.includes("openbare ruimte") || l.includes("groen") || l.includes("bomen") || l.includes("speelplek") || l.includes("beschoeiing")) {
-    return { dossier: "Openbare ruimte", subdossier: "Onderhoud en Inrichting" };
-  }
-  if (l.includes("spoorzone") || l.includes("gebiedsontwikkeling") || l.includes("vrije veld") || l.includes("steenwijk oost")) {
-    return { dossier: "Gebiedsontwikkeling", subdossier: "Visies en Gebiedsplannen" };
-  }
-  if (l.includes("pacht") || l.includes("landbouw") || l.includes("agrarisch") || l.includes("didam")) {
-    return { dossier: "Pachtbeleid", subdossier: "Pachtcriteria en Grondzaken" };
-  }
-  if (l.includes("schuldhulp") || l.includes("armoede") || l.includes("kredietbank") || l.includes("sociaal werk")) {
-    return { dossier: "Schuldhulpverlening", subdossier: "Beleid en Uitvoering" };
-  }
-  if (l.includes("participatiewet") || l.includes("aan de slag") || l.includes("werkvoorziening") || l.includes("bijstand")) {
-    return { dossier: "Participatiewet", subdossier: "Arbeidsmarkt en Re-integratie" };
-  }
-  if (l.includes("toerisme") || l.includes("recreatie") || l.includes("haven") || l.includes("woonschepen") || l.includes("rondvaart")) {
-    return { dossier: "Economie, Recreatie & Toerisme", subdossier: "Recreatie en Waterbeheer" };
-  }
-  if (l.includes("veiligheid") || l.includes("brandweer") || l.includes("apv") || l.includes("politie") || l.includes("handhaving")) {
-    return { dossier: "Veiligheid & Openbare Orde", subdossier: "Handhaving en Naleving" };
+    return { dossier: "Ruimte, Wonen & Bereikbaarheid", subdossier: "Wegen, Verkeer & Infrastructuur" };
   }
 
-  return { dossier: "Gemeenteraad & Beleid", subdossier: "Algemeen" };
+  // 2. Klimaat, Water & Natuur
+  if (l.includes("stikstof") || l.includes("aerius") || l.includes("natura 2000") || l.includes("weerribben") || l.includes("pfas") || l.includes("water") || l.includes("peilbesluit") || l.includes("bodem") || l.includes("natuur")) {
+    if (l.includes("stikstof") || l.includes("aerius")) {
+      return { dossier: "Klimaat, Water & Natuur", subdossier: "Stikstof & Natura 2000" };
+    }
+    if (l.includes("weerribben") || l.includes("wieden") || l.includes("peilbesluit") || l.includes("water")) {
+      return { dossier: "Klimaat, Water & Natuur", subdossier: "Waterbeheer & Weerribben-Wieden" };
+    }
+    return { dossier: "Klimaat, Water & Natuur", subdossier: "Natuur, Bodem & Milieu" };
+  }
+  if (l.includes("zonne") || l.includes("zonnepark") || l.includes("zonneweide") || l.includes("eeserwold") || l.includes("de hoop blokzijl") || l.includes("windenergie") || l.includes("windturbine") || l.includes("windmolen") || l.includes("windpark") || l.includes("energie")) {
+    if (l.includes("wind")) {
+      return { dossier: "Klimaat, Water & Natuur", subdossier: "Windenergie & Programmering" };
+    }
+    return { dossier: "Klimaat, Water & Natuur", subdossier: "Zonne-energie & Energietransitie" };
+  }
+  if (l.includes("icebear") || l.includes("ice bear") || (l.includes("groot verlaat") && (l.includes("geur") || l.includes("emissie")))) {
+    return { dossier: "Klimaat, Water & Natuur", subdossier: "Handhaving IceBear" };
+  }
+
+  // 3. Sociaal Domein, Zorg & Jeugd
+  if (l.includes("jeugdzorg") || l.includes("jeugdhulp") || l.includes("rsj") || l.includes("ijsselland") || l.includes("kindermishandeling") || l.includes("huiselijk geweld")) {
+    if (l.includes("huiselijk geweld") || l.includes("kindermishandeling")) {
+      return { dossier: "Sociaal Domein, Zorg & Jeugd", subdossier: "Aanpak Huiselijk Geweld" };
+    }
+    return { dossier: "Sociaal Domein, Zorg & Jeugd", subdossier: "Jeugdzorg (RSJ IJsselland)" };
+  }
+  if (l.includes("schuldhulp") || l.includes("armoede") || l.includes("kredietbank") || l.includes("sociaal werk") || l.includes("participatiewet") || l.includes("aan de slag") || l.includes("werkvoorziening") || l.includes("bijstand")) {
+    if (l.includes("participatiewet") || l.includes("aan de slag") || l.includes("bijstand") || l.includes("werkvoorziening")) {
+      return { dossier: "Sociaal Domein, Zorg & Jeugd", subdossier: "Participatiewet & Werk" };
+    }
+    return { dossier: "Sociaal Domein, Zorg & Jeugd", subdossier: "Schuldhulpverlening & Armoede" };
+  }
+  if (l.includes("asiel") || l.includes("oekraïne") || l.includes("oekraine") || l.includes("vluchteling") || l.includes("spreidingswet") || l.includes("fletcher")) {
+    return { dossier: "Sociaal Domein, Zorg & Jeugd", subdossier: "Asiel- en Oekraïneopvang" };
+  }
+  if (l.includes("zorg") || l.includes("wmo") || l.includes("gezondheid") || l.includes("ggd") || l.includes("welzijn")) {
+    return { dossier: "Sociaal Domein, Zorg & Jeugd", subdossier: "Zorg, WMO & Gezondheid" };
+  }
+
+  // 4. Lokale Economie, Toerisme & Cultuur
+  if (l.includes("toerisme") || l.includes("recreatie") || l.includes("haven") || l.includes("woonschepen") || l.includes("rondvaart") || l.includes("pacht") || l.includes("landbouw") || l.includes("agrarisch") || l.includes("didam") || l.includes("economie")) {
+    if (l.includes("pacht") || l.includes("agrarisch") || l.includes("didam")) {
+      return { dossier: "Lokale Economie, Toerisme & Cultuur", subdossier: "Pachtbeleid & Agrarische Zaken" };
+    }
+    return { dossier: "Lokale Economie, Toerisme & Cultuur", subdossier: "Recreatie & Toerisme" };
+  }
+  if (l.includes("museum") || l.includes("spijkervetstallen") || l.includes("cultuur") || l.includes("theater") || l.includes("meenthe") || l.includes("kunst") || l.includes("monument")) {
+    if (l.includes("museum") || l.includes("spijkervetstallen")) {
+      return { dossier: "Lokale Economie, Toerisme & Cultuur", subdossier: "Nieuw museum Steenwijkerland" };
+    }
+    return { dossier: "Lokale Economie, Toerisme & Cultuur", subdossier: "Kunst, Cultuur & Erfgoed" };
+  }
+
+  // 5. Bestuur, Financiën & Openbare Orde
+  if (l.includes("veiligheid") || l.includes("brandweer") || l.includes("apv") || l.includes("politie") || l.includes("handhaving") || l.includes("openbare orde") || l.includes("crisis")) {
+    return { dossier: "Bestuur, Financiën & Openbare Orde", subdossier: "Veiligheid, Toezicht & Handhaving" };
+  }
+  if (l.includes("begroting") || l.includes("kadernota") || l.includes("jaarrekening") || l.includes("belasting") || l.includes("ozb") || l.includes("financi") || l.includes("subsidie")) {
+    return { dossier: "Bestuur, Financiën & Openbare Orde", subdossier: "Financiën & Bedrijfsvoering" };
+  }
+  if (l.includes("openbare ruimte") || l.includes("groen") || l.includes("bomen") || l.includes("speelplek") || l.includes("beschoeiing") || l.includes("onderhoud")) {
+    return { dossier: "Bestuur, Financiën & Openbare Orde", subdossier: "Beheer Openbare Ruimte" };
+  }
+  if (l.includes("archief") || l.includes("gr ") || l.includes("gemeenschappelijke regeling") || l.includes("zienswijze") || l.includes("bestuur") || l.includes("raad")) {
+    if (l.includes("archief")) {
+      return { dossier: "Bestuur, Financiën & Openbare Orde", subdossier: "Archiefbeheer" };
+    }
+    if (l.includes("gr ") || l.includes("gemeenschappelijke regeling")) {
+      return { dossier: "Bestuur, Financiën & Openbare Orde", subdossier: "Gemeenschappelijke Regelingen (GR)" };
+    }
+    return { dossier: "Bestuur, Financiën & Openbare Orde", subdossier: "Algemeen Bestuur & Organisatie" };
+  }
+
+  // Fallbacks based on subFolders if not caught by keywords
+  if (subFolder === "waterschap") {
+    return { dossier: "Klimaat, Water & Natuur", subdossier: "Waterbeheer & Weerribben-Wieden" };
+  }
+  if (subFolder === "overijssel") {
+    return { dossier: "Bestuur, Financiën & Openbare Orde", subdossier: "Provinciaal Beleid & Kaders" };
+  }
+
+  // Absolute fallback
+  return { dossier: "Bestuur, Financiën & Openbare Orde", subdossier: "Algemeen Bestuur & Organisatie" };
 }
 
 // Generate Excel-compatible master metadata CSV with Dutch formatting

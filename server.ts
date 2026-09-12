@@ -8125,7 +8125,7 @@ Sitemap: ${baseUrl}/sitemap.xml
         })
         .filter((d): d is typeof allDossiers[0] => Boolean(d))
         .filter((d) => {
-          if (category && d.category.toLowerCase() !== category.toLowerCase()) {
+          if (category && d.category.toLowerCase() !== category.toLowerCase() && d.title.toLowerCase() !== category.toLowerCase()) {
             return false;
           }
           if (hasFilesOnly && d.uploadedCount === 0) {
@@ -8134,7 +8134,7 @@ Sitemap: ${baseUrl}/sitemap.xml
           if (search) {
             const matchTitle = d.title.toLowerCase().includes(search);
             const matchDesc = d.description.toLowerCase().includes(search);
-            const matchCat = d.category.toLowerCase().includes(search);
+            const matchCat = d.title.toLowerCase().includes(search) || d.category.toLowerCase().includes(search);
             const matchWijk = (d.wijkNaam || "").toLowerCase().includes(search);
             const matchTag = d.tags.some((t) => t.toLowerCase().includes(search));
             const matchDoc = d.documents.some((doc) =>
