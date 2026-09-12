@@ -278,47 +278,10 @@ export function normalizeSubdossier(
   knownCustomSubdossiers?: string[]
 ): string {
   const primarySub = CANONICAL_PRIMARY_SUBDOSSIERS[hoofddossier] || hoofddossier;
-
-  // Use heuristic matching based on SKOS matrix if no explicit subdossier is provided
-  if (!rawSub || rawSub.trim() === "" || rawSub.toLowerCase() === "algemeen") {
-    const combined = ((_title || "") + " " + (_text || "")).toLowerCase();
-    
-    // Heuristics mapping to SKOS concepts
-    if (combined.includes("woningbouw") || combined.includes("inbreiding") || combined.includes("streekcentrum")) {
-      return "Woningbouw & Inbreiding";
-    }
-    if (combined.includes("waterkwaliteit") || combined.includes("peilbesluit") || combined.includes("waterpeil")) {
-      return "Waterkwaliteit & Peilbeheer";
-    }
-    if (combined.includes("stikstof") || combined.includes("salderen") || combined.includes("aerius")) {
-      return "Stikstof & Jurisprudentie";
-    }
-    if (combined.includes("handhaving") || combined.includes("planschade") || combined.includes("bezwaar")) {
-      return "Bestuursrecht & Handhaving";
-    }
-    if (combined.includes("netcongestie") || combined.includes("energiehub") || combined.includes("zonnepark")) {
-      return "Netcongestie & Energietransitie";
-    }
-    if (combined.includes("erfgoed") || combined.includes("unesco") || combined.includes("weldadigheid")) {
-      return "Erfgoed & Bufferzones";
-    }
-    if (combined.includes("asiel") || combined.includes("vluchtelingen") || combined.includes("spreidingswet")) {
-      return "Asielopvang & Spreidingswet";
-    }
-    if (combined.includes("toerisme") || combined.includes("parkeren") || combined.includes("vaarverordening")) {
-      return "Toerisme Overlast & Infrastructuur";
-    }
-    if (combined.includes("mijnbouw") || combined.includes("gaswinning") || combined.includes("bodemdaling")) {
-      return "Mijnbouw & Bodemdaling";
-    }
-
-    return primarySub;
-  }
-
-  const s = rawSub.trim();
+  const s = rawSub ? rawSub.trim() : "";
   const sLower = s.toLowerCase();
 
-  // If it's empty, placeholder or matches the primary subdossier, return primary
+  // If it's empty, placeholder or matches the primary subdossier, apply heuristic matching based on SKOS matrix
   if (
     !s ||
     sLower === "algemeen" ||
@@ -329,6 +292,24 @@ export function normalizeSubdossier(
     sLower === "waterschap drents overijsselse delta" ||
     sLower === primarySub.toLowerCase()
   ) {
+    const combined = ((_title || "") + " " + (_entities || "") + " " + (_text || "")).toLowerCase();
+    
+    // Heuristics mapping to SKOS concepts
+    if (combined.match(/woningbouw|inbreiding|streekcentrum|wonen|bestemmingsplan|omgevingsplan|woonvisie/)) return "Woningbouw & Inbreiding";
+    if (combined.match(/waterkwaliteit|peilbesluit|waterpeil|klimaat|natuur|ecologisch|weerribben|wieden/)) return "Waterkwaliteit & Peilbeheer";
+    if (combined.match(/stikstof|salderen|aerius|natura 2000/)) return "Stikstof & Jurisprudentie";
+    if (combined.match(/handhaving|planschade|bezwaar|verordening|apv|veiligheid|toezicht|gemeenschappelijke regeling|gr |politie|brandweer|ggd |rsj /)) return "Bestuursrecht & Handhaving";
+    if (combined.match(/infrastructuur|onderwijs|verkeer|wegen|brug|parkeren|mobiliteit|school/)) return "Infrastructuur & Verkeer";
+    if (combined.match(/ruimtelijke ordening|transformatie|bedrijven|buitengebied|ontwikkeling/)) return "Ruimtelijke Ordening";
+    if (combined.match(/netcongestie|energiehub|zonnepark|windenergie|transitie/)) return "Netcongestie & Energietransitie";
+    if (combined.match(/erfgoed|unesco|weldadigheid|monument/)) return "Erfgoed & Bufferzones";
+    if (combined.match(/economie|agrarisch|industriël|recreatie|toerisme|pacht/)) return "Lokale Economie & Toerisme";
+    if (combined.match(/asiel|vluchtelingen|spreidingswet|sociaal|jeugd|zorg|wmo/)) return "Sociaal Domein & Asielopvang";
+    if (combined.match(/mijnbouw|gaswinning|bodemdaling|eesveen/)) return "Mijnbouw & Bodemdaling";
+    
+    if (combined.match(/begroting|jaarstukken|jaarrekening|kadernota|perspectiefnota|financiën/)) return "Planning & Control";
+    if (combined.match(/sport|cultuur|museum|theater|bibliotheek/)) return "Sport & Cultuur";
+
     return primarySub;
   }
 
