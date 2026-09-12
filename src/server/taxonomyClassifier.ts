@@ -279,7 +279,39 @@ export function normalizeSubdossier(
 ): string {
   const primarySub = CANONICAL_PRIMARY_SUBDOSSIERS[hoofddossier] || hoofddossier;
 
-  if (!rawSub) {
+  // Use heuristic matching based on SKOS matrix if no explicit subdossier is provided
+  if (!rawSub || rawSub.trim() === "" || rawSub.toLowerCase() === "algemeen") {
+    const combined = ((_title || "") + " " + (_text || "")).toLowerCase();
+    
+    // Heuristics mapping to SKOS concepts
+    if (combined.includes("woningbouw") || combined.includes("inbreiding") || combined.includes("streekcentrum")) {
+      return "Woningbouw & Inbreiding";
+    }
+    if (combined.includes("waterkwaliteit") || combined.includes("peilbesluit") || combined.includes("waterpeil")) {
+      return "Waterkwaliteit & Peilbeheer";
+    }
+    if (combined.includes("stikstof") || combined.includes("salderen") || combined.includes("aerius")) {
+      return "Stikstof & Jurisprudentie";
+    }
+    if (combined.includes("handhaving") || combined.includes("planschade") || combined.includes("bezwaar")) {
+      return "Bestuursrecht & Handhaving";
+    }
+    if (combined.includes("netcongestie") || combined.includes("energiehub") || combined.includes("zonnepark")) {
+      return "Netcongestie & Energietransitie";
+    }
+    if (combined.includes("erfgoed") || combined.includes("unesco") || combined.includes("weldadigheid")) {
+      return "Erfgoed & Bufferzones";
+    }
+    if (combined.includes("asiel") || combined.includes("vluchtelingen") || combined.includes("spreidingswet")) {
+      return "Asielopvang & Spreidingswet";
+    }
+    if (combined.includes("toerisme") || combined.includes("parkeren") || combined.includes("vaarverordening")) {
+      return "Toerisme Overlast & Infrastructuur";
+    }
+    if (combined.includes("mijnbouw") || combined.includes("gaswinning") || combined.includes("bodemdaling")) {
+      return "Mijnbouw & Bodemdaling";
+    }
+
     return primarySub;
   }
 
