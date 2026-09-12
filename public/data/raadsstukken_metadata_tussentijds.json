@@ -555,7 +555,7 @@
     "dossier": "Lokale Economie, Toerisme & Cultuur",
     "subdossier": "Bedrijventerreinen & Vestigingsklimaat",
     "datum": "2022-03-09",
-    "wijk_of_kern": "Barsbeek, Heetveld en Kadoelen, Blokzijl, Eeserwold, Giethoorn, Kuinre, Oldemarkt, Ossenzijl, Scheerwolde, Vollenhove",
+    "wijk_of_kern": "Barsbeek, Heetveld en Kadoelen, Blokzijl, Eeserwold, Giethoorn, Kuinre, Oldemarkt, Ossenzijl, Scheerwolde, Vollenhove, Barsbeek, Heetveld en Kadoelen",
     "entiteiten": "Gemeente Steenwijkerland, Stec Groep, Juriën Poulussen, Anneloes Bouma, Business Club Steenwijkerland (BCS), Panattoni, Kornelis Caps & Closures, Agrifac Machinery BV, CPB, PBL, Economisch Instituut voor de Bouw (EIB), Blokzijl, Giethoorn, Heetveld, Kuinre, Scheerwolde, Ossenzijl, Oldemarkt, Steenwijk, Vollenhove, Meppel, Zwolle, Noordoostpolder, Weststellingwerf, Zwartewaterland, Heerenveen, Westerveld, Apeldoorn, Kampen, Groningen, Almere, Broekhuizen, De Friese Meren, De Wolden, Bedrijventerrein Eeserwold",
     "relaties": "Provinciale behoefteraming bedrijventerreinen (2019), Regionale programmeringsafspraken, Werkgelegenheidsprognoses Welvaart en Leefomgeving (WLO)"
   },
@@ -565,7 +565,7 @@
     "dossier": "Lokale Economie, Toerisme & Cultuur",
     "subdossier": "Bedrijventerreinen & Vestigingsklimaat",
     "datum": "2022-12-13",
-    "wijk_of_kern": "Barsbeek, Heetveld en Kadoelen, Belt-schutsloot, Blokzijl, Eeserwold, Sint Jansklooster, Vollenhove",
+    "wijk_of_kern": "Barsbeek, Heetveld en Kadoelen, Belt-schutsloot, Blokzijl, Eeserwold, Sint Jansklooster, Vollenhove, Barsbeek, Heetveld en Kadoelen",
     "entiteiten": "Stec Groep, Juriën Poulussen, Marijn Gradussen, gemeente Steenwijkerland, Vollenhove, Schaarkampen-Zuid, De Kampen, Meppel, Steenwijk, provincie Overijssel, West-Overijssel, bedrijvenpark Eeserwold, Blokzijl, Belt-Schutsloot, Zwartewaterland, De Fryske Marren, Sint Jansklooster, Heetveld, CBS, PBL",
     "relaties": "Besluit ruimtelijke ordening (Bro), Beheersverordening Buitengebied Steenwijkerland 2014, ABRvS 29 april 2015, ECLI:NL:RVS:2015:1340, Regionale programmeringsafspraken werklocaties (2019), Verhuizingen van bedrijven en groei van werkgelegenheid, Ruimtelijk Planbureau, 2007"
   },
@@ -965,7 +965,7 @@
     "dossier": "Ruimte, Wonen & Bereikbaarheid",
     "subdossier": "Bestemmingsplannen & Ruimtelijke Ordening",
     "datum": "2023-06-19",
-    "wijk_of_kern": "Barsbeek, Heetveld en Kadoelen, Sint Jansklooster",
+    "wijk_of_kern": "Barsbeek, Heetveld en Kadoelen, Sint Jansklooster, Barsbeek, Heetveld en Kadoelen",
     "entiteiten": "Gemeente Steenwijkerland, Rookveen Vastgoed B.V., Rook Pijpleidingbouw, Heetveld, Sint-Jansklooster, De Wieden, E. Venema",
     "relaties": "Bestemmingsplan Zuidelijke Kernen (4 december 2012), Beheersverordening Buitengebied Steenwijkerland 2014"
   },
@@ -1015,7 +1015,7 @@
     "dossier": "Ruimte, Wonen & Bereikbaarheid",
     "subdossier": "Wegenbeheer & Wegonderhoud",
     "datum": "2024-09-26",
-    "wijk_of_kern": "Oostermeenthe, Oostwijken, De Beitel, Steenwijk West, Torenlanden, Woldmeenthe, Giethoorn, Tuk",
+    "wijk_of_kern": "Oostermeenthe, Oostwijken, De Beitel, Steenwijk West, Torenlanden, Woldmeenthe, Giethoorn, Tuk, Oostwijken, De Beitel",
     "entiteiten": "Gemeente Steenwijkerland, Provincie Overijssel, Regio Zwolle, NS, Prorail, Waterschap Drents Overijsselse Delta, Het Oversticht, Defensie, Agrifac Machinery B.V., Kornelis Caps & Closures, Theater de Meenthe, RSG Tromp Meesters, Regionale Praktijk Academie, OEC 't Ravelijn, Goudappel, Royal HaskoningDHV, Steenwijk, Tuk, Zwolle, Havelte, Giethoorn, Oosterwolde, Station Steenwijk, LTS gebouw, Joodse begraafplaats, Steenwijker Aa, Tramlaan, Eesveenseweg, Stationsplein, Stationsstraat, Willem de Zwijgerstraat, J.H. Tromp Meestersstraat, Torenlanden, Oostwijken De Beitel, Oostermeenthe, Woldmeenthe, Kop van Overijssel, Koloniën van Weldadigheid",
     "relaties": "Woonagenda van Steenwijkerland, Verstedelijkingsstrategie: Warme Harten in een Klimaatadaptieve Delta (2023), Woondeal West-Overijssel (2022), Omgevingsvisie, Monitor Hubs Overijssel: Steenwijk (Goudappel 2023), Belevingsmonitor (NS & Prorail 2023), Afwegingskader wonen en werken, Coalitieakkoord, Verkeersstructuur Steenwijk (Royal HaskoningDHV, 2023), Strategische mobiliteitsvisie Steenwijkerland (2020), Fietsplan Steenwijkerland 2024-2027 (2023)"
   },
@@ -1605,7 +1605,7 @@
     "dossier": "Klimaat, Water & Natuur",
     "subdossier": "Stikstof & Natura 2000",
     "datum": null,
-    "wijk_of_kern": "De Pol, Baars en de Bult",
+    "wijk_of_kern": "De Pol, Baars en de Bult, De Pol, Baars en de Bult",
     "entiteiten": "Natuurbegraafplaats Heidewold, Woldweg, De Pol",
     "relaties": ""
   },
@@ -1685,7 +1685,7 @@
     "dossier": "Klimaat, Water & Natuur",
     "subdossier": "Zonne-energie & Zonneparken",
     "datum": "2024-06-24",
-    "wijk_of_kern": "Blokzijl, Ijsselham, Paasloo en de Basse",
+    "wijk_of_kern": "Blokzijl, Ijsselham, Paasloo en de Basse, Ijsselham, Paasloo en de Basse",
     "entiteiten": "Gemeente Steenwijkerland, J.H. Bats, College van Burgemeester en Wethouders, Steenergie Blokzijl B.V., MVA Hellinga Holding B.V., Stormkracht 8 B.V., Lok Holding B.V., Blokzijl, Uiterdijkenweg, Kuinderdijk, IJsselham",
     "relaties": "Beleidskader \"Ruimte voor zonnepanelen op (Steenwijker)land\", Wet ruimtelijke ordening (Wro), Omgevingswet"
   },
@@ -2115,7 +2115,7 @@
     "dossier": "Ruimte, Wonen & Bereikbaarheid",
     "subdossier": "Bestemmingsplannen & Ruimtelijke Ordening",
     "datum": "2023-01-12",
-    "wijk_of_kern": "Ijsselham, Ijsselham, Paasloo en de Basse",
+    "wijk_of_kern": "Ijsselham, Paasloo en de Basse, Ijsselham, Paasloo en de Basse",
     "entiteiten": "Waterschap Drents Overijsselse Delta, Sander Wennemers, Furkan Adigüzel, Team Samenleving en Ontwikkeling, Zwolle",
     "relaties": "ontwerpbestemmingsplan Lakeweg 7 & 8 IJsselham, uitgangspuntennotitie"
   },
@@ -2295,7 +2295,7 @@
     "dossier": "Ruimte, Wonen & Bereikbaarheid",
     "subdossier": "Woningbouw & Nieuwbouwprojecten",
     "datum": "2021-11-04",
-    "wijk_of_kern": "De Pol, De Pol, Baars en de Bult",
+    "wijk_of_kern": "De Pol, Baars en de Bult, De Pol, Baars en de Bult",
     "entiteiten": "",
     "relaties": ""
   },
@@ -2345,7 +2345,7 @@
     "dossier": "Ruimte, Wonen & Bereikbaarheid",
     "subdossier": "Stikstof & Bouwontwikkeling",
     "datum": "2023-04-13",
-    "wijk_of_kern": "De Pol, De Pol, Baars en de Bult",
+    "wijk_of_kern": "De Pol, Baars en de Bult, De Pol, Baars en de Bult",
     "entiteiten": "Natura 2000, Löhnislaan",
     "relaties": ""
   },
@@ -2815,7 +2815,7 @@
     "dossier": "Ruimte, Wonen & Bereikbaarheid",
     "subdossier": "Woningbouw & Nieuwbouwprojecten",
     "datum": "2024-11-19",
-    "wijk_of_kern": "Ossenzijl, Ijsselham, Paasloo en de Basse",
+    "wijk_of_kern": "Ossenzijl, Ijsselham, Paasloo en de Basse, Ijsselham, Paasloo en de Basse",
     "entiteiten": "Stichting Woonwens Ossenzijl, Werkgroep wonen Ossenzijl, Plaatselijk Belang Ossenzijl (PBO), Grouwels Vastgoed, Wetland Wonen, G.B. Kooijstraat, Provincie (Programma Leefbaar Platteland), Gemeentelijk woningbedrijf IJsselham",
     "relaties": ""
   },
@@ -3455,7 +3455,7 @@
     "dossier": "Ruimte, Wonen & Bereikbaarheid",
     "subdossier": "Woningbouw & Nieuwbouwprojecten",
     "datum": "2019-05-03",
-    "wijk_of_kern": "Scheerwolde, Ijsselham, Paasloo en de Basse",
+    "wijk_of_kern": "Scheerwolde, Ijsselham, Paasloo en de Basse, Ijsselham, Paasloo en de Basse",
     "entiteiten": "Grondslag BV, KIWA, Omgevingsdienst IJsselland, Provincie Overijssel, Gemeente IJsselham, Brink 20, Brink 22, Brink 24, Brink 26",
     "relaties": ""
   },
@@ -3745,7 +3745,7 @@
     "dossier": "Bestuur, Financiën & Openbare Orde",
     "subdossier": "Bestuur & Raad Algemeen",
     "datum": "2024-02-23",
-    "wijk_of_kern": "Ijsselham, Ijsselham, Paasloo en de Basse",
+    "wijk_of_kern": "Ijsselham, Paasloo en de Basse, Ijsselham, Paasloo en de Basse",
     "entiteiten": "Benthem Gratama advocaten, Melkveebedrijf BEM, College van Burgemeester en Wethouders Steenwijkerland, Provincie Overijssel",
     "relaties": "Ontwerp raadsvoorstel d.d. 9 januari 2024, Besluit van het College d.d. 9 januari 2024, Brief gemeente d.d. 17 januari 2024, Bezwaarschrift tegen besluit College d.d. 9 januari 2024"
   },
