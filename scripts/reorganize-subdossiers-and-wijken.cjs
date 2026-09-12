@@ -1,11 +1,23 @@
 const fs = require("fs");
 const path = require("path");
 
-const JSON_PATH = path.join(__dirname, "../public/data/raadsstukken_metadata_tussentijds.json");
-const CSV_PATH = path.join(__dirname, "../public/data/raadsstukken_metadata_tussentijds.csv");
-const GRAPH_PATH = path.join(__dirname, "../public/data/network_graph.json");
+const ROOT = process.cwd();
+const JSON_PATH = path.join(ROOT, "public", "data", "raadsstukken_metadata_tussentijds.json");
+const DIST_JSON_PATH = path.join(ROOT, "dist", "data", "raadsstukken_metadata_tussentijds.json");
+const MASTER_JSON_PATH = path.join(ROOT, "data", "raadsstukken_metadata_master.json");
+const CSV_PATH = path.join(ROOT, "public", "data", "raadsstukken_metadata_tussentijds.csv");
+const DIST_CSV_PATH = path.join(ROOT, "dist", "data", "raadsstukken_metadata_tussentijds.csv");
+const GRAPH_PATH = path.join(ROOT, "public", "data", "network_graph.json");
+const DIST_GRAPH_PATH = path.join(ROOT, "dist", "data", "network_graph.json");
 
-// 42 wijken en kernen in Steenwijkerland
+const CANONICAL_HOOFDDOSSIERS = [
+  "Ruimte, Wonen & Bereikbaarheid",
+  "Klimaat, Water & Natuur",
+  "Sociaal Domein, Zorg & Jeugd",
+  "Lokale Economie, Toerisme & Cultuur",
+  "Bestuur, Financiën & Openbare Orde"
+];
+
 const WIJKEN_KERNEN_LIST = [
   { slug: "centrum-steenwijk", naam: "Centrum Steenwijk", aliases: ["steenwijk centrum", "binnenstad steenwijk", "markt steenwijk", "stadshart steenwijk", "centrum steenwijk"] },
   { slug: "clingenborgh", naam: "Clingenborgh", aliases: ["clingenborgh"] },
@@ -51,105 +63,247 @@ const WIJKEN_KERNEN_LIST = [
   { slug: "zuidveen", naam: "Zuidveen", aliases: ["zuidveen"] }
 ];
 
-function normalizeSubdossier(hoofddossier, rawSub, title = "", entities = "") {
+function normalizeHoofddossier(rawDossier, title = "", entities = "", text = "") {
+  const d = (rawDossier || "").trim().toLowerCase();
+  const searchCorpus = `${rawDossier || ""} ${title || ""} ${entities || ""} ${text || ""}`.toLowerCase();
+
+  // 1. Direct canonical matches
+  if (d === "ruimte, wonen & bereikbaarheid") return "Ruimte, Wonen & Bereikbaarheid";
+  if (d === "klimaat, water & natuur") return "Klimaat, Water & Natuur";
+  if (d === "sociaal domein, zorg & jeugd") return "Sociaal Domein, Zorg & Jeugd";
+  if (d === "lokale economie, toerisme & cultuur") return "Lokale Economie, Toerisme & Cultuur";
+  if (d === "bestuur, financiën & openbare orde" || d === "bestuur, financien & openbare orde") {
+    return "Bestuur, Financiën & Openbare Orde";
+  }
+
+  // 2. Legacy Hoofddossiers mapping
+  if (d.includes("wonen, bouwen") || d.includes("ruimtelijke") || d.includes("verkeer, wegen") || d.includes("mobiliteit")) {
+    return "Ruimte, Wonen & Bereikbaarheid";
+  }
+  if (d.includes("natuur, milieu") || d.includes("klimaat") || d.includes("waterbeheer")) {
+    return "Klimaat, Water & Natuur";
+  }
+  if (
+    d.includes("zorg, gezondheid") ||
+    d.includes("jeugd, gezin") ||
+    d.includes("samenleving, zorg") ||
+    d.includes("samenleving, inclusie") ||
+    d.includes("werk, inkomen")
+  ) {
+    return "Sociaal Domein, Zorg & Jeugd";
+  }
+  if (d.includes("kunst, cultuur") || d.includes("economie, ondernemen") || d.includes("toerisme")) {
+    return "Lokale Economie, Toerisme & Cultuur";
+  }
+  if (
+    d.includes("bestuur, financiën & organisatie") ||
+    d.includes("bestuur, financien & organisatie") ||
+    d.includes("gemeenteraad & beleid") ||
+    d.includes("veiligheid, toezicht") ||
+    d.includes("openbare ruimte & onderhoud")
+  ) {
+    return "Bestuur, Financiën & Openbare Orde";
+  }
+
+  // 3. Waterschap
+  if (d.includes("waterschap")) {
+    if (searchCorpus.includes("begroting") || searchCorpus.includes("belasting") || searchCorpus.includes("gblt") || searchCorpus.includes("tarieven")) {
+      return "Bestuur, Financiën & Openbare Orde";
+    }
+    if (searchCorpus.includes("brug") || searchCorpus.includes("weg") || searchCorpus.includes("fietspad")) {
+      return "Ruimte, Wonen & Bereikbaarheid";
+    }
+    return "Klimaat, Water & Natuur";
+  }
+
+  // 4. Overijssel
+  if (d.includes("overijssel")) {
+    if (searchCorpus.includes("natuur") || searchCorpus.includes("stikstof") || searchCorpus.includes("weerribben") || searchCorpus.includes("water") || searchCorpus.includes("klimaat") || searchCorpus.includes("energie")) {
+      return "Klimaat, Water & Natuur";
+    }
+    if (searchCorpus.includes("weg") || searchCorpus.includes("verkeer") || searchCorpus.includes("spoor") || searchCorpus.includes("woningbouw") || searchCorpus.includes("omgevingsplan") || searchCorpus.includes("ruimte")) {
+      return "Ruimte, Wonen & Bereikbaarheid";
+    }
+    if (searchCorpus.includes("jeugd") || searchCorpus.includes("ggd") || searchCorpus.includes("zorg") || searchCorpus.includes("onderwijs")) {
+      return "Sociaal Domein, Zorg & Jeugd";
+    }
+    if (searchCorpus.includes("cultuur") || searchCorpus.includes("erfgoed") || searchCorpus.includes("toerisme") || searchCorpus.includes("economie")) {
+      return "Lokale Economie, Toerisme & Cultuur";
+    }
+    return "Bestuur, Financiën & Openbare Orde";
+  }
+
+  // 5. Keyword analysis
+  if (
+    searchCorpus.includes("bestemmingsplan") ||
+    searchCorpus.includes("omgevingsplan") ||
+    searchCorpus.includes("omgevingsvergunning") ||
+    searchCorpus.includes("woonvisie") ||
+    searchCorpus.includes("woningbouw") ||
+    searchCorpus.includes("nieuwbouw") ||
+    searchCorpus.includes("ruimtelijke ordening") ||
+    searchCorpus.includes("kavel") ||
+    searchCorpus.includes("gvvp") ||
+    searchCorpus.includes("verkeer") ||
+    searchCorpus.includes("wegen") ||
+    searchCorpus.includes("fietspad")
+  ) {
+    return "Ruimte, Wonen & Bereikbaarheid";
+  }
+
+  if (
+    searchCorpus.includes("stikstof") ||
+    searchCorpus.includes("natura 2000") ||
+    searchCorpus.includes("weerribben") ||
+    searchCorpus.includes("water") ||
+    searchCorpus.includes("peilbesluit") ||
+    searchCorpus.includes("waterschap") ||
+    searchCorpus.includes("klimaat") ||
+    searchCorpus.includes("zonnepark") ||
+    searchCorpus.includes("windturbine") ||
+    searchCorpus.includes("duurzaam")
+  ) {
+    return "Klimaat, Water & Natuur";
+  }
+
+  if (
+    searchCorpus.includes("wmo") ||
+    searchCorpus.includes("zorg") ||
+    searchCorpus.includes("welzijn") ||
+    searchCorpus.includes("ggd") ||
+    searchCorpus.includes("gezondheid") ||
+    searchCorpus.includes("jeugd") ||
+    searchCorpus.includes("onderwijs") ||
+    searchCorpus.includes("armoede") ||
+    searchCorpus.includes("asiel")
+  ) {
+    return "Sociaal Domein, Zorg & Jeugd";
+  }
+
+  if (
+    searchCorpus.includes("bedrijventerrein") ||
+    searchCorpus.includes("ondernemen") ||
+    searchCorpus.includes("detailhandel") ||
+    searchCorpus.includes("toerisme") ||
+    searchCorpus.includes("horeca") ||
+    searchCorpus.includes("sport") ||
+    searchCorpus.includes("cultuur") ||
+    searchCorpus.includes("museum") ||
+    searchCorpus.includes("meenthe") ||
+    searchCorpus.includes("erfgoed")
+  ) {
+    return "Lokale Economie, Toerisme & Cultuur";
+  }
+
+  return "Bestuur, Financiën & Openbare Orde";
+}
+
+function normalizeSubdossier(hoofddossier, rawSub, title = "", entities = "", text = "") {
   const s = (rawSub || "").toLowerCase().trim();
   const t = (title || "").toLowerCase();
   const e = (entities || "").toLowerCase();
-  const text = `${s} ${t} ${e}`;
+  const tx = (text || "").toLowerCase();
+  const combined = `${s} ${t} ${e} ${tx}`;
+
+  if (
+    s &&
+    s !== "algemeen" &&
+    s !== "overig" &&
+    s !== "geen" &&
+    s !== "provinciale staten & besluiten" &&
+    s !== "waterschap drents overijsselse delta" &&
+    s.length > 3
+  ) {
+    if (
+      s.includes("&") ||
+      s.includes("woningbouw") ||
+      s.includes("bestemming") ||
+      s.includes("stikstof") ||
+      s.includes("begroting") ||
+      s.includes("waterbeheer") ||
+      s.includes("jeugd") ||
+      s.includes("toerisme") ||
+      s.includes("verkeer")
+    ) {
+      return rawSub.trim();
+    }
+  }
 
   switch (hoofddossier) {
-    case "Wonen, Bouwen & Ontwikkeling":
-      if (s.includes("bestemming") || text.includes("bestemmingsplan") || text.includes("buitengebied")) return "Bestemmingsplannen & Ruimtelijke Ordening";
-      if (s.includes("stadsvisie") || s.includes("gebiedsontwikkeling") || text.includes("spoorzone") || text.includes("omgevingsvisie") || text.includes("vrije veld")) return "Gebiedsontwikkeling & Stadsvisies";
-      if (s.includes("woonwagen") || text.includes("standplaats") || text.includes("woonwagen")) return "Woonwagenbeleid & Standplaatsen";
-      if (s.includes("vergunning") || text.includes("welstand") || text.includes("omgevingsvergunning")) return "Vergunningen & Welstand";
-      if (text.includes("stikstof") || text.includes("aerius")) return "Stikstof & Bouwontwikkeling";
-      if (text.includes("nieuwbouw") || text.includes("kavels") || text.includes("woningbouw") || text.includes("starters")) return "Woningbouw & Nieuwbouwprojecten";
-      return "Woningbouw & Woonbeleid";
+    case "Ruimte, Wonen & Bereikbaarheid": {
+      if (combined.includes("fiets") || combined.includes("fietspad") || combined.includes("snelfiets")) return "Fietsinfrastructuur & Fietspaden";
+      if (combined.includes("parkeer") || combined.includes("blauwe zone") || combined.includes("laadpaal")) return "Parkeerbeleid & Parkeervoorzieningen";
+      if (combined.includes("openbaar vervoer") || combined.includes("bus") || combined.includes("trein") || combined.includes("station")) return "Openbaar Vervoer & Spoorzone";
+      if (combined.includes("weg") || combined.includes("asfalt") || combined.includes("onderhoud wegen") || combined.includes("rotonde") || combined.includes("n333") || combined.includes("n334")) return "Wegenbeheer & Wegonderhoud";
+      if (combined.includes("verkeer") || combined.includes("gvvp") || combined.includes("mobiliteit") || combined.includes("30 km")) return "Verkeersveiligheid & Mobiliteit";
+      if (combined.includes("woonwagen") || combined.includes("standplaats")) return "Woonwagenbeleid & Standplaatsen";
+      if (combined.includes("vergunning") || combined.includes("welstand") || combined.includes("omgevingsvergunning")) return "Vergunningen & Welstand";
+      if (combined.includes("stadsvisie") || combined.includes("gebiedsontwikkeling") || combined.includes("spoorzone") || combined.includes("omgevingsvisie") || combined.includes("vrije veld")) return "Gebiedsontwikkeling & Stadsvisies";
+      if (combined.includes("bestemming") || combined.includes("bestemmingsplan") || combined.includes("omgevingsplan") || combined.includes("buitengebied") || combined.includes("vab") || combined.includes("bopa")) return "Bestemmingsplannen & Ruimtelijke Ordening";
+      if (combined.includes("nieuwbouw") || combined.includes("kavels") || combined.includes("woningbouw") || combined.includes("woonvisie") || combined.includes("starters") || combined.includes("woondeal")) return "Woningbouw & Nieuwbouwprojecten";
+      return "Ruimtelijke Ontwikkeling & Woningbouw";
+    }
 
-    case "Natuur, Milieu & Klimaat":
-      if (s.includes("stikstof") || text.includes("aerius") || text.includes("natura 2000")) return "Stikstof & Natura 2000";
-      if (s.includes("wind") || text.includes("windturbine") || text.includes("windenergie")) return "Windenergie & Turbines";
-      if (s.includes("zon") || text.includes("zonnepark") || text.includes("zonnepanelen")) return "Zonne-energie & Zonneparken";
-      if (s.includes("water") || text.includes("peilbesluit") || text.includes("dijk") || text.includes("wdodelta") || text.includes("waterschap")) return "Waterbeheer, Peilbesluiten & Dijken";
-      if (text.includes("netcongestie") || text.includes("compactstation") || text.includes("energie") || text.includes("warmte") || text.includes("res ")) return "Energietransitie & Netcongestie";
-      if (text.includes("weerribben") || text.includes("wieden") || text.includes("biodiversiteit") || text.includes("natuurbeheer")) return "Natuurbeheer & Biodiversiteit";
+    case "Klimaat, Water & Natuur": {
+      if (combined.includes("water") || combined.includes("peilbesluit") || combined.includes("dijk") || combined.includes("wdodelta") || combined.includes("waterschap") || combined.includes("gemaal") || combined.includes("sluis") || combined.includes("waterpeil")) return "Waterbeheer, Peilbesluiten & Dijken";
+      if (combined.includes("stikstof") || combined.includes("aerius") || combined.includes("natura 2000") || combined.includes("kdw")) return "Stikstof & Natura 2000";
+      if (combined.includes("wind") || combined.includes("windturbine") || combined.includes("windenergie") || combined.includes("windmolen")) return "Windenergie & Turbines";
+      if (combined.includes("zon") || combined.includes("zonnepark") || combined.includes("zonnepanelen") || combined.includes("zonneweide")) return "Zonne-energie & Zonneparken";
+      if (combined.includes("netcongestie") || combined.includes("compactstation") || combined.includes("energie") || combined.includes("warmte") || combined.includes("res ") || combined.includes("isolatie")) return "Energietransitie & Netcongestie";
+      if (combined.includes("pfas") || combined.includes("asbest") || combined.includes("bodem") || combined.includes("verontreiniging")) return "PFAS, Bodemkwaliteit & Asbest";
+      if (combined.includes("icebear") || combined.includes("geur") || combined.includes("emissie") || combined.includes("luchtkwaliteit") || combined.includes("geluidsoverlast")) return "Handhaving, Emissies & Geurhinder (IceBear)";
+      if (combined.includes("weerribben") || combined.includes("wieden") || combined.includes("biodiversiteit") || combined.includes("natuurbeheer") || combined.includes("flora") || combined.includes("fauna") || combined.includes("weidevogel")) return "Natuurbeheer & Biodiversiteit";
       return "Milieu, Duurzaamheid & Klimaat";
+    }
 
-    case "Bestuur, Financiën & Organisatie":
-      if (s.includes("zienswijze") || text.includes("gemeenschappelijke regeling") || text.includes("gr ") || text.includes("odij")) return "Gemeenschappelijke Regelingen (GR)";
-      if (text.includes("begroting") || text.includes("jaarrekening") || text.includes("gemeentefonds") || text.includes("circulaire") || text.includes("belasting") || text.includes("kadernota")) return "Begroting, Financiën & Belastingen";
-      if (s.includes("ingekomen") || text.includes("ingekomen stukken") || text.includes("raadsbrief") || text.includes("circulaires")) return "Ingekomen Stukken & Raadscorrespondentie";
-      if (text.includes("interpellatie") || text.includes("motie") || text.includes("burgeramendement") || text.includes("initiatiefvoorstel")) return "Moties, Interpellaties & Initiatieven";
-      if (text.includes("archief") || text.includes("integriteit") || text.includes("organisatie") || text.includes("dienstverlening")) return "Bestuurlijke Organisatie & Integriteit";
-      return "Bestuur & Raad Algemeen";
-
-    case "Zorg, Gezondheid & Welzijn":
-      if (text.includes("zienswijze") || text.includes("ggd") || text.includes("gezondheid") || text.includes("publieke gezondheid")) return "Publieke Gezondheid & GGD";
-      if (text.includes("wmo") || text.includes("thuiszorg") || text.includes("ouderen") || text.includes("mantelzorg") || text.includes("dagbesteding")) return "Wmo, Thuiszorg & Mantelzorg";
-      if (text.includes("beschermd wonen") || text.includes("opvang") || text.includes("dakloos")) return "Beschermd Wonen & Maatschappelijke Opvang";
-      if (text.includes("jeugdzorg") || text.includes("rsj")) return "Regionale Jeugdzorg & RSJ";
+    case "Sociaal Domein, Zorg & Jeugd": {
+      if (combined.includes("ggd") || combined.includes("gezondheid") || combined.includes("publieke gezondheid") || combined.includes("gala")) return "Publieke Gezondheid & GGD";
+      if (combined.includes("asiel") || combined.includes("vluchteling") || combined.includes("oekra") || combined.includes("spreidingswet") || combined.includes("fletcher") || combined.includes("statushouder")) return "Asiel- & Vluchtelingenopvang";
+      if (combined.includes("rsj") || combined.includes("regionaal serviceteam")) return "Regionale Jeugdzorg & RSJ";
+      if (combined.includes("huiselijk geweld") || combined.includes("kindermishandeling") || combined.includes("veilig thuis")) return "Huiselijk Geweld & Kindermishandeling";
+      if (combined.includes("jeugdhulp") || combined.includes("jeugdzorg") || combined.includes("jeugdbescherming") || combined.includes("pleegzorg")) return "Jeugdhulp & Jeugdbescherming";
+      if (combined.includes("onderwijs") || combined.includes("school") || combined.includes("scholen") || combined.includes("ihp") || combined.includes("leerling")) return "Onderwijshuisvesting & Scholen";
+      if (combined.includes("wmo") || combined.includes("thuiszorg") || combined.includes("ouderen") || combined.includes("mantelzorg") || combined.includes("dagbesteding")) return "Wmo, Thuiszorg & Mantelzorg";
+      if (combined.includes("beschermd wonen") || combined.includes("dakloos") || combined.includes("opvang")) return "Beschermd Wonen & Maatschappelijke Opvang";
+      if (combined.includes("schuldhulp") || combined.includes("kredietbank") || combined.includes("armoede") || combined.includes("vroegsignalering")) return "Schuldhulpverlening & Armoedebestrijding";
+      if (combined.includes("participatiewet") || combined.includes("bijstand") || combined.includes("inkomen") || combined.includes("re-integratie")) return "Participatiewet & Inkomensondersteuning";
+      if (combined.includes("inclusie") || combined.includes("toegankelijk") || combined.includes("onbeperkt")) return "Inclusie & Toegankelijkheid";
+      if (combined.includes("participatie") || combined.includes("wijkgericht") || combined.includes("dorpsbelang") || combined.includes("buurt")) return "Burgerparticipatie & Wijkgericht Werken";
       return "Zorg, Welzijn & Preventie";
+    }
 
-    case "Jeugd, Gezin & Onderwijs":
-      if (text.includes("jeugdhulp") || text.includes("rsj") || text.includes("jeugdbescherming")) return "Jeugdhulp & Jeugdbescherming";
-      if (text.includes("huiselijk geweld") || text.includes("kindermishandeling") || text.includes("veilig thuis")) return "Huiselijk Geweld & Kindermishandeling";
-      if (text.includes("onderwijs") || text.includes("school") || text.includes("scholen") || text.includes("leerling") || text.includes("huisvesting")) return "Onderwijshuisvesting & Scholen";
-      if (text.includes("kinderopvang") || text.includes("peuter") || text.includes("voorschool")) return "Kinderopvang & Jonge Kind";
-      return "Jeugd- & Gezinsbeleid";
-
-    case "Veiligheid, Toezicht & Handhaving":
-      if (text.includes("veiligheidsregio") || text.includes("brandweer") || text.includes("crisis") || text.includes("vrijsselland")) return "Veiligheidsregio IJsselland & Brandweer";
-      if (text.includes("icebear") || text.includes("handhaving") || text.includes("geluidsoverlast") || text.includes("geur") || text.includes("toezicht")) return "Handhaving, Toezicht & Milieuhinder";
-      if (text.includes("apv") || text.includes("openbare orde") || text.includes("politie") || text.includes("cameratoezicht")) return "Openbare Orde & Veiligheid";
-      if (text.includes("archief")) return "Archieftoezicht & Informatiebeheer";
-      return "Veiligheid, Toezicht & APV";
-
-    case "Kunst, Cultuur & Sport":
-      if (text.includes("museum") || text.includes("spijkervetstallen") || text.includes("spijkervet")) return "Nieuw Museum & Spijkervetstallen";
-      if (text.includes("scala") || text.includes("theater") || text.includes("meenthe") || text.includes("muziek")) return "Podiumkunsten, Scala & De Meenthe";
-      if (text.includes("beeldende kunst") || text.includes("monument") || text.includes("erfgoed")) return "Beeldende Kunst & Erfgoed";
-      if (text.includes("bibliotheek") || text.includes("markt")) return "Bibliotheekvoorzieningen";
-      if (text.includes("sport") || text.includes("kunstgras") || text.includes("accommodatie") || text.includes("sportvelden")) return "Sportaccommodaties & Velden";
-      return "Cultuur- & Sportbeleid";
-
-    case "Verkeer, Wegen & Bereikbaarheid":
-      if (text.includes("fiets") || text.includes("fietspad") || text.includes("snelfietsroute")) return "Fietsinfrastructuur & Fietspaden";
-      if (text.includes("weg") || text.includes("asfalt") || text.includes("onderhoud wegen") || text.includes("infrastructuur")) return "Wegenbeheer & Wegonderhoud";
-      if (text.includes("parkeer") || text.includes("blauwe zone") || text.includes("parkeertarieven")) return "Parkeerbeleid & Parkeervoorzieningen";
-      if (text.includes("bus") || text.includes("trein") || text.includes("openbaar vervoer") || text.includes("station") || text.includes("keolis")) return "Openbaar Vervoer & Bereikbaarheid";
-      return "Verkeersveiligheid & Mobiliteit";
-
-    case "Economie, Ondernemen & Toerisme":
-      if (text.includes("bedrijventerrein") || text.includes("bedrijvenpark") || text.includes("vestiging")) return "Bedrijventerreinen & Vestigingsklimaat";
-      if (text.includes("toerisme") || text.includes("recreatie") || text.includes("toeristenbelasting") || text.includes("varen") || text.includes("rondvaart")) return "Toerisme & Waterecreatie";
-      if (text.includes("pacht") || text.includes("landbouw") || text.includes("agrarisch") || text.includes("didam")) return "Agrarische Zaken & Pachtbeleid";
-      if (text.includes("middenstand") || text.includes("detailhandel") || text.includes("horeca") || text.includes("aan huis")) return "Middenstand, Horeca & Detailhandel";
+    case "Lokale Economie, Toerisme & Cultuur": {
+      if (combined.includes("bedrijventerrein") || combined.includes("eeserwold") || combined.includes("groot verlaat") || combined.includes("vestigingsklimaat")) return "Bedrijventerreinen & Vestigingsklimaat";
+      if (combined.includes("toerisme") || combined.includes("recreatie") || combined.includes("toeristenbelasting") || combined.includes("varen") || combined.includes("rondvaart") || combined.includes("jachthaven")) return "Toerisme & Waterecreatie";
+      if (combined.includes("meenthe") || combined.includes("theater") || combined.includes("scala") || combined.includes("podium") || combined.includes("muziek")) return "Podiumkunsten, Scala & De Meenthe";
+      if (combined.includes("museum") || combined.includes("spijkervet") || combined.includes("stadsmuseum")) return "Nieuw Museum & Spijkervetstallen";
+      if (combined.includes("monument") || combined.includes("erfgoed") || combined.includes("archeologie") || combined.includes("beeldende kunst")) return "Beeldende Kunst & Erfgoed";
+      if (combined.includes("bibliotheek") || combined.includes("bieb") || combined.includes("taalpunt")) return "Bibliotheekvoorzieningen";
+      if (combined.includes("sport") || combined.includes("kunstgras") || combined.includes("sportpark") || combined.includes("sporthal") || combined.includes("zwembad")) return "Sportaccommodaties & Velden";
+      if (combined.includes("pacht") || combined.includes("landbouw") || combined.includes("agrarisch") || combined.includes("didam")) return "Agrarische Zaken & Pachtbeleid";
+      if (combined.includes("detailhandel") || combined.includes("horeca") || combined.includes("winkel") || combined.includes("binnenstad") || combined.includes("middenstand")) return "Middenstand, Horeca & Detailhandel";
       return "Economie & Ondernemerschap";
+    }
 
-    case "Openbare Ruimte & Onderhoud":
-      if (text.includes("verlichting") || text.includes("lantaarnpaal") || text.includes("led")) return "Openbare Verlichting & Lichtmasten";
-      if (text.includes("hemelwater") || text.includes("grondwater") || text.includes("riool") || text.includes("afkoppelen")) return "Hemelwater, Grondwater & Riolering";
-      if (text.includes("beschoeiing") || text.includes("dorpsgracht") || text.includes("kade") || text.includes("ligplaats") || text.includes("vaarweg")) return "Beschoeiing, Grachten & Vaarwegen";
-      if (text.includes("vastgoed") || text.includes("gebouwen") || text.includes("accommodatie")) return "Beheer Gemeentelijk Vastgoed";
-      if (text.includes("groen") || text.includes("bomen") || text.includes("park") || text.includes("begraafplaats")) return "Groenvoorziening & Bomenbeheer";
-      return "Inrichting Openbare Ruimte";
-
-    case "Samenleving, Inclusie & Wijken":
-      if (text.includes("asiel") || text.includes("oekra") || text.includes("vluchteling") || text.includes("fletcher") || text.includes("opvang") || text.includes("spreidingswet")) return "Asiel- & Vluchtelingenopvang";
-      if (text.includes("inclusie") || text.includes("toegankelijk") || text.includes("onbeperkt samenleven")) return "Inclusie & Toegankelijkheid";
-      if (text.includes("participatie") || text.includes("wijkgericht") || text.includes("dorpsbelang") || text.includes("buurt") || text.includes("burger")) return "Burgerparticipatie & Wijkgericht Werken";
-      return "Samenleving & Leefbaarheid";
-
-    case "Werk, Inkomen & Armoede":
-      if (text.includes("schuldhulp") || text.includes("kredietbank") || text.includes("armoede")) return "Schuldhulpverlening & Armoedebestrijding";
-      if (text.includes("participatiewet") || text.includes("bijstand") || text.includes("giftengrens")) return "Participatiewet & Inkomensondersteuning";
-      if (text.includes("cao") || text.includes("sociale werk") || text.includes("aan de slag")) return "Sociale Werkgelegenheid (Aan de Slag)";
-      if (text.includes("starter") || text.includes("lening")) return "Financiële Regelingen & Starters";
-      return "Werk & Sociale Zekerheid";
+    case "Bestuur, Financiën & Openbare Orde": {
+      if (combined.includes("begroting") || combined.includes("jaarrekening") || combined.includes("gemeentefonds") || combined.includes("circulaire") || combined.includes("belasting") || combined.includes("kadernota") || combined.includes("ozb") || combined.includes("tarieven") || combined.includes("financi")) return "Begroting, Financiën & Belastingen";
+      if (combined.includes("veiligheidsregio") || combined.includes("brandweer") || combined.includes("crisis") || combined.includes("vrijsselland") || combined.includes("kazerne")) return "Veiligheidsregio IJsselland & Brandweer";
+      if (combined.includes("icebear") || combined.includes("geluidsoverlast") || combined.includes("geuroverlast") || combined.includes("dwangsom")) return "Handhaving, Toezicht & Milieuhinder";
+      if (combined.includes("gemeenschappelijke regeling") || combined.includes("gr ") || combined.includes("odij") || combined.includes("gblt")) return "Gemeenschappelijke Regelingen (GR)";
+      if (combined.includes("apv") || combined.includes("openbare orde") || combined.includes("politie") || combined.includes("cameratoezicht") || combined.includes("handhaving") || combined.includes("noodverordening")) return "Openbare Orde, Veiligheid & APV";
+      if (combined.includes("motie") || combined.includes("interpellatie") || combined.includes("initiatiefvoorstel") || combined.includes("amendement")) return "Moties, Interpellaties & Initiatieven";
+      if (combined.includes("ingekomen") || combined.includes("raadscorrespondentie") || combined.includes("raadsbrief")) return "Ingekomen Stukken & Raadscorrespondentie";
+      if (combined.includes("archief") || combined.includes("integriteit") || combined.includes("organisatie") || combined.includes("dienstverlening") || combined.includes("rekenkamer")) return "Bestuurlijke Organisatie & Integriteit";
+      if (combined.includes("verlichting") || combined.includes("lantaarnpaal") || combined.includes("lichtmast") || combined.includes("led")) return "Openbare Verlichting & Lichtmasten";
+      if (combined.includes("hemelwater") || combined.includes("grondwater") || combined.includes("riool") || combined.includes("riolering") || combined.includes("afkoppelen")) return "Hemelwater, Grondwater & Riolering";
+      if (combined.includes("beschoeiing") || combined.includes("dorpsgracht") || combined.includes("kade") || combined.includes("ligplaats") || combined.includes("vaarweg")) return "Beschoeiing, Grachten & Vaarwegen";
+      if (combined.includes("groen") || combined.includes("bomen") || combined.includes("parkbeheer") || combined.includes("bomenkap") || combined.includes("begraafplaats")) return "Groenvoorziening & Bomenbeheer";
+      if (combined.includes("vastgoed") || combined.includes("gemeentehuis") || combined.includes("gebouwen")) return "Beheer Gemeentelijk Vastgoed";
+      return "Bestuur & Raadszaken";
+    }
 
     default:
-      return rawSub || "Algemeen";
+      return "Bestuur & Raadszaken";
   }
 }
 
@@ -163,11 +317,9 @@ function detectWijken(item) {
     });
   }
 
-  const searchable = `${item.titel || ""} ${item.entiteiten || ""} ${item.relaties || ""} ${item.bestandsnaam || ""}`.toLowerCase();
-
+  const searchable = `${item.titel || ""} ${item.bestandsnaam || ""} ${item.entiteiten || ""}`.toLowerCase();
   for (const w of WIJKEN_KERNEN_LIST) {
     for (const alias of w.aliases) {
-      // Regex word boundary matching to avoid partial false positives
       const pattern = new RegExp(`\\b${alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
       if (pattern.test(searchable)) {
         detected.add(w.naam);
@@ -179,19 +331,35 @@ function detectWijken(item) {
   return Array.from(detected);
 }
 
+function cleanPublicTitle(filename, rawTitle) {
+  if (rawTitle && rawTitle.trim() && !rawTitle.toLowerCase().endsWith(".pdf")) {
+    let clean = rawTitle.replace(/[_-]/g, " ").trim();
+    clean = clean.replace(/^\d{4}[-\s]\d{2}[-\s]\d{2}[\s_]*/, "").replace(/^\d{5,10}[\s_]*/, "").trim();
+    if (clean.length > 3) return clean;
+  }
+
+  let cleanTitle = filename.replace(/\.pdf$/i, "").replace(/[_-]/g, " ");
+  cleanTitle = cleanTitle.replace(/^\d{4}[-\s]\d{2}[-\s]\d{2}[\s_]*/, "").replace(/^\d{5,10}[\s_]*/, "").trim();
+  if (!cleanTitle) {
+    cleanTitle = filename.replace(/\.pdf$/i, "");
+  }
+  return cleanTitle;
+}
+
 // 1. Process metadata JSON
-console.log("Reading:", JSON_PATH);
+console.log("Reading source metadata:", JSON_PATH);
 const rawDocs = JSON.parse(fs.readFileSync(JSON_PATH, "utf-8"));
 
 let updatedDocs = rawDocs.map(item => {
-  const cleanSub = normalizeSubdossier(item.dossier, item.subdossier, item.titel, item.entiteiten);
+  const canonicalHoofd = normalizeHoofddossier(item.dossier, item.titel, item.entiteiten);
+  const cleanSub = normalizeSubdossier(canonicalHoofd, item.subdossier, item.titel, item.entiteiten);
   const detectedWijken = detectWijken(item);
   const wijkString = detectedWijken.length > 0 ? detectedWijken.join(", ") : (item.wijk_of_kern || "");
 
   return {
     bestandsnaam: item.bestandsnaam,
-    titel: item.titel,
-    dossier: item.dossier,
+    titel: cleanPublicTitle(item.bestandsnaam, item.titel),
+    dossier: canonicalHoofd,
     subdossier: cleanSub,
     datum: item.datum || null,
     wijk_of_kern: wijkString,
@@ -200,8 +368,36 @@ let updatedDocs = rawDocs.map(item => {
   };
 });
 
+// Save to public/data and dist/data
 fs.writeFileSync(JSON_PATH, JSON.stringify(updatedDocs, null, 2), "utf-8");
 console.log("Successfully wrote updated JSON:", JSON_PATH);
+
+if (!fs.existsSync(path.dirname(DIST_JSON_PATH))) {
+  fs.mkdirSync(path.dirname(DIST_JSON_PATH), { recursive: true });
+}
+fs.writeFileSync(DIST_JSON_PATH, JSON.stringify(updatedDocs, null, 2), "utf-8");
+console.log("Successfully wrote dist JSON:", DIST_JSON_PATH);
+
+if (!fs.existsSync(path.dirname(MASTER_JSON_PATH))) {
+  fs.mkdirSync(path.dirname(MASTER_JSON_PATH), { recursive: true });
+}
+fs.writeFileSync(MASTER_JSON_PATH, JSON.stringify(updatedDocs, null, 2), "utf-8");
+console.log("Successfully wrote master JSON:", MASTER_JSON_PATH);
+
+// Also sync with SQLite database if sqliteDatabase is available
+try {
+  const Database = require("better-sqlite3");
+  const DB_PATH = path.join(ROOT, "database.sqlite");
+  if (fs.existsSync(DB_PATH)) {
+    const db = new Database(DB_PATH);
+    const stmt = db.prepare(`INSERT OR REPLACE INTO kv_store (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)`);
+    stmt.run("raadsstukken_metadata_master", JSON.stringify(updatedDocs));
+    console.log("Successfully synced SQLite kv_store key 'raadsstukken_metadata_master'");
+    db.close();
+  }
+} catch (err) {
+  console.warn("Could not sync directly with SQLite (ignoring):", err.message);
+}
 
 // 2. Process CSV
 function escapeCsv(val) {
@@ -225,36 +421,40 @@ const csvRows = updatedDocs.map(d => [
   escapeCsv(d.relaties || "")
 ].join(";"));
 
-fs.writeFileSync(CSV_PATH, [csvHeader, ...csvRows].join("\n"), "utf-8");
-console.log("Successfully wrote updated CSV:", CSV_PATH);
+const csvOutput = [csvHeader, ...csvRows].join("\n");
+fs.writeFileSync(CSV_PATH, csvOutput, "utf-8");
+fs.writeFileSync(DIST_CSV_PATH, csvOutput, "utf-8");
+console.log("Successfully wrote updated CSVs:", CSV_PATH, DIST_CSV_PATH);
 
 // 3. Process network_graph.json
-if (fs.existsSync(GRAPH_PATH)) {
-  try {
-    const graphData = JSON.parse(fs.readFileSync(GRAPH_PATH, "utf-8"));
-    const docMap = new Map();
-    updatedDocs.forEach(d => docMap.set(d.bestandsnaam.toLowerCase().trim(), d));
+for (const gPath of [GRAPH_PATH, DIST_GRAPH_PATH]) {
+  if (fs.existsSync(gPath)) {
+    try {
+      const graphData = JSON.parse(fs.readFileSync(gPath, "utf-8"));
+      const docMap = new Map();
+      updatedDocs.forEach(d => docMap.set(d.bestandsnaam.toLowerCase().trim(), d));
 
-    let updatedNodeCount = 0;
-    graphData.nodes = graphData.nodes.map(node => {
-      const doc = docMap.get((node.id || "").toLowerCase().trim()) || docMap.get((node.label || "").toLowerCase().trim());
-      if (doc) {
-        updatedNodeCount++;
-        return {
-          ...node,
-          group: doc.dossier,
-          dossier: doc.dossier,
-          subdossier: doc.subdossier,
-          wijk: doc.wijk_of_kern || undefined
-        };
-      }
-      return node;
-    });
+      let updatedNodeCount = 0;
+      graphData.nodes = graphData.nodes.map(node => {
+        const doc = docMap.get((node.id || "").toLowerCase().trim()) || docMap.get((node.label || "").toLowerCase().trim());
+        if (doc) {
+          updatedNodeCount++;
+          return {
+            ...node,
+            group: doc.dossier,
+            dossier: doc.dossier,
+            subdossier: doc.subdossier,
+            wijk: doc.wijk_of_kern || undefined
+          };
+        }
+        return node;
+      });
 
-    fs.writeFileSync(GRAPH_PATH, JSON.stringify(graphData, null, 2), "utf-8");
-    console.log(`Updated network_graph.json: enriched ${updatedNodeCount} nodes.`);
-  } catch (err) {
-    console.error("Error updating graph:", err);
+      fs.writeFileSync(gPath, JSON.stringify(graphData, null, 2), "utf-8");
+      console.log(`Updated network graph ${gPath}: enriched ${updatedNodeCount} nodes.`);
+    } catch (err) {
+      console.error("Error updating graph:", err);
+    }
   }
 }
 
@@ -266,7 +466,7 @@ updatedDocs.forEach(d => {
 });
 
 console.log("\n=========================================================================");
-console.log("   GESTRUKTUREERD OVERZICHT: 12 HOOFDDOSSIERS EN HUN SUBDOSSIER-TEGELS  ");
+console.log("   GESTRUKTUREERD OVERZICHT: 5 CANONIEKE HOOFDDOSSIERS EN SUBDOSSIER-TEGELS  ");
 console.log("=========================================================================");
 for (const [hd, subs] of Object.entries(summary)) {
   const totalInHd = Array.from(subs.values()).reduce((a, b) => a + b, 0);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Search,
   FolderPlus,
@@ -125,6 +125,50 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
     null;
   const [activeDossierSlug, setActiveDossierSlug] = useState<string | null>(urlDossier);
 
+  const fetchDossiers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: pageSize.toString(),
+        sortBy: sortBy,
+        search,
+        category: selectedCategory === "all" ? "" : selectedCategory,
+        hasFiles: hasFilesOnly ? "true" : "false",
+        _t: Date.now().toString(),
+      });
+
+      const res = await fetch(`/api/council/dossiers?${params.toString()}`, {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+
+      if (!res.ok) {
+        throw new Error("Kon dossiers niet ophalen");
+      }
+
+      const data = await res.json();
+      setDossiers(data.dossiers || []);
+      setTotalPages(data.totalPages || 1);
+      setTotalCount(data.total || 0);
+      setCategories(data.categories || []);
+      if (data.stats) {
+        setStats(data.stats);
+      }
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Fout bij ophalen dossiers");
+    } finally {
+      setLoading(false);
+    }
+  }, [page, pageSize, sortBy, search, selectedCategory, hasFilesOnly]);
+
+  useEffect(() => {
+    fetchDossiers();
+  }, [fetchDossiers]);
+
   useEffect(() => {
     const qDossier =
       searchParams.get("dossier") ||
@@ -163,6 +207,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
   const [isEditDossierOpen, setIsEditDossierOpen] = useState(false);
   const [editingDossier, setEditingDossier] = useState<Dossier | null>(null);
   const [isClassifying, setIsClassifying] = useState(false);
+  const isClassifyingRef = useRef(false);
   const [filesystemScan, setFilesystemScan] = useState<{
     totalFiles: number;
     rootCount: number;
@@ -195,9 +240,10 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
         const contentType = res.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
           const data = await res.json();
-          const wasRunning = isClassifying;
+          const wasRunning = isClassifyingRef.current;
           setBulkStatus(data);
           if (data && data.isRunning) {
+            isClassifyingRef.current = true;
             setIsClassifying(true);
             setIsBulkStatusDismissed(false);
           } else {
@@ -205,6 +251,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
               fetchDossiers();
               toast.success("Herstructurering en taxonomie-classificatie succesvol voltooid!");
             }
+            isClassifyingRef.current = false;
             setIsClassifying(false);
           }
         }
@@ -212,7 +259,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
     } catch (_err) {
       // Silently ignore transient network or parsing errors during polling
     }
-  }, []);
+  }, [fetchDossiers]);
 
   useEffect(() => {
     fetchBulkStatus();
@@ -223,6 +270,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
   }, [fetchBulkStatus]);
 
   const handleBulkClassify = async () => {
+    isClassifyingRef.current = true;
     setIsClassifying(true);
     const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
     try {
@@ -312,49 +360,6 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
       setIsSyncingFilesystem(false);
     }
   };
-
-  const fetchDossiers = useCallback(async () => {
-    setLoading(true);
-    try {
-      const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
-      const params = new URLSearchParams({
-        page: page.toString(),
-        limit: pageSize.toString(),
-        sortBy: sortBy,
-        search,
-        category: selectedCategory === "all" ? "" : selectedCategory,
-        hasFiles: hasFilesOnly ? "true" : "false",
-      });
-
-      const res = await fetch(`/api/council/dossiers?${params.toString()}`, {
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
-
-      if (!res.ok) {
-        throw new Error("Kon dossiers niet ophalen");
-      }
-
-      const data = await res.json();
-      setDossiers(data.dossiers || []);
-      setTotalPages(data.totalPages || 1);
-      setTotalCount(data.total || 0);
-      setCategories(data.categories || []);
-      if (data.stats) {
-        setStats(data.stats);
-      }
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || "Fout bij ophalen dossiers");
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize, sortBy, search, selectedCategory, hasFilesOnly]);
-
-  useEffect(() => {
-    fetchDossiers();
-  }, [fetchDossiers]);
 
   // Reset page when search or filters change
   const handleSearchChange = (val: string) => {

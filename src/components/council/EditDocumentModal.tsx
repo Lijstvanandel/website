@@ -20,6 +20,7 @@ interface EditDocumentModalProps {
   isOpen: boolean;
   dossierSlug: string;
   document: DossierDocument | null;
+  availableSubdossiers?: Array<{ slug: string; title: string }>;
   onClose: () => void;
   onDocumentUpdated: (updatedDoc: DossierDocument) => void;
   onDocumentDeleted: (deletedDocId: string) => void;
@@ -29,12 +30,16 @@ export const EditDocumentModal: React.FC<EditDocumentModalProps> = ({
   isOpen,
   dossierSlug,
   document,
+  availableSubdossiers = [],
   onClose,
   onDocumentUpdated,
   onDocumentDeleted,
 }) => {
   const [titel, setTitel] = useState("");
   const [bestandsnaam, setBestandsnaam] = useState("");
+  const [subdossier, setSubdossier] = useState("");
+  const [customSubdossier, setCustomSubdossier] = useState("");
+  const [wijkOfKern, setWijkOfKern] = useState("");
   const [datum, setDatum] = useState("");
   const [entiteiten, setEntiteiten] = useState<string[]>([]);
   const [relaties, setRelaties] = useState<string[]>([]);
@@ -55,12 +60,24 @@ export const EditDocumentModal: React.FC<EditDocumentModalProps> = ({
       setTitel(document.titel || "");
       setBestandsnaam(document.bestandsnaam || "");
       setDatum(document.datum || "");
+      const docSub = document.subdossier || "";
+      const isKnownSub = availableSubdossiers.some(
+        (s) => s.title.toLowerCase() === docSub.toLowerCase()
+      );
+      if (isKnownSub || !docSub) {
+        setSubdossier(docSub);
+        setCustomSubdossier("");
+      } else {
+        setSubdossier("__custom__");
+        setCustomSubdossier(docSub);
+      }
+      setWijkOfKern(document.wijk_of_kern || (document.wijken ? document.wijken.join(", ") : ""));
       setEntiteiten(Array.isArray(document.entiteiten) ? [...document.entiteiten] : []);
       setRelaties(Array.isArray(document.relaties) ? [...document.relaties] : []);
       setReplacementFile(null);
       setShowDeleteConfirm(false);
     }
-  }, [document]);
+  }, [document, availableSubdossiers]);
 
   if (!isOpen || !document) return null;
 
@@ -99,12 +116,15 @@ export const EditDocumentModal: React.FC<EditDocumentModalProps> = ({
     try {
       const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
       const docIdentifier = document.id || document.bestandsnaam;
+      const targetSub = subdossier === "__custom__" ? customSubdossier.trim() : subdossier.trim();
 
       let res: Response;
       if (replacementFile) {
         const formData = new FormData();
         formData.append("titel", titel.trim());
         formData.append("bestandsnaam", bestandsnaam.trim());
+        formData.append("subdossier", targetSub);
+        formData.append("wijk_of_kern", wijkOfKern.trim());
         formData.append("datum", datum);
         formData.append("entiteiten", JSON.stringify(entiteiten));
         formData.append("relaties", JSON.stringify(relaties));
@@ -132,6 +152,8 @@ export const EditDocumentModal: React.FC<EditDocumentModalProps> = ({
             body: JSON.stringify({
               titel: titel.trim(),
               bestandsnaam: bestandsnaam.trim(),
+              subdossier: targetSub,
+              wijk_of_kern: wijkOfKern.trim(),
               datum: datum || null,
               entiteiten,
               relaties,
@@ -254,6 +276,49 @@ export const EditDocumentModal: React.FC<EditDocumentModalProps> = ({
                 type="date"
                 value={datum}
                 onChange={(e) => setDatum(e.target.value)}
+                className="text-xs rounded-xl"
+              />
+            </div>
+          </div>
+
+          {/* Subdossier & Wijk/Kern */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="font-semibold text-foreground">
+                Thematisch Subdossier
+              </label>
+              <select
+                id="select-edit-doc-subdossier"
+                value={subdossier}
+                onChange={(e) => setSubdossier(e.target.value)}
+                className="w-full text-xs rounded-xl bg-background border border-border px-3 py-2 text-foreground focus:outline-hidden font-medium"
+              >
+                {availableSubdossiers.map((s) => (
+                  <option key={s.slug} value={s.title}>
+                    {s.title}
+                  </option>
+                ))}
+                <option value="__custom__">+ Aangepast subdossier opgeven...</option>
+              </select>
+              {subdossier === "__custom__" && (
+                <Input
+                  value={customSubdossier}
+                  onChange={(e) => setCustomSubdossier(e.target.value)}
+                  placeholder="Naam nieuw subdossier..."
+                  className="text-xs rounded-xl mt-1.5"
+                  autoFocus
+                />
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="font-semibold text-foreground">
+                Wijk of Kern (locatie)
+              </label>
+              <Input
+                value={wijkOfKern}
+                onChange={(e) => setWijkOfKern(e.target.value)}
+                placeholder="Bijv. Steenwijk, Blokzijl, Vollenhove..."
                 className="text-xs rounded-xl"
               />
             </div>

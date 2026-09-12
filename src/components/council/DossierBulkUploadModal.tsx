@@ -289,7 +289,9 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
                 try {
                   const errObj = JSON.parse(xhr.responseText);
                   if (errObj.error) errorMsg = errObj.error;
-                } catch {}
+                } catch {
+                  // Ignore JSON parse error and use default errorMsg
+                }
                 reject(new Error(errorMsg));
               }
             };
@@ -395,7 +397,9 @@ export const DossierBulkUploadModal: React.FC<DossierBulkUploadModalProps> = ({
           try {
             const errObj = JSON.parse(xhr.responseText);
             if (errObj.error) errorMsg = errObj.error;
-          } catch {}
+          } catch {
+            // Ignore JSON parse error and use default errorMsg
+          }
           reject(new Error(errorMsg));
         }
       };

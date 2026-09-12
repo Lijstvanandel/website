@@ -39,6 +39,9 @@ export const AddDocumentModal: React.FC<AddDocumentModalProps> = ({
   const [file, setFile] = useState<File | null>(null);
   const [titel, setTitel] = useState("");
   const [bestandsnaam, setBestandsnaam] = useState("");
+  const [subdossier, setSubdossier] = useState("");
+  const [customSubdossier, setCustomSubdossier] = useState("");
+  const [wijkOfKern, setWijkOfKern] = useState("");
   const [datum, setDatum] = useState(new Date().toISOString().split("T")[0]);
   const [entiteiten, setEntiteiten] = useState<string[]>([]);
   const [relaties, setRelaties] = useState<string[]>([]);
@@ -54,17 +57,23 @@ export const AddDocumentModal: React.FC<AddDocumentModalProps> = ({
   const [isLinking, setIsLinking] = useState(false);
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && dossier) {
       setActiveTab(initialMode);
       setFile(null);
       setTitel("");
       setBestandsnaam("");
+      const defaultSub = dossier.subdossiers && dossier.subdossiers.length > 0
+        ? dossier.subdossiers[0].title
+        : dossier.title;
+      setSubdossier(defaultSub);
+      setCustomSubdossier("");
+      setWijkOfKern("");
       setDatum(new Date().toISOString().split("T")[0]);
       setEntiteiten([]);
       setRelaties([]);
       setSelectedDocIds(new Set());
     }
-  }, [isOpen, initialMode]);
+  }, [isOpen, initialMode, dossier]);
 
   // Load catalog on open or tab switch
   useEffect(() => {
@@ -138,9 +147,13 @@ export const AddDocumentModal: React.FC<AddDocumentModalProps> = ({
     setIsSubmitting(true);
     try {
       const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
+      const targetSub = subdossier === "__custom__" ? customSubdossier.trim() : subdossier.trim();
+
       const formData = new FormData();
       formData.append("titel", titel.trim());
       formData.append("bestandsnaam", bestandsnaam.trim() || `${titel.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pdf`);
+      formData.append("subdossier", targetSub);
+      formData.append("wijk_of_kern", wijkOfKern.trim());
       formData.append("datum", datum);
       formData.append("entiteiten", JSON.stringify(entiteiten));
       formData.append("relaties", JSON.stringify(relaties));
@@ -371,6 +384,49 @@ export const AddDocumentModal: React.FC<AddDocumentModalProps> = ({
                   type="date"
                   value={datum}
                   onChange={(e) => setDatum(e.target.value)}
+                  className="text-xs rounded-xl"
+                />
+              </div>
+            </div>
+
+            {/* Subdossier & Wijk/Kern */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="font-semibold text-foreground">
+                  Thematisch Subdossier
+                </label>
+                <select
+                  id="select-add-doc-subdossier"
+                  value={subdossier}
+                  onChange={(e) => setSubdossier(e.target.value)}
+                  className="w-full text-xs rounded-xl bg-background border border-border px-3 py-2 text-foreground focus:outline-hidden font-medium"
+                >
+                  {(dossier.subdossiers || []).map((s) => (
+                    <option key={s.slug} value={s.title}>
+                      {s.title}
+                    </option>
+                  ))}
+                  <option value="__custom__">+ Nieuw subdossier opgeven...</option>
+                </select>
+                {subdossier === "__custom__" && (
+                  <Input
+                    value={customSubdossier}
+                    onChange={(e) => setCustomSubdossier(e.target.value)}
+                    placeholder="Naam nieuw subdossier..."
+                    className="text-xs rounded-xl mt-1.5"
+                    autoFocus
+                  />
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-semibold text-foreground">
+                  Wijk of Kern (locatie)
+                </label>
+                <Input
+                  value={wijkOfKern}
+                  onChange={(e) => setWijkOfKern(e.target.value)}
+                  placeholder="Bijv. Steenwijk, Blokzijl, Giethoorn..."
                   className="text-xs rounded-xl"
                 />
               </div>

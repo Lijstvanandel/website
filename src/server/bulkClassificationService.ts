@@ -2,8 +2,16 @@ import fs from "fs";
 import path from "path";
 import { GoogleGenAI, Type } from "@google/genai";
 import { extractTextFromFile } from "./documentTextExtractor.js";
-import { getRawMetadata, rebuildNetworkGraph } from "./dossierManager.js";
+import { getRawMetadata, rebuildNetworkGraph, saveMasterMetadata } from "./dossierManager.js";
 import { RaadsstukMetadata } from "../types/dossier.js";
+import {
+  CANONICAL_HOOFDDOSSIERS,
+  normalizeHoofddossier,
+  normalizeSubdossier,
+  detectWijkenKernen,
+  cleanPublicTitle,
+  normalizeRecord
+} from "./taxonomyClassifier.js";
 
 const METADATA_PATH = path.join(process.cwd(), "public", "data", "raadsstukken_metadata_tussentijds.json");
 const DIST_METADATA_PATH = path.join(process.cwd(), "dist", "data", "raadsstukken_metadata_tussentijds.json");
@@ -13,13 +21,7 @@ const DIST_METADATA_CSV_PATH = path.join(process.cwd(), "dist", "data", "raadsst
 const ROOT_DOCS_DIR = path.join(process.cwd(), "public", "uploads", "documents");
 
 // The 5 official recipient-oriented dossier categories
-export const OFFICIAL_DOSSIERS = [
-  "Ruimte, Wonen & Bereikbaarheid",
-  "Klimaat, Water & Natuur",
-  "Sociaal Domein, Zorg & Jeugd",
-  "Lokale Economie, Toerisme & Cultuur",
-  "Bestuur, Financiën & Openbare Orde"
-];
+export const OFFICIAL_DOSSIERS = [...CANONICAL_HOOFDDOSSIERS];
 
 // Lazy Gemini client
 let geminiClient: GoogleGenAI | null = null;
@@ -86,154 +88,18 @@ export function scanPdfFiles(): Array<{ absolutePath: string; relativePath: stri
  * Run fallback keyword-based classifier in case Gemini fails or API key is missing
  */
 export function runFallbackClassification(text: string, filename: string): Partial<RaadsstukMetadata> {
-  const content = (filename + " " + text).toLowerCase();
-  let dossier = "Bestuur, Financiën & Openbare Orde"; // Default rest category
-
-  // 1. Ruimte, Wonen & Bereikbaarheid
-  if (
-    content.includes("bestemmingsplan") ||
-    content.includes("omgevingsplan") ||
-    content.includes("omgevingsvergunning") ||
-    content.includes("bopa") ||
-    content.includes("grondexploitatie") ||
-    content.includes("woonvisie") ||
-    content.includes("bouwproject") ||
-    content.includes("woningbouw") ||
-    content.includes("sociale woningbouw") ||
-    content.includes("woning") ||
-    content.includes("vab") ||
-    content.includes("ruimtelijke ordening") ||
-    content.includes("nieuwbouw") ||
-    content.includes("woonwagen") ||
-    content.includes("kavel") ||
-    content.includes("gvvp") ||
-    content.includes("verkeer") ||
-    content.includes("wegen") ||
-    content.includes("mobiliteit") ||
-    content.includes("parkeer") ||
-    content.includes("fietspad") ||
-    content.includes("openbaar vervoer") ||
-    content.includes("bus") ||
-    content.includes("spoor") ||
-    content.includes("station") ||
-    content.includes("infrastructuur")
-  ) {
-    dossier = "Ruimte, Wonen & Bereikbaarheid";
-  }
-  // 2. Klimaat, Water & Natuur
-  else if (
-    content.includes("stikstof") ||
-    content.includes("aerius") ||
-    content.includes("flora") ||
-    content.includes("weerribben") ||
-    content.includes("wieden") ||
-    content.includes("natura 2000") ||
-    content.includes("duurzaam") ||
-    content.includes("klimaat") ||
-    content.includes("energietransitie") ||
-    content.includes("zonnepark") ||
-    content.includes("zonne-energie") ||
-    content.includes("windenergie") ||
-    content.includes("windturbine") ||
-    content.includes("icebear") ||
-    content.includes("emissie") ||
-    content.includes("geurhinder") ||
-    content.includes("peilbesluit") ||
-    content.includes("waterpeil") ||
-    content.includes("watertoets") ||
-    content.includes("waterbeheer") ||
-    content.includes("wdodelta") ||
-    content.includes("waterschap") ||
-    content.includes("pfas") ||
-    content.includes("res")
-  ) {
-    dossier = "Klimaat, Water & Natuur";
-  }
-  // 3. Sociaal Domein, Zorg & Jeugd
-  else if (
-    content.includes("wmo") ||
-    content.includes("zorg") ||
-    content.includes("welzijn") ||
-    content.includes("ggd") ||
-    content.includes("gezondheid") ||
-    content.includes("jeugd") ||
-    content.includes("jeugdzorg") ||
-    content.includes("jeugdhulp") ||
-    content.includes("gezin") ||
-    content.includes("onderwijs") ||
-    content.includes("school") ||
-    content.includes("rsj") ||
-    content.includes("huiselijk geweld") ||
-    content.includes("participatiewet") ||
-    content.includes("schuldhulp") ||
-    content.includes("armoede") ||
-    content.includes("inkomen") ||
-    content.includes("bijstand") ||
-    content.includes("asiel") ||
-    content.includes("oekraïne") ||
-    content.includes("vluchtelingen") ||
-    content.includes("inburgering") ||
-    content.includes("spreidingswet")
-  ) {
-    dossier = "Sociaal Domein, Zorg & Jeugd";
-  }
-  // 4. Lokale Economie, Toerisme & Cultuur
-  else if (
-    content.includes("bedrijventerrein") ||
-    content.includes("ondernemen") ||
-    content.includes("detailhandel") ||
-    content.includes("toerisme") ||
-    content.includes("recreatie") ||
-    content.includes("horeca") ||
-    content.includes("pachtbeleid") ||
-    content.includes("agrarisch beleid") ||
-    content.includes("sport") ||
-    content.includes("cultuur") ||
-    content.includes("kunst") ||
-    content.includes("museum") ||
-    content.includes("spijkervetstallen") ||
-    content.includes("bibliotheek") ||
-    content.includes("evenement") ||
-    content.includes("theater") ||
-    content.includes("meenthe") ||
-    content.includes("monument") ||
-    content.includes("erfgoed")
-  ) {
-    dossier = "Lokale Economie, Toerisme & Cultuur";
-  }
-  // 5. Bestuur, Financiën & Openbare Orde
-  else if (
-    content.includes("veiligheid") ||
-    content.includes("apv") ||
-    content.includes("handhaving") ||
-    content.includes("toezicht") ||
-    content.includes("brandweer") ||
-    content.includes("politie") ||
-    content.includes("ondermijning") ||
-    content.includes("noodverordening") ||
-    content.includes("openbare ruimte") ||
-    content.includes("riolering") ||
-    content.includes("begraafplaats") ||
-    content.includes("begroting") ||
-    content.includes("jaarrekening") ||
-    content.includes("belasting") ||
-    content.includes("ozb") ||
-    content.includes("financi") ||
-    content.includes("subsidie") ||
-    content.includes("archief") ||
-    content.includes("gr ") ||
-    content.includes("gemeenschappelijke regeling")
-  ) {
-    dossier = "Bestuur, Financiën & Openbare Orde";
-  }
+  const cleanTitle = cleanPublicTitle(filename);
+  const dossier = normalizeHoofddossier("", cleanTitle, "", text);
+  const subdossier = normalizeSubdossier(dossier, "", cleanTitle, "", text);
+  const detectedWijken = detectWijkenKernen(cleanTitle, "", text);
 
   // Attempt to parse a date
+  const content = (filename + " " + text).toLowerCase();
   let datum = "";
   const dateMatch = content.match(/(\d{4})[-/](\d{2})[-/](\d{2})/);
   if (dateMatch) {
     datum = `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
   } else {
-    // Try to extract year and Dutch month names
     const monthNames: Record<string, string> = {
       januari: "01", februari: "02", maart: "03", april: "04", mei: "05", juni: "06",
       juli: "07", augustus: "08", september: "09", oktober: "10", november: "11", december: "12"
@@ -249,32 +115,12 @@ export function runFallbackClassification(text: string, filename: string): Parti
     }
   }
 
-  // Try to find a wijk/kern
-  const wijkenKernen = [
-    "Steenwijk", "Blokzijl", "Giethoorn", "Vollenhove", "Oldemarkt", "Kuinre", "Willemsoord", "Tuk", "Eesveen",
-    "Sint Jansklooster", "Wanneperveen", "Eeserwold", "Kalenberg", "Ossenzijl", "Scheerwolde", "Belt-Schutsloot"
-  ];
-  const matchedWijken: string[] = [];
-  for (const wk of wijkenKernen) {
-    if (content.includes(wk.toLowerCase())) {
-      matchedWijken.push(wk);
-    }
-  }
-
-  // Clean title
-  let cleanTitle = filename.replace(/\.pdf$/i, "").replace(/[_-]/g, " ");
-  // Remove leading dates or numeric IDs if present
-  cleanTitle = cleanTitle.replace(/^\d{4}[-\s]\d{2}[-\s]\d{2}[\s_]*/, "").replace(/^\d{5,10}[\s_]*/, "").trim();
-  if (!cleanTitle) {
-    cleanTitle = filename.replace(/\.pdf$/i, "");
-  }
-
   return {
     titel: cleanTitle,
     dossier,
-    subdossier: "",
+    subdossier,
     datum: datum || new Date().toISOString().split("T")[0],
-    wijk_of_kern: matchedWijken.join(", "),
+    wijk_of_kern: detectedWijken.join(", "),
     entiteiten: "",
     relaties: ""
   };
@@ -442,17 +288,50 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
   Promise.resolve().then(async () => {
     try {
       const currentMetadata = getRawMetadata();
-      const processedSet = new Set<string>();
-      currentMetadata.forEach((item) => {
-        if (item.bestandsnaam) {
-          processedSet.add(item.bestandsnaam.toLowerCase().trim());
-        }
-      });
-
       const allFiles = scanPdfFiles();
-      activeProgress.total = allFiles.length;
-      activeProgress.logs.push(`Totaal aantal PDF-bestanden gevonden in uploads: ${allFiles.length}`);
+      const totalToProcess = currentMetadata.length + allFiles.length;
+      activeProgress.total = totalToProcess;
+      activeProgress.logs.push(`Start data-herstructurering: ${currentMetadata.length} geregistreerde raadsstukken en ${allFiles.length} serverbestanden.`);
 
+      // 1. Reorganize & Canonicalize all existing metadata documents according to the official taxonomy
+      const processedFilenames = new Set<string>();
+      const reclassifiedMetadata: RaadsstukMetadata[] = [];
+
+      for (let i = 0; i < currentMetadata.length; i++) {
+        if (!activeProgress.isRunning) {
+          activeProgress.logs.push("Classificatie handmatig gestopt.");
+          break;
+        }
+
+        const rawItem = currentMetadata[i];
+        activeProgress.activeFile = rawItem.bestandsnaam || `Document ${i + 1}`;
+        activeProgress.processed++;
+
+        const norm = normalizeRecord(rawItem);
+        reclassifiedMetadata.push(norm);
+        if (norm.bestandsnaam) {
+          processedFilenames.add(norm.bestandsnaam.toLowerCase().trim());
+        }
+
+        activeProgress.newlyClassified++;
+        if (i % 20 === 0 || i === currentMetadata.length - 1) {
+          activeProgress.logs.push(`[${activeProgress.processed}/${activeProgress.total}] Herstructureerd: "${norm.titel.substring(0, 45)}" ➔ [${norm.dossier}] / [${norm.subdossier}]`);
+        }
+
+        if (activeProgress.logs.length > 300) {
+          activeProgress.logs.shift();
+        }
+
+        // Short pause to allow event loop and real-time status polling
+        await new Promise((resolve) => setTimeout(resolve, 8));
+
+        // Periodic checkpoint save every 50 items
+        if (i > 0 && i % 50 === 0) {
+          saveMasterMetadata(reclassifiedMetadata);
+        }
+      }
+
+      // 2. Scan and classify any uploaded physical files that aren't already in metadata
       for (const file of allFiles) {
         if (!activeProgress.isRunning) {
           activeProgress.logs.push("Classificatie handmatig gestopt.");
@@ -466,7 +345,7 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
         activeProgress.activeFile = file.filename;
         activeProgress.processed++;
 
-        if (!options.force && processedSet.has(fnLower)) {
+        if (!options.force && processedFilenames.has(fnLower)) {
           activeProgress.alreadyProcessed++;
           // Skip logging every single file to prevent log overflow
           if (activeProgress.processed % 50 === 0 || activeProgress.processed === allFiles.length) {
@@ -509,8 +388,8 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
           }
         }
 
-        // Prepare complete metadata record
-        const record: RaadsstukMetadata = {
+        // Prepare complete metadata record with strict taxonomy normalization
+        const record: RaadsstukMetadata = normalizeRecord({
           bestandsnaam: file.filename,
           titel: meta.titel || file.filename.replace(/\.pdf$/i, "").replace(/[_-]/g, " "),
           dossier: meta.dossier || "Bestuur, Financiën & Openbare Orde",
@@ -519,83 +398,33 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
           wijk_of_kern: meta.wijk_of_kern || "",
           entiteiten: meta.entiteiten || (origin !== "Algemeen" ? origin : ""),
           relaties: meta.relaties || ""
-        };
+        }, text);
 
         // Add to our current metadata list (avoid duplicates)
-        const existingIndex = currentMetadata.findIndex(
+        const existingIndex = reclassifiedMetadata.findIndex(
           (item) => (item.bestandsnaam || "").toLowerCase().trim() === fnLower
         );
 
         if (existingIndex !== -1) {
-          currentMetadata[existingIndex] = record;
+          reclassifiedMetadata[existingIndex] = record;
         } else {
-          currentMetadata.push(record);
+          reclassifiedMetadata.push(record);
         }
 
+        processedFilenames.add(fnLower);
         activeProgress.newlyClassified++;
-        activeProgress.logs.push(`  ↳ Succes! Indeling: "${record.dossier}" ➔ Titel: "${record.titel}"`);
+        activeProgress.logs.push(`  ↳ Succes! Indeling: "${record.dossier}" ➔ Subdossier: "${record.subdossier}"`);
         
         if (activeProgress.logs.length > 300) {
           activeProgress.logs.shift();
         }
-
-        // Periodic safe saving to persist progress in case of crash/restart
-        if (activeProgress.newlyClassified % 5 === 0 || activeProgress.processed === allFiles.length) {
-          fs.writeFileSync(METADATA_PATH, JSON.stringify(currentMetadata, null, 2), "utf-8");
-          try {
-            if (!fs.existsSync(path.dirname(DIST_METADATA_PATH))) {
-              fs.mkdirSync(path.dirname(DIST_METADATA_PATH), { recursive: true });
-            }
-            fs.writeFileSync(DIST_METADATA_PATH, JSON.stringify(currentMetadata, null, 2), "utf-8");
-          } catch (e) {
-            // ignore
-          }
-        }
       }
 
-      // Final save and CSV construction if anything changed
-      if (activeProgress.newlyClassified > 0) {
-        fs.writeFileSync(METADATA_PATH, JSON.stringify(currentMetadata, null, 2), "utf-8");
-        try {
-          if (!fs.existsSync(path.dirname(DIST_METADATA_PATH))) {
-            fs.mkdirSync(path.dirname(DIST_METADATA_PATH), { recursive: true });
-          }
-          fs.writeFileSync(DIST_METADATA_PATH, JSON.stringify(currentMetadata, null, 2), "utf-8");
-        } catch (e) {
-          // ignore
-        }
+      // Final complete normalization pass across all items and save everywhere (data/, sqlite, public/, dist/, csv, graph)
+      const finalizedMetadata = reclassifiedMetadata.map(item => normalizeRecord(item));
+      saveMasterMetadata(finalizedMetadata);
 
-        // Build and save CSV as well
-        const csvRows = [
-          "bestandsnaam;titel;dossier;subdossier;datum;wijk_of_kern;entiteiten;relaties"
-        ];
-        currentMetadata.forEach((item) => {
-          const row = [
-            item.bestandsnaam || "",
-            (item.titel || "").replace(/;/g, ","),
-            item.dossier || "",
-            (item.subdossier || "").replace(/;/g, ","),
-            item.datum || "",
-            (item.wijk_of_kern || "").replace(/;/g, ","),
-            (item.entiteiten || "").replace(/;/g, ","),
-            (item.relaties || "").replace(/;/g, ",")
-          ].join(";");
-          csvRows.push(row);
-        });
-
-        const csvContent = csvRows.join("\n");
-        fs.writeFileSync(METADATA_CSV_PATH, csvContent, "utf-8");
-        try {
-          fs.writeFileSync(DIST_METADATA_CSV_PATH, csvContent, "utf-8");
-        } catch (e) {
-          // ignore
-        }
-
-        // Rebuild network graph
-        rebuildNetworkGraph(currentMetadata);
-      }
-
-      activeProgress.logs.push(`[VOLTOOID] Bulk-classificatie succesvol afgerond! Totaal: ${activeProgress.processed}/${activeProgress.total}. Nieuw ingedeeld: ${activeProgress.newlyClassified}.`);
+      activeProgress.logs.push(`[VOLTOOID] Herstructurering en classificatie succesvol afgerond! Totaal: ${activeProgress.processed}/${activeProgress.total}. 5 canonieke hoofddossiers en 57 subdossiers gesynchroniseerd.`);
       activeProgress.isRunning = false;
       activeProgress.activeFile = "";
 
@@ -617,7 +446,7 @@ export async function runBulkClassification(options: { force?: boolean } = {}): 
   alreadyProcessed: number;
   results: Array<{ filename: string; dossier: string; title: string; origin: string }>;
 }> {
-  const currentMetadata = getRawMetadata();
+  const currentMetadata = getRawMetadata().map(item => normalizeRecord(item));
   const processedSet = new Set<string>();
   currentMetadata.forEach((item) => {
     if (item.bestandsnaam) {
@@ -667,7 +496,7 @@ export async function runBulkClassification(options: { force?: boolean } = {}): 
     }
 
     // Prepare complete metadata record
-    const record: RaadsstukMetadata = {
+    const record: RaadsstukMetadata = normalizeRecord({
       bestandsnaam: file.filename,
       titel: meta.titel || file.filename.replace(/\.pdf$/i, ""),
       dossier: meta.dossier || "Bestuur, Financiën & Openbare Orde",
@@ -676,7 +505,7 @@ export async function runBulkClassification(options: { force?: boolean } = {}): 
       wijk_of_kern: meta.wijk_of_kern || "",
       entiteiten: meta.entiteiten || (origin !== "Algemeen" ? origin : ""),
       relaties: meta.relaties || ""
-    };
+    }, text);
 
     // Add to our current metadata list (avoid duplicates)
     const existingIndex = currentMetadata.findIndex(
@@ -699,45 +528,8 @@ export async function runBulkClassification(options: { force?: boolean } = {}): 
   }
 
   if (newlyClassified > 0) {
-    // Save updated metadata to json and csv
-    fs.writeFileSync(METADATA_PATH, JSON.stringify(currentMetadata, null, 2), "utf-8");
-    try {
-      if (!fs.existsSync(path.dirname(DIST_METADATA_PATH))) {
-        fs.mkdirSync(path.dirname(DIST_METADATA_PATH), { recursive: true });
-      }
-      fs.writeFileSync(DIST_METADATA_PATH, JSON.stringify(currentMetadata, null, 2), "utf-8");
-    } catch (e) {
-      console.warn("Could not sync bulk metadata json to dist:", e);
-    }
-
-    // Build and save CSV as well
-    const csvRows = [
-      "bestandsnaam;titel;dossier;subdossier;datum;wijk_of_kern;entiteiten;relaties"
-    ];
-    currentMetadata.forEach((item) => {
-      const row = [
-        item.bestandsnaam || "",
-        (item.titel || "").replace(/;/g, ","),
-        item.dossier || "",
-        (item.subdossier || "").replace(/;/g, ","),
-        item.datum || "",
-        (item.wijk_of_kern || "").replace(/;/g, ","),
-        (item.entiteiten || "").replace(/;/g, ","),
-        (item.relaties || "").replace(/;/g, ",")
-      ].join(";");
-      csvRows.push(row);
-    });
-
-    const csvContent = csvRows.join("\n");
-    fs.writeFileSync(METADATA_CSV_PATH, csvContent, "utf-8");
-    try {
-      fs.writeFileSync(DIST_METADATA_CSV_PATH, csvContent, "utf-8");
-    } catch (e) {
-      console.warn("Could not sync bulk metadata csv to dist:", e);
-    }
-
-    // Rebuild network graph
-    rebuildNetworkGraph(currentMetadata);
+    const finalizedMetadata = currentMetadata.map(item => normalizeRecord(item));
+    saveMasterMetadata(finalizedMetadata);
   }
 
   return {

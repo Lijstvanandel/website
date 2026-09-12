@@ -28,6 +28,9 @@ import {
   X,
   Filter,
   FileCheck,
+  ArrowRightLeft,
+  CheckSquare,
+  Square,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +40,8 @@ import { EditDossierModal } from "./EditDossierModal";
 import { EditDocumentModal } from "./EditDocumentModal";
 import { AddDocumentModal } from "./AddDocumentModal";
 import { EditSubdossierModal } from "./EditSubdossierModal";
+import { CreateSubdossierModal } from "./CreateSubdossierModal";
+import { DistributeDocumentsModal } from "./DistributeDocumentsModal";
 import { SubdossierDetailView } from "./SubdossierDetailView";
 import { getSubdossierClientThumbnail } from "@/lib/dossierClientUtils";
 import type { Dossier, DossierDocument, GraphNode, GraphEdge, DossierSubdossier } from "@/types/dossier";
@@ -87,6 +92,11 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
   const [activeDocForEdit, setActiveDocForEdit] = useState<DossierDocument | null>(null);
   const [isEditSubdossierOpen, setIsEditSubdossierOpen] = useState(false);
   const [activeSubdossierForEdit, setActiveSubdossierForEdit] = useState<DossierSubdossier | null>(null);
+  const [isCreateSubdossierOpen, setIsCreateSubdossierOpen] = useState(false);
+  const [isDistributeModalOpen, setIsDistributeModalOpen] = useState(false);
+  const [distributeTargetInitial, setDistributeTargetInitial] = useState<string | undefined>(undefined);
+  const [preselectedDocIdsForDistribute, setPreselectedDocIdsForDistribute] = useState<string[]>([]);
+  const [selectedTableDocIds, setSelectedTableDocIds] = useState<Set<string>>(new Set());
 
   const fetchDossierData = useCallback(async () => {
     setLoading(true);
@@ -311,6 +321,77 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
       subdossiers: updatedSubs,
     });
     fetchDossierData();
+  };
+
+  const handleSubdossierCreated = (updatedDossier: Dossier, createdSub: any) => {
+    setDossier(updatedDossier);
+    fetchDossierData();
+    if (createdSub?.slug) {
+      handleSelectSubdossier(createdSub, "documents");
+    }
+  };
+
+  const handleDocumentsDistributed = (updatedDossier: Dossier) => {
+    setDossier(updatedDossier);
+    setSelectedTableDocIds(new Set());
+    fetchDossierData();
+  };
+
+  const handleDeleteSubdossier = async (sub: DossierSubdossier) => {
+    if (!dossier) return;
+    const isConfirmed = window.confirm(
+      `Weet u zeker dat u het subdossier "${sub.title}" wilt verwijderen?\n\nAlle ${sub.documentCount} documenten worden veilig overgezet naar het hoofdonderwerp "${dossier.title}".`
+    );
+    if (!isConfirmed) return;
+
+    try {
+      const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
+      const res = await fetch(
+        `/api/council/dossiers/${encodeURIComponent(dossier.slug)}/subdossiers/${encodeURIComponent(sub.slug)}`,
+        {
+          method: "DELETE",
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        }
+      );
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Fout bij verwijderen subdossier");
+
+      toast.success(data.message || "Subdossier succesvol verwijderd");
+      if (selectedSubdossier === sub.title || selectedSubdossier === sub.slug) {
+        setSelectedSubdossier(null);
+      }
+      setDossier(data.dossier);
+      fetchDossierData();
+    } catch (err: any) {
+      console.error("Delete subdossier error:", err);
+      toast.error(err.message || "Fout bij verwijderen subdossier");
+    }
+  };
+
+  const handleOpenDistribute = (targetSub?: string, docIds?: string[]) => {
+    setDistributeTargetInitial(targetSub);
+    setPreselectedDocIdsForDistribute(docIds || Array.from(selectedTableDocIds));
+    setIsDistributeModalOpen(true);
+  };
+
+  const handleToggleTableDoc = (bestandsnaam: string) => {
+    setSelectedTableDocIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(bestandsnaam)) next.delete(bestandsnaam);
+      else next.add(bestandsnaam);
+      return next;
+    });
+  };
+
+  const handleSelectAllTableDocs = (docs: DossierDocument[]) => {
+    setSelectedTableDocIds(new Set(docs.map((d) => d.bestandsnaam)));
+  };
+
+  const handleClearTableDocSelection = () => {
+    setSelectedTableDocIds(new Set());
   };
 
   // Helper slugify
@@ -950,6 +1031,33 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
               <span className="text-xs text-muted-foreground">
                 {filteredSubdossiers.length} van {dossier.subdossiers?.length || 0} subdossiers
               </span>
+
+              {isCouncilOrAdmin && (
+                <div className="flex items-center gap-2 pl-2 border-l border-border">
+                  <Button
+                    id="btn-distribute-docs-toolbar"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 px-2.5 text-xs rounded-xl border-border text-foreground hover:bg-muted font-semibold flex items-center gap-1.5"
+                    onClick={() => handleOpenDistribute()}
+                    title="Verdeel documenten tussen subdossiers"
+                  >
+                    <ArrowRightLeft className="w-3.5 h-3.5 text-accent" />
+                    <span>Documenten Verdelen</span>
+                  </Button>
+
+                  <Button
+                    id="btn-create-subdossier-toolbar"
+                    size="sm"
+                    className="h-8 px-3 text-xs rounded-xl bg-accent text-accent-foreground hover:bg-accent/90 font-semibold flex items-center gap-1.5 shadow-xs"
+                    onClick={() => setIsCreateSubdossierOpen(true)}
+                    title="Nieuw subdossier aanmaken binnen dit hoofdonderwerp"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Nieuw Subdossier</span>
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1165,18 +1273,43 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
                       </Button>
 
                       {isCouncilOrAdmin && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-8 px-2 text-xs rounded-xl text-muted-foreground hover:text-accent"
-                          title="Subdossier & thumbnail bewerken"
-                          onClick={() => {
-                            setActiveSubdossierForEdit(sub);
-                            setIsEditSubdossierOpen(true);
-                          }}
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </Button>
+                        <>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 px-2 text-xs rounded-xl text-muted-foreground hover:text-accent"
+                            title={`Documenten verdelen naar "${sub.title}"`}
+                            onClick={() => handleOpenDistribute(sub.title)}
+                          >
+                            <ArrowRightLeft className="w-3.5 h-3.5" />
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 px-2 text-xs rounded-xl text-muted-foreground hover:text-accent"
+                            title="Subdossier & thumbnail bewerken"
+                            onClick={() => {
+                              setActiveSubdossierForEdit(sub);
+                              setIsEditSubdossierOpen(true);
+                            }}
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </Button>
+
+                          {/* Delete option only for non-primary custom subdossiers */}
+                          {sub.slug !== dossier.slug && sub.title.toLowerCase() !== dossier.title.toLowerCase() && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 px-2 text-xs rounded-xl text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                              title="Subdossier verwijderen (stukken gaan naar primair)"
+                              onClick={() => handleDeleteSubdossier(sub)}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -1614,29 +1747,86 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
             </div>
           </div>
 
+          {/* Bulk Selection Action Bar */}
+          {selectedTableDocIds.size > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-accent/15 border border-accent/40 rounded-xl text-xs">
+              <div className="flex items-center gap-2 font-semibold text-foreground">
+                <CheckSquare className="w-4 h-4 text-accent" />
+                <span>{selectedTableDocIds.size} document(en) geselecteerd</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  id="btn-bulk-distribute-selected"
+                  size="sm"
+                  className="h-8 px-3 text-xs bg-accent text-accent-foreground hover:bg-accent/90 rounded-xl font-semibold shadow-xs flex items-center gap-1.5"
+                  onClick={() => handleOpenDistribute(undefined, Array.from(selectedTableDocIds))}
+                >
+                  <ArrowRightLeft className="w-3.5 h-3.5" />
+                  <span>Verdelen naar Subdossier...</span>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground rounded-xl"
+                  onClick={handleClearTableDocSelection}
+                >
+                  Selectie wissen
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Document Table */}
           <div className="rounded-xl border border-border overflow-x-auto bg-background">
             <table className="w-full text-left text-xs">
               <thead className="bg-muted/40 border-b border-border text-muted-foreground font-semibold">
                 <tr>
+                  <th className="py-3 px-3 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={filteredDocuments.length > 0 && filteredDocuments.every((d) => selectedTableDocIds.has(d.bestandsnaam))}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          handleSelectAllTableDocs(filteredDocuments);
+                        } else {
+                          handleClearTableDocSelection();
+                        }
+                      }}
+                      className="rounded border-border text-accent focus:ring-accent w-3.5 h-3.5 cursor-pointer"
+                      title="Selecteer alle getoonde documenten"
+                    />
+                  </th>
                   <th className="py-3 px-4">Document</th>
                   <th className="py-3 px-4 w-40">Subdossier / Wijk</th>
                   <th className="py-3 px-4 w-28">Datum</th>
                   <th className="py-3 px-4 hidden md:table-cell">Relaties / Entiteiten</th>
                   <th className="py-3 px-4 w-28 text-center">Status</th>
-                  <th className="py-3 px-4 w-44 text-right">Acties</th>
+                  <th className="py-3 px-4 w-48 text-right">Acties</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {filteredDocuments.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-muted-foreground">
+                    <td colSpan={7} className="py-8 text-center text-muted-foreground">
                       Geen documenten gevonden die voldoen aan de filters.
                     </td>
                   </tr>
                 ) : (
                   filteredDocuments.map((doc, idx) => (
-                    <tr key={idx} className="hover:bg-muted/30 transition-colors">
+                    <tr
+                      key={idx}
+                      className={`hover:bg-muted/30 transition-colors ${
+                        selectedTableDocIds.has(doc.bestandsnaam) ? "bg-accent/5" : ""
+                      }`}
+                    >
+                      <td className="py-3 px-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedTableDocIds.has(doc.bestandsnaam)}
+                          onChange={() => handleToggleTableDoc(doc.bestandsnaam)}
+                          className="rounded border-border text-accent focus:ring-accent w-3.5 h-3.5 cursor-pointer"
+                        />
+                      </td>
                       <td className="py-3 px-4">
                         <div className="flex items-start gap-2.5">
                           <FileText className="w-4 h-4 text-accent shrink-0 mt-0.5" />
@@ -1760,6 +1950,17 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
                           {isCouncilOrAdmin && (
                             <>
                               <Button
+                                id={`btn-table-distribute-${idx}`}
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 px-2 rounded-lg text-muted-foreground hover:text-accent font-semibold text-xs inline-flex items-center gap-1"
+                                onClick={() => handleOpenDistribute(undefined, [doc.bestandsnaam])}
+                                title="Document toewijzen aan ander subdossier"
+                              >
+                                <ArrowRightLeft className="w-3.5 h-3.5" />
+                              </Button>
+
+                              <Button
                                 id={`btn-table-edit-${idx}`}
                                 variant="ghost"
                                 size="sm"
@@ -1816,6 +2017,7 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
         isOpen={isEditDocOpen}
         dossierSlug={dossierSlug}
         document={activeDocForEdit}
+        availableSubdossiers={dossier?.subdossiers?.map((s) => ({ slug: s.slug, title: s.title })) || []}
         onClose={() => {
           setIsEditDocOpen(false);
           setActiveDocForEdit(null);
@@ -1844,6 +2046,28 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
           setActiveSubdossierForEdit(null);
         }}
         onUpdated={handleSubdossierUpdated}
+      />
+
+      {/* Nieuw Subdossier Aanmaken Modal */}
+      <CreateSubdossierModal
+        isOpen={isCreateSubdossierOpen}
+        dossier={dossier}
+        onClose={() => setIsCreateSubdossierOpen(false)}
+        onCreated={handleSubdossierCreated}
+      />
+
+      {/* Documenten Verdelen Tussen Subdossiers Modal */}
+      <DistributeDocumentsModal
+        isOpen={isDistributeModalOpen}
+        dossier={dossier}
+        initialTargetSubdossier={distributeTargetInitial}
+        preselectedDocIds={preselectedDocIdsForDistribute}
+        onClose={() => {
+          setIsDistributeModalOpen(false);
+          setDistributeTargetInitial(undefined);
+          setPreselectedDocIdsForDistribute([]);
+        }}
+        onDistributed={handleDocumentsDistributed}
       />
     </div>
   );

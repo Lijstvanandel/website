@@ -4,6 +4,7 @@ import { execSync, spawn } from "child_process";
 import AdmZip from "adm-zip";
 import type { Dossier, DossierDocument, GraphNode, GraphEdge, NetworkGraphData, RaadsstukMetadata } from "../types/dossier.js";
 import { getKv, setKv } from "./sqliteDatabase.js";
+import { CANONICAL_HOOFDDOSSIERS, CANONICAL_PRIMARY_SUBDOSSIERS, normalizeHoofddossier, normalizeSubdossier } from "./taxonomyClassifier.js";
 
 const METADATA_PATH = path.join(process.cwd(), "public", "data", "raadsstukken_metadata_tussentijds.json");
 const METADATA_CSV_PATH = path.join(process.cwd(), "public", "data", "raadsstukken_metadata_tussentijds.csv");
@@ -138,28 +139,79 @@ const DOSSIER_PRESETS: Record<
     wijkNaam?: string;
   }
 > = {
+  "Bestuur, Financiën & Organisatie": {
+    category: "Bestuur, Financiën & Organisatie",
+    thumbnail: "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=800&auto=format&fit=crop&q=80",
+    description: "Begrotingen, jaarrekeningen, gemeentelijke belastingen, moties, rekenkamer en gemeenschappelijke regelingen."
+  },
+  "Wonen, Bouwen & Ontwikkeling": {
+    category: "Wonen, Bouwen & Ontwikkeling",
+    thumbnail: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800&auto=format&fit=crop&q=80",
+    description: "Woningbouw, nieuwbouwprojecten, bestemmingsplannen, omgevingsvisie, kaveluitgifte en ruimtelijke ordening."
+  },
+  "Natuur, Milieu & Klimaat": {
+    category: "Natuur, Milieu & Klimaat",
+    thumbnail: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=800&auto=format&fit=crop&q=80",
+    description: "Waterbeheer, Weerribben-Wieden, stikstofbeleid, energietransitie, zonneparken en klimaatadaptatie."
+  },
+  "Zorg, Gezondheid & Welzijn": {
+    category: "Zorg, Gezondheid & Welzijn",
+    thumbnail: "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=800&auto=format&fit=crop&q=80",
+    description: "Wmo, publieke gezondheid (GGD), mantelzorgondersteuning, thuiszorg en beschermd wonen."
+  },
+  "Jeugd, Gezin & Onderwijs": {
+    category: "Jeugd, Gezin & Onderwijs",
+    thumbnail: "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=800&auto=format&fit=crop&q=80",
+    description: "Jeugdhulp, Regionaal Serviceteam Jeugd (RSJ), onderwijshuisvesting, scholen en kindermishandeling."
+  },
+  "Verkeer, Wegen & Openbare Ruimte": {
+    category: "Verkeer, Wegen & Openbare Ruimte",
+    thumbnail: "https://images.unsplash.com/photo-1517649763962-0c623266ddc0?w=800&auto=format&fit=crop&q=80",
+    description: "Wegenonderhoud, verkeersveiligheid, fietsinfrastructuur, parkeerbeleid, openbaar vervoer, grachten en verlichting."
+  },
+  "Kunst, Cultuur & Sport": {
+    category: "Kunst, Cultuur & Sport",
+    thumbnail: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800&auto=format&fit=crop&q=80",
+    description: "Podiumkunsten (De Meenthe, Scala), musea, erfgoed, beeldende kunst, bibliotheken en sportaccommodaties."
+  },
+  "Veiligheid, Toezicht & Handhaving": {
+    category: "Veiligheid, Toezicht & Handhaving",
+    thumbnail: "https://images.unsplash.com/photo-1575881875475-3102470d5a86?w=800&auto=format&fit=crop&q=80",
+    description: "Veiligheidsregio IJsselland, brandweer, toezicht & handhaving, APV, openbare orde en crisisbeheersing."
+  },
+  "Samenleving, Werk & Inclusie": {
+    category: "Samenleving, Werk & Inclusie",
+    thumbnail: "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=800&auto=format&fit=crop&q=80",
+    description: "Asiel- en vluchtelingenopvang, Participatiewet, schuldhulpverlening, armoedebestrijding en burgerparticipatie."
+  },
+  "Economie, Ondernemen & Toerisme": {
+    category: "Economie, Ondernemen & Toerisme",
+    thumbnail: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=800&auto=format&fit=crop&q=80",
+    description: "Bedrijventerreinen, waterrecreatie, toerisme, agrarische zaken & pachtbeleid, horeca en detailhandel."
+  },
+  // Backwards compatibility aliases
   "Ruimte, Wonen & Bereikbaarheid": {
-    category: "Ruimte, Wonen & Bereikbaarheid",
+    category: "Wonen, Bouwen & Ontwikkeling",
     thumbnail: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800&auto=format&fit=crop&q=80",
     description: "Woningbouw, bestemmingsplannen, gebiedsontwikkeling, verkeer en ruimtelijke ordening in de kernen."
   },
   "Klimaat, Water & Natuur": {
-    category: "Klimaat, Water & Natuur",
+    category: "Natuur, Milieu & Klimaat",
     thumbnail: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=800&auto=format&fit=crop&q=80",
     description: "Waterbeheer, stikstof, energietransitie, en natuurbeheer waaronder Nationaal Park Weerribben-Wieden."
   },
   "Sociaal Domein, Zorg & Jeugd": {
-    category: "Sociaal Domein, Zorg & Jeugd",
+    category: "Zorg, Gezondheid & Welzijn",
     thumbnail: "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=800&auto=format&fit=crop&q=80",
     description: "Jeugdzorg, WMO, armoedebeleid, participatiewet, volksgezondheid en asielopvang."
   },
   "Lokale Economie, Toerisme & Cultuur": {
-    category: "Lokale Economie, Toerisme & Cultuur",
+    category: "Economie, Ondernemen & Toerisme",
     thumbnail: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=800&auto=format&fit=crop&q=80",
     description: "Recreatie, toerisme, lokale economie, landbouw/pacht, kunst, cultuur en erfgoed."
   },
   "Bestuur, Financiën & Openbare Orde": {
-    category: "Bestuur, Financiën & Openbare Orde",
+    category: "Bestuur, Financiën & Organisatie",
     thumbnail: "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=800&auto=format&fit=crop&q=80",
     description: "Gemeentefinanciën, veiligheid, handhaving, onderhoud openbare ruimte en regionale samenwerkingen (GR)."
   }
@@ -960,7 +1012,50 @@ export function getAllDossiers(
       };
     });
 
-    // Sort subdossiers by document count descending
+    // Add any custom subdossiers registered in customSubdossiers that might have 0 docs currently
+    if (customSubdossiers) {
+      Object.entries(customSubdossiers).forEach(([key, customSub]: [string, any]) => {
+        if (key.startsWith(`${slug}:`)) {
+          const subSlug = key.slice(slug.length + 1);
+          if (!subdossiers.some((s) => s.slug === subSlug || s.id === subSlug)) {
+            subdossiers.push({
+              id: subSlug,
+              title: customSub?.title || subSlug,
+              slug: subSlug,
+              hoofddossier: title,
+              documentCount: 0,
+              uploadedCount: 0,
+              dateRange: { start: null, end: null },
+              wijken: [],
+              tags: customSub?.tags || [],
+              description: customSub?.description || `Nieuw aangemaakt subdossier binnen ${title}.`,
+              thumbnail: customSub?.thumbnail || getSubdossierThumbnail(customSub?.title || subSlug, title),
+            });
+          }
+        }
+      });
+    }
+
+    // Ensure at least the exact 1 primary canonical subdossier exists even if no documents
+    if (subdossiers.length === 0) {
+      const primaryTitle = (CANONICAL_PRIMARY_SUBDOSSIERS as any)[title] || title;
+      const primarySlug = slugify(primaryTitle);
+      subdossiers.push({
+        id: primarySlug,
+        title: primaryTitle,
+        slug: primarySlug,
+        hoofddossier: title,
+        documentCount: 0,
+        uploadedCount: 0,
+        dateRange: { start: null, end: null },
+        wijken: [],
+        tags: [],
+        description: `Standaard subdossier voor ${title}.`,
+        thumbnail: getSubdossierThumbnail(primaryTitle, title),
+      });
+    }
+
+    // Sort subdossiers: primary first or by document count descending
     subdossiers.sort((a, b) => b.documentCount - a.documentCount);
 
     dossiers.push({
@@ -1336,6 +1431,61 @@ export function deleteDossier(
   return true;
 }
 
+// Helper to update master metadata when document attributes change
+function syncDocToMasterMetadata(
+  filename: string,
+  docProps: {
+    titel?: string;
+    dossier?: string;
+    subdossier?: string;
+    datum?: string | null;
+    wijk_of_kern?: string;
+    entiteiten?: string[] | string;
+    relaties?: string[] | string;
+  }
+) {
+  try {
+    const masterList = getRawMetadata();
+    const cleanFilename = path.basename(filename.trim()).toLowerCase();
+    const idx = masterList.findIndex((m) => m.bestandsnaam.toLowerCase() === cleanFilename);
+
+    const entStr = Array.isArray(docProps.entiteiten)
+      ? docProps.entiteiten.join(", ")
+      : docProps.entiteiten || "";
+    const relStr = Array.isArray(docProps.relaties)
+      ? docProps.relaties.join(", ")
+      : docProps.relaties || "";
+
+    if (idx >= 0) {
+      masterList[idx] = {
+        ...masterList[idx],
+        titel: docProps.titel !== undefined ? docProps.titel : masterList[idx].titel,
+        dossier: docProps.dossier !== undefined ? docProps.dossier : masterList[idx].dossier,
+        subdossier: docProps.subdossier !== undefined ? docProps.subdossier : masterList[idx].subdossier,
+        datum: docProps.datum !== undefined ? (docProps.datum || "") : masterList[idx].datum,
+        wijk_of_kern: docProps.wijk_of_kern !== undefined ? docProps.wijk_of_kern : (masterList[idx].wijk_of_kern || ""),
+        entiteiten: entStr || masterList[idx].entiteiten || "",
+        relaties: relStr || masterList[idx].relaties || "",
+      };
+    } else {
+      masterList.unshift({
+        bestandsnaam: path.basename(filename.trim()),
+        titel: docProps.titel || path.basename(filename.trim()).replace(/\.pdf$/i, ""),
+        dossier: docProps.dossier || "Bestuur, Financiën & Organisatie",
+        subdossier: docProps.subdossier || docProps.dossier || "Bestuur, Financiën & Organisatie",
+        datum: docProps.datum || new Date().toISOString().split("T")[0],
+        wijk_of_kern: docProps.wijk_of_kern || "",
+        entiteiten: entStr,
+        relaties: relStr,
+      });
+    }
+
+    saveMasterMetadata(masterList);
+  } catch (err) {
+    console.error("Error syncing document to master metadata:", err);
+  }
+}
+
 // Add a document manually to a dossier
 export function addDocumentToDossier(
   idOrSlug: string,
@@ -1343,18 +1493,26 @@ export function addDocumentToDossier(
   db: any,
   saveDbFn: (db: any) => void
 ): { dossier: Dossier; document: DossierDocument } | null {
-  const allDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || []);
+  const allDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || [], db.customSubdossiers);
   const dossier = allDossiers.find((d) => d.id === idOrSlug || d.slug === idOrSlug);
   if (!dossier) return null;
 
   const cleanFilename = path.basename(docData.bestandsnaam.trim());
   const fileCheck = checkFileExists(cleanFilename);
 
+  const primaryTitle = (CANONICAL_PRIMARY_SUBDOSSIERS as any)[dossier.title] || dossier.title;
+  const targetSubdossier = (docData.subdossier && docData.subdossier.trim()) ? docData.subdossier.trim() : primaryTitle;
+  const rawWijk = (docData.wijk_of_kern || "").trim();
+  const docWijken = rawWijk ? rawWijk.split(",").map((w) => w.trim()).filter(Boolean) : [];
+
   const newDoc: DossierDocument = {
     id: `doc-manual-${Date.now()}-${slugify(cleanFilename)}`,
     bestandsnaam: cleanFilename,
     titel: docData.titel.trim(),
     dossier: dossier.title,
+    subdossier: targetSubdossier,
+    wijk_of_kern: rawWijk,
+    wijken: docWijken,
     datum: docData.datum || new Date().toISOString().split("T")[0],
     entiteiten: Array.isArray(docData.entiteiten)
       ? docData.entiteiten
@@ -1395,6 +1553,17 @@ export function addDocumentToDossier(
     saveDbFn
   );
 
+  // Sync to persistent master metadata
+  syncDocToMasterMetadata(cleanFilename, {
+    titel: newDoc.titel,
+    dossier: dossier.title,
+    subdossier: targetSubdossier,
+    datum: newDoc.datum,
+    wijk_of_kern: rawWijk,
+    entiteiten: newDoc.entiteiten,
+    relaties: newDoc.relaties,
+  });
+
   if (!updatedDossier) return null;
   return { dossier: updatedDossier, document: newDoc };
 }
@@ -1407,7 +1576,7 @@ export function updateDocumentInDossier(
   db: any,
   saveDbFn: (db: any) => void
 ): { dossier: Dossier; document: DossierDocument } | null {
-  const allDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || []);
+  const allDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || [], db.customSubdossiers);
   const dossier = allDossiers.find((d) => d.id === idOrSlug || d.slug === idOrSlug);
   if (!dossier) return null;
 
@@ -1420,11 +1589,18 @@ export function updateDocumentInDossier(
   const targetFilename = updates.bestandsnaam ? path.basename(updates.bestandsnaam.trim()) : existingDoc.bestandsnaam;
   const fileCheck = checkFileExists(targetFilename);
 
+  const rawWijk = updates.wijk_of_kern !== undefined ? updates.wijk_of_kern.trim() : (existingDoc.wijk_of_kern || "");
+  const docWijken = rawWijk ? rawWijk.split(",").map((w) => w.trim()).filter(Boolean) : (existingDoc.wijken || []);
+  const targetSubdossier = updates.subdossier !== undefined ? updates.subdossier.trim() : (existingDoc.subdossier || dossier.title);
+
   const updatedDoc: DossierDocument = {
     ...existingDoc,
     ...updates,
     bestandsnaam: targetFilename,
     titel: updates.titel !== undefined ? updates.titel.trim() : existingDoc.titel,
+    subdossier: targetSubdossier,
+    wijk_of_kern: rawWijk,
+    wijken: docWijken,
     datum: updates.datum !== undefined ? updates.datum : existingDoc.datum,
     entiteiten: Array.isArray(updates.entiteiten)
       ? updates.entiteiten
@@ -1454,8 +1630,180 @@ export function updateDocumentInDossier(
     saveDbFn
   );
 
+  // Sync to master metadata
+  syncDocToMasterMetadata(targetFilename, {
+    titel: updatedDoc.titel,
+    dossier: updatedDoc.dossier || dossier.title,
+    subdossier: targetSubdossier,
+    datum: updatedDoc.datum,
+    wijk_of_kern: rawWijk,
+    entiteiten: updatedDoc.entiteiten,
+    relaties: updatedDoc.relaties,
+  });
+
   if (!updatedDossier) return null;
   return { dossier: updatedDossier, document: updatedDoc };
+}
+
+// Create a new subdossier under a hoofddossier, optionally pre-assigning documents
+export function createSubdossier(
+  idOrSlug: string,
+  subData: {
+    title: string;
+    description?: string;
+    thumbnail?: string;
+    tags?: string[];
+    documentIds?: string[];
+  },
+  db: any,
+  saveDbFn: (db: any) => void
+): { success: boolean; subdossier: any; dossier: Dossier } | null {
+  if (!db.customSubdossiers) db.customSubdossiers = {};
+
+  const allDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || [], db.customSubdossiers);
+  const dossier = allDossiers.find((d) => d.id === idOrSlug || d.slug === idOrSlug);
+  if (!dossier) return null;
+
+  const rawTitle = subData.title.trim();
+  if (!rawTitle) return null;
+
+  const subSlug = slugify(rawTitle);
+  const key = `${dossier.slug}:${subSlug}`;
+
+  const createdSub = {
+    id: subSlug,
+    title: rawTitle,
+    slug: subSlug,
+    hoofddossier: dossier.title,
+    description: subData.description?.trim() || `${rawTitle} binnen ${dossier.title}.`,
+    thumbnail: subData.thumbnail?.trim() || getSubdossierThumbnail(rawTitle, dossier.title),
+    tags: subData.tags || [],
+    createdAt: new Date().toISOString(),
+  };
+
+  db.customSubdossiers[key] = createdSub;
+
+  // If initial documentIds or filenames provided, distribute them into this new subdossier
+  if (Array.isArray(subData.documentIds) && subData.documentIds.length > 0) {
+    distributeDocumentsToSubdossier(
+      dossier.slug,
+      rawTitle,
+      subData.documentIds,
+      db,
+      () => {}
+    );
+  }
+
+  saveDbFn(db);
+
+  // Return fresh dossier
+  const refreshedDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || [], db.customSubdossiers);
+  const refreshed = refreshedDossiers.find((d) => d.id === idOrSlug || d.slug === idOrSlug) || dossier;
+
+  return { success: true, subdossier: createdSub, dossier: refreshed };
+}
+
+// Distribute / move a batch of documents to a target subdossier within a hoofddossier
+export function distributeDocumentsToSubdossier(
+  idOrSlug: string,
+  targetSubdossierTitle: string,
+  documentIdsOrFilenames: string[],
+  db: any,
+  saveDbFn: (db: any) => void
+): { success: boolean; distributedCount: number; targetSubdossier: string; dossier: Dossier } | null {
+  if (!db.customSubdossiers) db.customSubdossiers = {};
+
+  const allDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || [], db.customSubdossiers);
+  const dossier = allDossiers.find((d) => d.id === idOrSlug || d.slug === idOrSlug);
+  if (!dossier) return null;
+
+  const targetTitle = targetSubdossierTitle.trim();
+  if (!targetTitle) return null;
+
+  const targetSubSlug = slugify(targetTitle);
+  const subKey = `${dossier.slug}:${targetSubSlug}`;
+
+  // If not canonical primary, make sure customSubdossiers registers this title so it stays recognized
+  const primaryTitle = (CANONICAL_PRIMARY_SUBDOSSIERS as any)[dossier.title] || dossier.title;
+  if (targetTitle.toLowerCase() !== primaryTitle.toLowerCase() && !db.customSubdossiers[subKey]) {
+    db.customSubdossiers[subKey] = {
+      id: targetSubSlug,
+      title: targetTitle,
+      slug: targetSubSlug,
+      hoofddossier: dossier.title,
+      description: `${targetTitle} binnen ${dossier.title}.`,
+      thumbnail: getSubdossierThumbnail(targetTitle, dossier.title),
+      tags: [],
+      createdAt: new Date().toISOString(),
+    };
+  }
+
+  // Update in master metadata
+  const masterList = getRawMetadata();
+  let distributedCount = 0;
+  const targetIds = new Set(documentIdsOrFilenames.map((id) => id.toLowerCase().trim()));
+
+  masterList.forEach((m) => {
+    const matchesFilename = targetIds.has(m.bestandsnaam.toLowerCase().trim());
+    const matchesId = Array.from(targetIds).some((tid) => tid.includes(slugify(m.bestandsnaam)));
+    if (matchesFilename || matchesId) {
+      m.subdossier = targetTitle;
+      distributedCount++;
+    }
+  });
+
+  saveMasterMetadata(masterList);
+  saveDbFn(db);
+
+  // Return fresh dossier
+  const refreshedDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || [], db.customSubdossiers);
+  const refreshed = refreshedDossiers.find((d) => d.id === idOrSlug || d.slug === idOrSlug) || dossier;
+
+  return { success: true, distributedCount, targetSubdossier: targetTitle, dossier: refreshed };
+}
+
+// Delete a custom subdossier and reassign all its documents to the primary canonical subdossier
+export function deleteSubdossier(
+  idOrSlug: string,
+  subSlug: string,
+  db: any,
+  saveDbFn: (db: any) => void
+): { success: boolean; reassignedCount: number; dossier: Dossier } | null {
+  if (!db.customSubdossiers) db.customSubdossiers = {};
+
+  const allDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || [], db.customSubdossiers);
+  const dossier = allDossiers.find((d) => d.id === idOrSlug || d.slug === idOrSlug);
+  if (!dossier) return null;
+
+  const key = `${dossier.slug}:${subSlug}`;
+  const customSub = db.customSubdossiers[key];
+  const subTitle = customSub?.title || subSlug;
+
+  const primaryTitle = (CANONICAL_PRIMARY_SUBDOSSIERS as any)[dossier.title] || dossier.title;
+
+  // Reassign any documents with this subdossier to the primary subdossier
+  const masterList = getRawMetadata();
+  let reassignedCount = 0;
+
+  masterList.forEach((m) => {
+    if (
+      m.dossier === dossier.title &&
+      (slugify(m.subdossier || "") === subSlug || (m.subdossier || "").toLowerCase() === subTitle.toLowerCase())
+    ) {
+      m.subdossier = primaryTitle;
+      reassignedCount++;
+    }
+  });
+
+  saveMasterMetadata(masterList);
+
+  delete db.customSubdossiers[key];
+  saveDbFn(db);
+
+  const refreshedDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || [], db.customSubdossiers);
+  const refreshed = refreshedDossiers.find((d) => d.id === idOrSlug || d.slug === idOrSlug) || dossier;
+
+  return { success: true, reassignedCount, dossier: refreshed };
 }
 
 // Remove / unlink a document from a dossier

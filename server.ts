@@ -80,6 +80,9 @@ import {
   updateDocumentInDossier,
   removeDocumentFromDossier,
   linkDocumentsToDossier,
+  createSubdossier,
+  distributeDocumentsToSubdossier,
+  deleteSubdossier,
   getAllCatalogDocuments,
   processUploadedCouncilDocuments,
   getRawNetworkGraph,
@@ -8541,6 +8544,109 @@ Sitemap: ${baseUrl}/sitemap.xml
     } catch (err: any) {
       console.error("[SUBDOSSIER UPDATE ERROR]:", err);
       res.status(500).json({ error: "Fout bij bijwerken subdossier: " + err.message });
+    }
+  });
+
+  // 5B. Create a new Subdossier within a Hoofddossier and optionally distribute initial documents
+  app.post("/api/council/dossiers/:slug/subdossiers", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    try {
+      const { slug } = req.params;
+      const { title, description, thumbnail, tags, documentIds } = req.body;
+      const db = getDb();
+
+      if (!title || !title.trim()) {
+        return res.status(400).json({ error: "Subdossier titel is verplicht" });
+      }
+
+      const result = createSubdossier(
+        slug,
+        {
+          title: title.trim(),
+          description: description ? description.trim() : undefined,
+          thumbnail: thumbnail ? thumbnail.trim() : undefined,
+          tags: Array.isArray(tags) ? tags : [],
+          documentIds: Array.isArray(documentIds) ? documentIds : [],
+        },
+        db,
+        saveDb
+      );
+
+      if (!result) {
+        return res.status(404).json({ error: `Hoofddossier '${slug}' niet gevonden` });
+      }
+
+      res.status(201).json({
+        success: true,
+        message: `Subdossier '${title}' succesvol aangemaakt`,
+        subdossier: result.subdossier,
+        dossier: result.dossier,
+      });
+    } catch (err: any) {
+      console.error("[CREATE SUBDOSSIER ERROR]:", err);
+      res.status(500).json({ error: "Fout bij aanmaken subdossier: " + err.message });
+    }
+  });
+
+  // 5C. Distribute / move documents to a target Subdossier within a Hoofddossier
+  app.post("/api/council/dossiers/:slug/distribute-documents", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    try {
+      const { slug } = req.params;
+      const { targetSubdossier, documentIds } = req.body;
+      const db = getDb();
+
+      if (!targetSubdossier || !targetSubdossier.trim()) {
+        return res.status(400).json({ error: "Doel-subdossier is verplicht" });
+      }
+
+      if (!Array.isArray(documentIds) || documentIds.length === 0) {
+        return res.status(400).json({ error: "Geen documenten geselecteerd om te verdelen" });
+      }
+
+      const result = distributeDocumentsToSubdossier(
+        slug,
+        targetSubdossier.trim(),
+        documentIds,
+        db,
+        saveDb
+      );
+
+      if (!result) {
+        return res.status(404).json({ error: `Hoofddossier '${slug}' niet gevonden` });
+      }
+
+      res.json({
+        success: true,
+        message: `${result.distributedCount} document(en) succesvol verdeeld naar subdossier '${result.targetSubdossier}'`,
+        distributedCount: result.distributedCount,
+        targetSubdossier: result.targetSubdossier,
+        dossier: result.dossier,
+      });
+    } catch (err: any) {
+      console.error("[DISTRIBUTE DOCUMENTS ERROR]:", err);
+      res.status(500).json({ error: "Fout bij verdelen van documenten: " + err.message });
+    }
+  });
+
+  // 5D. Delete a Subdossier and safely reassign all its documents to the primary canonical subdossier
+  app.delete("/api/council/dossiers/:slug/subdossiers/:subSlug", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    try {
+      const { slug, subSlug } = req.params;
+      const db = getDb();
+
+      const result = deleteSubdossier(slug, subSlug, db, saveDb);
+      if (!result) {
+        return res.status(404).json({ error: `Hoofddossier '${slug}' of subdossier niet gevonden` });
+      }
+
+      res.json({
+        success: true,
+        message: `Subdossier verwijderd. ${result.reassignedCount} document(en) veilig herverdeeld naar het primaire subdossier.`,
+        reassignedCount: result.reassignedCount,
+        dossier: result.dossier,
+      });
+    } catch (err: any) {
+      console.error("[DELETE SUBDOSSIER ERROR]:", err);
+      res.status(500).json({ error: "Fout bij verwijderen subdossier: " + err.message });
     }
   });
 
