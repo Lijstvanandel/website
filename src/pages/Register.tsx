@@ -4,7 +4,18 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { CheckCircle2, AlertCircle, CreditCard, ShieldCheck, Loader2, ExternalLink, Eye, EyeOff } from "lucide-react";
+import {
+  CheckCircle2,
+  AlertCircle,
+  CreditCard,
+  ShieldCheck,
+  Loader2,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  Check,
+  Shield,
+} from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { safeJson } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -58,6 +69,82 @@ interface MembershipConfig {
   description: string;
   requirePaymentAtRegistration: boolean;
   isStripeConfigured: boolean;
+}
+
+function calculatePasswordStrength(pwd: string) {
+  const checks = {
+    length: pwd.length >= 8,
+    hasUpper: /[A-Z]/.test(pwd),
+    hasLower: /[a-z]/.test(pwd),
+    hasNumber: /[0-9]/.test(pwd),
+    hasSpecial: /[^A-Za-z0-9]/.test(pwd),
+  };
+
+  let score = 0;
+  if (pwd.length >= 6) score += 1;
+  if (checks.length) score += 1;
+  if (checks.hasUpper && checks.hasLower) score += 1;
+  if (checks.hasNumber) score += 1;
+  if (checks.hasSpecial) score += 1;
+
+  if (!pwd) {
+    return {
+      score: 0,
+      label: "",
+      color: "bg-muted",
+      textColor: "text-muted-foreground",
+      barCount: 0,
+      checks,
+    };
+  }
+  if (score <= 1) {
+    return {
+      score: 1,
+      label: "Zwak",
+      color: "bg-rose-500",
+      textColor: "text-rose-600 dark:text-rose-400",
+      barCount: 1,
+      checks,
+    };
+  }
+  if (score === 2) {
+    return {
+      score: 2,
+      label: "Matig",
+      color: "bg-amber-500",
+      textColor: "text-amber-600 dark:text-amber-400",
+      barCount: 2,
+      checks,
+    };
+  }
+  if (score === 3) {
+    return {
+      score: 3,
+      label: "Voldoende",
+      color: "bg-yellow-500",
+      textColor: "text-yellow-600 dark:text-yellow-400",
+      barCount: 3,
+      checks,
+    };
+  }
+  if (score === 4) {
+    return {
+      score: 4,
+      label: "Sterk",
+      color: "bg-emerald-500",
+      textColor: "text-emerald-600 dark:text-emerald-400",
+      barCount: 4,
+      checks,
+    };
+  }
+  return {
+    score: 5,
+    label: "Zeer sterk",
+    color: "bg-emerald-600",
+    textColor: "text-emerald-700 dark:text-emerald-300",
+    barCount: 4,
+    checks,
+  };
 }
 
 export default function Register() {
@@ -146,6 +233,10 @@ export default function Register() {
       newsletterSubscribed: true,
     },
   });
+
+  const watchedPassword = form.watch("password") || "";
+  const watchedConfirmPassword = form.watch("confirmPassword") || "";
+  const passwordStrength = calculatePasswordStrength(watchedPassword);
 
   async function onSubmit(data: RegisterFormValues) {
     setIsLoading(true);
@@ -545,6 +636,121 @@ export default function Register() {
                 )}
               />
             </div>
+
+            {/* Password Strength & Verification Feedback */}
+            {watchedPassword.length > 0 && (
+              <div className="bg-muted/40 border border-border/60 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Shield className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-xs font-semibold text-foreground">Wachtwoordsterkte:</span>
+                    <span className={`text-xs font-bold ${passwordStrength.textColor}`}>
+                      {passwordStrength.label}
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-muted-foreground">
+                    {passwordStrength.checks.length &&
+                    passwordStrength.checks.hasUpper &&
+                    passwordStrength.checks.hasLower &&
+                    passwordStrength.checks.hasNumber &&
+                    passwordStrength.checks.hasSpecial
+                      ? "Uitstekend beveiligd"
+                      : "Tips voor een sterk wachtwoord"}
+                  </span>
+                </div>
+
+                {/* 4-segment meter */}
+                <div className="grid grid-cols-4 gap-1.5 h-1.5">
+                  {[1, 2, 3, 4].map((barIndex) => (
+                    <div
+                      key={barIndex}
+                      className={`h-full rounded-full transition-all duration-300 ${
+                        barIndex <= passwordStrength.barCount
+                          ? passwordStrength.color
+                          : "bg-muted"
+                      }`}
+                    />
+                  ))}
+                </div>
+
+                {/* Criteria checklist */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                  <div
+                    className={`flex items-center gap-1.5 text-[11px] ${
+                      passwordStrength.checks.length
+                        ? "text-emerald-600 dark:text-emerald-400 font-medium"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    <Check
+                      className={`h-3 w-3 ${
+                        passwordStrength.checks.length ? "opacity-100" : "opacity-30"
+                      }`}
+                    />
+                    <span>Min. 8 tekens</span>
+                  </div>
+                  <div
+                    className={`flex items-center gap-1.5 text-[11px] ${
+                      passwordStrength.checks.hasUpper && passwordStrength.checks.hasLower
+                        ? "text-emerald-600 dark:text-emerald-400 font-medium"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    <Check
+                      className={`h-3 w-3 ${
+                        passwordStrength.checks.hasUpper && passwordStrength.checks.hasLower
+                          ? "opacity-100"
+                          : "opacity-30"
+                      }`}
+                    />
+                    <span>Hoofd- & kleine letter</span>
+                  </div>
+                  <div
+                    className={`flex items-center gap-1.5 text-[11px] ${
+                      passwordStrength.checks.hasNumber
+                        ? "text-emerald-600 dark:text-emerald-400 font-medium"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    <Check
+                      className={`h-3 w-3 ${
+                        passwordStrength.checks.hasNumber ? "opacity-100" : "opacity-30"
+                      }`}
+                    />
+                    <span>Cijfer (0-9)</span>
+                  </div>
+                  <div
+                    className={`flex items-center gap-1.5 text-[11px] ${
+                      passwordStrength.checks.hasSpecial
+                        ? "text-emerald-600 dark:text-emerald-400 font-medium"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    <Check
+                      className={`h-3 w-3 ${
+                        passwordStrength.checks.hasSpecial ? "opacity-100" : "opacity-30"
+                      }`}
+                    />
+                    <span>Speciaal teken</span>
+                  </div>
+                </div>
+
+                {/* Match indicator if confirm password is also being typed */}
+                {watchedConfirmPassword.length > 0 && (
+                  <div className="pt-2 border-t border-border/40 flex items-center gap-1.5 text-xs">
+                    {watchedPassword === watchedConfirmPassword ? (
+                      <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                        <Check className="h-3.5 w-3.5" /> Wachtwoorden komen exact overeen
+                      </span>
+                    ) : (
+                      <span className="text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
+                        <AlertCircle className="h-3.5 w-3.5" /> Wachtwoorden komen nog niet overeen
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             <FormField
               control={form.control}
