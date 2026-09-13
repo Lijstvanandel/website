@@ -34,6 +34,8 @@ import {
   Smartphone,
   ThumbsUp,
   Vote,
+  FolderKanban,
+  Gavel,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -687,6 +689,21 @@ export default function Dashboard() {
                   Vrijwilliger
                 </span>
               )}
+              {user.role === "voorzitter" && (
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/40 uppercase tracking-wider">
+                  Voorzitter
+                </span>
+              )}
+              {user.role === "secretaris" && (
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-700 dark:text-indigo-400 border border-indigo-500/40 uppercase tracking-wider">
+                  Secretaris
+                </span>
+              )}
+              {user.role === "penningmeester" && (
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-500/40 uppercase tracking-wider">
+                  Penningmeester
+                </span>
+              )}
               {user.role === "admin" && (
                 <span className="px-3 py-1 rounded-full text-xs font-bold bg-primary/20 text-primary border border-primary/40 uppercase tracking-wider">
                   Beheerder
@@ -731,6 +748,33 @@ export default function Dashboard() {
               Gegevens wijzigen
             </Button>
 
+            {user.role === "voorzitter" && (
+              <Link
+                to="/voorzitter"
+                className="px-5 py-2.5 bg-amber-600 text-white rounded-full font-semibold hover:bg-amber-700 transition-all flex items-center text-sm shadow-sm"
+              >
+                <Gavel className="w-4 h-4 mr-2" />
+                Voorzitterpaneel
+              </Link>
+            )}
+            {user.role === "secretaris" && (
+              <Link
+                to="/secretaris"
+                className="px-5 py-2.5 bg-indigo-700 text-white rounded-full font-semibold hover:bg-indigo-800 transition-all flex items-center text-sm shadow-sm"
+              >
+                <FolderKanban className="w-4 h-4 mr-2" />
+                Secretarispaneel
+              </Link>
+            )}
+            {user.role === "penningmeester" && (
+              <Link
+                to="/penningmeester"
+                className="px-5 py-2.5 bg-emerald-700 text-white rounded-full font-semibold hover:bg-emerald-800 transition-all flex items-center text-sm shadow-sm"
+              >
+                <CreditCard className="w-4 h-4 mr-2" />
+                Penningmeesterpaneel
+              </Link>
+            )}
             {user.role === "admin" && (
               <Link
                 to="/admin"
@@ -832,7 +876,7 @@ export default function Dashboard() {
               </section>
 
               {/* ACTUELE RAADSONDERWERPEN & LEDEN INBRENG WIDGET (Alleen zichtbaar indien contributie voldaan) */}
-              {(user.billingStatus === "paid" || user.billingStatus === "exempt" || user.role === "admin" || user.role === "raadslid" || user.role === "bestuur") && (
+              {(user.billingStatus === "paid" || user.billingStatus === "exempt" || user.role === "admin" || user.role === "secretaris" || user.role === "penningmeester" || user.role === "raadslid" || user.role === "bestuur") && (
                 <MemberCouncilTopicsWidget token={token} currentUser={user} />
               )}
 

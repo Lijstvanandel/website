@@ -41,6 +41,12 @@ const TABLE_DEFINITIONS: { [table: string]: string } = {
   councilDocumentViews: "CREATE TABLE IF NOT EXISTS councilDocumentViews (id TEXT PRIMARY KEY, data TEXT)",
   customDossiers: "CREATE TABLE IF NOT EXISTS customDossiers (id TEXT PRIMARY KEY, data TEXT)",
   systemSettings: "CREATE TABLE IF NOT EXISTS systemSettings (id TEXT PRIMARY KEY, data TEXT)",
+  treasurerAccounts: "CREATE TABLE IF NOT EXISTS treasurerAccounts (id TEXT PRIMARY KEY, data TEXT)",
+  treasurerInvoices: "CREATE TABLE IF NOT EXISTS treasurerInvoices (id TEXT PRIMARY KEY, data TEXT)",
+  treasurerAfdrachten: "CREATE TABLE IF NOT EXISTS treasurerAfdrachten (id TEXT PRIMARY KEY, data TEXT)",
+  treasurerBudget: "CREATE TABLE IF NOT EXISTS treasurerBudget (id TEXT PRIMARY KEY, data TEXT)",
+  treasurerKascommissie: "CREATE TABLE IF NOT EXISTS treasurerKascommissie (id TEXT PRIMARY KEY, data TEXT)",
+  treasurerSettings: "CREATE TABLE IF NOT EXISTS treasurerSettings (id TEXT PRIMARY KEY, data TEXT)",
   kv_store: "CREATE TABLE IF NOT EXISTS kv_store (key TEXT PRIMARY KEY, value TEXT)",
 };
 
@@ -234,6 +240,12 @@ export function getDbFromSqlite(): any {
     pushLogs: [],
     auditLogs: [],
     systemSettings: {},
+    treasurerAccounts: [],
+    treasurerInvoices: [],
+    treasurerAfdrachten: [],
+    treasurerBudget: [],
+    treasurerKascommissie: null,
+    treasurerSettings: null,
   };
 
   // Load list tables
@@ -266,6 +278,10 @@ export function getDbFromSqlite(): any {
     "councilSearchLogs",
     "councilDocumentViews",
     "customDossiers",
+    "treasurerAccounts",
+    "treasurerInvoices",
+    "treasurerAfdrachten",
+    "treasurerBudget",
   ];
 
   for (const table of listTables) {
@@ -295,6 +311,24 @@ export function getDbFromSqlite(): any {
     }
   } catch (_e) {
     result.membershipSettings = null;
+  }
+
+  try {
+    const kasRows = sqliteDb.exec("SELECT data FROM treasurerKascommissie WHERE id = 'default' LIMIT 1");
+    if (kasRows.length > 0 && kasRows[0].values && kasRows[0].values.length > 0) {
+      result.treasurerKascommissie = JSON.parse(kasRows[0].values[0][0]);
+    }
+  } catch (_e) {
+    result.treasurerKascommissie = null;
+  }
+
+  try {
+    const setRows = sqliteDb.exec("SELECT data FROM treasurerSettings WHERE id = 'default' LIMIT 1");
+    if (setRows.length > 0 && setRows[0].values && setRows[0].values.length > 0) {
+      result.treasurerSettings = JSON.parse(setRows[0].values[0][0]);
+    }
+  } catch (_e) {
+    result.treasurerSettings = null;
   }
 
   // Load kv_store
@@ -335,8 +369,8 @@ export function saveDbToSqlite(data: any) {
           const itemId = String(item.id || item.email || item.slug || item.key || crypto.randomUUID());
           sqliteDb.run(`INSERT INTO ${key} (id, data) VALUES (?, ?)`, [itemId, JSON.stringify(item)]);
         }
-      } else if (key === "membershipSettings" && val && typeof val === "object") {
-        sqliteDb.run("INSERT OR REPLACE INTO membershipSettings (id, data) VALUES ('default', ?)", [
+      } else if ((key === "membershipSettings" || key === "treasurerKascommissie" || key === "treasurerSettings") && val && typeof val === "object") {
+        sqliteDb.run(`INSERT OR REPLACE INTO ${key} (id, data) VALUES ('default', ?)`, [
           JSON.stringify(val),
         ]);
       } else if (Array.isArray(val) || (typeof val === "object" && val !== null)) {

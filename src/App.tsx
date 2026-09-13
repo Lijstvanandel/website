@@ -94,6 +94,9 @@ const App = () => (
                       <Route path="/peilingen" element={<Polls />} />
                       <Route path="/polls" element={<Polls />} />
                       <Route path="/admin" element={<AdminDashboard />} />
+                      <Route path="/secretaris" element={<AdminDashboard />} />
+                      <Route path="/penningmeester" element={<AdminDashboard />} />
+                      <Route path="/voorzitter" element={<AdminDashboard />} />
                       <Route path="/raadspaneel" element={<Raadspaneel />} />
                       <Route path="/dossiers" element={<Raadspaneel />} />
                       <Route path="/dossiers/:slug" element={<Raadspaneel />} />

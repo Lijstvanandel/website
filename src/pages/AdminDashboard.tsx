@@ -53,6 +53,9 @@ import {
   FileSearch,
   Building2,
   Waves,
+  FolderKanban,
+  ChevronLeft,
+  Gavel,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VideoPlayer } from "@/components/VideoPlayer";
@@ -71,6 +74,9 @@ import { StellingenManager } from "@/components/admin/StellingenManager";
 import { CouncilAuditManager } from "@/components/admin/CouncilAuditManager";
 import { OverijsselNotubizManager } from "@/components/council/OverijsselNotubizManager";
 import { WaterschapManager } from "@/components/council/WaterschapManager";
+import { TreasurerManager } from "@/components/admin/TreasurerManager";
+import { SecretaryManager } from "@/components/admin/SecretaryManager";
+import { ChairmanManager } from "@/components/admin/ChairmanManager";
 import { WIJKEN_EN_KERNEN } from "@/data/wijken";
 import { NewsItem } from "@/data/news";
 import { hoofdstukken } from "@/data/partijprogramma";
@@ -195,7 +201,25 @@ export interface ContactMessage {
 
 export default function AdminDashboard() {
   const { user, token, isAuthenticated } = useAuth();
-  const [activeTab, setActiveTab] = useState("users");
+  const [activeTab, setActiveTab] = useState(
+    user?.role === "voorzitter"
+      ? "voorzitter"
+      : user?.role === "secretaris"
+      ? "secretaris"
+      : user?.role === "penningmeester"
+      ? "penningmeester"
+      : "users"
+  );
+
+  useEffect(() => {
+    if (user?.role === "voorzitter") {
+      setActiveTab((prev) => (prev === "users" ? "voorzitter" : prev));
+    } else if (user?.role === "secretaris") {
+      setActiveTab((prev) => (prev === "users" ? "secretaris" : prev));
+    } else if (user?.role === "penningmeester") {
+      setActiveTab((prev) => (prev === "users" ? "penningmeester" : prev));
+    }
+  }, [user?.role]);
 
   const [users, setUsers] = useState<UserItem[]>([]);
   const [fractieleden, setFractieleden] = useState<FractielidItem[]>([]);
@@ -487,7 +511,7 @@ export default function AdminDashboard() {
       fetchCategories();
       fetchMessages();
     }
-  }, [user, fetchUsers, fetchMembershipSettings, fetchFractieleden, fetchVideos, fetchNews, fetchEvents, fetchCancellationAnalytics, fetchCategories, fetchMessages]);
+  }, [user?.role, fetchUsers, fetchMembershipSettings, fetchFractieleden, fetchVideos, fetchNews, fetchEvents, fetchCancellationAnalytics, fetchCategories, fetchMessages]);
 
   useEffect(() => {
     if (selectedMessageId) {
@@ -1016,7 +1040,118 @@ export default function AdminDashboard() {
   };
 
   if (!isAuthenticated) return <Navigate to="/login" />;
-  if (user?.role !== "admin") return <Navigate to="/dashboard" />;
+  if (
+    user?.role !== "admin" &&
+    user?.role !== "penningmeester" &&
+    user?.role !== "secretaris" &&
+    user?.role !== "voorzitter"
+  )
+    return <Navigate to="/dashboard" />;
+
+  // Dedicated view for Voorzitter: can ONLY see and access their own Voorzitterpaneel
+  if (user?.role === "voorzitter") {
+    return (
+      <div className="min-h-screen pt-32 pb-24 container mx-auto px-6 max-w-6xl">
+        <div className="mb-10 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div>
+            <div className="text-xs uppercase tracking-[0.3em] text-amber-600 dark:text-amber-400 font-semibold mb-2 flex items-center gap-2">
+              <Gavel className="w-4 h-4" />
+              <span>Partijvoorzitter & Bestuursleiding</span>
+            </div>
+            <h1 className="text-4xl md:text-5xl font-display mb-3">
+              Voorzitterpaneel
+            </h1>
+            <p className="text-muted-foreground text-sm max-w-3xl">
+              Exclusief voorzitterportaal: vergaderingleiding (ALV & Bestuur), de 5 fractie-instrumenten, organisatie van het bestuur & commissies, 4-jaarcyclus, integriteitsborging en inwonersverbinding in Steenwijkerland.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Link to="/dashboard">
+              <Button
+                variant="outline"
+                className="text-xs font-semibold uppercase tracking-wider gap-2 h-10 px-4 border-border hover:border-accent"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                <span>Naar Ledenportaal</span>
+              </Button>
+            </Link>
+          </div>
+        </div>
+
+        <ChairmanManager token={token} currentUser={user} headers={headers} />
+      </div>
+    );
+  }
+
+  // Dedicated view for Secretaris: can ONLY see and access their own Secretarispaneel
+  if (user?.role === "secretaris") {
+    return (
+      <div className="min-h-screen pt-32 pb-24 container mx-auto px-6 max-w-6xl">
+        <div className="mb-10 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div>
+            <div className="text-xs uppercase tracking-[0.3em] text-indigo-600 dark:text-indigo-400 font-semibold mb-2 flex items-center gap-2">
+              <FolderKanban className="w-4 h-4" />
+              <span>Secretariaat & Bestuursorganisatie</span>
+            </div>
+            <h1 className="text-4xl md:text-5xl font-display mb-3">
+              Secretarispaneel
+            </h1>
+            <p className="text-muted-foreground text-sm max-w-3xl">
+              Exclusief secretarisportaal: 1-jaars secretariscyclus, ALV- en bestuursvergaderingen, actiepunten, correspondentie, wettelijke compliance (WBTR/KvK) en partijdocumenten.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Link to="/dashboard">
+              <Button
+                variant="outline"
+                className="text-xs font-semibold uppercase tracking-wider gap-2 h-10 px-4 border-border hover:border-accent"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                <span>Naar Ledenportaal</span>
+              </Button>
+            </Link>
+          </div>
+        </div>
+
+        <SecretaryManager token={token} currentUser={user} headers={headers} />
+      </div>
+    );
+  }
+
+  // Dedicated view for Penningmeester: can ONLY see and access their own Penningmeesterpaneel
+  if (user?.role === "penningmeester") {
+    return (
+      <div className="min-h-screen pt-32 pb-24 container mx-auto px-6 max-w-6xl">
+        <div className="mb-10 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div>
+            <div className="text-xs uppercase tracking-[0.3em] text-emerald-600 dark:text-emerald-400 font-semibold mb-2 flex items-center gap-2">
+              <CreditCard className="w-4 h-4" />
+              <span>Financieel Beheer & Administratie</span>
+            </div>
+            <h1 className="text-4xl md:text-5xl font-display mb-3">
+              Penningmeesterpaneel
+            </h1>
+            <p className="text-muted-foreground text-sm max-w-3xl">
+              Exclusief penningmeesterportaal: financieel kasboek, facturen en declaraties met vierogenprincipe, bankrekeningen, ledencontributies, giftenregister en kascommissie-verantwoording.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Link to="/dashboard">
+              <Button
+                variant="outline"
+                className="text-xs font-semibold uppercase tracking-wider gap-2 h-10 px-4 border-border hover:border-accent"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                <span>Naar Ledenportaal</span>
+              </Button>
+            </Link>
+          </div>
+        </div>
+
+        <TreasurerManager token={token} currentUser={user} headers={headers} />
+      </div>
+    );
+  }
 
   const wijkenInSteenwijk = WIJKEN_EN_KERNEN.filter((w) => w.type === "Wijk");
   const kernenInSteenwijkerland = WIJKEN_EN_KERNEN.filter((w) => w.type === "Kern");
@@ -1063,12 +1198,53 @@ export default function AdminDashboard() {
           <div className="text-xs uppercase tracking-[0.3em] text-accent font-semibold mb-2">
             Beheerdersportaal
           </div>
-          <h1 className="text-4xl md:text-5xl font-display mb-3">Beheerderspaneel</h1>
+          <h1 className="text-4xl md:text-5xl font-display mb-3">
+            Beheerderspaneel
+          </h1>
           <p className="text-muted-foreground text-sm">
-            Beheer leden, fractieleden, video's, nieuwsberichten, categorieën, agenda-evenementen, stemgedrag en server-updates.
+            Beheer leden, financiën & facturatie, secretariaat, fractieleden, video's, nieuwsberichten, categorieën, agenda-evenementen, stemgedrag en server-updates.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            onClick={() => setActiveTab("voorzitter")}
+            variant={activeTab === "voorzitter" ? "default" : "outline"}
+            className={`shrink-0 text-xs font-semibold uppercase tracking-wider gap-2 h-10 px-4 cursor-pointer ${
+              activeTab === "voorzitter"
+                ? "bg-amber-600 text-white hover:bg-amber-700"
+                : "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20"
+            }`}
+          >
+            <Gavel className="w-4 h-4 text-amber-600" />
+            <span>Voorzitter</span>
+          </Button>
+          <Button
+            type="button"
+            onClick={() => setActiveTab("secretaris")}
+            variant={activeTab === "secretaris" ? "default" : "outline"}
+            className={`shrink-0 text-xs font-semibold uppercase tracking-wider gap-2 h-10 px-4 cursor-pointer ${
+              activeTab === "secretaris"
+                ? "bg-indigo-600 text-white hover:bg-indigo-700"
+                : "border-indigo-500/40 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/20"
+            }`}
+          >
+            <FolderKanban className="w-4 h-4 text-indigo-600" />
+            <span>Secretaris</span>
+          </Button>
+          <Button
+            type="button"
+            onClick={() => setActiveTab("penningmeester")}
+            variant={activeTab === "penningmeester" ? "default" : "outline"}
+            className={`shrink-0 text-xs font-semibold uppercase tracking-wider gap-2 h-10 px-4 cursor-pointer ${
+              activeTab === "penningmeester"
+                ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                : "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20"
+            }`}
+          >
+            <CreditCard className="w-4 h-4 text-emerald-600" />
+            <span>Penningmeester</span>
+          </Button>
           <Link to="/raadspaneel">
             <Button
               type="button"
@@ -1107,8 +1283,14 @@ export default function AdminDashboard() {
           <TabsTrigger value="users" className="gap-2 text-xs">
             <Users className="w-4 h-4" /> Ledenbeheer
           </TabsTrigger>
-          <TabsTrigger value="billing" className="gap-2 text-xs">
-            <CreditCard className="w-4 h-4 text-emerald-600" /> Contributie & Stripe
+          <TabsTrigger value="voorzitter" className="gap-2 text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-500/10 data-[state=active]:bg-amber-600 data-[state=active]:text-white">
+            <Gavel className="w-4 h-4 text-amber-600 data-[state=active]:text-white" /> Voorzitterpaneel
+          </TabsTrigger>
+          <TabsTrigger value="secretaris" className="gap-2 text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-500/10 data-[state=active]:bg-indigo-600 data-[state=active]:text-white">
+            <FolderKanban className="w-4 h-4 text-indigo-600 data-[state=active]:text-white" /> Secretarispaneel
+          </TabsTrigger>
+          <TabsTrigger value="penningmeester" className="gap-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
+            <CreditCard className="w-4 h-4 text-emerald-600 data-[state=active]:text-white" /> Penningmeesterpaneel
           </TabsTrigger>
           <TabsTrigger value="messages" className="gap-2 text-xs relative">
             <Inbox className="w-4 h-4" /> Berichten
@@ -1256,7 +1438,13 @@ export default function AdminDashboard() {
                             <select
                               className={`text-xs px-2 py-1 rounded border outline-none cursor-pointer ${
                                 u.role === "admin"
-                                  ? "bg-accent/20 text-accent border-accent/20"
+                                  ? "bg-accent/20 text-accent border-accent/20 font-semibold"
+                                  : u.role === "voorzitter"
+                                  ? "bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/30 font-semibold"
+                                  : u.role === "secretaris"
+                                  ? "bg-indigo-500/20 text-indigo-700 dark:text-indigo-400 border-indigo-500/30 font-semibold"
+                                  : u.role === "penningmeester"
+                                  ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 font-semibold"
                                   : u.role === "vrijwilliger"
                                   ? "bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/30"
                                   : u.role === "raadslid"
@@ -1267,15 +1455,24 @@ export default function AdminDashboard() {
                               onChange={(e) => changeUserRole(u.id, e.target.value)}
                             >
                               <option value="admin">admin (beheerder)</option>
+                              <option value="voorzitter">voorzitter (partijvoorzitter & bestuursleiding)</option>
+                              <option value="secretaris">secretaris (bestuur & vereniging)</option>
+                              <option value="penningmeester">penningmeester (financieel beheerder)</option>
                               <option value="vrijwilliger">vrijwilliger</option>
                               <option value="raadslid">raadslid</option>
                               <option value="member">member (lid)</option>
                             </select>
                           ) : (
                             <span
-                              className={`px-2 py-1 rounded text-xs ${
+                              className={`px-2 py-1 rounded text-xs font-semibold ${
                                 u.role === "admin"
                                   ? "bg-accent/20 text-accent"
+                                  : u.role === "voorzitter"
+                                  ? "bg-amber-500/20 text-amber-700 dark:text-amber-400"
+                                  : u.role === "secretaris"
+                                  ? "bg-indigo-500/20 text-indigo-700 dark:text-indigo-400"
+                                  : u.role === "penningmeester"
+                                  ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-400"
                                   : u.role === "vrijwilliger"
                                   ? "bg-amber-500/20 text-amber-700 dark:text-amber-400"
                                   : u.role === "raadslid"
@@ -1361,247 +1558,19 @@ export default function AdminDashboard() {
           </div>
         </TabsContent>
 
-        {/* CONTRIBUTIE & STRIPE BEHEER */}
-        <TabsContent value="billing">
-          <div className="space-y-8">
-            {/* KPI STATS CARDS */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-card p-5 rounded-xl border border-border shadow-sm">
-                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1 flex items-center justify-between">
-                  <span>Totale Opbrengst</span>
-                  <Coins className="w-4 h-4 text-emerald-600" />
-                </div>
-                <div className="text-2xl font-bold font-display text-foreground">
-                  €{(membershipData?.stats?.totalRevenue ?? 0).toFixed(2)}
-                </div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  Ontvangen via Stripe & handmatige contributies
-                </div>
-              </div>
+        {/* VOORZITTERPANEEL */}
+        <TabsContent value="voorzitter">
+          <ChairmanManager token={token} currentUser={user} headers={headers} />
+        </TabsContent>
 
-              <div className="bg-card p-5 rounded-xl border border-border shadow-sm">
-                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1 flex items-center justify-between">
-                  <span>Betaalde Leden</span>
-                  <CheckCircle className="w-4 h-4 text-emerald-600" />
-                </div>
-                <div className="text-2xl font-bold font-display text-emerald-600">
-                  {membershipData?.stats?.paidMembers ?? users.filter(u => u.billingStatus === "paid").length} / {users.length}
-                </div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  {users.length > 0 
-                    ? `${Math.round(((membershipData?.stats?.paidMembers ?? users.filter(u => u.billingStatus === "paid").length) / users.length) * 100)}% voldaan`
-                    : "0%"}
-                </div>
-              </div>
+        {/* SECRETARISPANEEL */}
+        <TabsContent value="secretaris">
+          <SecretaryManager token={token} currentUser={user} headers={headers} />
+        </TabsContent>
 
-              <div className="bg-card p-5 rounded-xl border border-border shadow-sm">
-                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1 flex items-center justify-between">
-                  <span>Openstaande Contributie</span>
-                  <AlertCircle className="w-4 h-4 text-amber-600" />
-                </div>
-                <div className="text-2xl font-bold font-display text-amber-600">
-                  {membershipData?.stats?.pendingMembers ?? users.filter(u => !u.billingStatus || u.billingStatus === "pending").length}
-                </div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  Leden met status openstaand
-                </div>
-              </div>
-
-              <div className="bg-card p-5 rounded-xl border border-border shadow-sm">
-                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1 flex items-center justify-between">
-                  <span>Verwachte Jaaropbrengst</span>
-                  <Receipt className="w-4 h-4 text-primary" />
-                </div>
-                <div className="text-2xl font-bold font-display text-foreground">
-                  €{(membershipData?.stats?.expectedAnnualRevenue ?? (users.length * parseFloat(settingsAmount || "12"))).toFixed(2)}
-                </div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  Op basis van huidig ledenaantal
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              {/* SETTINGS FORM (2 cols) */}
-              <div className="lg:col-span-2 bg-card rounded-xl border border-border p-6 shadow-sm">
-                <div className="flex items-center gap-3 pb-4 mb-6 border-b border-border">
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-                    <CreditCard className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-display text-foreground">Contributie Instellingen</h2>
-                    <p className="text-xs text-muted-foreground">
-                      Beheer het jaarlijkse contributiebedrag en de registratie-flow voor nieuwe leden.
-                    </p>
-                  </div>
-                </div>
-
-                <form onSubmit={handleSaveMembershipSettings} className="space-y-5">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-xs font-semibold uppercase text-muted-foreground block mb-1.5">
-                        Contributiebedrag (€ per jaar)
-                      </label>
-                      <Input
-                        type="number"
-                        step="0.50"
-                        min="0"
-                        value={settingsAmount}
-                        onChange={(e) => setSettingsAmount(e.target.value)}
-                        placeholder="12.00"
-                        required
-                        className="font-semibold text-base"
-                      />
-                      <p className="text-[11px] text-muted-foreground mt-1">
-                        Standaard €12,00 per jaar voor partijleden.
-                      </p>
-                    </div>
-
-                    <div>
-                      <label className="text-xs font-semibold uppercase text-muted-foreground block mb-1.5">
-                        Productnaam op afrekenpagina
-                      </label>
-                      <Input
-                        type="text"
-                        value={settingsProductName}
-                        onChange={(e) => setSettingsProductName(e.target.value)}
-                        placeholder="Lidmaatschap Lijst van Andel (1 jaar)"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-semibold uppercase text-muted-foreground block mb-1.5">
-                      Omschrijving voor de koper
-                    </label>
-                    <Input
-                      type="text"
-                      value={settingsDescription}
-                      onChange={(e) => setSettingsDescription(e.target.value)}
-                      placeholder="Jaarlijkse contributie voor partijleden"
-                    />
-                  </div>
-
-                  <div className="space-y-3 pt-2">
-                    <label className="flex items-center gap-3 p-3.5 rounded-lg border border-border bg-muted/20 cursor-pointer hover:bg-muted/40 transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={settingsRequirePayment}
-                        onChange={(e) => setSettingsRequirePayment(e.target.checked)}
-                        className="rounded border-border w-4 h-4 text-primary focus:ring-primary"
-                      />
-                      <div className="text-xs">
-                        <span className="font-semibold text-foreground block">
-                          Direct doorsturen naar Stripe na registratie
-                        </span>
-                        <span className="text-muted-foreground">
-                          Nieuwe leden worden na het invullen van het registratieformulier direct doorgestuurd naar de Stripe checkout.
-                        </span>
-                      </div>
-                    </label>
-
-                    <label className="flex items-center gap-3 p-3.5 rounded-lg border border-border bg-muted/20 cursor-pointer hover:bg-muted/40 transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={settingsEnabled}
-                        onChange={(e) => setSettingsEnabled(e.target.checked)}
-                        className="rounded border-border w-4 h-4 text-primary focus:ring-primary"
-                      />
-                      <div className="text-xs">
-                        <span className="font-semibold text-foreground block">
-                          Contributie-integratie actief
-                        </span>
-                        <span className="text-muted-foreground">
-                          Indien uitgeschakeld wordt de Stripe checkout overgeslagen bij registratie.
-                        </span>
-                      </div>
-                    </label>
-                  </div>
-
-                  <div className="pt-2">
-                    <Button
-                      type="submit"
-                      disabled={savingSettings}
-                      className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
-                    >
-                      {savingSettings ? "Bezig met opslaan..." : "Contributie-instellingen Opslaan"}
-                    </Button>
-                  </div>
-                </form>
-              </div>
-
-              {/* STRIPE STATUS & WEBHOOK CARD (1 col) */}
-              <div className="space-y-6">
-                <div className="bg-card rounded-xl border border-border p-6 shadow-sm space-y-4">
-                  <h3 className="text-base font-bold font-display text-foreground flex items-center gap-2">
-                    <CreditCard className="w-4 h-4 text-primary" />
-                    Stripe Integratiestatus
-                  </h3>
-
-                  <div className="space-y-3 text-xs">
-                    <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/40 border border-border">
-                      <span className="text-muted-foreground">API Status:</span>
-                      {membershipData?.stripe?.isConfigured ? (
-                        <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400">
-                          <Check className="w-3.5 h-3.5" /> Geconfigureerd
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 font-semibold text-amber-600 dark:text-amber-400">
-                          <AlertCircle className="w-3.5 h-3.5" /> Test/Simulatie modus
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/40 border border-border">
-                      <span className="text-muted-foreground">Webhook Geheim:</span>
-                      {membershipData?.stripe?.hasWebhookSecret ? (
-                        <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400">
-                          <Check className="w-3.5 h-3.5" /> Actief
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 font-semibold text-muted-foreground">
-                          Optioneel / Test
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="space-y-1.5 pt-2">
-                      <div className="text-muted-foreground font-medium">Stripe Webhook URL:</div>
-                      <div className="p-2 rounded bg-muted font-mono text-[11px] break-all border border-border select-all">
-                        {membershipData?.stripe?.webhookUrl || `${typeof window !== "undefined" ? window.location.origin : ""}/api/stripe/webhook`}
-                      </div>
-                      <p className="text-[10px] text-muted-foreground">
-                        Vul deze URL in het Stripe Dashboard in bij <em>Developers &gt; Webhooks</em> en selecteer het evenement <code>checkout.session.completed</code>.
-                      </p>
-                    </div>
-
-                    <div className="space-y-1.5 pt-2">
-                      <div className="text-muted-foreground font-medium">Omgeving (.env):</div>
-                      <div className="p-2 rounded bg-secondary text-secondary-foreground font-mono text-[10px] space-y-0.5">
-                        <div>STRIPE_SECRET_KEY=sk_...</div>
-                        <div>STRIPE_WEBHOOK_SECRET=whsec_...</div>
-                        <div>VITE_STRIPE_PUBLISHABLE_KEY=pk_...</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* SNEL ACTIES KAART */}
-                <div className="bg-card rounded-xl border border-border p-6 shadow-sm space-y-3">
-                  <h3 className="text-sm font-bold font-display text-foreground">Facturatie Samenvatting</h3>
-                  <div className="text-xs text-muted-foreground space-y-2">
-                    <p>
-                      In het tabblad <strong>Ledenbeheer</strong> kunt u per lid de facturatiestatus handmatig aanpassen (bijvoorbeeld als iemand contant of per bank heeft voldaan).
-                    </p>
-                    <p>
-                      Wanneer leden via Stripe afrekenen wordt hun status automatisch bijgewerkt naar <em>Voldaan</em> voor 1 jaar.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+        {/* PENNINGMEESTERPANEEL */}
+        <TabsContent value="penningmeester">
+          <TreasurerManager token={token} currentUser={user} headers={headers} />
         </TabsContent>
 
         {/* FRACTIELEDEN */}

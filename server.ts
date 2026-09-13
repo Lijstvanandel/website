@@ -608,6 +608,798 @@ function getDb() {
     saveDb(db);
   }
 
+  // Initialize Penningmeester / Treasurer domain data
+  if (!db.treasurerAccounts || !Array.isArray(db.treasurerAccounts) || db.treasurerAccounts.length === 0) {
+    db.treasurerAccounts = [
+      {
+        id: "acc_lopend",
+        name: "Lopende Rekening (RegioBank)",
+        iban: "NL91 RBRB 0823 4192 11",
+        type: "lopend",
+        balance: 6420.50,
+        currency: "EUR",
+        description: "Operationele partijrekening: ontvangst contributies, giften en betaling van dagelijkse facturen",
+        institution: "RegioBank Steenwijkerland"
+      },
+      {
+        id: "acc_spaar",
+        name: "Spaarrekening & Campagnekas 2026",
+        iban: "NL14 RBRB 0823 4192 88",
+        type: "spaar",
+        balance: 14850.00,
+        currency: "EUR",
+        description: "Bestuursreserve voor onvoorziene uitgaven & opbouw verkiezingskas gemeenteraadsverkiezingen 2026",
+        institution: "RegioBank Steenwijkerland"
+      },
+      {
+        id: "acc_fractie",
+        name: "Fractierekening (Art. 33 Gemeentewet)",
+        iban: "NL72 RBRB 0823 4192 33",
+        type: "fractie",
+        balance: 4150.00,
+        currency: "EUR",
+        description: "Gemeentelijke subsidie fractieondersteuning Steenwijkerland (wettelijk gescheiden verantwoording aan gemeenteraad)",
+        institution: "RegioBank Steenwijkerland"
+      },
+      {
+        id: "acc_kas",
+        name: "Kasgeld / Contant Beheer",
+        iban: "-",
+        type: "kas",
+        balance: 120.00,
+        currency: "EUR",
+        description: "Beperkte kas voor kleine uitgaven (conform PDF advies Kennispunt: zo min mogelijk contant)",
+        institution: "Kluis Partijkantoor Steenwijk"
+      }
+    ];
+    saveDb(db);
+  }
+
+  if (!db.treasurerInvoices || !Array.isArray(db.treasurerInvoices) || db.treasurerInvoices.length === 0) {
+    db.treasurerInvoices = [
+      {
+        id: "inv-2026-001",
+        invoiceNumber: "FACT-2026-041",
+        description: "Zaalhuur ALV & bewonersavond Steenwijk",
+        creditor: "Dorpshuis De Burght Steenwijk",
+        amount: 350.00,
+        date: "2026-09-02",
+        category: "Zaalhuur & Bijeenkomsten",
+        accountId: "acc_lopend",
+        receiptName: "factuur_zaalhuur_burght_sep2026.pdf",
+        receiptUrl: "",
+        requiresFourEyes: true,
+        status: "pending_approval",
+        submittedBy: "Hendrik van Dijk (Penningmeester)",
+        submittedAt: "2026-09-02T14:30:00.000Z",
+        notes: "Spoedige goedkeuring gewenst voor vervaldatum 25 september"
+      },
+      {
+        id: "inv-2026-002",
+        invoiceNumber: "DECL-2026-018",
+        description: "Drukwerk flyers & campagneposters kernenbezoek",
+        creditor: "Drukkerij Steenwijkerland",
+        amount: 580.00,
+        date: "2026-08-28",
+        category: "Campagne & Communicatie",
+        accountId: "acc_lopend",
+        receiptName: "bon_drukwerk_kernen_2026.pdf",
+        receiptUrl: "",
+        requiresFourEyes: true,
+        status: "approved",
+        submittedBy: "Hendrik van Dijk (Penningmeester)",
+        approvedBy: "Sammy van Andel (Voorzitter)",
+        approvedAt: "2026-08-29T10:15:00.000Z",
+        paidAt: "2026-08-30T11:00:00.000Z",
+        notes: "Vierogenprincipe akkoord verleend door voorzitter"
+      },
+      {
+        id: "inv-2026-003",
+        invoiceNumber: "FACT-2026-039",
+        description: "Webhosting, domeinen & Ledenportaal Q3 2026",
+        creditor: "Antagonist Hosting BV",
+        amount: 145.20,
+        date: "2026-08-15",
+        category: "ICT & Website",
+        accountId: "acc_lopend",
+        receiptName: "antagonist_factuur_q3.pdf",
+        receiptUrl: "",
+        requiresFourEyes: false,
+        status: "paid",
+        submittedBy: "Hendrik van Dijk (Penningmeester)",
+        paidAt: "2026-08-16T09:00:00.000Z",
+        notes: "Reguliere kwartaalfactuur ICT"
+      },
+      {
+        id: "inv-2026-004",
+        invoiceNumber: "DECL-2026-019",
+        description: "Reiskostenvergoeding fractiebezoek Giethoorn & Blokzijl",
+        creditor: "Fractieondersteuning Steenwijkerland",
+        amount: 78.50,
+        date: "2026-09-08",
+        category: "Fractieondersteuning",
+        accountId: "acc_fractie",
+        receiptName: "declaratie_reiskosten_fractie_sep.pdf",
+        receiptUrl: "",
+        requiresFourEyes: false,
+        status: "pending_approval",
+        submittedBy: "Lisa Mars (Raadslid)",
+        submittedAt: "2026-09-08T16:00:00.000Z",
+        notes: "Bezoek aan lokale ondernemers en dorpsbelangen"
+      }
+    ];
+    saveDb(db);
+  }
+
+  if (!db.treasurerAfdrachten || !Array.isArray(db.treasurerAfdrachten) || db.treasurerAfdrachten.length === 0) {
+    db.treasurerAfdrachten = [
+      {
+        id: "afd-001",
+        politicianName: "Sammy van Andel",
+        roleTitle: "Fractievoorzitter / Raadslid",
+        mandateTerm: "2022 - 2026",
+        percentageOrAmount: "€ 150,- per kwartaal",
+        quarterDues: {
+          "2026-Q1": { status: "paid", amount: 150, paidAt: "2026-03-12" },
+          "2026-Q2": { status: "paid", amount: 150, paidAt: "2026-06-18" },
+          "2026-Q3": { status: "paid", amount: 150, paidAt: "2026-09-05" },
+          "2026-Q4": { status: "pending", amount: 150, paidAt: null }
+        },
+        remarks: "Afdracht conform partijreglement Lijst van Andel"
+      },
+      {
+        id: "afd-002",
+        politicianName: "Lisa Mars",
+        roleTitle: "Raadslid",
+        mandateTerm: "2022 - 2026",
+        percentageOrAmount: "€ 100,- per kwartaal",
+        quarterDues: {
+          "2026-Q1": { status: "paid", amount: 100, paidAt: "2026-03-15" },
+          "2026-Q2": { status: "paid", amount: 100, paidAt: "2026-06-20" },
+          "2026-Q3": { status: "pending", amount: 100, paidAt: null },
+          "2026-Q4": { status: "pending", amount: 100, paidAt: null }
+        },
+        remarks: "Vergoeding raadslidmaatschap Steenwijkerland"
+      }
+    ];
+    saveDb(db);
+  }
+
+  if (!db.treasurerBudget || !Array.isArray(db.treasurerBudget) || db.treasurerBudget.length === 0) {
+    db.treasurerBudget = [
+      { id: "b-01", type: "income", category: "Ledencontributies", budgeted: 15000, realized: 14850, notes: "Jaarlijkse contributie ledenbestand" },
+      { id: "b-02", type: "income", category: "Vrijwillige Giften & Donaties", budgeted: 6500, realized: 6420, notes: "Donaties via website en acties" },
+      { id: "b-03", type: "income", category: "Fractievergoeding Art. 33 Gemeentewet", budgeted: 8500, realized: 8500, notes: "Gemeentelijke bijdrage fractieondersteuning" },
+      { id: "b-04", type: "income", category: "Afdrachten Politieke Ambtsdragers", budgeted: 1800, realized: 1250, notes: "Kwartaalafdrachten fractieleden" },
+      { id: "b-05", type: "expense", category: "Campagne & Communicatie (GR 2026)", budgeted: 12000, realized: 9800, notes: "Drukwerk, posters, advertenties en video's" },
+      { id: "b-06", type: "expense", category: "ICT, Website & Ledenportaal", budgeted: 4500, realized: 4150, notes: "Hosting, Meilisearch, softwarelicenties" },
+      { id: "b-07", type: "expense", category: "Zaalhuur & Algemene Ledenvergaderingen", budgeted: 3200, realized: 2800, notes: "Locatiekosten ALV en openbare debatten" },
+      { id: "b-08", type: "expense", category: "Fractieondersteuning & Onderzoek", budgeted: 5500, realized: 4800, notes: "Vakliteratuur, scholing, advies (art. 33)" },
+      { id: "b-09", type: "expense", category: "Algemene Administratie & Bankkosten", budgeted: 1200, realized: 940, notes: "RegioBank kosten, Kamer van Koophandel, WBTR" },
+      { id: "b-10", type: "expense", category: "Reservering Verkiezingskas 2026", budgeted: 5400, realized: 5400, notes: "Dotatie aan bestemmingsreserve verkiezingen" }
+    ];
+    saveDb(db);
+  }
+
+  if (!db.treasurerKascommissie) {
+    db.treasurerKascommissie = {
+      commissieLeden: [
+        { name: "Hendrik van Dijk", role: "Voorzitter Kascommissie / Onafhankelijk partijlid", appointedUntil: "ALV 2027" },
+        { name: "Marga Jansen-Bakker", role: "Lid Kascommissie / Financieel deskundige", appointedUntil: "ALV 2027" }
+      ],
+      lastAuditDate: "2026-03-24",
+      nextAuditDate: "2027-03-20",
+      dechargeStatus: "Goedgekeurd door Kascommissie",
+      dechargeAdvice: "De kascommissie heeft de boeken, rekeningafschriften, het kasboek en de onderliggende bewijsstukken (facturen en kwitanties) gecontroleerd. Alle uitgaven boven de drempel voldeden aan het vierogenprincipe. De commissie adviseert de Algemene Ledenvergadering om het bestuur decharge te verlenen voor het gevoerde financiële beheer.",
+      reportFileName: "kascommissie_verslag_lijstvanandel_boekjaar2025.pdf"
+    };
+    saveDb(db);
+  }
+
+  if (!db.treasurerSettings) {
+    db.treasurerSettings = {
+      fourEyesThreshold: 250,
+      wbtrCompliant: true,
+      anbiStatusActive: true,
+      anbiRsin: "854912034",
+      kvkNumber: "08194821",
+      bankName: "RegioBank Steenwijkerland",
+      lastReviewedAt: new Date().toISOString()
+    };
+    saveDb(db);
+  }
+
+  // Ensure penningmeester user account exists for seamless role access
+  if (Array.isArray(db.users) && !db.users.some((u: any) => u.role === "penningmeester")) {
+    const defaultTreasurerPass = bcrypt.hashSync("penningmeester123", 10);
+    db.users.push({
+      id: "user_penningmeester",
+      username: "penningmeester",
+      fullName: "Hendrik van Dijk (Penningmeester)",
+      email: "penningmeester@lijstvanandel.nl",
+      role: "penningmeester",
+      isActive: true,
+      billingStatus: "exempt",
+      paidAmount: 0,
+      createdAt: new Date().toISOString(),
+      password: defaultTreasurerPass,
+      newsletterSubscribed: true
+    });
+    saveDb(db);
+  }
+
+  // Ensure secretaris user account exists for seamless role access
+  if (Array.isArray(db.users) && !db.users.some((u: any) => u.role === "secretaris")) {
+    const defaultSecretaryPass = bcrypt.hashSync("secretaris123", 10);
+    db.users.push({
+      id: "user_secretaris",
+      username: "secretaris",
+      fullName: "Anja ter Horst (Secretaris)",
+      email: "secretaris@lijstvanandel.nl",
+      role: "secretaris",
+      isActive: true,
+      billingStatus: "exempt",
+      paidAmount: 0,
+      createdAt: new Date().toISOString(),
+      password: defaultSecretaryPass,
+      newsletterSubscribed: true
+    });
+    saveDb(db);
+  }
+
+  // Ensure voorzitter user account exists for seamless role access
+  if (Array.isArray(db.users) && !db.users.some((u: any) => u.role === "voorzitter")) {
+    const defaultChairmanPass = bcrypt.hashSync("voorzitter123", 10);
+    db.users.push({
+      id: "user_voorzitter",
+      username: "voorzitter",
+      fullName: "Sammy van Andel (Partijvoorzitter)",
+      email: "voorzitter@lijstvanandel.nl",
+      role: "voorzitter",
+      isActive: true,
+      billingStatus: "exempt",
+      paidAmount: 0,
+      createdAt: new Date().toISOString(),
+      password: defaultChairmanPass,
+      newsletterSubscribed: true
+    });
+    saveDb(db);
+  }
+
+  // Initialize Secretaris / Secretariaat domain data (conform Kennispunt Lokale Politieke Partijen)
+  if (!db.secretaryMeetings || !Array.isArray(db.secretaryMeetings) || db.secretaryMeetings.length === 0) {
+    db.secretaryMeetings = [
+      {
+        id: "meet-alv-2026-voorjaar",
+        title: "Algemene Ledenvergadering (ALV) Voorjaar 2026",
+        type: "ALV",
+        date: "2026-03-28",
+        time: "19:30 - 22:00",
+        location: "Dorpshuis De Burght, Steenwijk",
+        status: "afgerond",
+        agenda: [
+          "1. Opening door de voorzitter",
+          "2. Vaststelling agenda",
+          "3. Notulen vorige ALV najaar 2025",
+          "4. Jaarverslag secretaris verenigingsjaar 2025",
+          "5. Financieel jaarverslag penningmeester & verslag kascommissie",
+          "6. Dechargeverlening bestuur",
+          "7. Tussentijdse terugblik fractie & actuele raadsthema's Steenwijkerland",
+          "8. Rondvraag en sluiting"
+        ],
+        minutes: "De vergadering werd om 19:35 geopend door voorzitter Sammy van Andel. Aanwezig: 34 leden. Notulen van de vorige ALV zijn ongewijzigd vastgesteld. Het jaarverslag van secretaris Anja ter Horst werd met applaus ontvangen, waarbij extra waardering werd uitgesproken voor de versterkte communicatie met de dorpskernen. De kascommissie heeft de boeken gecontroleerd en geadviseerd het bestuur decharge te verlenen. De ALV verleent unaniem decharge. Fractieleden lichten actuele dossiers toe. Sluiting om 21:55 uur.",
+        decisions: [
+          "Notulen ALV najaar 2025 bekrachtigd en vastgesteld",
+          "Jaarverslag secretaris 2025 unaniem goedgekeurd",
+          "Financieel jaarverslag 2025 goedgekeurd en decharge verleend aan het bestuur",
+          "Benoeming mw. E. de Ruiter als nieuw lid van de kascommissie"
+        ],
+        attachments: ["alv_uitnodiging_voorjaar2026.pdf", "jaarverslag_secretariaat_2025.pdf", "alv_notulen_voorjaar_2026_definitief.pdf"],
+        attendeesCount: 34
+      },
+      {
+        id: "meet-bestuur-2026-09",
+        title: "Maandelijkse Bestuursvergadering September 2026",
+        type: "Bestuursvergadering",
+        date: "2026-09-18",
+        time: "20:00 - 22:00",
+        location: "Fractiekamer / Partijkantoor Steenwijk",
+        status: "geagendeerd",
+        agenda: [
+          "1. Opening & mededelingen dagelijks bestuur (voorzitter, secretaris, penningmeester)",
+          "2. Ingekomen post, websiteberichten & belafspraken (overdracht aan fractie)",
+          "3. Stand van zaken ledenadministratie en AVG-borging",
+          "4. Voortgang actielijst en evaluatie actiepunten",
+          "5. Voorbereiding Najaars-ALV & 1-Jaarcyclus (vaststelling jaarplan & begroting 2027)",
+          "6. Instellen commissies verkiezingen: programmacommissie & kandidaatstelling",
+          "7. Rondvraag en datum volgende vergadering"
+        ],
+        minutes: "",
+        decisions: [],
+        attachments: ["agenda_bestuursvergadering_sep2026.pdf", "overzicht_ingekomen_stukken_sep.pdf"],
+        attendeesCount: 5
+      },
+      {
+        id: "meet-alv-2026-najaar",
+        title: "Algemene Ledenvergadering (ALV) Najaar 2026",
+        type: "ALV",
+        date: "2026-11-20",
+        time: "19:30 - 22:00",
+        location: "Zaal De Schans, Giethoorn / Blokzijl",
+        status: "voorbereiding",
+        agenda: [
+          "1. Opening en welkom",
+          "2. Vaststelling agenda & notulen ALV voorjaar 2026",
+          "3. Presentatie en vaststelling Jaarplan 2027",
+          "4. Presentatie en vaststelling Partijbegroting 2027 (penningmeester)",
+          "5. Voortgang verkiezingsprogramma & kandidaatstellingsprocedure GR2026/2027",
+          "6. Rondvraag en borrel"
+        ],
+        minutes: "",
+        decisions: [],
+        attachments: ["concept_agenda_najaarsalv_2026.pdf"],
+        attendeesCount: 0
+      }
+    ];
+    saveDb(db);
+  }
+
+  if (!db.secretaryActions || !Array.isArray(db.secretaryActions) || db.secretaryActions.length === 0) {
+    db.secretaryActions = [
+      {
+        id: "act-001",
+        title: "Notulen ALV voorjaar definitief uitwerken en rondsturen aan alle partijleden",
+        meetingTitle: "ALV Voorjaar 2026",
+        assignedTo: "Anja ter Horst (Secretaris)",
+        dueDate: "2026-09-20",
+        priority: "hoog",
+        status: "voltooid",
+        completedAt: "2026-09-04",
+        notes: "Notulen digitaal beschikbaar gesteld in het ledenportaal en verzonden per nieuwsbrief."
+      },
+      {
+        id: "act-002",
+        title: "Kamer van Koophandel inschrijving actualiseren na bestuursmutaties",
+        meetingTitle: "Bestuursvergadering September 2026",
+        assignedTo: "Anja ter Horst (Secretaris)",
+        dueDate: "2026-09-25",
+        priority: "hoog",
+        status: "in_behandeling",
+        notes: "Formulier 17 ingediend via KvK digitaal portaal; wachten op definitief gewaarmerkt uittreksel."
+      },
+      {
+        id: "act-003",
+        title: "Jaarlijkse UBO-register herverificatie controleren en bevestigen",
+        meetingTitle: "Bestuursvergadering September 2026",
+        assignedTo: "Anja ter Horst (Secretaris)",
+        dueDate: "2026-10-01",
+        priority: "normaal",
+        status: "open",
+        notes: "Wettelijke UBO-verificatie voor alle bevoegde bestuurders (voorzitter, secretaris, penningmeester)."
+      },
+      {
+        id: "act-004",
+        title: "Instellen programmacommissie agenderen en vacaturetekst publiceren",
+        meetingTitle: "Bestuursvergadering September 2026",
+        assignedTo: "Sammy van Andel & Anja ter Horst",
+        dueDate: "2026-10-15",
+        priority: "hoog",
+        status: "open",
+        notes: "Oproep voor kandidaten en programmaschrijvers in de komende partijnieuwsbrief en website."
+      },
+      {
+        id: "act-005",
+        title: "Privacyverklaring en verwerkersovereenkomsten AVG periodiek auditen",
+        meetingTitle: "Regulier Secretariaat",
+        assignedTo: "Anja ter Horst (Secretaris)",
+        dueDate: "2026-10-30",
+        priority: "normaal",
+        status: "in_behandeling",
+        notes: "Ledenadministratie en webformulieren nalopen op strikte bewaartermijnen en toestemmingsregistratie."
+      }
+    ];
+    saveDb(db);
+  }
+
+  if (!db.secretaryCompliance) {
+    db.secretaryCompliance = {
+      kvk: {
+        kvkNumber: "08194821",
+        associationName: "Politieke Vereniging Lijst van Andel Steenwijkerland",
+        statutorySeat: "Steenwijkerland",
+        lastMutationDate: "2026-04-10",
+        status: "Actueel en geregistreerd",
+        boardMembersRegistered: [
+          "Sammy van Andel (Voorzitter)",
+          "Anja ter Horst (Secretaris)",
+          "Hendrik van Dijk (Penningmeester)"
+        ],
+        extractAvailable: true
+      },
+      wbtr: {
+        compliant: true,
+        tegenstrijdigBelangRegeling: true,
+        beletEnOntstentenisRegeling: true,
+        meervoudigStemrechtBeperkt: true,
+        aansprakelijkheidsverzekeringBestuur: true,
+        lastReviewedDate: "2026-08-15",
+        notes: "Statuten en bestuursreglement voldoen integraal aan de Wet bestuur en toezicht rechtspersonen (WBTR 2021). Protocol tegenstrijdig belang is formeel vastgelegd."
+      },
+      ubo: {
+        registered: true,
+        registrationDate: "2022-03-24",
+        lastVerificationDate: "2026-03-10",
+        status: "Gevalideerd bij Kamer van Koophandel",
+        confirmedUbos: [
+          "Sammy van Andel (Voorzitter)",
+          "Anja ter Horst (Secretaris)",
+          "Hendrik van Dijk (Penningmeester)"
+        ]
+      },
+      avg: {
+        compliant: true,
+        privacyStatementPublished: true,
+        processingRegisterActive: true,
+        memberConsentLogged: true,
+        dataRetentionPolicyEnforced: true,
+        lastAuditDate: "2026-07-01",
+        notes: "Ledenadministratie streng beveiligd. Geen onbevoegde doorgifte van persoonsgegevens. Nieuwe leden geven expliciet akkoord conform AVG-richtlijnen."
+      },
+      giftenreglement: {
+        publishedOnWebsite: true,
+        adoptedByAlv: true,
+        publicationUrl: "/statuten-en-reglementen",
+        notes: "Verplicht openbaar giftenreglement voor lokale partijen met gemeenteraadszetel is vastgesteld door de ALV en openbaar gepubliceerd."
+      }
+    };
+    saveDb(db);
+  }
+
+  if (!db.secretaryYearcycle || !Array.isArray(db.secretaryYearcycle) || db.secretaryYearcycle.length === 0) {
+    db.secretaryYearcycle = [
+      {
+        quarter: "Q1",
+        title: "Voorjaars-ALV, Jaarrekening & Decharge",
+        period: "Januari - Maart",
+        status: "afgerond",
+        items: [
+          "Voorbereiden agenda en stukken Voorjaars-ALV",
+          "Presentatie Jaarverslag secretaris over verenigingsjaar",
+          "Financieel verslag penningmeester & controle door kascommissie",
+          "Dechargeverlening aan het bestuur door de ALV",
+          "Notulen en besluitenlijst uitwerken en distribueren"
+        ]
+      },
+      {
+        quarter: "Q2",
+        title: "Themabijeenkomst, Kernenbezoek & Tussentijdse Evaluatie",
+        period: "April - Juni",
+        status: "afgerond",
+        items: [
+          "Organiseren themabijeenkomst met leden en inwoners",
+          "Tussentijdse evaluatie raadsprogramma met fractieleden",
+          "Bijwerken en auditen ledenadministratie (AVG & verhuisberichten)",
+          "Bestuursvergaderingen: bewaken voortgang actielijst"
+        ]
+      },
+      {
+        quarter: "Q3",
+        title: "Start Begrotingscyclus & Verkiezingscommissies",
+        period: "Juli - September",
+        status: "actief",
+        items: [
+          "Samen met penningmeester opstellen concept-begroting volgend jaar",
+          "Instellen programmacommissie voor verkiezingsprogramma",
+          "Scouting en kandidaatstellingscommissie opstarten",
+          "Inspectie archiefbeheer en wettelijke compliance (WBTR/KvK/UBO)"
+        ]
+      },
+      {
+        quarter: "Q4",
+        title: "Najaars-ALV, Jaarplan & Begroting Vaststellen",
+        period: "Oktober - December",
+        status: "gepland",
+        items: [
+          "Uitschrijven en organiseren Najaars-ALV",
+          "Vaststellen van het partij-jaarplan door de ALV",
+          "Vaststellen van de partijbegroting en contributiebedrag",
+          "Voortgang verkiezingsprogramma en kandidaatstelling presenteren",
+          "Jaarlijkse formaliteiten Kamer van Koophandel afronden"
+        ]
+      }
+    ];
+    saveDb(db);
+  }
+
+  if (!db.secretaryElections) {
+    db.secretaryElections = {
+      campaignEvaluation: {
+        previousResult: "3 zetels in de gemeenteraad van Steenwijkerland",
+        keyLearnings: [
+          "Actieve aanwezigheid in de dorpskernen (Blokzijl, Vollenhove, Oldemarkt) leverde een forse stijging in stemmenaantal op.",
+          "Digitale peilingen en directe inwonersberichten zorgden voor hoge interactie en betrokkenheid bij jonge gezinnen.",
+          "Huis-aan-huis verspreiding van het kernenprogramma versterkte de herkenbaarheid van kandidaten."
+        ],
+        focusAreasNextElection: "Intensievere zichtbaarheid in het buitengebied, snellere opvolging van bewonerssignalen en vroegtijdige werving van kandidaat-raadsleden."
+      },
+      programCommittee: {
+        status: "In voorbereiding",
+        lead: "Dhr. P. de Vries",
+        members: ["P. de Vries (voorzitter)", "L. Mars", "A. ter Horst"],
+        deadlineDraft: "2026-12-01",
+        alvAdoptionDate: "2027-01-20",
+        notes: "Schrijfcommissie start in oktober met thematische werksessies."
+      },
+      candidateCommittee: {
+        status: "Scouting & Profielschets",
+        lead: "Mw. M. Huisman",
+        members: ["M. Huisman", "S. van Andel", "E. van der Berg"],
+        interviewPeriod: "November 2026 - Januari 2027",
+        kiesraadDeadlinesChecked: true,
+        notes: "Profielschets raadsleden en commissieleden vastgesteld door het bestuur."
+      }
+    };
+    saveDb(db);
+  }
+
+  // Initialize Voorzitter domain data (conform Kennispunt Lokale Politieke Partijen: 'Voorzitter politieke partij')
+  if (!db.chairmanFractieStart) {
+    db.chairmanFractieStart = {
+      completed: true,
+      conductedAt: "2022-04-14",
+      lastReviewedAt: "2026-03-20",
+      ambitions: "Uitvoering verkiezingsprogramma Steenwijkerland 2022-2026: focus op betaalbare dorpswoningen, leefbaarheid in kernen en Weerribben-Wieden, en een transparant gemeentebestuur.",
+      memberInvolvementAgreements: "Periodieke ledenraadplegingen voorafgaand aan zwaarwegende besluitvorming in de raad. Open werkgroepen rond raadsvoorstellen.",
+      communicationRules: "Wekelijks informeel overleg tussen fractievoorzitter en partijvoorzitter; fractie opereert als politiek leider in de gemeenteraad, partijbestuur bewaakt partijkaders en statuten.",
+      status: "Actueel en periodiek geëvalueerd"
+    };
+    saveDb(db);
+  }
+
+  if (!db.chairmanFractieInterviews || !Array.isArray(db.chairmanFractieInterviews) || db.chairmanFractieInterviews.length === 0) {
+    db.chairmanFractieInterviews = [
+      {
+        id: "int-001",
+        politicianName: "Sammy van Andel",
+        roleTitle: "Fractievoorzitter / Raadslid",
+        interviewDate: "2026-02-18",
+        status: "afgerond",
+        competencies: "Debatvaardigheden, dossierkennis ruimtelijke ordening, financieel inzicht en coalitieonderhandelingen.",
+        supportNeeded: "Intensievere ondersteuning door communicatieteam voor snellere persberichten en fractiestandpunten op sociale media.",
+        expectations: "Heldere afstemming over coalitiedynamiek en kaders verkiezingsprogramma; partijbestuur faciliteert zaalruimte en dorpendialogen.",
+        notes: "Zeer constructief voortgangsgesprek. Fractievoorzitter ervaart een sterke wisselwerking met het partijbestuur. Permanente scoutingscommissie betrekken bij werving burgerraadsleden.",
+        nextReviewDate: "2027-02-15"
+      },
+      {
+        id: "int-002",
+        politicianName: "Lisa Mars",
+        roleTitle: "Raadslid",
+        interviewDate: "2026-03-05",
+        status: "afgerond",
+        competencies: "Sociaal domein, jeugdzorg, dorpenbeleid (Oldemarkt & Noordelijke kernen) en burgerparticipatie.",
+        supportNeeded: "Training onderhandelingsvaardigheden en verdieping in gemeentelijke herindeling en Wmo-regelgeving.",
+        expectations: "Duidelijke terugkoppeling vanuit leden over zorgsignalen in de kernen.",
+        notes: "Functioneert uitstekend als raadslid. Actieve rol in raadscommissies. Verbinding met inwoners van Oldemarkt en omstreken is een groot pluspunt.",
+        nextReviewDate: "2027-03-01"
+      }
+    ];
+    saveDb(db);
+  }
+
+  if (!db.chairmanTussenbalans) {
+    db.chairmanTussenbalans = {
+      completedDate: "2024-05-20",
+      term: "Halverwege raadsperiode (2-jaars tussenbalans)",
+      programRealizationScore: 82,
+      summary: "Evaluatie na twee jaar raadsperiode: 82% van de speerpunten uit het verkiezingsprogramma is ingebracht via moties of amendementen in de gemeenteraad van Steenwijkerland.",
+      cooperationAssessment: "De fractie opereert hecht en zichtbaar. Samenwerking met het partijbestuur verloopt soepel met duidelijke rolscheiding tussen politiek leider en partijorganisatie.",
+      inhabitantCommunication: "De belafspraken en spreekuren in dorpshuizen worden goed bezocht. Aandachtspunt blijft snellere reactietijd op ingekomen websitevragen.",
+      actionPoints: [
+        "Organiseren van twee thematische dorpendialogen in Giethoorn en Vollenhove",
+        "Permanente scoutingscommissie activeren voor kandidaatstelling volgende verkiezingen",
+        "Opleidingsbudget fractie verhogen voor mediatraining"
+      ],
+      status: "Vastgesteld en gedeeld met partijbestuur"
+    };
+    saveDb(db);
+  }
+
+  if (!db.chairmanCoffeeChats || !Array.isArray(db.chairmanCoffeeChats) || db.chairmanCoffeeChats.length === 0) {
+    db.chairmanCoffeeChats = [
+      {
+        id: "cof-001",
+        date: "2026-09-10",
+        location: "Café De Rechter / Fractiekamer Steenwijk",
+        topics: "Rolbewaking: onderscheid partijvereniging vs. fractieleiding in de raad. Vooruitblik campagne 4-jaarcyclus.",
+        conclusions: "Uitstekende verstandhouding. Fractievoorzitter schuift aan bij de Najaars-ALV om politieke highlights toe te lichten.",
+        actionAgreed: "Secretariaat levert ledenlijst aan voor uitnodigingen dorpenbezoek."
+      },
+      {
+        id: "cof-002",
+        date: "2026-08-20",
+        location: "Dorpshuis Oldemarkt",
+        topics: "Afstemming over kandidatenlijst en permanente scoutingscommissie.",
+        conclusions: "Scoutingscommissie krijgt mandaat van het bestuur om gesprekken te starten met potentiële kandidaten.",
+        actionAgreed: "Voorzitter bespreekt profielschets in bestuursvergadering september."
+      }
+    ];
+    saveDb(db);
+  }
+
+  if (!db.chairmanFractieAttendances || !Array.isArray(db.chairmanFractieAttendances) || db.chairmanFractieAttendances.length === 0) {
+    db.chairmanFractieAttendances = [
+      {
+        id: "att-001",
+        date: "2026-09-08",
+        attendee: "Sammy van Andel (Partijvoorzitter)",
+        keyTopics: "Voorbereiding raadsvergadering Steenwijkerland over woningbouwlocaties en dorpsvisie Blokzijl.",
+        alignmentNotes: "Bestuur heeft aandacht gevraagd voor de afgesproken partijbeginselen omtrent groenbehoud en inspraak omwonenden.",
+        nextDate: "2026-09-22"
+      },
+      {
+        id: "att-002",
+        date: "2026-06-16",
+        attendee: "Sammy van Andel (Partijvoorzitter)",
+        keyTopics: "Kadernota 2027 en gemeentelijke begrotingsscenario's.",
+        alignmentNotes: "Afgestemd met penningmeester over financiële impact en fractievergoeding art. 33 Gemeentewet.",
+        nextDate: "2026-09-08"
+      }
+    ];
+    saveDb(db);
+  }
+
+  if (!db.chairmanCommittees || !Array.isArray(db.chairmanCommittees) || db.chairmanCommittees.length === 0) {
+    db.chairmanCommittees = [
+      {
+        id: "com-scouting",
+        name: "Permanente Scoutingscommissie",
+        purpose: "Continu zoeken naar nieuw politiek talent, kandidaat-raadsleden, commissieleden en bestuursopvolging in Steenwijkerland.",
+        lead: "Hendrik van Dijk",
+        members: ["Hendrik van Dijk", "Lisa Mars", "Onafhankelijk partijlid"],
+        status: "actief",
+        mandate: "Jaarlijkse talentgesprekken en voorbereiding voordracht kandidatenlijst aan de ALV",
+        progressNotes: "3 potentiële kandidaat-raadsleden in kaart gebracht voor komende gemeenteraadsverkiezingen."
+      },
+      {
+        id: "com-comm",
+        name: "Communicatieteam & Woordvoering",
+        purpose: "Website op orde houden, regelmatige sociale media publicaties, persberichten verzorgen en perswoordvoering.",
+        lead: "Anja ter Horst (Secretariaat)",
+        members: ["Anja ter Horst", "Stef Mars", "Webmaster"],
+        status: "actief",
+        mandate: "Perscontact en wekelijkse social media uitingen",
+        progressNotes: "Ledenportaal gelanceerd; bereik op sociale media in Steenwijkerland met 35% gestegen."
+      },
+      {
+        id: "com-ledenwerving",
+        name: "Ledenwerving & Betrokkenheid",
+        purpose: "Ledenwervingscampagnes organiseren in de kernen van Steenwijkerland en binding met actieve leden versterken.",
+        lead: "Peter van Leeuwen",
+        members: ["Peter van Leeuwen", "Vrijwilligerscoördinator"],
+        status: "actief",
+        mandate: "Actieve stands op jaarmarkten, welkomstpakket nieuwe leden",
+        progressNotes: "14 nieuwe leden ingeschreven in 2026; welkomstgesprekken worden binnen 2 weken gevoerd."
+      },
+      {
+        id: "com-programma",
+        name: "Verkiezingsprogrammacommissie",
+        purpose: "Het opstellen en actualiseren van het verkiezingsprogramma ter vaststelling door de Algemene Ledenvergadering.",
+        lead: "Sammy van Andel (Voorzitter)",
+        members: ["Sammy van Andel", "Lisa Mars", "Thema-experts"],
+        status: "voorbereiding",
+        mandate: "Conceptprogramma tijdig gereed voor amendering op de ALV",
+        progressNotes: "Thematische enquêtes onder leden uitgezet ter voorbereiding op de actualisatie."
+      }
+    ];
+    saveDb(db);
+  }
+
+  if (!db.chairmanFourYearCycle || !Array.isArray(db.chairmanFourYearCycle) || db.chairmanFourYearCycle.length === 0) {
+    db.chairmanFourYearCycle = [
+      {
+        year: 1,
+        label: "Jaar 1 (Post-Verkiezingen)",
+        focus: "Startgesprek met fractie, inwerken fractieleden, evaluatie verkiezingscampagne en borgen verkiezingsprogramma in coalitieakkoord.",
+        status: "afgerond",
+        milestones: [
+          { text: "Startgesprek met de fractie gevoerd over ambities en communicatie", done: true },
+          { text: "Campagne-evaluatie besproken in het partijbestuur en op de ALV", done: true },
+          { text: "Statuten en huishoudelijk reglement gecontroleerd op naleving", done: true }
+        ]
+      },
+      {
+        year: 2,
+        label: "Jaar 2 (Beleid & Ontwikkeling)",
+        focus: "Scholing en competentieontwikkeling fractieleden, thematische bijeenkomsten met inwoners, jaarlijkse functioneringsgesprekken.",
+        status: "afgerond",
+        milestones: [
+          { text: "Jaarlijkse voortgangsgesprekken met alle raadsleden afgerond", done: true },
+          { text: "Communicatieteam en website vernieuwd", done: true },
+          { text: "Dorpsbezoeken en netwerkbijeenkomsten georganiseerd", done: true }
+        ]
+      },
+      {
+        year: 3,
+        label: "Jaar 3 (Tussenbalans & Talent)",
+        focus: "Tussenbalans opmaken na 2 jaar, permanente scoutingscommissie activeren, start voorbereiding verkiezingsprogramma.",
+        status: "actief",
+        milestones: [
+          { text: "Tussenbalans opgemaakt met de fractie (ambities & inwonerscontact)", done: true },
+          { text: "Scoutingscommissie gestart met inventarisatie nieuw talent", done: true },
+          { text: "Instelling programmacommissie voorbereid voor de ALV", done: true }
+        ]
+      },
+      {
+        year: 4,
+        label: "Jaar 4 (Verkiezingsjaar & Campagne)",
+        focus: "Campagneorganisatie inrichten, kandidatenlijst opstellen, verkiezingsprogramma vaststellen op ALV, piek in bestuursinzet.",
+        status: "gepland",
+        milestones: [
+          { text: "Campagneteam en campagneleider aangesteld", done: false },
+          { text: "Kandidatenlijst samengesteld en goedgekeurd door ALV", done: false },
+          { text: "Verkiezingsprogramma vastgesteld en campagne uitgerold", done: false }
+        ]
+      }
+    ];
+    saveDb(db);
+  }
+
+  if (!db.chairmanIntegrity) {
+    db.chairmanIntegrity = {
+      codeOfConductAdopted: true,
+      codeOfConductAdoptedDate: "2023-11-15",
+      whistleblowerContact: "Vertrouwenspersoon & Partijvoorzitter",
+      integrityPrinciples: [
+        "Transparantie over nevenfuncties en financiële belangen van bestuurs- en fractieleden",
+        "Geen aanvaarding van giften of uitnodigingen boven € 50,- zonder melding in het giftenregister",
+        "Voorbeeldfunctie: eerlijk, oprecht, aanspreekbaar en integer handelen conform statuten",
+        "Strikte geheimhouding van vertrouwelijke fractie- en bestuursberaadslagingen",
+        "Gelijke kansen, respectvolle omgangsvormen en nul tolerantie voor grensoverschrijdend gedrag"
+      ],
+      reports: [
+        {
+          id: "int-rep-001",
+          date: "2026-05-12",
+          subject: "Nevenfunctie raadslid gemeld conform gedragscode",
+          status: "afgehandeld",
+          resolution: "Bestuur heeft geoordeeld dat er geen sprake is van belangenverstrengeling; nevenfunctie geregistreerd in openbaar register gemeente Steenwijkerland."
+        }
+      ]
+    };
+    saveDb(db);
+  }
+
+  if (!db.chairmanNetwork) {
+    db.chairmanNetwork = {
+      colleagueChairs: [
+        { party: "PvdA Steenwijkerland", contactPerson: "Voorzitter PvdA", lastContact: "2026-06-12", notes: "Overleg over integer bestuur en respectvolle debatten in de gemeenteraad." },
+        { party: "VVD Steenwijkerland", contactPerson: "Voorzitter VVD", lastContact: "2026-05-18", notes: "Informeel voorzittersgesprek over gemeentelijke herindeling en raadsakkoord." },
+        { party: "ChristenUnie Steenwijkerland", contactPerson: "Voorzitter CU", lastContact: "2026-04-20", notes: "Koffieoverleg over maatschappelijke opvang en vrijwilligerswaardering." }
+      ],
+      communitySignals: [
+        {
+          id: "sig-001",
+          location: "Oldemarkt",
+          topic: "Zorgen over verkeersveiligheid en vrachtverkeer door dorpskern",
+          receivedDate: "2026-09-02",
+          source: "Inwonergesprek tijdens dorpsfeest Oldemarkt",
+          status: "doorgespeeld naar fractielid Lisa Mars",
+          followUp: "Lisa Mars heeft schriftelijke raadsvragen voorbereid voor de gemeenteraad."
+        },
+        {
+          id: "sig-002",
+          location: "Giethoorn / Wanneperveen",
+          topic: "Parkeerdruk en toerismedruk in het hoogseizoen",
+          receivedDate: "2026-08-15",
+          source: "Gesprek met lokale ondernemersvereniging",
+          status: "doorgespeeld naar fractievoorzitter Sammy van Andel",
+          followUp: "Geagendeerd voor commissievergadering Ruimte & Economie."
+        }
+      ]
+    };
+    saveDb(db);
+  }
+
   if (!db.stellingSubmissions) {
     db.stellingSubmissions = [];
   }
@@ -1404,6 +2196,34 @@ async function startServer() {
     next();
   };
 
+  const requireTreasurerOrAdmin = (req: any, res: any, next: any) => {
+    if (req.user.role !== 'admin' && req.user.role !== 'penningmeester') {
+      return res.status(403).json({ error: "Toegang geweigerd: beheerders- of penningmeestersrechten vereist" });
+    }
+    next();
+  };
+
+  const requireSecretaryOrAdmin = (req: any, res: any, next: any) => {
+    if (req.user.role !== 'admin' && req.user.role !== 'secretaris') {
+      return res.status(403).json({ error: "Toegang geweigerd: beheerders- of secretarisrechten vereist" });
+    }
+    next();
+  };
+
+  const requireChairmanOrAdmin = (req: any, res: any, next: any) => {
+    if (req.user.role !== 'admin' && req.user.role !== 'voorzitter') {
+      return res.status(403).json({ error: "Toegang geweigerd: beheerders- of voorzittersrechten vereist" });
+    }
+    next();
+  };
+
+  const requireBoardOrAdmin = (req: any, res: any, next: any) => {
+    if (req.user.role !== 'admin' && req.user.role !== 'voorzitter' && req.user.role !== 'secretaris' && req.user.role !== 'penningmeester' && req.user.role !== 'bestuur') {
+      return res.status(403).json({ error: "Toegang geweigerd: bestuurs- of beheerdersrechten vereist" });
+    }
+    next();
+  };
+
   const requireVolunteerOrAdmin = (req: any, res: any, next: any) => {
     if (req.user.role !== 'admin' && req.user.role !== 'vrijwilliger') {
       return res.status(403).json({ error: "Toegang geweigerd: beheerders- of vrijwilligersrechten vereist" });
@@ -1478,17 +2298,20 @@ async function startServer() {
     }
 
     const isAdmin = user.role === 'admin';
-    const isExempt = user.billingStatus === 'exempt' || isAdmin;
+    const isTreasurer = user.role === 'penningmeester';
+    const isExempt = user.billingStatus === 'exempt' || isAdmin || isTreasurer;
     const isPaid = user.billingStatus === 'paid' || isExempt;
 
-    if (isAdmin) {
+    if (isAdmin || isTreasurer) {
       return {
         isFullMember: true,
         isLid: true,
         membershipState: 'active' as const,
         hoursRemaining24h: 0,
         activatedAt: user.createdAt || new Date().toISOString(),
-        membershipNotice: 'Beheerdersaccount met volledige toegang'
+        membershipNotice: isTreasurer
+          ? 'Penningmeester / bestuursaccount met volledige toegang'
+          : 'Beheerdersaccount met volledige toegang'
       };
     }
 
@@ -2139,8 +2962,8 @@ async function startServer() {
     });
   });
 
-  // Admin Routes - Users
-  app.get("/api/admin/users", requireAuth, requireAdmin, (req: any, res: any) => {
+  // Admin, Treasurer & Secretary (Board) Routes - Users
+  app.get("/api/admin/users", requireAuth, requireBoardOrAdmin, (req: any, res: any) => {
     const db = getDb();
     const safeUsers = db.users.map((u: any) => {
       return getSafeUserWithMembership(u);
@@ -2148,8 +2971,8 @@ async function startServer() {
     res.json(safeUsers);
   });
 
-  // Admin: Update user billing status manually (e.g. marked as paid after bank transfer or cash)
-  app.patch("/api/admin/users/:id/billing", requireAuth, requireAdmin, (req: any, res: any) => {
+  // Admin & Treasurer: Update user billing status manually (e.g. marked as paid after bank transfer or cash)
+  app.patch("/api/admin/users/:id/billing", requireAuth, requireTreasurerOrAdmin, (req: any, res: any) => {
     const { billingStatus, paidAmount, notes } = req.body;
     const db = getDb();
     const user = db.users.find((u: any) => u.id === req.params.id);
@@ -2205,8 +3028,8 @@ async function startServer() {
     });
   });
 
-  // Admin: Membership Settings & Stripe Status
-  app.get("/api/admin/membership/settings", requireAuth, requireAdmin, (req: any, res: any) => {
+  // Admin & Treasurer: Membership Settings & Stripe Status
+  app.get("/api/admin/membership/settings", requireAuth, requireTreasurerOrAdmin, (req: any, res: any) => {
     const db = getDb();
     const settings = db.membershipSettings || {
       enabled: true,
@@ -2228,7 +3051,7 @@ async function startServer() {
     const users = db.users || [];
     const paidUsers = users.filter((u: any) => u.billingStatus === "paid");
     const pendingUsers = users.filter((u: any) => u.billingStatus === "pending");
-    const exemptUsers = users.filter((u: any) => u.billingStatus === "exempt" || u.role === "admin");
+    const exemptUsers = users.filter((u: any) => u.billingStatus === "exempt" || u.role === "admin" || u.role === "penningmeester");
     const totalRevenue = paidUsers.reduce((sum: number, u: any) => sum + (Number(u.paidAmount) || Number(settings.amount) || 12), 0);
 
     res.json({
@@ -2251,7 +3074,7 @@ async function startServer() {
     });
   });
 
-  app.patch("/api/admin/membership/settings", requireAuth, requireAdmin, (req: any, res: any) => {
+  app.patch("/api/admin/membership/settings", requireAuth, requireTreasurerOrAdmin, (req: any, res: any) => {
     const { enabled, amount, currency, interval, productName, description, requirePaymentAtRegistration } = req.body;
     const db = getDb();
     if (!db.membershipSettings) db.membershipSettings = {};
@@ -2267,6 +3090,963 @@ async function startServer() {
 
     saveDb(db);
     res.json({ message: "Contributie-instellingen succesvol opgeslagen", settings: db.membershipSettings });
+  });
+
+  // ==========================================
+  // PENNINGMEESTER / TREASURER SUITE API
+  // ==========================================
+
+  // Full Treasurer Dataset Endpoint
+  app.get("/api/treasurer/data", requireAuth, requireTreasurerOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const accounts = db.treasurerAccounts || [];
+    const invoices = db.treasurerInvoices || [];
+    const afdrachten = db.treasurerAfdrachten || [];
+    const budget = db.treasurerBudget || [];
+    const kascommissie = db.treasurerKascommissie || {};
+    const settings = db.treasurerSettings || { fourEyesThreshold: 250, wbtrCompliant: true, anbiStatusActive: true };
+    const membershipSettings = db.membershipSettings || { amount: 12.00, enabled: true };
+    const donations = Array.isArray(db.donations) ? db.donations : [];
+    const members = (db.users || []).map((u: any) => getSafeUserWithMembership(u));
+
+    const totalLiquidity = accounts.reduce((sum: number, a: any) => sum + (Number(a.balance) || 0), 0);
+    const lopendAcc = accounts.find((a: any) => a.type === "lopend");
+    const spaarAcc = accounts.find((a: any) => a.type === "spaar");
+    const fractieAcc = accounts.find((a: any) => a.type === "fractie");
+    const kasAcc = accounts.find((a: any) => a.type === "kas");
+
+    const pendingInvoices = invoices.filter((inv: any) => inv.status === "pending_approval");
+    const pendingInvoicesAmount = pendingInvoices.reduce((sum: number, inv: any) => sum + (Number(inv.amount) || 0), 0);
+    const fourEyesWaiting = invoices.filter((inv: any) => inv.requiresFourEyes && inv.status === "pending_approval");
+
+    const paidMembers = members.filter((m: any) => m.billingStatus === "paid");
+    const totalContributieRevenue = paidMembers.reduce((sum: number, m: any) => sum + (Number(m.paidAmount) || Number(membershipSettings.amount) || 12), 0);
+    const totalDonationsAmount = donations.reduce((sum: number, d: any) => sum + (Number(d.amount) || 0), 0);
+
+    res.json({
+      accounts,
+      invoices,
+      afdrachten,
+      budget,
+      kascommissie,
+      settings,
+      membershipSettings,
+      donations,
+      members,
+      stats: {
+        totalLiquidity: Math.round(totalLiquidity * 100) / 100,
+        lopendBalance: lopendAcc ? lopendAcc.balance : 0,
+        spaarBalance: spaarAcc ? spaarAcc.balance : 0,
+        fractieBalance: fractieAcc ? fractieAcc.balance : 0,
+        kasBalance: kasAcc ? kasAcc.balance : 0,
+        pendingInvoicesCount: pendingInvoices.length,
+        pendingInvoicesAmount: Math.round(pendingInvoicesAmount * 100) / 100,
+        fourEyesWaitingCount: fourEyesWaiting.length,
+        totalMembersCount: members.length,
+        paidMembersCount: paidMembers.length,
+        pendingMembersCount: members.filter((m: any) => m.billingStatus === "pending" || !m.billingStatus).length,
+        exemptMembersCount: members.filter((m: any) => m.billingStatus === "exempt" || m.role === "admin" || m.role === "penningmeester").length,
+        totalContributieRevenue: Math.round(totalContributieRevenue * 100) / 100,
+        totalDonationsAmount: Math.round(totalDonationsAmount * 100) / 100
+      }
+    });
+  });
+
+  // Invoices & Declaraties: Create
+  app.post("/api/treasurer/invoices", requireAuth, requireTreasurerOrAdmin, (req: any, res: any) => {
+    const { invoiceNumber, description, creditor, amount, date, category, accountId, receiptName, receiptUrl, notes } = req.body;
+    if (!description || !creditor || amount === undefined) {
+      return res.status(400).json({ error: "Omschrijving, crediteur en bedrag zijn verplicht" });
+    }
+
+    const db = getDb();
+    if (!Array.isArray(db.treasurerInvoices)) db.treasurerInvoices = [];
+    const threshold = db.treasurerSettings?.fourEyesThreshold || 250;
+    const numAmount = Math.max(0, parseFloat(amount) || 0);
+    const requiresFourEyes = numAmount >= threshold;
+
+    const newInvoice = {
+      id: `inv-${Date.now()}`,
+      invoiceNumber: invoiceNumber ? String(invoiceNumber).trim() : `FACT-${new Date().getFullYear()}-${String(db.treasurerInvoices.length + 1).padStart(3, '0')}`,
+      description: String(description).trim(),
+      creditor: String(creditor).trim(),
+      amount: numAmount,
+      date: date || new Date().toISOString().split("T")[0],
+      category: category || "Algemeen",
+      accountId: accountId || "acc_lopend",
+      receiptName: receiptName || "bon_bewijs.pdf",
+      receiptUrl: receiptUrl || "",
+      requiresFourEyes,
+      status: "pending_approval",
+      submittedBy: req.user.fullName || req.user.username,
+      submittedAt: new Date().toISOString(),
+      notes: notes || ""
+    };
+
+    db.treasurerInvoices.unshift(newInvoice);
+    saveDb(db);
+    res.status(201).json({ message: "Factuur/declaratie succesvol ingediend", invoice: newInvoice });
+  });
+
+  // Vierogenprincipe: 2e Goedkeuring
+  app.patch("/api/treasurer/invoices/:id/approve", requireAuth, requireTreasurerOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const invoice = (db.treasurerInvoices || []).find((inv: any) => inv.id === req.params.id);
+    if (!invoice) return res.status(404).json({ error: "Factuur niet gevonden" });
+
+    invoice.status = "approved";
+    invoice.approvedBy = `${req.user.fullName || req.user.username} (${req.user.role === 'admin' ? 'Voorzitter / Beheerder' : '2e Bestuurslid'})`;
+    invoice.approvedAt = new Date().toISOString();
+    saveDb(db);
+
+    res.json({ message: "Factuur succesvol geaccordeerd volgens het vierogenprincipe", invoice });
+  });
+
+  // Factuur markeren als betaald
+  app.patch("/api/treasurer/invoices/:id/pay", requireAuth, requireTreasurerOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const invoice = (db.treasurerInvoices || []).find((inv: any) => inv.id === req.params.id);
+    if (!invoice) return res.status(404).json({ error: "Factuur niet gevonden" });
+
+    const targetAccount = (db.treasurerAccounts || []).find((a: any) => a.id === invoice.accountId);
+    if (targetAccount && invoice.status !== "paid") {
+      targetAccount.balance = Math.round((targetAccount.balance - invoice.amount) * 100) / 100;
+    }
+
+    invoice.status = "paid";
+    invoice.paidAt = new Date().toISOString();
+    saveDb(db);
+
+    res.json({ message: "Factuur als uitbetaald gemarkeerd en rekening bijgewerkt", invoice });
+  });
+
+  // Factuur verwijderen
+  app.delete("/api/treasurer/invoices/:id", requireAuth, requireTreasurerOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const initialLen = (db.treasurerInvoices || []).length;
+    db.treasurerInvoices = (db.treasurerInvoices || []).filter((inv: any) => inv.id !== req.params.id);
+    if (db.treasurerInvoices.length === initialLen) {
+      return res.status(404).json({ error: "Factuur niet gevonden" });
+    }
+    saveDb(db);
+    res.json({ message: "Factuur succesvol verwijderd" });
+  });
+
+  // Bankrekening mutatie toevoegen
+  app.post("/api/treasurer/accounts/:id/transaction", requireAuth, requireTreasurerOrAdmin, (req: any, res: any) => {
+    const { amount, description, type } = req.body; // type: "deposit" | "withdrawal"
+    const db = getDb();
+    const account = (db.treasurerAccounts || []).find((a: any) => a.id === req.params.id);
+    if (!account) return res.status(404).json({ error: "Rekening niet gevonden" });
+
+    const numAmount = Math.max(0, parseFloat(amount) || 0);
+    if (type === "withdrawal") {
+      account.balance = Math.round((account.balance - numAmount) * 100) / 100;
+    } else {
+      account.balance = Math.round((account.balance + numAmount) * 100) / 100;
+    }
+    saveDb(db);
+
+    res.json({ message: "Transactie verwerkt", account });
+  });
+
+  // Afdrachten politieke ambtsdragers
+  app.post("/api/treasurer/afdrachten", requireAuth, requireTreasurerOrAdmin, (req: any, res: any) => {
+    const { politicianName, roleTitle, mandateTerm, percentageOrAmount, remarks } = req.body;
+    if (!politicianName) return res.status(400).json({ error: "Naam ambtsdrager is verplicht" });
+
+    const db = getDb();
+    if (!Array.isArray(db.treasurerAfdrachten)) db.treasurerAfdrachten = [];
+
+    const newAfdracht = {
+      id: `afd-${Date.now()}`,
+      politicianName: String(politicianName).trim(),
+      roleTitle: roleTitle || "Raadslid",
+      mandateTerm: mandateTerm || "2022 - 2026",
+      percentageOrAmount: percentageOrAmount || "€ 100,- per kwartaal",
+      quarterDues: {
+        "2026-Q1": { status: "pending", amount: 100, paidAt: null },
+        "2026-Q2": { status: "pending", amount: 100, paidAt: null },
+        "2026-Q3": { status: "pending", amount: 100, paidAt: null },
+        "2026-Q4": { status: "pending", amount: 100, paidAt: null }
+      },
+      remarks: remarks || ""
+    };
+
+    db.treasurerAfdrachten.push(newAfdracht);
+    saveDb(db);
+    res.status(201).json({ message: "Ambtsdrager afdracht toegevoegd", afdracht: newAfdracht });
+  });
+
+  app.patch("/api/treasurer/afdrachten/:id", requireAuth, requireTreasurerOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const afdracht = (db.treasurerAfdrachten || []).find((a: any) => a.id === req.params.id);
+    if (!afdracht) return res.status(404).json({ error: "Afdracht niet gevonden" });
+
+    const { quarterKey, status, amount, politicianName, roleTitle, percentageOrAmount, remarks } = req.body;
+    if (politicianName !== undefined) afdracht.politicianName = politicianName;
+    if (roleTitle !== undefined) afdracht.roleTitle = roleTitle;
+    if (percentageOrAmount !== undefined) afdracht.percentageOrAmount = percentageOrAmount;
+    if (remarks !== undefined) afdracht.remarks = remarks;
+
+    if (quarterKey && afdracht.quarterDues) {
+      afdracht.quarterDues[quarterKey] = {
+        status: status || "paid",
+        amount: amount !== undefined ? parseFloat(amount) : (afdracht.quarterDues[quarterKey]?.amount || 100),
+        paidAt: status === "paid" ? new Date().toISOString().split("T")[0] : null
+      };
+    }
+
+    saveDb(db);
+    res.json({ message: "Afdracht bijgewerkt", afdracht });
+  });
+
+  // Planning & Control: Begroting bijwerken
+  app.patch("/api/treasurer/planning/budget", requireAuth, requireTreasurerOrAdmin, (req: any, res: any) => {
+    const { budgetItems } = req.body;
+    if (!Array.isArray(budgetItems)) return res.status(400).json({ error: "Ongeldige begrotingsposten" });
+
+    const db = getDb();
+    db.treasurerBudget = budgetItems;
+    saveDb(db);
+    res.json({ message: "Begroting succesvol bijgewerkt", budget: db.treasurerBudget });
+  });
+
+  // Kascommissie decharge & controle bijwerken
+  app.patch("/api/treasurer/planning/kascommissie", requireAuth, requireTreasurerOrAdmin, (req: any, res: any) => {
+    const { commissieLeden, lastAuditDate, nextAuditDate, dechargeStatus, dechargeAdvice, reportFileName } = req.body;
+    const db = getDb();
+    if (!db.treasurerKascommissie) db.treasurerKascommissie = {};
+
+    if (commissieLeden) db.treasurerKascommissie.commissieLeden = commissieLeden;
+    if (lastAuditDate) db.treasurerKascommissie.lastAuditDate = lastAuditDate;
+    if (nextAuditDate) db.treasurerKascommissie.nextAuditDate = nextAuditDate;
+    if (dechargeStatus) db.treasurerKascommissie.dechargeStatus = dechargeStatus;
+    if (dechargeAdvice) db.treasurerKascommissie.dechargeAdvice = dechargeAdvice;
+    if (reportFileName) db.treasurerKascommissie.reportFileName = reportFileName;
+
+    saveDb(db);
+    res.json({ message: "Kascommissiegegevens bijgewerkt", kascommissie: db.treasurerKascommissie });
+  });
+
+  // Penningmeester Instellingen (Vierogenprincipe drempel, WBTR & ANBI)
+  app.patch("/api/treasurer/settings", requireAuth, requireTreasurerOrAdmin, (req: any, res: any) => {
+    const { fourEyesThreshold, wbtrCompliant, anbiStatusActive, anbiRsin, kvkNumber, bankName } = req.body;
+    const db = getDb();
+    if (!db.treasurerSettings) db.treasurerSettings = {};
+
+    if (fourEyesThreshold !== undefined) db.treasurerSettings.fourEyesThreshold = Math.max(0, parseFloat(fourEyesThreshold) || 250);
+    if (wbtrCompliant !== undefined) db.treasurerSettings.wbtrCompliant = Boolean(wbtrCompliant);
+    if (anbiStatusActive !== undefined) db.treasurerSettings.anbiStatusActive = Boolean(anbiStatusActive);
+    if (anbiRsin !== undefined) db.treasurerSettings.anbiRsin = String(anbiRsin).trim();
+    if (kvkNumber !== undefined) db.treasurerSettings.kvkNumber = String(kvkNumber).trim();
+    if (bankName !== undefined) db.treasurerSettings.bankName = String(bankName).trim();
+    db.treasurerSettings.lastReviewedAt = new Date().toISOString();
+
+    saveDb(db);
+    res.json({ message: "Penningmeester instellingen opgeslagen", settings: db.treasurerSettings });
+  });
+
+  // Handmatige gift/donatie conform Giftenreglement
+  app.post("/api/treasurer/donations", requireAuth, requireTreasurerOrAdmin, (req: any, res: any) => {
+    const { donorName, donorEmail, amount, message, paymentMethod } = req.body;
+    if (!amount || parseFloat(amount) <= 0) {
+      return res.status(400).json({ error: "Bedrag moet groter zijn dan nul" });
+    }
+
+    const db = getDb();
+    if (!Array.isArray(db.donations)) db.donations = [];
+
+    const newDonation = {
+      id: `don_manual_${Date.now()}`,
+      amount: parseFloat(amount),
+      donorName: donorName ? String(donorName).trim() : "Anoniem (conform reglement)",
+      donorEmail: donorEmail ? String(donorEmail).trim() : "",
+      message: message ? String(message).trim() : "Handmatige registratie penningmeester",
+      status: "completed",
+      paymentMethod: paymentMethod || "bankoverschrijving",
+      createdAt: new Date().toISOString()
+    };
+
+    db.donations.unshift(newDonation);
+
+    // Also update lopende rekening
+    const lopendAcc = (db.treasurerAccounts || []).find((a: any) => a.id === "acc_lopend");
+    if (lopendAcc) {
+      lopendAcc.balance = Math.round((lopendAcc.balance + newDonation.amount) * 100) / 100;
+    }
+
+    saveDb(db);
+    res.status(201).json({ message: "Donatie succesvol geregistreerd in het giftenregister", donation: newDonation });
+  });
+
+  // Export Donaties (Giftenregister CSV)
+  app.get("/api/treasurer/export/donations", requireAuth, requireTreasurerOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const donations = Array.isArray(db.donations) ? db.donations : [];
+
+    const headers = ["ID", "Datum", "Gever", "Email", "Bedrag_EUR", "Status", "Wpp_Toetsing"];
+    const rows = donations.map((d: any) => {
+      const isAboveLimit = d.amount >= 1000;
+      const wppStatus = isAboveLimit ? "Publicatieplicht_Jaarverslag" : "Regulier";
+      return [
+        `"${d.id || ""}"`,
+        `"${(d.createdAt || "").split("T")[0]}"`,
+        `"${(d.donorName || "Anoniem").replace(/"/g, '""')}"`,
+        `"${(d.donorEmail || "").replace(/"/g, '""')}"`,
+        (d.amount || 0).toFixed(2),
+        `"${d.status || "completed"}"`,
+        `"${wppStatus}"`
+      ].join(",");
+    });
+
+    const csvContent = [headers.join(","), ...rows].join("\n");
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="giftenregister_lijstvanandel_${new Date().toISOString().split("T")[0]}.csv"`);
+    res.send(csvContent);
+  });
+
+  // Export Contributieoverzicht CSV
+  app.get("/api/treasurer/export/contributie", requireAuth, requireTreasurerOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const users = (db.users || []).map((u: any) => getSafeUserWithMembership(u));
+    const defaultAmount = db.membershipSettings?.amount || 12;
+
+    const headers = ["Lid_ID", "Volledige_Naam", "Gebruikersnaam", "Email", "Woonplaats", "Rol", "Contributie_Status", "Bedrag_EUR", "Betaaldatum", "Geldig_Tot"];
+    const rows = users.map((u: any) => [
+      `"${u.id || ""}"`,
+      `"${(u.fullName || "").replace(/"/g, '""')}"`,
+      `"${(u.username || "").replace(/"/g, '""')}"`,
+      `"${(u.email || "").replace(/"/g, '""')}"`,
+      `"${(u.city || "").replace(/"/g, '""')}"`,
+      `"${u.role || "member"}"`,
+      `"${u.billingStatus || "pending"}"`,
+      (u.paidAmount !== undefined ? u.paidAmount : (u.billingStatus === "paid" ? defaultAmount : 0)).toFixed(2),
+      `"${(u.paidAt || "").split("T")[0]}"`,
+      `"${(u.paidUntil || "").split("T")[0]}"`
+    ].join(","));
+
+    const csvContent = [headers.join(","), ...rows].join("\n");
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="contributielijst_lijstvanandel_${new Date().toISOString().split("T")[0]}.csv"`);
+    res.send(csvContent);
+  });
+
+  // ==========================================
+  // SECRETARIS / SECRETARIAAT API ROUTES
+  // (Conform Kennispunt Lokale Politieke Partijen)
+  // ==========================================
+
+  // Get all secretary dashboard data & consolidated stats
+  app.get("/api/secretary/data", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    
+    const contactMessages = db.contactMessages || [];
+    const pendingMessages = contactMessages.filter((m: any) => m.status === "moet nog beantwoord worden").length;
+
+    const belafspraken = db.belafspraken || [];
+    const openAppointments = belafspraken.filter((b: any) => b.status === "ingepland").length;
+
+    const documents = db.documents || [];
+    const applications = db.applications || [];
+    const pendingApplications = applications.filter((a: any) => !a.status || a.status === "nieuw" || a.status === "in_behandeling").length;
+
+    const users = db.users || [];
+    const actions = db.secretaryActions || [];
+    const openActions = actions.filter((a: any) => a.status !== "voltooid").length;
+
+    res.json({
+      meetings: (db.secretaryMeetings || []).slice().sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+      actions: actions,
+      compliance: db.secretaryCompliance || {},
+      yearcycle: db.secretaryYearcycle || [],
+      elections: db.secretaryElections || {},
+      stats: {
+        totalMessages: contactMessages.length,
+        pendingMessages,
+        totalAppointments: belafspraken.length,
+        openAppointments,
+        totalDocuments: documents.length,
+        totalApplications: applications.length,
+        pendingApplications,
+        totalMembers: users.length,
+        openActions,
+        totalMeetings: (db.secretaryMeetings || []).length
+      }
+    });
+  });
+
+  // Meetings CRUD
+  app.post("/api/secretary/meetings", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
+    const { title, type, date, time, location, agenda, attachments } = req.body;
+    if (!title || !title.trim()) return res.status(400).json({ error: "Titel van de vergadering is verplicht" });
+    if (!date) return res.status(400).json({ error: "Datum is verplicht" });
+
+    const db = getDb();
+    if (!db.secretaryMeetings) db.secretaryMeetings = [];
+
+    const newMeeting = {
+      id: "meet-" + Date.now(),
+      title: title.trim(),
+      type: type || "Bestuursvergadering",
+      date,
+      time: time || "20:00 - 22:00",
+      location: location || "Partijkantoor Steenwijk",
+      status: "voorbereiding",
+      agenda: Array.isArray(agenda) ? agenda : (agenda ? [agenda] : ["1. Opening & vaststelling agenda", "2. Mededelingen secretariaat", "3. Rondvraag & sluiting"]),
+      minutes: "",
+      decisions: [],
+      attachments: Array.isArray(attachments) ? attachments : [],
+      attendeesCount: 0,
+      createdAt: new Date().toISOString()
+    };
+
+    db.secretaryMeetings.unshift(newMeeting);
+    saveDb(db);
+    res.status(201).json({ message: "Vergadering succesvol aangemaakt", meeting: newMeeting });
+  });
+
+  app.patch("/api/secretary/meetings/:id", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const meeting = (db.secretaryMeetings || []).find((m: any) => m.id === req.params.id);
+    if (!meeting) return res.status(404).json({ error: "Vergadering niet gevonden" });
+
+    const { title, type, date, time, location, status, agenda, minutes, decisions, attachments, attendeesCount } = req.body;
+    if (title !== undefined) meeting.title = title.trim();
+    if (type !== undefined) meeting.type = type;
+    if (date !== undefined) meeting.date = date;
+    if (time !== undefined) meeting.time = time;
+    if (location !== undefined) meeting.location = location;
+    if (status !== undefined) meeting.status = status;
+    if (agenda !== undefined) meeting.agenda = Array.isArray(agenda) ? agenda : meeting.agenda;
+    if (minutes !== undefined) meeting.minutes = String(minutes);
+    if (decisions !== undefined) meeting.decisions = Array.isArray(decisions) ? decisions : meeting.decisions;
+    if (attachments !== undefined) meeting.attachments = Array.isArray(attachments) ? attachments : meeting.attachments;
+    if (attendeesCount !== undefined) meeting.attendeesCount = Number(attendeesCount) || 0;
+
+    meeting.updatedAt = new Date().toISOString();
+    saveDb(db);
+    res.json({ message: "Vergadering bijgewerkt", meeting });
+  });
+
+  app.delete("/api/secretary/meetings/:id", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    db.secretaryMeetings = (db.secretaryMeetings || []).filter((m: any) => m.id !== req.params.id);
+    saveDb(db);
+    res.json({ message: "Vergadering verwijderd" });
+  });
+
+  // Action Items CRUD
+  app.post("/api/secretary/actions", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
+    const { title, meetingTitle, assignedTo, dueDate, priority, notes } = req.body;
+    if (!title || !title.trim()) return res.status(400).json({ error: "Titel van actiepunt is verplicht" });
+
+    const db = getDb();
+    if (!db.secretaryActions) db.secretaryActions = [];
+
+    const newAction = {
+      id: "act-" + Date.now(),
+      title: title.trim(),
+      meetingTitle: meetingTitle?.trim() || "Regulier Secretariaat",
+      assignedTo: assignedTo?.trim() || req.user.fullName || "Secretaris",
+      dueDate: dueDate || new Date(Date.now() + 14 * 86400000).toISOString().split("T")[0],
+      priority: priority || "normaal",
+      status: "open",
+      notes: notes?.trim() || "",
+      createdAt: new Date().toISOString()
+    };
+
+    db.secretaryActions.unshift(newAction);
+    saveDb(db);
+    res.status(201).json({ message: "Actiepunt succesvol geregistreerd", action: newAction });
+  });
+
+  app.patch("/api/secretary/actions/:id", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const action = (db.secretaryActions || []).find((a: any) => a.id === req.params.id);
+    if (!action) return res.status(404).json({ error: "Actiepunt niet gevonden" });
+
+    const { title, meetingTitle, assignedTo, dueDate, priority, status, notes } = req.body;
+    if (title !== undefined) action.title = title.trim();
+    if (meetingTitle !== undefined) action.meetingTitle = meetingTitle.trim();
+    if (assignedTo !== undefined) action.assignedTo = assignedTo.trim();
+    if (dueDate !== undefined) action.dueDate = dueDate;
+    if (priority !== undefined) action.priority = priority;
+    if (notes !== undefined) action.notes = String(notes);
+    if (status !== undefined) {
+      action.status = status;
+      if (status === "voltooid") {
+        action.completedAt = new Date().toISOString().split("T")[0];
+      } else {
+        action.completedAt = null;
+      }
+    }
+
+    action.updatedAt = new Date().toISOString();
+    saveDb(db);
+    res.json({ message: "Actiepunt bijgewerkt", action });
+  });
+
+  app.delete("/api/secretary/actions/:id", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    db.secretaryActions = (db.secretaryActions || []).filter((a: any) => a.id !== req.params.id);
+    saveDb(db);
+    res.json({ message: "Actiepunt verwijderd" });
+  });
+
+  // Compliance & Governance Update
+  app.patch("/api/secretary/compliance", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    if (!db.secretaryCompliance) db.secretaryCompliance = {};
+
+    const { kvk, wbtr, ubo, avg, giftenreglement } = req.body;
+    if (kvk) db.secretaryCompliance.kvk = { ...db.secretaryCompliance.kvk, ...kvk };
+    if (wbtr) db.secretaryCompliance.wbtr = { ...db.secretaryCompliance.wbtr, ...wbtr };
+    if (ubo) db.secretaryCompliance.ubo = { ...db.secretaryCompliance.ubo, ...ubo };
+    if (avg) db.secretaryCompliance.avg = { ...db.secretaryCompliance.avg, ...avg };
+    if (giftenreglement) db.secretaryCompliance.giftenreglement = { ...db.secretaryCompliance.giftenreglement, ...giftenreglement };
+
+    db.secretaryCompliance.lastUpdated = new Date().toISOString();
+    saveDb(db);
+    res.json({ message: "Wettelijk compliance dossier succesvol bijgewerkt", compliance: db.secretaryCompliance });
+  });
+
+  // 1-Year Cycle Update
+  app.patch("/api/secretary/yearcycle/:quarter", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    if (!db.secretaryYearcycle) db.secretaryYearcycle = [];
+
+    const item = db.secretaryYearcycle.find((y: any) => y.quarter === req.params.quarter);
+    if (!item) return res.status(404).json({ error: "Kwartaal niet gevonden in jaarcyclus" });
+
+    const { status, items, title } = req.body;
+    if (status !== undefined) item.status = status;
+    if (title !== undefined) item.title = title;
+    if (Array.isArray(items)) item.items = items;
+
+    saveDb(db);
+    res.json({ message: "Bestuurlijke jaarcyclus bijgewerkt", yearcycle: db.secretaryYearcycle });
+  });
+
+  // Election Preparation Update
+  app.patch("/api/secretary/elections", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    if (!db.secretaryElections) db.secretaryElections = {};
+
+    const { campaignEvaluation, programCommittee, candidateCommittee } = req.body;
+    if (campaignEvaluation) db.secretaryElections.campaignEvaluation = { ...db.secretaryElections.campaignEvaluation, ...campaignEvaluation };
+    if (programCommittee) db.secretaryElections.programCommittee = { ...db.secretaryElections.programCommittee, ...programCommittee };
+    if (candidateCommittee) db.secretaryElections.candidateCommittee = { ...db.secretaryElections.candidateCommittee, ...candidateCommittee };
+
+    saveDb(db);
+    res.json({ message: "Verkiezingsvoorbereiding bijgewerkt", elections: db.secretaryElections });
+  });
+
+  // Export Action List CSV
+  app.get("/api/secretary/export/actions", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const actions = db.secretaryActions || [];
+
+    const headers = ["ID", "Titel", "Vergadering", "Verantwoordelijke", "Deadline", "Prioriteit", "Status", "Voltooid_Op", "Notities"];
+    const rows = actions.map((a: any) => [
+      `"${a.id || ""}"`,
+      `"${(a.title || "").replace(/"/g, '""')}"`,
+      `"${(a.meetingTitle || "").replace(/"/g, '""')}"`,
+      `"${(a.assignedTo || "").replace(/"/g, '""')}"`,
+      `"${a.dueDate || ""}"`,
+      `"${a.priority || "normaal"}"`,
+      `"${a.status || "open"}"`,
+      `"${a.completedAt || ""}"`,
+      `"${(a.notes || "").replace(/"/g, '""')}"`
+    ].join(","));
+
+    const csvContent = [headers.join(","), ...rows].join("\n");
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="secretariaat_actielijst_${new Date().toISOString().split("T")[0]}.csv"`);
+    res.send(csvContent);
+  });
+
+  // ==========================================
+  // VOORZITTERPANEEL & BESTUURSLEIDING APIS
+  // (Conform Kennispunt Lokale Politieke Partijen: 'Voorzitter politieke partij')
+  // ==========================================
+
+  // Get consolidated Chairman domain data
+  app.get("/api/chairman/data", requireAuth, requireChairmanOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    
+    // Synchronize meetings with secretary meetings
+    const meetings = db.secretaryMeetings || [];
+    const fractieInterviews = db.chairmanFractieInterviews || [];
+    const fractieStart = db.chairmanFractieStart || {};
+    const tussenbalans = db.chairmanTussenbalans || {};
+    const coffeeChats = db.chairmanCoffeeChats || [];
+    const fractieAttendances = db.chairmanFractieAttendances || [];
+    const committees = db.chairmanCommittees || [];
+    const fourYearCycle = db.chairmanFourYearCycle || [];
+    const integrity = db.chairmanIntegrity || {};
+    const network = db.chairmanNetwork || {};
+    const belafspraken = db.belafspraken || [];
+    const fractieleden = db.fractieleden || [];
+
+    const stats = {
+      totalMeetings: meetings.length,
+      upcomingMeetings: meetings.filter((m: any) => m.status === "gepland").length,
+      completedInterviews: fractieInterviews.filter((i: any) => i.status === "afgerond").length,
+      pendingInterviews: fractieInterviews.filter((i: any) => i.status === "gepland").length,
+      activeCommittees: committees.filter((c: any) => c.status === "actief").length,
+      coffeeChatsCount: coffeeChats.length,
+      attendancesCount: fractieAttendances.length,
+      communitySignalsCount: (network.communitySignals || []).length,
+      unresolvedSignals: (network.communitySignals || []).filter((s: any) => !s.status?.toLowerCase().includes("afgehandeld")).length,
+      integrityReportsCount: (integrity.reports || []).length,
+      belafsprakenCount: belafspraken.length,
+      currentYearInCycle: 3
+    };
+
+    res.json({
+      meetings,
+      fractieInterviews,
+      fractieStart,
+      tussenbalans,
+      coffeeChats,
+      fractieAttendances,
+      committees,
+      fourYearCycle,
+      integrity,
+      network,
+      stats,
+      fractieleden
+    });
+  });
+
+  // Update Chairman Notes on Meeting
+  app.patch("/api/chairman/meetings/:id/notes", requireAuth, requireChairmanOrAdmin, (req: any, res: any) => {
+    const { chairmanOpeningNotes, orderNotes, speakingTimeLimits, votingProcedureNotes } = req.body;
+    const db = getDb();
+    const meeting = (db.secretaryMeetings || []).find((m: any) => m.id === req.params.id);
+    if (!meeting) return res.status(404).json({ error: "Vergadering niet gevonden" });
+
+    meeting.chairmanOpeningNotes = chairmanOpeningNotes !== undefined ? chairmanOpeningNotes : meeting.chairmanOpeningNotes;
+    meeting.orderNotes = orderNotes !== undefined ? orderNotes : meeting.orderNotes;
+    meeting.speakingTimeLimits = speakingTimeLimits !== undefined ? speakingTimeLimits : meeting.speakingTimeLimits;
+    meeting.votingProcedureNotes = votingProcedureNotes !== undefined ? votingProcedureNotes : meeting.votingProcedureNotes;
+    meeting.updatedAt = new Date().toISOString();
+
+    saveDb(db);
+    res.json({ message: "Voorzittersnotities vergadering opgeslagen", meeting });
+  });
+
+  // 1. Startgesprek fractie update
+  app.patch("/api/chairman/fractie-start", requireAuth, requireChairmanOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    db.chairmanFractieStart = {
+      ...(db.chairmanFractieStart || {}),
+      ...req.body,
+      lastReviewedAt: new Date().toISOString().split("T")[0]
+    };
+    saveDb(db);
+    res.json({ message: "Startgesprek kaders succesvol bijgewerkt", fractieStart: db.chairmanFractieStart });
+  });
+
+  // 2. Voortgangs- & functioneringsgesprekken CRUD
+  app.post("/api/chairman/fractie-interviews", requireAuth, requireChairmanOrAdmin, (req: any, res: any) => {
+    const { politicianName, roleTitle, interviewDate, status, competencies, supportNeeded, expectations, notes, nextReviewDate } = req.body;
+    if (!politicianName || !interviewDate) {
+      return res.status(400).json({ error: "Naam fractielid en gespreksdatum zijn verplicht" });
+    }
+
+    const db = getDb();
+    if (!db.chairmanFractieInterviews) db.chairmanFractieInterviews = [];
+
+    const newInterview = {
+      id: `int-${Date.now()}`,
+      politicianName,
+      roleTitle: roleTitle || "Raadslid",
+      interviewDate,
+      status: status || "gepland",
+      competencies: competencies || "",
+      supportNeeded: supportNeeded || "",
+      expectations: expectations || "",
+      notes: notes || "",
+      nextReviewDate: nextReviewDate || "",
+      createdAt: new Date().toISOString()
+    };
+
+    db.chairmanFractieInterviews.unshift(newInterview);
+    saveDb(db);
+    res.status(201).json({ message: "Voortgangsgesprek succesvol geregistreerd", interview: newInterview });
+  });
+
+  app.patch("/api/chairman/fractie-interviews/:id", requireAuth, requireChairmanOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const interview = (db.chairmanFractieInterviews || []).find((i: any) => i.id === req.params.id);
+    if (!interview) return res.status(404).json({ error: "Voortgangsgesprek niet gevonden" });
+
+    Object.assign(interview, req.body, { updatedAt: new Date().toISOString() });
+    saveDb(db);
+    res.json({ message: "Voortgangsgesprek bijgewerkt", interview });
+  });
+
+  app.delete("/api/chairman/fractie-interviews/:id", requireAuth, requireChairmanOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const initialLen = (db.chairmanFractieInterviews || []).length;
+    db.chairmanFractieInterviews = (db.chairmanFractieInterviews || []).filter((i: any) => i.id !== req.params.id);
+    if (db.chairmanFractieInterviews.length === initialLen) {
+      return res.status(404).json({ error: "Voortgangsgesprek niet gevonden" });
+    }
+    saveDb(db);
+    res.json({ message: "Voortgangsgesprek verwijderd" });
+  });
+
+  // 3. Tussenbalans update
+  app.patch("/api/chairman/tussenbalans", requireAuth, requireChairmanOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    db.chairmanTussenbalans = {
+      ...(db.chairmanTussenbalans || {}),
+      ...req.body,
+      updatedAt: new Date().toISOString()
+    };
+    saveDb(db);
+    res.json({ message: "Tussenbalans succesvol geactualiseerd", tussenbalans: db.chairmanTussenbalans });
+  });
+
+  // 4. Bijwonen fractievergaderingen
+  app.post("/api/chairman/fractie-attendances", requireAuth, requireChairmanOrAdmin, (req: any, res: any) => {
+    const { date, attendee, keyTopics, alignmentNotes, nextDate } = req.body;
+    if (!date) return res.status(400).json({ error: "Datum is verplicht" });
+
+    const db = getDb();
+    if (!db.chairmanFractieAttendances) db.chairmanFractieAttendances = [];
+
+    const newAttendance = {
+      id: `att-${Date.now()}`,
+      date,
+      attendee: attendee || "Sammy van Andel (Partijvoorzitter)",
+      keyTopics: keyTopics || "",
+      alignmentNotes: alignmentNotes || "",
+      nextDate: nextDate || "",
+      createdAt: new Date().toISOString()
+    };
+
+    db.chairmanFractieAttendances.unshift(newAttendance);
+    saveDb(db);
+    res.status(201).json({ message: "Fractiebezoek vastgelegd", attendance: newAttendance });
+  });
+
+  app.patch("/api/chairman/fractie-attendances/:id", requireAuth, requireChairmanOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const item = (db.chairmanFractieAttendances || []).find((a: any) => a.id === req.params.id);
+    if (!item) return res.status(404).json({ error: "Fractiebezoek niet gevonden" });
+
+    Object.assign(item, req.body, { updatedAt: new Date().toISOString() });
+    saveDb(db);
+    res.json({ message: "Fractiebezoek bijgewerkt", attendance: item });
+  });
+
+  app.delete("/api/chairman/fractie-attendances/:id", requireAuth, requireChairmanOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    db.chairmanFractieAttendances = (db.chairmanFractieAttendances || []).filter((a: any) => a.id !== req.params.id);
+    saveDb(db);
+    res.json({ message: "Fractiebezoek verwijderd" });
+  });
+
+  // 5. Bilaterale koffiegesprekken fractievoorzitter
+  app.post("/api/chairman/coffee-chats", requireAuth, requireChairmanOrAdmin, (req: any, res: any) => {
+    const { date, location, topics, conclusions, actionAgreed } = req.body;
+    if (!date) return res.status(400).json({ error: "Datum is verplicht" });
+
+    const db = getDb();
+    if (!db.chairmanCoffeeChats) db.chairmanCoffeeChats = [];
+
+    const newChat = {
+      id: `cof-${Date.now()}`,
+      date,
+      location: location || "Fractiekamer / Steenwijk",
+      topics: topics || "",
+      conclusions: conclusions || "",
+      actionAgreed: actionAgreed || "",
+      createdAt: new Date().toISOString()
+    };
+
+    db.chairmanCoffeeChats.unshift(newChat);
+    saveDb(db);
+    res.status(201).json({ message: "Bilateraal overleg vastgelegd", chat: newChat });
+  });
+
+  app.patch("/api/chairman/coffee-chats/:id", requireAuth, requireChairmanOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const item = (db.chairmanCoffeeChats || []).find((c: any) => c.id === req.params.id);
+    if (!item) return res.status(404).json({ error: "Overleg niet gevonden" });
+
+    Object.assign(item, req.body, { updatedAt: new Date().toISOString() });
+    saveDb(db);
+    res.json({ message: "Overleg bijgewerkt", chat: item });
+  });
+
+  app.delete("/api/chairman/coffee-chats/:id", requireAuth, requireChairmanOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    db.chairmanCoffeeChats = (db.chairmanCoffeeChats || []).filter((c: any) => c.id !== req.params.id);
+    saveDb(db);
+    res.json({ message: "Overleg verwijderd" });
+  });
+
+  // Commissies (Scouting & talent, communicatie, ledenwerving, programma)
+  app.patch("/api/chairman/committees/:id", requireAuth, requireChairmanOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const com = (db.chairmanCommittees || []).find((c: any) => c.id === req.params.id);
+    if (!com) return res.status(404).json({ error: "Commissie niet gevonden" });
+
+    Object.assign(com, req.body, { updatedAt: new Date().toISOString() });
+    saveDb(db);
+    res.json({ message: "Commissiegegevens bijgewerkt", committee: com });
+  });
+
+  app.post("/api/chairman/committees", requireAuth, requireChairmanOrAdmin, (req: any, res: any) => {
+    const { name, purpose, lead, members, status, mandate, progressNotes } = req.body;
+    if (!name) return res.status(400).json({ error: "Commissienaam is verplicht" });
+
+    const db = getDb();
+    if (!db.chairmanCommittees) db.chairmanCommittees = [];
+
+    const newCom = {
+      id: `com-${Date.now()}`,
+      name,
+      purpose: purpose || "",
+      lead: lead || "",
+      members: Array.isArray(members) ? members : (members ? [members] : []),
+      status: status || "actief",
+      mandate: mandate || "",
+      progressNotes: progressNotes || "",
+      createdAt: new Date().toISOString()
+    };
+
+    db.chairmanCommittees.push(newCom);
+    saveDb(db);
+    res.status(201).json({ message: "Commissie toegevoegd", committee: newCom });
+  });
+
+  app.delete("/api/chairman/committees/:id", requireAuth, requireChairmanOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    db.chairmanCommittees = (db.chairmanCommittees || []).filter((c: any) => c.id !== req.params.id);
+    saveDb(db);
+    res.json({ message: "Commissie verwijderd" });
+  });
+
+  // 4-Jaarcyclus milestones
+  app.patch("/api/chairman/four-year-cycle/:year", requireAuth, requireChairmanOrAdmin, (req: any, res: any) => {
+    const targetYear = parseInt(req.params.year, 10);
+    const db = getDb();
+    const cycleYear = (db.chairmanFourYearCycle || []).find((y: any) => y.year === targetYear);
+    if (!cycleYear) return res.status(404).json({ error: "Jaarcyclus niet gevonden" });
+
+    if (req.body.milestones) cycleYear.milestones = req.body.milestones;
+    if (req.body.focus) cycleYear.focus = req.body.focus;
+    if (req.body.status) cycleYear.status = req.body.status;
+
+    saveDb(db);
+    res.json({ message: `Jaar ${targetYear} bijgewerkt`, cycleYear });
+  });
+
+  // Integriteitskader & rapportages
+  app.patch("/api/chairman/integrity", requireAuth, requireChairmanOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    db.chairmanIntegrity = {
+      ...(db.chairmanIntegrity || {}),
+      ...req.body,
+      updatedAt: new Date().toISOString()
+    };
+    saveDb(db);
+    res.json({ message: "Integriteitskader bijgewerkt", integrity: db.chairmanIntegrity });
+  });
+
+  app.post("/api/chairman/integrity/reports", requireAuth, requireChairmanOrAdmin, (req: any, res: any) => {
+    const { subject, resolution, status } = req.body;
+    if (!subject) return res.status(400).json({ error: "Onderwerp melding is verplicht" });
+
+    const db = getDb();
+    if (!db.chairmanIntegrity) db.chairmanIntegrity = { reports: [] };
+    if (!db.chairmanIntegrity.reports) db.chairmanIntegrity.reports = [];
+
+    const newReport = {
+      id: `int-rep-${Date.now()}`,
+      date: new Date().toISOString().split("T")[0],
+      subject,
+      status: status || "in behandeling",
+      resolution: resolution || ""
+    };
+
+    db.chairmanIntegrity.reports.unshift(newReport);
+    saveDb(db);
+    res.status(201).json({ message: "Integriteitsmelding vastgelegd", report: newReport });
+  });
+
+  // Inwonerssignalen & verbinding
+  app.post("/api/chairman/signals", requireAuth, requireChairmanOrAdmin, (req: any, res: any) => {
+    const { location, topic, source, status, followUp } = req.body;
+    if (!topic || !location) return res.status(400).json({ error: "Locatie en onderwerp zijn verplicht" });
+
+    const db = getDb();
+    if (!db.chairmanNetwork) db.chairmanNetwork = { communitySignals: [], colleagueChairs: [] };
+    if (!db.chairmanNetwork.communitySignals) db.chairmanNetwork.communitySignals = [];
+
+    const newSignal = {
+      id: `sig-${Date.now()}`,
+      location,
+      topic,
+      source: source || "Inwonergesprek / Inloop",
+      receivedDate: new Date().toISOString().split("T")[0],
+      status: status || "nieuw",
+      followUp: followUp || ""
+    };
+
+    db.chairmanNetwork.communitySignals.unshift(newSignal);
+    saveDb(db);
+    res.status(201).json({ message: "Inwonerssignaal geregistreerd", signal: newSignal });
+  });
+
+  app.patch("/api/chairman/signals/:id", requireAuth, requireChairmanOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const signal = (db.chairmanNetwork?.communitySignals || []).find((s: any) => s.id === req.params.id);
+    if (!signal) return res.status(404).json({ error: "Signaal niet gevonden" });
+
+    Object.assign(signal, req.body, { updatedAt: new Date().toISOString() });
+    saveDb(db);
+    res.json({ message: "Signaal bijgewerkt", signal });
+  });
+
+  app.delete("/api/chairman/signals/:id", requireAuth, requireChairmanOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    if (db.chairmanNetwork?.communitySignals) {
+      db.chairmanNetwork.communitySignals = db.chairmanNetwork.communitySignals.filter((s: any) => s.id !== req.params.id);
+      saveDb(db);
+    }
+    res.json({ message: "Signaal verwijderd" });
+  });
+
+  // Export Chairman Dossier CSV
+  app.get("/api/chairman/export/dossier", requireAuth, requireChairmanOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const interviews = db.chairmanFractieInterviews || [];
+
+    const headers = ["ID", "Fractielid", "Functie", "Gespreksdatum", "Status", "Competenties", "Ondersteuningsbehoefte", "Verwachtingen", "Volgende_Afspraak", "Notities"];
+    const rows = interviews.map((i: any) => [
+      `"${i.id || ""}"`,
+      `"${(i.politicianName || "").replace(/"/g, '""')}"`,
+      `"${(i.roleTitle || "").replace(/"/g, '""')}"`,
+      `"${i.interviewDate || ""}"`,
+      `"${i.status || ""}"`,
+      `"${(i.competencies || "").replace(/"/g, '""')}"`,
+      `"${(i.supportNeeded || "").replace(/"/g, '""')}"`,
+      `"${(i.expectations || "").replace(/"/g, '""')}"`,
+      `"${i.nextReviewDate || ""}"`,
+      `"${(i.notes || "").replace(/"/g, '""')}"`
+    ].join(","));
+
+    const csvContent = [headers.join(","), ...rows].join("\n");
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="voorzitter_fractiegesprekken_${new Date().toISOString().split("T")[0]}.csv"`);
+    res.send(csvContent);
   });
 
   // Member Portal: Create Stripe Checkout Session for Pending Member
@@ -2435,7 +4215,7 @@ async function startServer() {
     res.json({ received: true });
   });
 
-  app.patch("/api/admin/users/:id/status", requireAuth, requireAdmin, (req: any, res: any) => {
+  app.patch("/api/admin/users/:id/status", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
     const { isActive } = req.body;
     const db = getDb();
     const user = db.users.find((u: any) => u.id === req.params.id);
@@ -2445,7 +4225,7 @@ async function startServer() {
     res.json({ message: "Status bijgewerkt", user });
   });
 
-  app.patch("/api/admin/users/:id/role", requireAuth, requireAdmin, (req: any, res: any) => {
+  app.patch("/api/admin/users/:id/role", requireAuth, requireBoardOrAdmin, (req: any, res: any) => {
     const { role } = req.body;
     const db = getDb();
     const user = db.users.find((u: any) => u.id === req.params.id);
@@ -5492,8 +7272,8 @@ async function startServer() {
     });
   });
 
-  // Admin: Get all contact messages
-  app.get("/api/admin/contact-messages", requireAuth, requireAdmin, (req: any, res: any) => {
+  // Admin & Secretaris: Get all contact messages
+  app.get("/api/admin/contact-messages", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
     const db = getDb();
     const messages = (db.contactMessages || []).slice().sort((a: any, b: any) => {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
@@ -5501,8 +7281,8 @@ async function startServer() {
     res.json(messages);
   });
 
-  // Admin: Update status / notes of contact message
-  app.put("/api/admin/contact-messages/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+  // Admin & Secretaris: Update status / notes of contact message
+  app.put("/api/admin/contact-messages/:id", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
     const db = getDb();
     const msg = (db.contactMessages || []).find((m: any) => m.id === req.params.id);
     if (!msg) return res.status(404).json({ error: "Bericht niet gevonden" });
@@ -5512,7 +7292,7 @@ async function startServer() {
       if (status === "afgehandeld") {
         msg.status = "afgehandeld";
         msg.handledAt = new Date().toISOString();
-        msg.handledBy = req.user?.fullName || req.user?.username || "Beheerder";
+        msg.handledBy = req.user?.fullName || req.user?.username || "Secretaris";
       } else {
         msg.status = "moet nog beantwoord worden";
         msg.handledAt = null;
@@ -5528,8 +7308,8 @@ async function startServer() {
     res.json({ message: "Status succesvol bijgewerkt", data: msg });
   });
 
-  // Admin: Delete contact message
-  app.delete("/api/admin/contact-messages/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+  // Admin & Secretaris: Delete contact message
+  app.delete("/api/admin/contact-messages/:id", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
     const db = getDb();
     db.contactMessages = (db.contactMessages || []).filter((m: any) => m.id !== req.params.id);
     saveDb(db);
@@ -5882,8 +7662,8 @@ async function startServer() {
     });
   });
 
-  // Admin: Get all belafspraken with vertical column counts
-  app.get("/api/admin/belafspraken", requireAuth, requireAdmin, (req: any, res: any) => {
+  // Admin & Secretaris: Get all belafspraken with vertical column counts
+  app.get("/api/admin/belafspraken", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
     const db = getDb();
     checkAndUpdateExpiredBelafspraken(db);
 
@@ -5905,8 +7685,8 @@ async function startServer() {
     });
   });
 
-  // Admin: Update any appointment field
-  app.patch("/api/admin/belafspraken/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+  // Admin & Secretaris: Update any appointment field
+  app.patch("/api/admin/belafspraken/:id", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
     const db = getDb();
     const appt = (db.belafspraken || []).find((b: any) => b.id === req.params.id);
     if (!appt) return res.status(404).json({ error: "Belafspraak niet gevonden" });
@@ -5916,7 +7696,7 @@ async function startServer() {
     if (status !== undefined) {
       appt.status = status;
       appt.handledAt = new Date().toISOString();
-      appt.handledBy = req.user.fullName || req.user.username || "Beheerder";
+      appt.handledBy = req.user.fullName || req.user.username || "Secretaris";
     }
     if (notitie !== undefined) appt.notitie = String(notitie);
     if (fractielidId !== undefined) {
@@ -5943,8 +7723,8 @@ async function startServer() {
     res.json({ success: true, message: "Belafspraak bijgewerkt", data: appt });
   });
 
-  // Admin: Delete appointment
-  app.delete("/api/admin/belafspraken/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+  // Admin & Secretaris: Delete appointment
+  app.delete("/api/admin/belafspraken/:id", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
     const db = getDb();
     db.belafspraken = (db.belafspraken || []).filter((b: any) => b.id !== req.params.id);
     saveDb(db);
@@ -6184,14 +7964,14 @@ async function startServer() {
     });
   });
 
-  // Admin: Get all applications
-  app.get("/api/admin/vacancies/applications", requireAuth, requireAdmin, (req: any, res: any) => {
+  // Admin & Secretaris: Get all applications
+  app.get("/api/admin/vacancies/applications", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
     const db = getDb();
     res.json(db.applications || []);
   });
 
-  // Admin: Update application status or notes
-  app.patch("/api/admin/vacancies/applications/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+  // Admin & Secretaris: Update application status or notes
+  app.patch("/api/admin/vacancies/applications/:id", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
     const { status, adminNotes } = req.body;
     const db = getDb();
     const appItem = (db.applications || []).find((a: any) => a.id === req.params.id);
@@ -6204,21 +7984,21 @@ async function startServer() {
     res.json({ message: "Aanmelding bijgewerkt", application: appItem });
   });
 
-  // Admin: Delete application
-  app.delete("/api/admin/vacancies/applications/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+  // Admin & Secretaris: Delete application
+  app.delete("/api/admin/vacancies/applications/:id", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
     const db = getDb();
     db.applications = (db.applications || []).filter((a: any) => a.id !== req.params.id);
     saveDb(db);
     res.json({ message: "Aanmelding verwijderd" });
   });
 
-  // Admin: Custom vacancies CRUD
-  app.get("/api/admin/vacancies/custom", requireAuth, requireAdmin, (req: any, res: any) => {
+  // Admin & Secretaris: Custom vacancies CRUD
+  app.get("/api/admin/vacancies/custom", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
     const db = getDb();
     res.json(db.vacancies || []);
   });
 
-  app.post("/api/admin/vacancies/custom", requireAuth, requireAdmin, (req: any, res: any) => {
+  app.post("/api/admin/vacancies/custom", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
     const { title, category, wijkNaam, description, isOpen } = req.body;
     if (!title || !title.trim()) return res.status(400).json({ error: "Titel is verplicht" });
     const db = getDb();
@@ -6237,7 +8017,7 @@ async function startServer() {
     res.status(201).json({ message: "Vacature aangemaakt", vacancy: newVac });
   });
 
-  app.put("/api/admin/vacancies/custom/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+  app.put("/api/admin/vacancies/custom/:id", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
     const { title, category, wijkNaam, description, isOpen } = req.body;
     const db = getDb();
     const vac = (db.vacancies || []).find((v: any) => v.id === req.params.id);
@@ -6252,7 +8032,7 @@ async function startServer() {
     res.json({ message: "Vacature bijgewerkt", vacancy: vac });
   });
 
-  app.delete("/api/admin/vacancies/custom/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+  app.delete("/api/admin/vacancies/custom/:id", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
     const db = getDb();
     db.vacancies = (db.vacancies || []).filter((v: any) => v.id !== req.params.id);
     saveDb(db);
@@ -6279,8 +8059,8 @@ async function startServer() {
     res.json(doc);
   });
 
-  // Admin: Get all documents
-  app.get("/api/admin/documents", requireAuth, requireAdmin, (req: any, res: any) => {
+  // Admin & Secretaris: Get all documents
+  app.get("/api/admin/documents", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
     const db = getDb();
     const documents = (db.documents || []).slice().sort((a: any, b: any) => {
       return new Date(b.date || b.createdAt).getTime() - new Date(a.date || a.createdAt).getTime();
@@ -6288,8 +8068,8 @@ async function startServer() {
     res.json(documents);
   });
 
-  // Admin: Upload a PDF or document file
-  app.post("/api/admin/documents/upload", requireAuth, requireAdmin, upload.single("file"), (req: any, res: any) => {
+  // Admin & Secretaris: Upload a PDF or document file
+  app.post("/api/admin/documents/upload", requireAuth, requireSecretaryOrAdmin, upload.single("file"), (req: any, res: any) => {
     if (!req.file) {
       return res.status(400).json({ error: "Geen bestand geüpload" });
     }
@@ -6304,8 +8084,8 @@ async function startServer() {
     });
   });
 
-  // Admin: Create a new document
-  app.post("/api/admin/documents", requireAuth, requireAdmin, (req: any, res: any) => {
+  // Admin & Secretaris: Create a new document
+  app.post("/api/admin/documents", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
     const { title, description, category, confidentiality, date, fileUrl, fileName, fileSize, pageCount, content, author } = req.body;
     if (!title || !title.trim()) {
       return res.status(400).json({ error: "Titel is verplicht" });
@@ -6326,7 +8106,7 @@ async function startServer() {
       fileSize: fileSize || "1.0 MB",
       pageCount: Number(pageCount) || 1,
       content: content || "",
-      author: author || req.user.fullName || req.user.username || "Beheerder",
+      author: author || req.user.fullName || req.user.username || "Secretaris",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -6340,8 +8120,8 @@ async function startServer() {
     });
   });
 
-  // Admin: Update existing document
-  app.put("/api/admin/documents/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+  // Admin & Secretaris: Update existing document
+  app.put("/api/admin/documents/:id", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
     const { title, description, category, confidentiality, date, fileUrl, fileName, fileSize, pageCount, content, author } = req.body;
     const db = getDb();
     if (!db.documents) db.documents = [];
@@ -6377,8 +8157,8 @@ async function startServer() {
     });
   });
 
-  // Admin: Delete document
-  app.delete("/api/admin/documents/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+  // Admin & Secretaris: Delete document
+  app.delete("/api/admin/documents/:id", requireAuth, requireSecretaryOrAdmin, (req: any, res: any) => {
     const db = getDb();
     const doc = (db.documents || []).find((d: any) => d.id === req.params.id);
     if (!doc) {
