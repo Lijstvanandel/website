@@ -1931,8 +1931,8 @@ export async function processUploadedCouncilDocuments(
 
   addLog("info", `Start verwerking van ${uploadedFiles.length} bestand(en) op de server...`, "START");
 
-  // Helper to process a single saved buffer or file
-  const processSingleFileRecord = (rawName: string, bufferOrSourcePath: Buffer | string, isFromZip = false) => {
+  // Helper to process a single saved buffer or file asynchronously
+  const processSingleFileRecord = async (rawName: string, bufferOrSourcePath: Buffer | string, isFromZip = false) => {
     const lowerName = rawName.toLowerCase().trim();
     const cleanBasename = path.basename(rawName);
 
@@ -2077,10 +2077,16 @@ export async function processUploadedCouncilDocuments(
           addLog("info", `Totaal ${extractedFiles.length} bestand(en) gevonden in het ZIP-archief.`, "UNZIP");
 
           if (extractedFiles.length > 0) {
+            let processedInZip = 0;
             for (const item of extractedFiles) {
               const ext = path.extname(item.rel).toLowerCase();
               if ([".pdf", ".docx", ".doc", ".xlsx", ".csv", ".txt", ".json"].includes(ext) || !ext) {
-                processSingleFileRecord(item.rel, item.full, true);
+                await processSingleFileRecord(item.rel, item.full, true);
+                processedInZip++;
+                if (processedInZip % 25 === 0) {
+                  // Yield event loop to keep server alive and prevent CPU timeouts
+                  await new Promise((r) => setImmediate(r));
+                }
               }
             }
             zipExtractedSuccessfully = true;
@@ -2109,6 +2115,7 @@ export async function processUploadedCouncilDocuments(
           if (zip) {
             const zipEntries = zip.getEntries();
             addLog("info", `AdmZip vond ${zipEntries.length} items in het archief.`, "UNZIP");
+            let processedInZip = 0;
             for (const entry of zipEntries) {
               if (entry.isDirectory || entry.entryName.includes("__MACOSX") || path.basename(entry.entryName).startsWith(".")) {
                 continue;
@@ -2116,7 +2123,11 @@ export async function processUploadedCouncilDocuments(
               const ext = path.extname(entry.entryName).toLowerCase();
               if ([".pdf", ".docx", ".doc", ".xlsx", ".csv", ".txt", ".json"].includes(ext) || !ext) {
                 const entryBuffer = entry.getData();
-                processSingleFileRecord(entry.entryName, entryBuffer, true);
+                await processSingleFileRecord(entry.entryName, entryBuffer, true);
+                processedInZip++;
+                if (processedInZip % 25 === 0) {
+                  await new Promise((r) => setImmediate(r));
+                }
               }
             }
             zipExtractedSuccessfully = true;
@@ -2139,7 +2150,7 @@ export async function processUploadedCouncilDocuments(
       }
     } else {
       // Regular single file
-      processSingleFileRecord(rawName, file.path || file.buffer, false);
+      await processSingleFileRecord(rawName, file.path || file.buffer, false);
     }
   }
 

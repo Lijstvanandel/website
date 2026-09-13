@@ -8,7 +8,20 @@ import { VitePWA } from "vite-plugin-pwa";
 export default defineConfig(({ mode }) => ({
   server: {
     host: "0.0.0.0",
-    
+    watch: {
+      ignored: [
+        "**/uploads/**",
+        "**/public/uploads/**",
+        "**/dist/uploads/**",
+        "**/data/**",
+        "**/.text-index.json",
+        "**/*.zip",
+        "**/*.pdf",
+        "**/*.docx",
+        "**/*.xlsx",
+        "**/*.csv",
+      ],
+    },
     allowedHosts: true,
     hmr: {
       overlay: false,

@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { CheckCircle2, AlertCircle, CreditCard, ShieldCheck, Loader2, ExternalLink } from "lucide-react";
+import { CheckCircle2, AlertCircle, CreditCard, ShieldCheck, Loader2, ExternalLink, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { safeJson } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -28,18 +28,24 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 
-const registerSchema = z.object({
-  salutation: z.string().min(1, "Aanhef is verplicht"),
-  fullName: z.string().min(2, "Naam is verplicht"),
-  email: z.string().email("Ongeldig e-mailadres").min(5, "E-mailadres is verplicht"),
-  address: z.string().min(5, "Adres is verplicht"),
-  city: z.string().min(2, "Woonplaats is verplicht"),
-  username: z.string().min(3, "Gebruikersnaam moet minimaal 3 tekens zijn"),
-  password: z.string().min(6, "Wachtwoord moet minimaal 6 tekens zijn"),
-  remarks: z.string().optional(),
-  directDebit: z.boolean().default(false),
-  newsletterSubscribed: z.boolean().default(true),
-});
+const registerSchema = z
+  .object({
+    salutation: z.string().min(1, "Aanhef is verplicht"),
+    fullName: z.string().min(2, "Naam is verplicht"),
+    email: z.string().email("Ongeldig e-mailadres").min(5, "E-mailadres is verplicht"),
+    address: z.string().min(5, "Adres is verplicht"),
+    city: z.string().min(2, "Woonplaats is verplicht"),
+    username: z.string().min(3, "Gebruikersnaam moet minimaal 3 tekens zijn"),
+    password: z.string().min(6, "Wachtwoord moet minimaal 6 tekens zijn"),
+    confirmPassword: z.string().min(1, "Wachtwoord herhalen is verplicht"),
+    remarks: z.string().optional(),
+    directDebit: z.boolean().default(false),
+    newsletterSubscribed: z.boolean().default(true),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "De wachtwoorden komen niet overeen",
+    path: ["confirmPassword"],
+  });
 
 type RegisterFormValues = z.infer<typeof registerSchema>;
 
@@ -60,6 +66,8 @@ export default function Register() {
   const { login } = useAuth();
 
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [membershipConfig, setMembershipConfig] = useState<MembershipConfig | null>(null);
   const [registeredPaymentInfo, setRegisteredPaymentInfo] = useState<{ checkoutUrl: string; sessionId?: string } | null>(null);
 
@@ -132,6 +140,7 @@ export default function Register() {
       city: "",
       username: "",
       password: "",
+      confirmPassword: "",
       remarks: "",
       directDebit: false,
       newsletterSubscribed: true,
@@ -453,15 +462,49 @@ export default function Register() {
               />
             </div>
 
+            <FormField
+              control={form.control}
+              name="username"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Gebruikersnaam</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Kies een gebruikersnaam" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             <div className="grid md:grid-cols-2 gap-6">
               <FormField
                 control={form.control}
-                name="username"
+                name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Gebruikersnaam</FormLabel>
+                    <FormLabel>Wachtwoord</FormLabel>
                     <FormControl>
-                      <Input placeholder="Kies een gebruikersnaam" {...field} />
+                      <div className="relative">
+                        <Input
+                          type={showPassword ? "text" : "password"}
+                          placeholder="Minimaal 6 tekens"
+                          className="pr-10"
+                          {...field}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none transition-colors"
+                          title={showPassword ? "Wachtwoord verbergen" : "Wachtwoord tonen"}
+                          aria-label={showPassword ? "Wachtwoord verbergen" : "Wachtwoord tonen"}
+                        >
+                          {showPassword ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -470,12 +513,32 @@ export default function Register() {
 
               <FormField
                 control={form.control}
-                name="password"
+                name="confirmPassword"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Wachtwoord</FormLabel>
+                    <FormLabel>Wachtwoord herhalen</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="Kies een veilig wachtwoord" {...field} />
+                      <div className="relative">
+                        <Input
+                          type={showConfirmPassword ? "text" : "password"}
+                          placeholder="Herhaal uw wachtwoord"
+                          className="pr-10"
+                          {...field}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none transition-colors"
+                          title={showConfirmPassword ? "Wachtwoord verbergen" : "Wachtwoord tonen"}
+                          aria-label={showConfirmPassword ? "Wachtwoord verbergen" : "Wachtwoord tonen"}
+                        >
+                          {showConfirmPassword ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
                     </FormControl>
                     <FormMessage />
                   </FormItem>

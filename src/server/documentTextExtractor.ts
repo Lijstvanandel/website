@@ -32,21 +32,40 @@ function loadCache(): void {
   cacheLoaded = true;
 }
 
+let saveCacheTimeout: NodeJS.Timeout | null = null;
+
 /**
- * Save text cache to disk
+ * Save text cache to disk (debounced to avoid blocking I/O on thousands of files)
  */
-function saveCache(): void {
-  try {
-    if (!fs.existsSync(DOCUMENTS_DIR)) {
-      fs.mkdirSync(DOCUMENTS_DIR, { recursive: true });
+export function saveCache(immediate = false): void {
+  const doSave = () => {
+    try {
+      if (!fs.existsSync(DOCUMENTS_DIR)) {
+        fs.mkdirSync(DOCUMENTS_DIR, { recursive: true });
+      }
+      const obj: Record<string, string> = {};
+      for (const [k, v] of textCache.entries()) {
+        obj[k] = v;
+      }
+      fs.writeFileSync(CACHE_FILE, JSON.stringify(obj), "utf-8");
+    } catch (err) {
+      console.warn("[TEXT EXTRACTOR] Could not write cache file:", err);
     }
-    const obj: Record<string, string> = {};
-    for (const [k, v] of textCache.entries()) {
-      obj[k] = v;
+  };
+
+  if (immediate) {
+    if (saveCacheTimeout) {
+      clearTimeout(saveCacheTimeout);
+      saveCacheTimeout = null;
     }
-    fs.writeFileSync(CACHE_FILE, JSON.stringify(obj), "utf-8");
-  } catch (err) {
-    console.warn("[TEXT EXTRACTOR] Could not write cache file:", err);
+    doSave();
+  } else {
+    if (!saveCacheTimeout) {
+      saveCacheTimeout = setTimeout(() => {
+        saveCacheTimeout = null;
+        doSave();
+      }, 3000);
+    }
   }
 }
 
@@ -365,22 +384,66 @@ export async function getCouncilDocumentContent(doc: {
   return "";
 }
 
+// Background indexing queue to avoid memory and CPU saturation on bulk uploads
+interface IndexQueueItem {
+  filename: string;
+  filePath?: string;
+}
+
+const indexQueue: IndexQueueItem[] = [];
+let isProcessingIndexQueue = false;
+
+async function processNextInQueue(): Promise<void> {
+  if (isProcessingIndexQueue || indexQueue.length === 0) return;
+  isProcessingIndexQueue = true;
+
+  try {
+    while (indexQueue.length > 0) {
+      const item = indexQueue.shift();
+      if (!item) continue;
+
+      try {
+        loadCache();
+        const key = item.filename.toLowerCase();
+        if (textCache.has(key)) {
+          // Already indexed
+          continue;
+        }
+
+        const targetPath = item.filePath || resolveDocumentPath(item.filename);
+        if (targetPath && fs.existsSync(targetPath)) {
+          const text = await extractTextFromFile(targetPath);
+          if (text) {
+            textCache.set(key, text);
+            saveCache(false);
+          }
+        }
+      } catch (itemErr) {
+        console.warn(`[TEXT EXTRACTOR] Fout bij indexeren ${item.filename}:`, itemErr);
+      }
+
+      // Small 15ms pause between documents to yield event loop and garbage collect
+      await new Promise((resolve) => setTimeout(resolve, 15));
+    }
+  } finally {
+    isProcessingIndexQueue = false;
+  }
+}
+
 /**
- * Asynchronously index a single newly uploaded document
+ * Asynchronously index a single newly uploaded document (enqueued safely)
  */
 export async function indexUploadedFile(filename: string, filePath?: string): Promise<void> {
-  try {
-    loadCache();
-    const targetPath = filePath || resolveDocumentPath(filename);
-    if (!targetPath || !fs.existsSync(targetPath)) return;
+  if (!filename) return;
+  const key = filename.toLowerCase();
+  loadCache();
+  if (textCache.has(key)) return;
 
-    const text = await extractTextFromFile(targetPath);
-    if (text) {
-      textCache.set(filename.toLowerCase(), text);
-      saveCache();
-      console.log(`[TEXT EXTRACTOR] Geïndexeerd voor full-text search: ${filename} (${text.length} tekens)`);
-    }
-  } catch (err) {
-    console.warn(`[TEXT EXTRACTOR] Fout bij indexeren ${filename}:`, err);
-  }
+  indexQueue.push({ filename, filePath });
+  // Start queue runner in background
+  setTimeout(() => {
+    processNextInQueue().catch((err) => {
+      console.warn("[TEXT EXTRACTOR QUEUE ERROR]:", err);
+    });
+  }, 10);
 }
