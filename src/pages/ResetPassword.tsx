@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { KeyRound, CheckCircle2, AlertCircle, ArrowLeft, Loader2, Eye, EyeOff, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { safeJson } from "@/lib/api";
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams();
@@ -39,7 +40,7 @@ export default function ResetPassword() {
         body: JSON.stringify({ token, newPassword: password }),
       });
 
-      const data = await res.json();
+      const data = await safeJson(res, {});
       if (!res.ok) {
         throw new Error(data.error || "Wachtwoord herstellen mislukt");
       }
@@ -67,7 +68,7 @@ export default function ResetPassword() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: requestEmail.trim() }),
       });
-      const data = await res.json();
+      const data = await safeJson(res, {});
       if (!res.ok) throw new Error(data.error || "Kon herstellink niet verzenden");
       setRequestSuccess(true);
       toast.success("Als dit e-mailadres bij ons bekend is, ontvangt u een herstellink.");

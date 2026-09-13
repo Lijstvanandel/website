@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { safeJson } from "@/lib/api";
 import {
   Form,
   FormControl,
@@ -153,7 +154,7 @@ export default function Login() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: forgotEmail.trim() }),
       });
-      const data = await res.json();
+      const data = await safeJson(res, {});
 
       if (!res.ok) {
         throw new Error(data.error || "Kon herstellink niet verzenden");

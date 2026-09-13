@@ -21,7 +21,7 @@ import {
   Flame
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { fetchWithAuth } from "@/lib/api";
+import { fetchWithAuth, safeJson } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
@@ -209,7 +209,7 @@ export default function Polls() {
     try {
       // First fetch location stellingen directly (public access with location param)
       const res = await fetch(`/api/stellingen?location=${encodeURIComponent(locSlug)}`);
-      const data = await res.json();
+      const data = await safeJson(res, {});
 
       if (!res.ok) {
         toast.error(data.error || "Kon stellingen voor deze locatie niet laden.");
@@ -236,7 +236,7 @@ export default function Polls() {
     setLoading(true);
     try {
       const res = await fetchWithAuth("/api/stellingen");
-      const data = await res.json();
+      const data = await safeJson(res, {});
 
       if (!res.ok) {
         if (data.code === "MEMBERSHIP_DUES_REQUIRED" || data.code === "MEMBERSHIP_PENDING_24H") {
@@ -342,7 +342,7 @@ export default function Polls() {
         });
       }
 
-      const data = await res.json();
+      const data = await safeJson(res, {});
       if (!res.ok) {
         throw new Error(data.error || "Fout bij opslaan van uw stemmen.");
       }

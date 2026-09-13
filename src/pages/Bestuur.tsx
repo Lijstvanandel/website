@@ -19,6 +19,7 @@ import placeholder from "@/assets/silhouette.png";
 import sammyImg from "@/assets/sammy.png";
 import stefImg from "@/assets/stef-mars.jpg";
 import { useAuth } from "@/context/AuthContext";
+import { safeJson } from "@/lib/api";
 
 export interface BestuurslidItem {
   id: string;
@@ -152,8 +153,8 @@ const Bestuur = () => {
       try {
         const res = await fetch("/api/public/bestuur");
         if (res.ok) {
-          const data = await res.json();
-          setBoardData(data);
+          const data = await safeJson(res, null);
+          if (data) setBoardData(data);
         }
       } catch (err) {
         console.error("Fout bij ophalen bestuursgegevens:", err);

@@ -78,6 +78,7 @@ import { TreasurerManager } from "@/components/admin/TreasurerManager";
 import { SecretaryManager } from "@/components/admin/SecretaryManager";
 import { ChairmanManager } from "@/components/admin/ChairmanManager";
 import { BestuurManager } from "@/components/admin/BestuurManager";
+import { safeJson } from "@/lib/api";
 import { WIJKEN_EN_KERNEN } from "@/data/wijken";
 import { NewsItem } from "@/data/news";
 import { hoofdstukken } from "@/data/partijprogramma";
@@ -380,7 +381,7 @@ export default function AdminDashboard() {
           description: settingsDescription,
         }),
       });
-      const data = await res.json();
+      const data = await safeJson(res, {});
       if (!res.ok) throw new Error(data.error || "Kon instellingen niet opslaan");
       toast.success("Contributie-instellingen succesvol opgeslagen!");
       fetchMembershipSettings();
@@ -490,8 +491,8 @@ export default function AdminDashboard() {
     try {
       const res = await fetch("/api/admin/events/cancellations/analytics", { headers });
       if (res.ok) {
-        const data = await res.json();
-        setEventAnalytics(data);
+        const data = await safeJson(res, null);
+        if (data) setEventAnalytics(data);
       }
     } catch (e) {
       console.error(e);
@@ -586,8 +587,8 @@ export default function AdminDashboard() {
   const fetchAttendees = async (eventId: string) => {
     try {
       const res = await fetch(`/api/admin/events/${eventId}/attendees`, { headers });
-      const data: EventAttendee[] = await res.json();
-      setAttendeesMap((prev) => ({ ...prev, [eventId]: data }));
+      const data = await safeJson<EventAttendee[]>(res, []);
+      setAttendeesMap((prev) => ({ ...prev, [eventId]: Array.isArray(data) ? data : [] }));
     } catch (e) {
       console.error(e);
     }
@@ -596,7 +597,7 @@ export default function AdminDashboard() {
   const fetchCancellations = async (eventId: string) => {
     try {
       const res = await fetch(`/api/admin/events/${eventId}/cancellations`, { headers });
-      const data = await res.json();
+      const data = await safeJson(res, []);
       setCancellationsMap((prev) => ({ ...prev, [eventId]: Array.isArray(data) ? data : [] }));
     } catch (e) {
       console.error(e);

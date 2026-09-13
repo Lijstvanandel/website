@@ -8,6 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { BelafspraakDialog } from "@/components/BelafspraakDialog";
 import { ContactFaqSection } from "@/components/ContactFaqSection";
+import { safeJson } from "@/lib/api";
 
 const Contact = () => {
   const { user } = useAuth();
@@ -52,7 +53,7 @@ const Contact = () => {
         }),
       });
 
-      const data = await res.json();
+      const data = await safeJson(res, {});
       if (res.ok) {
         toast.success("Uw bericht is succesvol verzonden!");
         setSubmitted(true);

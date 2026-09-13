@@ -16,6 +16,22 @@ export function getAuthHeaders(extraHeaders: Record<string, string> = {}): Recor
   return headers;
 }
 
+export async function safeJson<T = any>(res: Response, fallback: T = {} as T): Promise<T> {
+  try {
+    const contentType = res.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      return await res.json();
+    }
+    const text = await res.text();
+    if (!text || text.trim().startsWith("<")) {
+      return fallback;
+    }
+    return JSON.parse(text);
+  } catch (_err) {
+    return fallback;
+  }
+}
+
 export async function fetchWithAuth(
   input: RequestInfo | URL,
   init?: RequestInit

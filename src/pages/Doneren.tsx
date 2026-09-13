@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { toast } from "sonner";
+import { safeJson } from "@/lib/api";
 import {
   Heart,
   ShieldCheck,
@@ -57,9 +58,9 @@ export default function Doneren() {
   useEffect(() => {
     if (isDonationSuccess && returnSessionId) {
       fetch(`/api/donations/verify-session?sessionId=${encodeURIComponent(returnSessionId)}`)
-        .then((res) => res.json())
+        .then((res) => (res.ok ? safeJson(res, { success: false }) : { success: false }))
         .then((data) => {
-          if (data.success) {
+          if (data && data.success) {
             toast.success("Hartelijk dank voor uw donatie!", {
               description: "Uw gift is succesvol ontvangen en draagt direct bij aan onze lokale partij.",
             });
@@ -83,8 +84,8 @@ export default function Doneren() {
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/api/donations/verify-session?sessionId=${encodeURIComponent(paymentModal.sessionId)}`);
-        const data = await res.json();
-        if (data.success) {
+        const data = await safeJson(res, { success: false });
+        if (data && data.success) {
           setPaymentModal(null);
           const nextParams = new URLSearchParams();
           nextParams.set("donation_success", "true");
@@ -146,7 +147,7 @@ export default function Doneren() {
         }),
       });
 
-      const data = await res.json();
+      const data = await safeJson(res, {});
       if (!res.ok) throw new Error(data.error || "Kon donatie niet starten");
 
       if (data.checkoutUrl) {
@@ -177,8 +178,8 @@ export default function Doneren() {
     setIsVerifying(true);
     try {
       const res = await fetch(`/api/donations/verify-session?sessionId=${encodeURIComponent(paymentModal.sessionId)}`);
-      const data = await res.json();
-      if (data.success) {
+      const data = await safeJson(res, { success: false });
+      if (data && data.success) {
         setPaymentModal(null);
         const nextParams = new URLSearchParams();
         nextParams.set("donation_success", "true");

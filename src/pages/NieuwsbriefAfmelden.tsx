@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
+import { safeJson } from "@/lib/api";
 
 export default function NieuwsbriefAfmelden() {
   const [searchParams] = useSearchParams();
@@ -39,7 +40,7 @@ export default function NieuwsbriefAfmelden() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: targetEmail, token: targetToken })
       });
-      const data = await res.json();
+      const data = await safeJson(res, {});
       if (!res.ok) throw new Error(data.error || "Kon afmelding niet verwerken.");
 
       setIsUnsubscribed(true);
@@ -61,7 +62,7 @@ export default function NieuwsbriefAfmelden() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email })
       });
-      const data = await res.json();
+      const data = await safeJson(res, {});
       if (!res.ok) throw new Error(data.error || "Kon niet opnieuw aanmelden.");
 
       setResubscribed(true);

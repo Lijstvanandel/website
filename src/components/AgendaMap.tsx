@@ -5,6 +5,7 @@ import "leaflet/dist/leaflet.css";
 import { MapPin, Navigation, Calendar, Lock, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { extractCity } from "@/lib/utils";
+import { safeJson } from "@/lib/api";
 
 // Custom Leaflet DivIcon for searched / clicked address
 const searchedAddressIcon = L.divIcon({
@@ -116,7 +117,7 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
     try {
       const res = await fetch(`/api/geocode?q=${encodeURIComponent(query)}`);
       if (res.ok) {
-        const data = await res.json();
+        const data = await safeJson(res, null);
         if (data && typeof data.lat === "number" && typeof data.lng === "number") {
           return {
             lat: data.lat,
@@ -139,7 +140,7 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1`
       );
       if (directRes.ok) {
-        const directData = await directRes.json();
+        const directData = await safeJson(directRes, []);
         if (Array.isArray(directData) && directData.length > 0) {
           return {
             lat: parseFloat(directData[0].lat),
@@ -170,7 +171,7 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`
       );
       if (revRes.ok) {
-        const revData = await revRes.json();
+        const revData = await safeJson(revRes, null);
         if (revData && revData.display_name) {
           const shortAddress = revData.display_name.split(",").slice(0, 3).join(",");
           setActiveMarker({

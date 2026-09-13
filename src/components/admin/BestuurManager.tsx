@@ -31,7 +31,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { fetchWithAuth } from "@/lib/api";
+import { fetchWithAuth, safeJson } from "@/lib/api";
 import placeholder from "@/assets/silhouette.png";
 import sammyImg from "@/assets/sammy.png";
 import stefImg from "@/assets/stef-mars.jpg";
@@ -155,49 +155,51 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ headers = {}, on
       setLoading(true);
       const res = await fetch("/api/public/bestuur");
       if (res.ok) {
-        const data = await res.json();
-        setFormData({
-          partyName: data.partyName || "Lijst van Andel",
-          boardTitle: data.boardTitle || "Bestuur",
-          boardSubtitle: data.boardSubtitle || "Het bestuur bewaakt de koers van Lijst van Andel, zorgt voor een gezonde organisatie en vormt de schakel tussen leden, fractie en samenleving.",
-          pageIntro: data.pageIntro || data.boardSubtitle || "Het bestuur bewaakt de koers van Lijst van Andel, zorgt voor een gezonde organisatie en vormt de schakel tussen leden, fractie en samenleving.",
-          status: data.status || "Bestuur Compleet & Operationeel",
-          chairman: {
-            roleTitle: data.chairman?.roleTitle || "Partijvoorzitter",
-            name: data.chairman?.name || "Sammy van Andel",
-            description: data.chairman?.description || "Leidt ALV en bestuursvergaderingen, bewaakt fractierelatie via 5 instrumenten, stuurt commissies aan en is het gezicht naar buiten.",
-            bio: data.chairman?.bio || data.chairman?.description || "Voorzitter van het bestuur van Lijst van Andel. Bewaakt koers, samenhang en verbinding tussen bestuur en fractie.",
-            email: data.chairman?.email || "voorzitter@lijstvanandel.nl",
-            phone: data.chairman?.phone || "",
-            img: data.chairman?.img || "",
-            socials: data.chairman?.socials || { instagram: "", facebook: "", linkedin: "" },
-            panelNote: data.chairman?.panelNote || "U bevindt zich in het Voorzitterpaneel"
-          },
-          secretary: {
-            roleTitle: data.secretary?.roleTitle || "Secretaris",
-            name: data.secretary?.name || "Anja ter Horst",
-            description: data.secretary?.description || "Verantwoordelijk voor correspondentie, notulering ALV, ledenadministratie, KvK/WBTR-formaliteiten en het partijarchief.",
-            bio: data.secretary?.bio || data.secretary?.description || "Bestuurslid van Lijst van Andel. Betrokken bij organisatie, leden en lokale verankering van de partij.",
-            email: data.secretary?.email || "secretariaat@lijstvanandel.nl",
-            phone: data.secretary?.phone || "",
-            img: data.secretary?.img || "",
-            socials: data.secretary?.socials || { instagram: "", facebook: "", linkedin: "" },
-            panelNote: data.secretary?.panelNote || "Eigen beveiligd Secretarispaneel"
-          },
-          treasurer: {
-            roleTitle: data.treasurer?.roleTitle || "Penningmeester",
-            name: data.treasurer?.name || "Stef Mars",
-            description: data.treasurer?.description || "Beheert begroting, kasboek, contributie-inning via Stripe/SEPA, giftenregister en verantwoording naar de kascommissie.",
-            bio: data.treasurer?.bio || data.treasurer?.description || "Bestuurslid van Lijst van Andel. Met een nuchtere blik en oog voor detail draagt hij bij aan een gezonde partijorganisatie.",
-            email: data.treasurer?.email || "penningmeester@lijstvanandel.nl",
-            phone: data.treasurer?.phone || "",
-            img: data.treasurer?.img || "",
-            socials: data.treasurer?.socials || { instagram: "", facebook: "", linkedin: "" },
-            panelNote: data.treasurer?.panelNote || "Eigen beveiligd Penningmeesterpaneel"
-          },
-          additionalMembers: Array.isArray(data.additionalMembers) ? data.additionalMembers : [],
-          organisatieDocs: Array.isArray(data.organisatieDocs) ? data.organisatieDocs : []
-        });
+        const data = await safeJson(res, null);
+        if (data) {
+          setFormData({
+            partyName: data.partyName || "Lijst van Andel",
+            boardTitle: data.boardTitle || "Bestuur",
+            boardSubtitle: data.boardSubtitle || "Het bestuur bewaakt de koers van Lijst van Andel, zorgt voor een gezonde organisatie en vormt de schakel tussen leden, fractie en samenleving.",
+            pageIntro: data.pageIntro || data.boardSubtitle || "Het bestuur bewaakt de koers van Lijst van Andel, zorgt voor een gezonde organisatie en vormt de schakel tussen leden, fractie en samenleving.",
+            status: data.status || "Bestuur Compleet & Operationeel",
+            chairman: {
+              roleTitle: data.chairman?.roleTitle || "Partijvoorzitter",
+              name: data.chairman?.name || "Sammy van Andel",
+              description: data.chairman?.description || "Leidt ALV en bestuursvergaderingen, bewaakt fractierelatie via 5 instrumenten, stuurt commissies aan en is het gezicht naar buiten.",
+              bio: data.chairman?.bio || data.chairman?.description || "Voorzitter van het bestuur van Lijst van Andel. Bewaakt koers, samenhang en verbinding tussen bestuur en fractie.",
+              email: data.chairman?.email || "voorzitter@lijstvanandel.nl",
+              phone: data.chairman?.phone || "",
+              img: data.chairman?.img || "",
+              socials: data.chairman?.socials || { instagram: "", facebook: "", linkedin: "" },
+              panelNote: data.chairman?.panelNote || "U bevindt zich in het Voorzitterpaneel"
+            },
+            secretary: {
+              roleTitle: data.secretary?.roleTitle || "Secretaris",
+              name: data.secretary?.name || "Anja ter Horst",
+              description: data.secretary?.description || "Verantwoordelijk voor correspondentie, notulering ALV, ledenadministratie, KvK/WBTR-formaliteiten en het partijarchief.",
+              bio: data.secretary?.bio || data.secretary?.description || "Bestuurslid van Lijst van Andel. Betrokken bij organisatie, leden en lokale verankering van de partij.",
+              email: data.secretary?.email || "secretariaat@lijstvanandel.nl",
+              phone: data.secretary?.phone || "",
+              img: data.secretary?.img || "",
+              socials: data.secretary?.socials || { instagram: "", facebook: "", linkedin: "" },
+              panelNote: data.secretary?.panelNote || "Eigen beveiligd Secretarispaneel"
+            },
+            treasurer: {
+              roleTitle: data.treasurer?.roleTitle || "Penningmeester",
+              name: data.treasurer?.name || "Stef Mars",
+              description: data.treasurer?.description || "Beheert begroting, kasboek, contributie-inning via Stripe/SEPA, giftenregister en verantwoording naar de kascommissie.",
+              bio: data.treasurer?.bio || data.treasurer?.description || "Bestuurslid van Lijst van Andel. Met een nuchtere blik en oog voor detail draagt hij bij aan een gezonde partijorganisatie.",
+              email: data.treasurer?.email || "penningmeester@lijstvanandel.nl",
+              phone: data.treasurer?.phone || "",
+              img: data.treasurer?.img || "",
+              socials: data.treasurer?.socials || { instagram: "", facebook: "", linkedin: "" },
+              panelNote: data.treasurer?.panelNote || "Eigen beveiligd Penningmeesterpaneel"
+            },
+            additionalMembers: Array.isArray(data.additionalMembers) ? data.additionalMembers : [],
+            organisatieDocs: Array.isArray(data.organisatieDocs) ? data.organisatieDocs : []
+          });
+        }
       }
     } catch (err) {
       console.error("Fout bij ophalen bestuursdata:", err);
@@ -256,7 +258,7 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ headers = {}, on
       });
 
       if (res.ok) {
-        const data = await res.json();
+        const data = await safeJson(res, {});
         const imageUrl = data.imageUrl;
 
         if (target === "chairman") {
@@ -360,7 +362,7 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ headers = {}, on
       });
 
       if (res.ok) {
-        const data = await res.json();
+        const data = await safeJson(res, {});
         setDocForm((prev) => ({
           ...prev,
           fileUrl: data.fileUrl,

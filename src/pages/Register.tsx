@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { CheckCircle2, AlertCircle, CreditCard, ShieldCheck, Loader2, ExternalLink } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { safeJson } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -100,16 +101,16 @@ export default function Register() {
     if (isPaymentSuccess && sessionId) {
       setIsVerifying(true);
       fetch(`/api/checkout/verify-session?sessionId=${encodeURIComponent(sessionId)}`)
-        .then((res) => res.json())
+        .then((res) => (res.ok ? safeJson(res, { success: false }) : { success: false }))
         .then((data) => {
-          if (data.success && data.user && data.token) {
+          if (data && data.success && data.user && data.token) {
             setVerificationSuccess(true);
             login(data.user, data.token);
             toast.success("Welkom als lid!", {
               description: "Uw contributie is succesvol ontvangen en uw account is geactiveerd.",
             });
           } else {
-            setVerificationError(data.error || "Kon de betaling niet verifiëren.");
+            setVerificationError(data?.error || "Kon de betaling niet verifiëren.");
           }
         })
         .catch((err) => {
@@ -148,7 +149,7 @@ export default function Register() {
         body: JSON.stringify(data),
       });
 
-      const result = await response.json();
+      const result = await safeJson(response, {});
 
       if (!response.ok) {
         throw new Error(result.error || "Registratie mislukt");

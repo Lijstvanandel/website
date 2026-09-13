@@ -29,6 +29,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { safeJson } from "@/lib/api";
 
 interface TicketData {
   ticketCode: string;
@@ -91,10 +92,14 @@ export default function TicketView() {
     try {
       const res = await fetch(`/api/tickets/${encodeURIComponent(code)}`);
       if (res.ok) {
-        const data = await res.json();
-        setTicket(data);
+        const data = await safeJson(res, null);
+        if (data) {
+          setTicket(data);
+        } else {
+          setError("Ongeldige respons ontvangen");
+        }
       } else {
-        const data = await res.json().catch(() => ({}));
+        const data = await safeJson(res, {});
         setError(data.error || "Ticket niet gevonden");
       }
     } catch (_err) {
@@ -118,7 +123,7 @@ export default function TicketView() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reason: cancelReason }),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = await safeJson(res, {});
       if (res.ok) {
         toast.success(data.message || "Aanmelding succesvol geannuleerd.");
         setCancelOpen(false);

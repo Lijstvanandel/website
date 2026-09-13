@@ -46,7 +46,7 @@ import { RaadslidBelafsprakenWidget } from "@/components/RaadslidBelafsprakenWid
 import { MemberCouncilTopicsWidget } from "@/components/MemberCouncilTopicsWidget";
 import { TicketScannerModal } from "@/components/TicketScannerModal";
 import { MemberDocument } from "@/types/document";
-import { fetchWithAuth } from "@/lib/api";
+import { fetchWithAuth, safeJson } from "@/lib/api";
 import {
   Dialog,
   DialogContent,
@@ -293,8 +293,8 @@ export default function Dashboard() {
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/api/checkout/verify-session?sessionId=${encodeURIComponent(stripePaymentModal.sessionId)}`);
-        const data = await res.json();
-        if (data.success && data.user) {
+        const data = await safeJson(res, { success: false });
+        if (data && data.success && data.user) {
           updateUser(data.user, data.token);
           setStripePaymentModal(null);
           toast.success("Contributie succesvol ontvangen!", {
@@ -315,9 +315,9 @@ export default function Dashboard() {
 
     if (paymentSuccess === "true" && sessionId) {
       fetch(`/api/checkout/verify-session?sessionId=${encodeURIComponent(sessionId)}`)
-        .then((res) => res.json())
+        .then((res) => (res.ok ? safeJson(res, { success: false }) : { success: false }))
         .then((data) => {
-          if (data.success && data.user) {
+          if (data && data.success && data.user) {
             updateUser(data.user, data.token);
             toast.success("Contributie succesvol ontvangen!", {
               description: "Uw lidmaatschapsstatus is bijgewerkt en staat nu op 'Voldaan'.",
@@ -395,7 +395,7 @@ export default function Dashboard() {
         }),
       });
 
-      const data = await res.json();
+      const data = await safeJson(res, {});
       if (!res.ok) {
         throw new Error(data.error || "Kon gegevens niet opslaan");
       }
@@ -500,7 +500,7 @@ export default function Dashboard() {
         }),
       });
 
-      const data = await res.json();
+      const data = await safeJson(res, {});
       if (!res.ok) {
         throw new Error(data.error || "Kon aanmelding niet versturen");
       }
@@ -532,7 +532,7 @@ export default function Dashboard() {
         body: JSON.stringify({ newsletterSubscribed: newStatus })
       });
 
-      const data = await res.json();
+      const data = await safeJson(res, {});
       if (!res.ok) {
         if (res.status === 401) return;
         throw new Error(data.error || "Kon nieuwsbriefvoorkeur niet wijzigen");
@@ -567,7 +567,7 @@ export default function Dashboard() {
         body: JSON.stringify({ email: emailInput.trim() })
       });
 
-      const data = await res.json();
+      const data = await safeJson(res, {});
       if (!res.ok) {
         if (res.status === 401) return;
         throw new Error(data.error || "Kon e-mailadres niet opslaan");
@@ -595,7 +595,7 @@ export default function Dashboard() {
           Authorization: `Bearer ${token}`,
         },
       });
-      const data = await res.json();
+      const data = await safeJson(res, {});
       if (!res.ok) throw new Error(data.error || "Kon betaalsessie niet starten");
 
       if (data.checkoutUrl) {
@@ -630,8 +630,8 @@ export default function Dashboard() {
     setIsCheckingPaymentStatus(true);
     try {
       const res = await fetch(`/api/checkout/verify-session?sessionId=${encodeURIComponent(stripePaymentModal.sessionId)}`);
-      const data = await res.json();
-      if (data.success && data.user) {
+      const data = await safeJson(res, { success: false });
+      if (data && data.success && data.user) {
         updateUser(data.user, data.token);
         setStripePaymentModal(null);
         toast.success("Contributie succesvol geverifieerd!", {
