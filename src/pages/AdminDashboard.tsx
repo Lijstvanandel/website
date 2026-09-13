@@ -77,6 +77,7 @@ import { WaterschapManager } from "@/components/council/WaterschapManager";
 import { TreasurerManager } from "@/components/admin/TreasurerManager";
 import { SecretaryManager } from "@/components/admin/SecretaryManager";
 import { ChairmanManager } from "@/components/admin/ChairmanManager";
+import { BestuurManager } from "@/components/admin/BestuurManager";
 import { WIJKEN_EN_KERNEN } from "@/data/wijken";
 import { NewsItem } from "@/data/news";
 import { hoofdstukken } from "@/data/partijprogramma";
@@ -1292,6 +1293,9 @@ export default function AdminDashboard() {
           <TabsTrigger value="penningmeester" className="gap-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
             <CreditCard className="w-4 h-4 text-emerald-600 data-[state=active]:text-white" /> Penningmeesterpaneel
           </TabsTrigger>
+          <TabsTrigger value="bestuur" className="gap-2 text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-500/10 data-[state=active]:bg-amber-600 data-[state=active]:text-white">
+            <Users className="w-4 h-4 text-amber-600 data-[state=active]:text-white" /> Bestuur & Documenten (/bestuur)
+          </TabsTrigger>
           <TabsTrigger value="messages" className="gap-2 text-xs relative">
             <Inbox className="w-4 h-4" /> Berichten
             {messages.filter((m) => m.status === "moet nog beantwoord worden").length > 0 && (
@@ -1571,6 +1575,11 @@ export default function AdminDashboard() {
         {/* PENNINGMEESTERPANEEL */}
         <TabsContent value="penningmeester">
           <TreasurerManager token={token} currentUser={user} headers={headers} />
+        </TabsContent>
+
+        {/* BESTUURSBEHEER & ORGANISATIE-DOCUMENTEN */}
+        <TabsContent value="bestuur">
+          <BestuurManager token={token} headers={headers} />
         </TabsContent>
 
         {/* FRACTIELEDEN */}

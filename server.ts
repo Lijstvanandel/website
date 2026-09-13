@@ -1400,6 +1400,194 @@ function getDb() {
     saveDb(db);
   }
 
+  if (!db.chairmanDailyBoard) {
+    db.chairmanDailyBoard = {
+      partyName: "Lijst van Andel",
+      boardTitle: "Bestuur",
+      boardSubtitle: "Het bestuur bewaakt de koers van Lijst van Andel, zorgt voor een gezonde organisatie en vormt de schakel tussen leden, fractie en samenleving.",
+      pageIntro: "Het bestuur bewaakt de koers van Lijst van Andel, zorgt voor een gezonde organisatie en vormt de schakel tussen leden, fractie en samenleving.",
+      status: "Bestuur Compleet & Operationeel",
+      chairman: {
+        roleTitle: "Partijvoorzitter",
+        name: "Sammy van Andel",
+        description: "Leidt ALV en bestuursvergaderingen, bewaakt fractierelatie via 5 instrumenten, stuurt commissies aan en is het gezicht naar buiten.",
+        bio: "Voorzitter van het bestuur van Lijst van Andel. Bewaakt koers, samenhang en verbinding tussen bestuur en fractie.",
+        email: "voorzitter@lijstvanandel.nl",
+        phone: "",
+        img: "",
+        socials: { instagram: "", facebook: "", linkedin: "" },
+        panelNote: "U bevindt zich in het Voorzitterpaneel"
+      },
+      secretary: {
+        roleTitle: "Secretaris",
+        name: "Anja ter Horst",
+        description: "Verantwoordelijk voor correspondentie, notulering ALV, ledenadministratie, KvK/WBTR-formaliteiten en het partijarchief.",
+        bio: "Bestuurslid van Lijst van Andel. Betrokken bij organisatie, leden en lokale verankering van de partij.",
+        email: "secretariaat@lijstvanandel.nl",
+        phone: "",
+        img: "",
+        socials: { instagram: "", facebook: "", linkedin: "" },
+        panelNote: "Eigen beveiligd Secretarispaneel"
+      },
+      treasurer: {
+        roleTitle: "Penningmeester",
+        name: "Stef Mars",
+        description: "Beheert begroting, kasboek, contributie-inning via Stripe/SEPA, giftenregister en verantwoording naar de kascommissie.",
+        bio: "Bestuurslid van Lijst van Andel. Met een nuchtere blik en oog voor detail draagt hij bij aan een gezonde partijorganisatie.",
+        email: "penningmeester@lijstvanandel.nl",
+        phone: "",
+        img: "",
+        socials: { instagram: "", facebook: "", linkedin: "" },
+        panelNote: "Eigen beveiligd Penningmeesterpaneel"
+      },
+      additionalMembers: [
+        {
+          id: "bestuur-algemeen-1",
+          roleTitle: "Algemeen Bestuurslid",
+          name: "Lid Organisatie & Wijkcontacten",
+          description: "Ondersteunt bij wijkcontacten, evenementen en de verbinding met inwoners in Steenwijkerland.",
+          bio: "Betrokken bij lokale initiatieven en versterking van de dorpskernen in Steenwijkerland.",
+          email: "bestuur@lijstvanandel.nl",
+          phone: "",
+          img: "",
+          socials: { instagram: "", facebook: "", linkedin: "" }
+        }
+      ],
+      organisatieDocs: [
+        {
+          id: "doc-statuten",
+          titel: "Statuten",
+          beschrijving: "Officiële verenigingsstatuten conform de Wet bestuur en toezicht rechtspersonen (WBTR).",
+          category: "Statutair",
+          fileUrl: "",
+          fileName: "statuten_lijstvanandel.pdf",
+          fileSize: "1.2 MB",
+          datum: "2026-01-15",
+          href: ""
+        },
+        {
+          id: "doc-huishoudelijk",
+          titel: "Huishoudelijk Reglement",
+          beschrijving: "Interne werkwijzen, rechten van leden, contributiebepalingen en vergaderordes.",
+          category: "Reglement",
+          fileUrl: "",
+          fileName: "huishoudelijk_reglement.pdf",
+          fileSize: "850 KB",
+          datum: "2026-02-01",
+          href: ""
+        },
+        {
+          id: "doc-integriteit",
+          titel: "Integriteitscode",
+          beschrijving: "Gedragscode en integriteitsprotocol voor bestuursleden, fractieleden en kandidaten.",
+          category: "Integriteit",
+          fileUrl: "",
+          fileName: "integriteitscode_lijstvanandel.pdf",
+          fileSize: "420 KB",
+          datum: "2026-02-20",
+          href: ""
+        },
+        {
+          id: "doc-bestuursreglement",
+          titel: "Bestuursreglement",
+          beschrijving: "Bevoegdhedenverdeling, besluitvorming, volmachten en protocol tegenstrijdig belang.",
+          category: "Bestuurlijk",
+          fileUrl: "",
+          fileName: "bestuursreglement.pdf",
+          fileSize: "620 KB",
+          datum: "2026-03-05",
+          href: ""
+        },
+        {
+          id: "doc-kandidaatstelling",
+          titel: "Kandidaatstellingsreglement",
+          beschrijving: "Procedure, selectiecriteria en profielschetsen voor de kieslijst gemeenteraadsverkiezingen.",
+          category: "Verkiezingen",
+          fileUrl: "",
+          fileName: "kandidaatstellingsreglement.pdf",
+          fileSize: "510 KB",
+          datum: "2026-04-10",
+          href: ""
+        }
+      ]
+    };
+    saveDb(db);
+  } else {
+    // Ensure organisatieDocs, pageIntro and boardTitle are always present and properly titled
+    let updated = false;
+    if (!db.chairmanDailyBoard.boardTitle || db.chairmanDailyBoard.boardTitle === "Dagelijks Bestuur Lijst van Andel") {
+      db.chairmanDailyBoard.boardTitle = "Bestuur";
+      updated = true;
+    }
+    if (!db.chairmanDailyBoard.pageIntro) {
+      db.chairmanDailyBoard.pageIntro = db.chairmanDailyBoard.boardSubtitle || "Het bestuur bewaakt de koers van Lijst van Andel, zorgt voor een gezonde organisatie en vormt de schakel tussen leden, fractie en samenleving.";
+      updated = true;
+    }
+    if (!db.chairmanDailyBoard.organisatieDocs || !Array.isArray(db.chairmanDailyBoard.organisatieDocs) || db.chairmanDailyBoard.organisatieDocs.length === 0) {
+      db.chairmanDailyBoard.organisatieDocs = [
+        {
+          id: "doc-statuten",
+          titel: "Statuten",
+          beschrijving: "Officiële verenigingsstatuten conform de Wet bestuur en toezicht rechtspersonen (WBTR).",
+          category: "Statutair",
+          fileUrl: "",
+          fileName: "statuten_lijstvanandel.pdf",
+          fileSize: "1.2 MB",
+          datum: "2026-01-15",
+          href: ""
+        },
+        {
+          id: "doc-huishoudelijk",
+          titel: "Huishoudelijk Reglement",
+          beschrijving: "Interne werkwijzen, rechten van leden, contributiebepalingen en vergaderordes.",
+          category: "Reglement",
+          fileUrl: "",
+          fileName: "huishoudelijk_reglement.pdf",
+          fileSize: "850 KB",
+          datum: "2026-02-01",
+          href: ""
+        },
+        {
+          id: "doc-integriteit",
+          titel: "Integriteitscode",
+          beschrijving: "Gedragscode en integriteitsprotocol voor bestuursleden, fractieleden en kandidaten.",
+          category: "Integriteit",
+          fileUrl: "",
+          fileName: "integriteitscode_lijstvanandel.pdf",
+          fileSize: "420 KB",
+          datum: "2026-02-20",
+          href: ""
+        },
+        {
+          id: "doc-bestuursreglement",
+          titel: "Bestuursreglement",
+          beschrijving: "Bevoegdhedenverdeling, besluitvorming, volmachten en protocol tegenstrijdig belang.",
+          category: "Bestuurlijk",
+          fileUrl: "",
+          fileName: "bestuursreglement.pdf",
+          fileSize: "620 KB",
+          datum: "2026-03-05",
+          href: ""
+        },
+        {
+          id: "doc-kandidaatstelling",
+          titel: "Kandidaatstellingsreglement",
+          beschrijving: "Procedure, selectiecriteria en profielschetsen voor de kieslijst gemeenteraadsverkiezingen.",
+          category: "Verkiezingen",
+          fileUrl: "",
+          fileName: "kandidaatstellingsreglement.pdf",
+          fileSize: "510 KB",
+          datum: "2026-04-10",
+          href: ""
+        }
+      ];
+      updated = true;
+    }
+    if (updated) {
+      saveDb(db);
+    }
+  }
+
   if (!db.stellingSubmissions) {
     db.stellingSubmissions = [];
   }
@@ -3250,6 +3438,59 @@ async function startServer() {
     res.json({ message: "Transactie verwerkt", account });
   });
 
+  // Nieuwe bankrekening toevoegen
+  app.post("/api/treasurer/accounts", requireAuth, requireTreasurerOrAdmin, (req: any, res: any) => {
+    const { name, iban, type, institution, balance, description } = req.body;
+    if (!name || !iban) return res.status(400).json({ error: "Rekeningnaam en IBAN zijn verplicht" });
+
+    const db = getDb();
+    if (!Array.isArray(db.treasurerAccounts)) db.treasurerAccounts = [];
+
+    const newAccount = {
+      id: `acc_${Date.now()}`,
+      name: String(name).trim(),
+      iban: String(iban).trim().toUpperCase(),
+      type: type || "operationeel",
+      institution: institution || "Rabobank Kop van Overijssel",
+      balance: parseFloat(balance) || 0,
+      description: description || ""
+    };
+
+    db.treasurerAccounts.push(newAccount);
+    saveDb(db);
+    res.status(201).json({ message: "Rekening succesvol toegevoegd", account: newAccount, accounts: db.treasurerAccounts });
+  });
+
+  // Bankrekening bewerken
+  app.patch("/api/treasurer/accounts/:id", requireAuth, requireTreasurerOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const account = (db.treasurerAccounts || []).find((a: any) => a.id === req.params.id);
+    if (!account) return res.status(404).json({ error: "Rekening niet gevonden" });
+
+    const { name, iban, type, institution, balance, description } = req.body;
+    if (name !== undefined) account.name = String(name).trim();
+    if (iban !== undefined) account.iban = String(iban).trim().toUpperCase();
+    if (type !== undefined) account.type = type;
+    if (institution !== undefined) account.institution = institution;
+    if (balance !== undefined) account.balance = parseFloat(balance) || 0;
+    if (description !== undefined) account.description = description;
+
+    saveDb(db);
+    res.json({ message: "Rekening succesvol bijgewerkt", account, accounts: db.treasurerAccounts });
+  });
+
+  // Bankrekening verwijderen
+  app.delete("/api/treasurer/accounts/:id", requireAuth, requireTreasurerOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const initialLen = (db.treasurerAccounts || []).length;
+    db.treasurerAccounts = (db.treasurerAccounts || []).filter((a: any) => a.id !== req.params.id);
+    if (db.treasurerAccounts.length === initialLen) {
+      return res.status(404).json({ error: "Rekening niet gevonden" });
+    }
+    saveDb(db);
+    res.json({ message: "Rekening succesvol verwijderd", accounts: db.treasurerAccounts });
+  });
+
   // Afdrachten politieke ambtsdragers
   app.post("/api/treasurer/afdrachten", requireAuth, requireTreasurerOrAdmin, (req: any, res: any) => {
     const { politicianName, roleTitle, mandateTerm, percentageOrAmount, remarks } = req.body;
@@ -3461,6 +3702,7 @@ async function startServer() {
       compliance: db.secretaryCompliance || {},
       yearcycle: db.secretaryYearcycle || [],
       elections: db.secretaryElections || {},
+      dailyBoard: db.chairmanDailyBoard || null,
       stats: {
         totalMessages: contactMessages.length,
         pendingMessages,
@@ -3688,6 +3930,37 @@ async function startServer() {
     const network = db.chairmanNetwork || {};
     const belafspraken = db.belafspraken || [];
     const fractieleden = db.fractieleden || [];
+    const dailyBoard = db.chairmanDailyBoard || {
+      partyName: "Lijst van Andel",
+      boardTitle: "Bestuur",
+      boardSubtitle: "Statutaire taakverdeling en wisselwerking binnen het dagelijks bestuur conform verenigingsrecht en de WBTR.",
+      status: "Bestuur Compleet & Operationeel",
+      chairman: {
+        roleTitle: "Partijvoorzitter",
+        name: "Sammy van Andel",
+        description: "Leidt ALV en bestuursvergaderingen, bewaakt fractierelatie via 5 instrumenten, stuurt commissies aan en is het gezicht naar buiten.",
+        email: "voorzitter@lijstvanandel.nl",
+        phone: "",
+        panelNote: "U bevindt zich in het Voorzitterpaneel"
+      },
+      secretary: {
+        roleTitle: "Secretaris",
+        name: "Anja ter Horst",
+        description: "Verantwoordelijk voor correspondentie, notulering ALV, ledenadministratie, KvK/WBTR-formaliteiten en het partijarchief.",
+        email: "secretariaat@lijstvanandel.nl",
+        phone: "",
+        panelNote: "Eigen beveiligd Secretarispaneel"
+      },
+      treasurer: {
+        roleTitle: "Penningmeester",
+        name: "Stef Mars",
+        description: "Beheert begroting, kasboek, contributie-inning via Stripe/SEPA, giftenregister en verantwoording naar de kascommissie.",
+        email: "penningmeester@lijstvanandel.nl",
+        phone: "",
+        panelNote: "Eigen beveiligd Penningmeesterpaneel"
+      },
+      additionalMembers: []
+    };
 
     const stats = {
       totalMeetings: meetings.length,
@@ -3716,8 +3989,221 @@ async function startServer() {
       integrity,
       network,
       stats,
-      fractieleden
+      fractieleden,
+      dailyBoard
     });
+  });
+
+  // Public & Admin: Get Bestuur & Organisatie-informatie
+  app.get("/api/public/bestuur", (req: any, res: any) => {
+    const db = getDb();
+    const board = db.chairmanDailyBoard || {};
+    if (!board.boardTitle || board.boardTitle === "Dagelijks Bestuur Lijst van Andel") {
+      board.boardTitle = "Bestuur";
+    }
+    res.json(board);
+  });
+
+  app.get("/api/bestuur", (req: any, res: any) => {
+    const db = getDb();
+    const board = db.chairmanDailyBoard || {};
+    if (!board.boardTitle || board.boardTitle === "Dagelijks Bestuur Lijst van Andel") {
+      board.boardTitle = "Bestuur";
+    }
+    res.json(board);
+  });
+
+  // Admin & Voorzitter: Board Member Image Upload
+  app.post("/api/chairman/board-member/upload-image", requireAuth, requireBoardOrAdmin, upload.single("image"), (req: any, res: any) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "Geen afbeelding geüpload" });
+    }
+    const imageUrl = `/uploads/fractieleden/${req.file.filename}`;
+    res.json({ success: true, imageUrl, filename: req.file.filename });
+  });
+
+  app.post("/api/admin/board-member/upload-image", requireAuth, requireBoardOrAdmin, upload.single("image"), (req: any, res: any) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "Geen afbeelding geüpload" });
+    }
+    const imageUrl = `/uploads/fractieleden/${req.file.filename}`;
+    res.json({ success: true, imageUrl, filename: req.file.filename });
+  });
+
+  // Admin & Voorzitter: Organization Document File Upload
+  app.post("/api/organization-docs/upload", requireAuth, requireBoardOrAdmin, upload.single("file"), (req: any, res: any) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "Geen bestand geüpload" });
+    }
+    const fileUrl = `/uploads/documents/${req.file.filename}`;
+    const fileSize = req.file.size > 1024 * 1024 
+      ? `${(req.file.size / (1024 * 1024)).toFixed(1)} MB` 
+      : `${Math.round(req.file.size / 1024)} KB`;
+    
+    res.json({
+      success: true,
+      fileUrl,
+      fileName: req.file.originalname,
+      fileSize
+    });
+  });
+
+  // Organization Documents CRUD (Accessible by Admin and Chairman/Board)
+  app.get("/api/organization-docs", (req: any, res: any) => {
+    const db = getDb();
+    const docs = (db.chairmanDailyBoard && db.chairmanDailyBoard.organisatieDocs) || [];
+    res.json(docs);
+  });
+
+  app.post("/api/organization-docs", requireAuth, requireBoardOrAdmin, (req: any, res: any) => {
+    const { titel, beschrijving, category, fileUrl, fileName, fileSize, href, datum } = req.body;
+    if (!titel || !titel.trim()) {
+      return res.status(400).json({ error: "Titel is verplicht" });
+    }
+    const db = getDb();
+    if (!db.chairmanDailyBoard) db.chairmanDailyBoard = {};
+    if (!db.chairmanDailyBoard.organisatieDocs) db.chairmanDailyBoard.organisatieDocs = [];
+
+    const newDoc = {
+      id: "doc-" + Date.now(),
+      titel: titel.trim(),
+      beschrijving: beschrijving ? beschrijving.trim() : "",
+      category: category ? category.trim() : "Organisatie",
+      fileUrl: fileUrl || "",
+      fileName: fileName || "",
+      fileSize: fileSize || "",
+      href: href || "",
+      datum: datum || new Date().toISOString().split("T")[0],
+      createdAt: new Date().toISOString()
+    };
+
+    db.chairmanDailyBoard.organisatieDocs.push(newDoc);
+    db.chairmanDailyBoard.updatedAt = new Date().toISOString();
+    saveDb(db);
+
+    res.status(201).json({ message: "Document succesvol toegevoegd", doc: newDoc, docs: db.chairmanDailyBoard.organisatieDocs });
+  });
+
+  app.put("/api/organization-docs/:id", requireAuth, requireBoardOrAdmin, (req: any, res: any) => {
+    const { titel, beschrijving, category, fileUrl, fileName, fileSize, href, datum } = req.body;
+    const db = getDb();
+    if (!db.chairmanDailyBoard || !db.chairmanDailyBoard.organisatieDocs) {
+      return res.status(404).json({ error: "Geen documenten gevonden" });
+    }
+
+    const docIndex = db.chairmanDailyBoard.organisatieDocs.findIndex((d: any) => d.id === req.params.id);
+    if (docIndex === -1) {
+      return res.status(404).json({ error: "Document niet gevonden" });
+    }
+
+    const existing = db.chairmanDailyBoard.organisatieDocs[docIndex];
+    db.chairmanDailyBoard.organisatieDocs[docIndex] = {
+      ...existing,
+      titel: titel !== undefined ? titel.trim() : existing.titel,
+      beschrijving: beschrijving !== undefined ? beschrijving.trim() : existing.beschrijving,
+      category: category !== undefined ? category.trim() : existing.category,
+      fileUrl: fileUrl !== undefined ? fileUrl : existing.fileUrl,
+      fileName: fileName !== undefined ? fileName : existing.fileName,
+      fileSize: fileSize !== undefined ? fileSize : existing.fileSize,
+      href: href !== undefined ? href : existing.href,
+      datum: datum !== undefined ? datum : existing.datum,
+      updatedAt: new Date().toISOString()
+    };
+
+    db.chairmanDailyBoard.updatedAt = new Date().toISOString();
+    saveDb(db);
+
+    res.json({ message: "Document succesvol bijgewerkt", doc: db.chairmanDailyBoard.organisatieDocs[docIndex], docs: db.chairmanDailyBoard.organisatieDocs });
+  });
+
+  app.delete("/api/organization-docs/:id", requireAuth, requireBoardOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    if (!db.chairmanDailyBoard || !db.chairmanDailyBoard.organisatieDocs) {
+      return res.status(404).json({ error: "Geen documenten gevonden" });
+    }
+
+    const initialLen = db.chairmanDailyBoard.organisatieDocs.length;
+    db.chairmanDailyBoard.organisatieDocs = db.chairmanDailyBoard.organisatieDocs.filter((d: any) => d.id !== req.params.id);
+
+    if (db.chairmanDailyBoard.organisatieDocs.length === initialLen) {
+      return res.status(404).json({ error: "Document niet gevonden" });
+    }
+
+    db.chairmanDailyBoard.updatedAt = new Date().toISOString();
+    saveDb(db);
+
+    res.json({ message: "Document succesvol verwijderd", docs: db.chairmanDailyBoard.organisatieDocs });
+  });
+
+  // Update Daily Board (Dagelijks Bestuur & /bestuur) Composition & Roles
+  app.patch("/api/chairman/daily-board", requireAuth, requireBoardOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    if (!db.chairmanDailyBoard) {
+      db.chairmanDailyBoard = {};
+    }
+
+    const {
+      partyName,
+      boardTitle,
+      boardSubtitle,
+      pageIntro,
+      status,
+      chairman,
+      secretary,
+      treasurer,
+      additionalMembers,
+      organisatieDocs
+    } = req.body;
+
+    if (partyName !== undefined) db.chairmanDailyBoard.partyName = partyName;
+    if (boardTitle !== undefined) db.chairmanDailyBoard.boardTitle = boardTitle;
+    if (boardSubtitle !== undefined) db.chairmanDailyBoard.boardSubtitle = boardSubtitle;
+    if (pageIntro !== undefined) db.chairmanDailyBoard.pageIntro = pageIntro;
+    if (status !== undefined) db.chairmanDailyBoard.status = status;
+    if (chairman !== undefined) db.chairmanDailyBoard.chairman = { ...(db.chairmanDailyBoard.chairman || {}), ...chairman };
+    if (secretary !== undefined) db.chairmanDailyBoard.secretary = { ...(db.chairmanDailyBoard.secretary || {}), ...secretary };
+    if (treasurer !== undefined) db.chairmanDailyBoard.treasurer = { ...(db.chairmanDailyBoard.treasurer || {}), ...treasurer };
+    if (additionalMembers !== undefined) db.chairmanDailyBoard.additionalMembers = additionalMembers;
+    if (organisatieDocs !== undefined) db.chairmanDailyBoard.organisatieDocs = organisatieDocs;
+
+    db.chairmanDailyBoard.updatedAt = new Date().toISOString();
+    saveDb(db);
+    res.json({ message: "Bestuurspagina en samenstelling succesvol bijgewerkt", dailyBoard: db.chairmanDailyBoard });
+  });
+
+  app.put("/api/admin/bestuur", requireAuth, requireBoardOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    if (!db.chairmanDailyBoard) {
+      db.chairmanDailyBoard = {};
+    }
+
+    const {
+      partyName,
+      boardTitle,
+      boardSubtitle,
+      pageIntro,
+      status,
+      chairman,
+      secretary,
+      treasurer,
+      additionalMembers,
+      organisatieDocs
+    } = req.body;
+
+    if (partyName !== undefined) db.chairmanDailyBoard.partyName = partyName;
+    if (boardTitle !== undefined) db.chairmanDailyBoard.boardTitle = boardTitle;
+    if (boardSubtitle !== undefined) db.chairmanDailyBoard.boardSubtitle = boardSubtitle;
+    if (pageIntro !== undefined) db.chairmanDailyBoard.pageIntro = pageIntro;
+    if (status !== undefined) db.chairmanDailyBoard.status = status;
+    if (chairman !== undefined) db.chairmanDailyBoard.chairman = { ...(db.chairmanDailyBoard.chairman || {}), ...chairman };
+    if (secretary !== undefined) db.chairmanDailyBoard.secretary = { ...(db.chairmanDailyBoard.secretary || {}), ...secretary };
+    if (treasurer !== undefined) db.chairmanDailyBoard.treasurer = { ...(db.chairmanDailyBoard.treasurer || {}), ...treasurer };
+    if (additionalMembers !== undefined) db.chairmanDailyBoard.additionalMembers = additionalMembers;
+    if (organisatieDocs !== undefined) db.chairmanDailyBoard.organisatieDocs = organisatieDocs;
+
+    db.chairmanDailyBoard.updatedAt = new Date().toISOString();
+    saveDb(db);
+    res.json({ message: "Bestuurspagina en documenten succesvol opgeslagen", dailyBoard: db.chairmanDailyBoard });
   });
 
   // Update Chairman Notes on Meeting
@@ -4022,6 +4508,62 @@ async function startServer() {
       saveDb(db);
     }
     res.json({ message: "Signaal verwijderd" });
+  });
+
+  // Colleague Chairs (Collega-voorzitters Steenwijkerland) CRUD
+  app.post("/api/chairman/colleague-chairs", requireAuth, requireChairmanOrAdmin, (req: any, res: any) => {
+    const { party, contactPerson, lastContact, notes, email, phone } = req.body;
+    if (!party) return res.status(400).json({ error: "Partijnaam is verplicht" });
+
+    const db = getDb();
+    if (!db.chairmanNetwork) db.chairmanNetwork = { communitySignals: [], colleagueChairs: [] };
+    if (!Array.isArray(db.chairmanNetwork.colleagueChairs)) db.chairmanNetwork.colleagueChairs = [];
+
+    const newChair = {
+      id: `chair-${Date.now()}`,
+      party: String(party).trim(),
+      contactPerson: contactPerson || "Voorzitter",
+      lastContact: lastContact || new Date().toISOString().split("T")[0],
+      notes: notes || "",
+      email: email || "",
+      phone: phone || ""
+    };
+
+    db.chairmanNetwork.colleagueChairs.push(newChair);
+    saveDb(db);
+    res.status(201).json({ message: "Collega-voorzitter toegevoegd", chair: newChair, colleagueChairs: db.chairmanNetwork.colleagueChairs });
+  });
+
+  app.patch("/api/chairman/colleague-chairs/:id", requireAuth, requireChairmanOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    if (!db.chairmanNetwork?.colleagueChairs) return res.status(404).json({ error: "Geen contacten gevonden" });
+
+    let chair = db.chairmanNetwork.colleagueChairs.find((c: any) => c.id === req.params.id);
+    if (!chair) {
+      // fallback by party if id not present
+      chair = db.chairmanNetwork.colleagueChairs.find((c: any) => c.party === req.params.id);
+    }
+    if (!chair) return res.status(404).json({ error: "Collega-voorzitter niet gevonden" });
+
+    const { party, contactPerson, lastContact, notes, email, phone } = req.body;
+    if (party !== undefined) chair.party = party;
+    if (contactPerson !== undefined) chair.contactPerson = contactPerson;
+    if (lastContact !== undefined) chair.lastContact = lastContact;
+    if (notes !== undefined) chair.notes = notes;
+    if (email !== undefined) chair.email = email;
+    if (phone !== undefined) chair.phone = phone;
+
+    saveDb(db);
+    res.json({ message: "Contactgegevens bijgewerkt", chair, colleagueChairs: db.chairmanNetwork.colleagueChairs });
+  });
+
+  app.delete("/api/chairman/colleague-chairs/:id", requireAuth, requireChairmanOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    if (db.chairmanNetwork?.colleagueChairs) {
+      db.chairmanNetwork.colleagueChairs = db.chairmanNetwork.colleagueChairs.filter((c: any) => (c.id || c.party) !== req.params.id);
+      saveDb(db);
+    }
+    res.json({ message: "Collega-voorzitter verwijderd", colleagueChairs: db.chairmanNetwork?.colleagueChairs || [] });
   });
 
   // Export Chairman Dossier CSV

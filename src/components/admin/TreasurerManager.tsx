@@ -32,6 +32,7 @@ import {
   Calendar,
   Layers,
   Trash2,
+  Pencil,
   ExternalLink
 } from "lucide-react";
 
@@ -173,6 +174,19 @@ export function TreasurerManager(props?: TreasurerManagerProps) {
   const [donationAmount, setDonationAmount] = useState("");
   const [donationEmail, setDonationEmail] = useState("");
   const [donationMsg, setDonationMsg] = useState("");
+
+  // Account management state
+  const [showAccountModal, setShowAccountModal] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+  const [accountForm, setAccountForm] = useState({
+    name: "",
+    type: "lopend" as "lopend" | "spaar" | "fractie" | "kas",
+    iban: "",
+    institution: "",
+    balance: 0,
+    currency: "EUR",
+    description: ""
+  });
 
   // Search in contributie members
   const [memberSearch, setMemberSearch] = useState("");
@@ -319,6 +333,78 @@ export function TreasurerManager(props?: TreasurerManagerProps) {
       setSelectedAccountId(null);
       setTransactionAmount("");
       setTransactionDesc("");
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
+
+  // Account CRUD handlers
+  const handleOpenNewAccount = () => {
+    setEditingAccount(null);
+    setAccountForm({
+      name: "",
+      type: "lopend",
+      iban: "",
+      institution: "Rabobank",
+      balance: 0,
+      currency: "EUR",
+      description: ""
+    });
+    setShowAccountModal(true);
+  };
+
+  const handleOpenEditAccount = (acc: Account) => {
+    setEditingAccount(acc);
+    setAccountForm({
+      name: acc.name,
+      type: acc.type,
+      iban: acc.iban || "",
+      institution: acc.institution || "",
+      balance: acc.balance || 0,
+      currency: acc.currency || "EUR",
+      description: acc.description || ""
+    });
+    setShowAccountModal(true);
+  };
+
+  const handleSaveAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!accountForm.name) {
+      toast.error("Voer een naam in voor de rekening");
+      return;
+    }
+    try {
+      const url = editingAccount
+        ? `/api/treasurer/accounts/${editingAccount.id}`
+        : "/api/treasurer/accounts";
+      const method = editingAccount ? "PATCH" : "POST";
+      const res = await fetch(url, {
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(accountForm)
+      });
+      if (!res.ok) throw new Error("Kon rekening niet opslaan");
+      toast.success(editingAccount ? "Rekening bijgewerkt" : "Nieuwe rekening aangemaakt");
+      setShowAccountModal(false);
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
+
+  const handleDeleteAccount = async (accId: string, accName: string) => {
+    if (!confirm(`Weet u zeker dat u rekening "${accName}" wilt verwijderen?`)) return;
+    try {
+      const res = await fetch(`/api/treasurer/accounts/${accId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Kon rekening niet verwijderen");
+      toast.success("Rekening verwijderd");
       fetchData();
     } catch (err: any) {
       toast.error(err.message);
@@ -899,13 +985,31 @@ export function TreasurerManager(props?: TreasurerManagerProps) {
       {/* SUBTAB 2: REKENINGEN & KASBOEK */}
       {activeSubTab === "accounts" && (
         <div className="space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h3 className="text-xl font-bold text-foreground font-display">
+                Bankrekeningen, Kasboek & Fractiegelden
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Beheer alle rekeningen, controleer saldi en leg mutaties direct vast conform verenigingsrecht en Gemeentewet Art. 33.
+              </p>
+            </div>
+            <Button
+              onClick={handleOpenNewAccount}
+              className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
+            >
+              <Plus className="w-4 h-4" />
+              Nieuwe Rekening of Potje Toevoegen
+            </Button>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {(data?.accounts || []).map((acc) => (
               <div
                 key={acc.id}
                 className="bg-card rounded-2xl border border-border p-6 shadow-sm space-y-4 relative"
               >
-                <div className="flex items-start justify-between">
+                <div className="flex items-start justify-between gap-2">
                   <div>
                     <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-muted text-muted-foreground">
                       {acc.type === "fractie"
@@ -921,7 +1025,23 @@ export function TreasurerManager(props?: TreasurerManagerProps) {
                     </h3>
                     <div className="text-xs font-mono text-muted-foreground">{acc.iban}</div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right flex flex-col items-end gap-1.5">
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleOpenEditAccount(acc)}
+                        className="p-1 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground"
+                        title="Rekening bewerken"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteAccount(acc.id, acc.name)}
+                        className="p-1 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-500"
+                        title="Rekening verwijderen"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                     <div className="text-2xl font-bold font-mono text-foreground">
                       €{acc.balance.toLocaleString("nl-NL", { minimumFractionDigits: 2 })}
                     </div>
@@ -1822,6 +1942,118 @@ export function TreasurerManager(props?: TreasurerManagerProps) {
                 </Button>
                 <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs">
                   Gift Opslaan in Register
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: REKENING OF KASBOEK TOEVOEGEN / BEWERKEN */}
+      {showAccountModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-card rounded-2xl border border-border shadow-xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="p-6 border-b border-border flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold font-display text-foreground">
+                  {editingAccount ? "Rekening Bewerken" : "Nieuwe Rekening of Potje Toevoegen"}
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Beheer bankrekeningen, bestemmingsreserves of kasboeken conform Gemeentewet en WBTR
+                </p>
+              </div>
+              <button
+                onClick={() => setShowAccountModal(false)}
+                className="text-muted-foreground hover:text-foreground text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveAccount} className="p-6 space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="font-semibold text-foreground">Rekeningnaam *</label>
+                  <Input
+                    required
+                    placeholder="Bijv. Betaalrekening Partijkas"
+                    value={accountForm.name}
+                    onChange={(e) => setAccountForm({ ...accountForm, name: e.target.value })}
+                    className="text-xs h-9"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="font-semibold text-foreground">Type Rekening *</label>
+                  <select
+                    value={accountForm.type}
+                    onChange={(e: any) => setAccountForm({ ...accountForm, type: e.target.value })}
+                    className="w-full text-xs h-9 px-3 rounded-md border border-input bg-background"
+                  >
+                    <option value="lopend">Operationele Rekening (Lopend)</option>
+                    <option value="spaar">Spaarrekening / Reserve</option>
+                    <option value="fractie">Fractiegelden (Gemeentewet Art. 33)</option>
+                    <option value="kas">Contant Kasboek</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="font-semibold text-foreground">IBAN Rekeningnummer</label>
+                  <Input
+                    placeholder="NL00 RABO 0000 0000 00"
+                    value={accountForm.iban}
+                    onChange={(e) => setAccountForm({ ...accountForm, iban: e.target.value })}
+                    className="text-xs h-9 font-mono"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="font-semibold text-foreground">Financiële Instelling</label>
+                  <Input
+                    placeholder="Bijv. Rabobank, ING, Kas"
+                    value={accountForm.institution}
+                    onChange={(e) => setAccountForm({ ...accountForm, institution: e.target.value })}
+                    className="text-xs h-9"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-semibold text-foreground">Actueel Saldo (€) *</label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  required
+                  placeholder="0.00"
+                  value={accountForm.balance}
+                  onChange={(e) => setAccountForm({ ...accountForm, balance: parseFloat(e.target.value) || 0 })}
+                  className="text-xs h-9 font-mono"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-semibold text-foreground">Statutaire Toelichting / Bestemming</label>
+                <Textarea
+                  placeholder="Bijv. Bestemd voor operationele partijkosten of campagnefondsen..."
+                  value={accountForm.description}
+                  onChange={(e) => setAccountForm({ ...accountForm, description: e.target.value })}
+                  rows={2}
+                  className="text-xs resize-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-border">
+                <Button
+                  type="button"
+                  onClick={() => setShowAccountModal(false)}
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs"
+                >
+                  Annuleren
+                </Button>
+                <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs">
+                  {editingAccount ? "Wijzigingen Opslaan" : "Rekening Aanmaken"}
                 </Button>
               </div>
             </form>

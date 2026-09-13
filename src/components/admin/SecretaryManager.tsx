@@ -198,6 +198,7 @@ export function SecretaryManager({
   const [compliance, setCompliance] = useState<SecretaryCompliance>({});
   const [yearcycle, setYearcycle] = useState<SecretaryYearcycleItem[]>([]);
   const [elections, setElections] = useState<SecretaryElections>({});
+  const [dailyBoard, setDailyBoard] = useState<any>(null);
   const [stats, setStats] = useState<any>({});
 
   // Messages state
@@ -235,6 +236,38 @@ export function SecretaryManager({
     notes: "",
   });
 
+  // Daily Board Edit Dialog
+  const [isDailyBoardDialogOpen, setIsDailyBoardDialogOpen] = useState(false);
+  const [dailyBoardForm, setDailyBoardForm] = useState<any>(null);
+
+  // Yearcycle Edit Dialog
+  const [isYearcycleDialogOpen, setIsYearcycleDialogOpen] = useState(false);
+  const [yearcycleForm, setYearcycleForm] = useState<{
+    quarter: string;
+    title: string;
+    period: string;
+    status: "afgerond" | "actief" | "gepland";
+    items: string[];
+    newItemText: string;
+  }>({
+    quarter: "Q1",
+    title: "",
+    period: "",
+    status: "gepland",
+    items: [],
+    newItemText: ""
+  });
+
+  // Compliance Edit Dialog
+  const [isComplianceDialogOpen, setIsComplianceDialogOpen] = useState(false);
+  const [complianceForm, setComplianceForm] = useState<SecretaryCompliance>({});
+  const [newBoardMemberInput, setNewBoardMemberInput] = useState("");
+
+  // Elections Edit Dialog
+  const [isElectionsDialogOpen, setIsElectionsDialogOpen] = useState(false);
+  const [electionsForm, setElectionsForm] = useState<SecretaryElections>({});
+  const [newLearningInput, setNewLearningInput] = useState("");
+
   const [actionFilter, setActionFilter] = useState<"all" | "open" | "voltooid">("all");
 
   const authHeaders = {
@@ -254,6 +287,7 @@ export function SecretaryManager({
         setCompliance(data.compliance || {});
         setYearcycle(data.yearcycle || []);
         setElections(data.elections || {});
+        if (data.dailyBoard) setDailyBoard(data.dailyBoard);
         setStats(data.stats || {});
       }
     } catch (err) {
@@ -437,6 +471,208 @@ export function SecretaryManager({
       }
     } catch {
       toast.error("Fout bij verwijderen actiepunt.");
+    }
+  };
+
+  // Handle Daily Board
+  const handleOpenEditDailyBoard = () => {
+    setDailyBoardForm(dailyBoard || {
+      partyName: "Lijst van Andel",
+      boardTitle: "Bestuur",
+      boardSubtitle: "Statutaire taakverdeling en wisselwerking binnen het dagelijks bestuur conform verenigingsrecht en de WBTR.",
+      status: "Bestuur Compleet & Operationeel",
+      chairman: {
+        title: "Partijvoorzitter",
+        name: "Sammy van Andel",
+        description: "Leidt ALV en bestuursvergaderingen, bewaakt fractierelatie via 5 instrumenten, stuurt commissies aan en is het gezicht naar buiten.",
+        badge: "Voorzitterspaneel"
+      },
+      secretary: {
+        title: "Secretaris",
+        name: "Anja ter Horst",
+        description: "Verantwoordelijk voor correspondentie, notulering ALV, ledenadministratie, KvK/WBTR-formaliteiten en het partijarchief.",
+        badge: "Eigen beveiligd Secretarispaneel"
+      },
+      treasurer: {
+        title: "Penningmeester",
+        name: "Stef Mars",
+        description: "Beheert begroting, kasboek, contributie-inning via Stripe/SEPA, giftenregister en verantwoording naar de kascommissie.",
+        badge: "Eigen beveiligd Penningmeesterpaneel"
+      }
+    });
+    setIsDailyBoardDialogOpen(true);
+  };
+
+  const handleSaveDailyBoard = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetchWithAuth("/api/chairman/daily-board", {
+        method: "PATCH",
+        headers: authHeaders,
+        body: JSON.stringify(dailyBoardForm)
+      });
+      if (res.ok) {
+        const resp = await res.json();
+        setDailyBoard(resp.dailyBoard || dailyBoardForm);
+        setIsDailyBoardDialogOpen(false);
+        toast.success("Bestuurssamenstelling succesvol bijgewerkt");
+      } else {
+        toast.error("Fout bij opslaan bestuur");
+      }
+    } catch {
+      toast.error("Verbindingsfout bij opslaan bestuur");
+    }
+  };
+
+  // Handle Yearcycle Quarter Edit
+  const handleOpenEditQuarter = (q: SecretaryYearcycleItem) => {
+    setYearcycleForm({
+      quarter: q.quarter,
+      title: q.title,
+      period: q.period,
+      status: q.status,
+      items: [...q.items],
+      newItemText: ""
+    });
+    setIsYearcycleDialogOpen(true);
+  };
+
+  const handleSaveYearcycle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!yearcycleForm.quarter) return;
+    try {
+      const res = await fetchWithAuth(`/api/secretary/yearcycle/${yearcycleForm.quarter}`, {
+        method: "PATCH",
+        headers: authHeaders,
+        body: JSON.stringify({
+          status: yearcycleForm.status,
+          title: yearcycleForm.title,
+          items: yearcycleForm.items
+        })
+      });
+      if (res.ok) {
+        const resp = await res.json();
+        setYearcycle(resp.yearcycle || yearcycle.map(y => y.quarter === yearcycleForm.quarter ? { ...y, ...yearcycleForm } : y));
+        setIsYearcycleDialogOpen(false);
+        toast.success(`Jaarcyclus ${yearcycleForm.quarter} succesvol bijgewerkt`);
+      } else {
+        toast.error("Fout bij opslaan jaarcyclus");
+      }
+    } catch {
+      toast.error("Verbindingsfout bij bijwerken jaarcyclus");
+    }
+  };
+
+  // Handle Compliance Dossier Edit
+  const handleOpenEditCompliance = () => {
+    setComplianceForm({
+      kvk: {
+        kvkNumber: compliance.kvk?.kvkNumber || "08194821",
+        associationName: compliance.kvk?.associationName || "Lijst van Andel",
+        statutorySeat: compliance.kvk?.statutorySeat || "Steenwijkerland",
+        lastMutationDate: compliance.kvk?.lastMutationDate || "2026-04-10",
+        status: compliance.kvk?.status || "Actueel",
+        boardMembersRegistered: [...(compliance.kvk?.boardMembersRegistered || ["Sammy van Andel (Voorzitter)", "Anja ter Horst (Secretaris)", "Stef Mars (Penningmeester)"])]
+      },
+      wbtr: {
+        compliant: compliance.wbtr?.compliant !== false,
+        tegenstrijdigBelangRegeling: compliance.wbtr?.tegenstrijdigBelangRegeling !== false,
+        beletEnOntstentenisRegeling: compliance.wbtr?.beletEnOntstentenisRegeling !== false,
+        meervoudigStemrechtBeperkt: compliance.wbtr?.meervoudigStemrechtBeperkt !== false,
+        aansprakelijkheidsverzekeringBestuur: compliance.wbtr?.aansprakelijkheidsverzekeringBestuur !== false,
+        notes: compliance.wbtr?.notes || "Statuten en reglementen voldoen volledig aan de WBTR eisen conform model Kennispunt."
+      },
+      ubo: {
+        registered: compliance.ubo?.registered !== false,
+        registrationDate: compliance.ubo?.registrationDate || "2022-03-24",
+        lastVerificationDate: compliance.ubo?.lastVerificationDate || "2026-03-10",
+        status: compliance.ubo?.status || "Gevalideerd"
+      },
+      avg: {
+        compliant: compliance.avg?.compliant !== false,
+        privacyStatementPublished: compliance.avg?.privacyStatementPublished !== false,
+        processingRegisterActive: compliance.avg?.processingRegisterActive !== false,
+        notes: compliance.avg?.notes || "Ledenadministratie is afgeschermd met strikte bewaartermijnen en toegangscontrole."
+      },
+      giftenreglement: {
+        publishedOnWebsite: compliance.giftenreglement?.publishedOnWebsite !== false,
+        adoptedByAlv: compliance.giftenreglement?.adoptedByAlv !== false,
+        publicationUrl: compliance.giftenreglement?.publicationUrl || "/documenten/giftenreglement",
+        notes: compliance.giftenreglement?.notes || "Openbaar giftenreglement conform wetgeving politieke partijen en gemeenteraad."
+      }
+    });
+    setIsComplianceDialogOpen(true);
+  };
+
+  const handleSaveCompliance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetchWithAuth("/api/secretary/compliance", {
+        method: "PATCH",
+        headers: authHeaders,
+        body: JSON.stringify(complianceForm)
+      });
+      if (res.ok) {
+        const resp = await res.json();
+        setCompliance(resp.compliance || complianceForm);
+        setIsComplianceDialogOpen(false);
+        toast.success("Wettelijk compliance dossier succesvol bijgewerkt");
+      } else {
+        toast.error("Fout bij opslaan compliance dossier");
+      }
+    } catch {
+      toast.error("Verbindingsfout bij opslaan compliance dossier");
+    }
+  };
+
+  // Handle Elections Edit
+  const handleOpenEditElections = () => {
+    setElectionsForm({
+      campaignEvaluation: {
+        previousResult: elections.campaignEvaluation?.previousResult || "3 zetels in de gemeenteraad Steenwijkerland",
+        keyLearnings: [...(elections.campaignEvaluation?.keyLearnings || [
+          "Vroegtijdige start van de wijkbezoeken en kernengesprekken",
+          "Sterk lokaal sociaal en groen profiel met duidelijke actiepunten",
+          "Transparante communicatie via digitaal ledenportaal"
+        ])],
+        focusAreasNextElection: elections.campaignEvaluation?.focusAreasNextElection || "Zichtbaarheid in buitengebieden, jongerenparticipatie en versterking ledenbasis"
+      },
+      programCommittee: {
+        status: elections.programCommittee?.status || "Actief",
+        lead: elections.programCommittee?.lead || "Commissievoorzitter Sammy van Andel",
+        deadlineDraft: elections.programCommittee?.deadlineDraft || "15 november 2025",
+        alvAdoptionDate: elections.programCommittee?.alvAdoptionDate || "12 januari 2026",
+        notes: elections.programCommittee?.notes || "Thematische werkgroepen voor wonen, duurzaamheid en lokale voorzieningen geformeerd."
+      },
+      candidateCommittee: {
+        status: elections.candidateCommittee?.status || "Gesprekken gaande",
+        lead: elections.candidateCommittee?.lead || "Anja ter Horst (Secretaris)",
+        interviewPeriod: elections.candidateCommittee?.interviewPeriod || "September - December 2025",
+        kiesraadDeadlinesChecked: elections.candidateCommittee?.kiesraadDeadlinesChecked !== false,
+        notes: elections.candidateCommittee?.notes || "Scoutingprofielen opgesteld conform statuten; formele Kiesraad formulieren gereed."
+      }
+    });
+    setIsElectionsDialogOpen(true);
+  };
+
+  const handleSaveElections = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetchWithAuth("/api/secretary/elections", {
+        method: "PATCH",
+        headers: authHeaders,
+        body: JSON.stringify(electionsForm)
+      });
+      if (res.ok) {
+        const resp = await res.json();
+        setElections(resp.elections || electionsForm);
+        setIsElectionsDialogOpen(false);
+        toast.success("Verkiezingsvoorbereiding en commissies succesvol bijgewerkt");
+      } else {
+        toast.error("Fout bij opslaan verkiezingen");
+      }
+    } catch {
+      toast.error("Verbindingsfout bij bijwerken verkiezingen");
     }
   };
 
@@ -710,6 +946,96 @@ export function SecretaryManager({
       {/* SUB-TAB 1: OVERVIEW & 1-JAARCYCLUS */}
       {activeSubTab === "overview" && (
         <div className="space-y-8">
+          {/* Statutair Dagelijks Bestuur & Rolbeheer */}
+          <div className="bg-card border border-border p-6 rounded-2xl shadow-sm space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-bold text-foreground">
+                    {dailyBoard?.boardTitle || "Bestuur"}
+                  </h3>
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                    {dailyBoard?.status || "Bestuur Compleet & Operationeel"}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {dailyBoard?.boardSubtitle || "Statutaire taakverdeling en wisselwerking binnen het dagelijks bestuur conform verenigingsrecht en de WBTR."}
+                </p>
+              </div>
+              <Button
+                onClick={handleOpenEditDailyBoard}
+                variant="outline"
+                size="sm"
+                className="gap-1.5 border-indigo-200 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                Bestuurssamenstelling Wijzigen
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Voorzitter */}
+              <div className="p-4 rounded-xl border border-border bg-muted/30 flex flex-col justify-between space-y-3">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                      {dailyBoard?.chairman?.title || "Partijvoorzitter"}
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-700 dark:text-indigo-300">
+                      {dailyBoard?.chairman?.badge || "Voorzitterspaneel"}
+                    </span>
+                  </div>
+                  <h4 className="font-bold text-base text-foreground mt-1">
+                    {dailyBoard?.chairman?.name || "Sammy van Andel"}
+                  </h4>
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                    {dailyBoard?.chairman?.description || "Leidt ALV en bestuursvergaderingen, bewaakt fractierelatie via 5 instrumenten, stuurt commissies aan en is het gezicht naar buiten."}
+                  </p>
+                </div>
+              </div>
+
+              {/* Secretaris */}
+              <div className="p-4 rounded-xl border-2 border-indigo-500/40 bg-indigo-50/30 dark:bg-indigo-950/20 flex flex-col justify-between space-y-3 shadow-xs">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                      {dailyBoard?.secretary?.title || "Secretaris"}
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-600 text-white">
+                      U bevindt zich hier
+                    </span>
+                  </div>
+                  <h4 className="font-bold text-base text-foreground mt-1">
+                    {dailyBoard?.secretary?.name || "Anja ter Horst"}
+                  </h4>
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                    {dailyBoard?.secretary?.description || "Verantwoordelijk voor correspondentie, notulering ALV, ledenadministratie, KvK/WBTR-formaliteiten en het partijarchief."}
+                  </p>
+                </div>
+              </div>
+
+              {/* Penningmeester */}
+              <div className="p-4 rounded-xl border border-border bg-muted/30 flex flex-col justify-between space-y-3">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                      {dailyBoard?.treasurer?.title || "Penningmeester"}
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+                      {dailyBoard?.treasurer?.badge || "Eigen Penningmeesterpaneel"}
+                    </span>
+                  </div>
+                  <h4 className="font-bold text-base text-foreground mt-1">
+                    {dailyBoard?.treasurer?.name || "Stef Mars"}
+                  </h4>
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                    {dailyBoard?.treasurer?.description || "Beheert begroting, kasboek, contributie-inning via Stripe/SEPA, giftenregister en verantwoording naar de kascommissie."}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Kennispunt Gids Kaart */}
           <div className="bg-card border border-border p-6 rounded-2xl shadow-sm">
             <div className="flex items-start gap-4">
@@ -766,12 +1092,23 @@ export function SecretaryManager({
                   De Bestuurlijke 1-Jaarcyclus (Wettelijke & Statutaire Deadlines)
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Vaste kwartaalindeling voor verantwoording aan de leden, begroting en partijdemocratie.
+                  Vaste kwartaalindeling voor verantwoording aan de leden, begroting en partijdemocratie. Klik op een kwartaal om te bewerken.
                 </p>
               </div>
-              <span className="px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/20">
-                Huidig Kwartaal: Q3 (Voorbereiding & Scouting)
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/20">
+                  Huidig Kwartaal: Q3 (Voorbereiding & Scouting)
+                </span>
+                <Button
+                  onClick={() => handleOpenEditQuarter(yearcycle[0] || { quarter: "Q1", title: "", period: "", status: "gepland", items: [] })}
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 border-indigo-200 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  Kwartaal Aanpassen
+                </Button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -815,6 +1152,17 @@ export function SecretaryManager({
                           </li>
                         ))}
                       </ul>
+                    </div>
+
+                    <div className="pt-3 mt-3 border-t border-border/60 flex items-center justify-end">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditQuarter(q)}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                      >
+                        <Pencil className="w-3 h-3" />
+                        Kwartaal Bewerken
+                      </button>
                     </div>
                   </div>
                 );
@@ -1226,11 +1574,20 @@ export function SecretaryManager({
       {/* SUB-TAB 4: WETTELIJKE VERPLICHTINGEN & COMPLIANCE */}
       {activeSubTab === "compliance" && (
         <div className="space-y-6">
-          <div>
-            <h3 className="text-xl font-bold text-foreground">Wettelijke Verplichtingen & Governance Dossier</h3>
-            <p className="text-xs text-muted-foreground">
-              Toetsing van de 5 wettelijke verplichtingen voor politieke partijen conform de Kennispunt-richtlijn.
-            </p>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h3 className="text-xl font-bold text-foreground">Wettelijke Verplichtingen & Governance Dossier</h3>
+              <p className="text-xs text-muted-foreground">
+                Toetsing van de 5 wettelijke verplichtingen voor politieke partijen conform de Kennispunt-richtlijn.
+              </p>
+            </div>
+            <Button
+              onClick={handleOpenEditCompliance}
+              className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
+            >
+              <Pencil className="w-4 h-4" />
+              Compliance Dossier Bewerken
+            </Button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1246,9 +1603,18 @@ export function SecretaryManager({
                     <span className="text-xs text-muted-foreground">Wettelijke registratie handelsregister</span>
                   </div>
                 </div>
-                <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                  Actueel
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                    {compliance.kvk?.status || "Actueel"}
+                  </span>
+                  <button
+                    onClick={handleOpenEditCompliance}
+                    className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground"
+                    title="KvK dossier bewerken"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
               <div className="space-y-2 text-xs text-muted-foreground">
                 <div className="flex justify-between py-1 border-b border-border/60">
@@ -1286,9 +1652,18 @@ export function SecretaryManager({
                     <span className="text-xs text-muted-foreground">Wet bestuur en toezicht rechtspersonen</span>
                   </div>
                 </div>
-                <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                  Conform
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                    Conform
+                  </span>
+                  <button
+                    onClick={handleOpenEditCompliance}
+                    className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground"
+                    title="WBTR dossier bewerken"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
               <div className="space-y-2 text-xs">
                 <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
@@ -1325,9 +1700,18 @@ export function SecretaryManager({
                     <span className="text-xs text-muted-foreground">Uiteindelijke belanghebbenden registratie</span>
                   </div>
                 </div>
-                <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                  Gevalideerd
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                    {compliance.ubo?.status || "Gevalideerd"}
+                  </span>
+                  <button
+                    onClick={handleOpenEditCompliance}
+                    className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground"
+                    title="UBO registratie bewerken"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed">
                 Verenigingen zijn wettelijk verplicht om hun UBO's (hoger leidinggevend personeel / bestuurders) in te
@@ -1357,9 +1741,18 @@ export function SecretaryManager({
                     <span className="text-xs text-muted-foreground">Ledenprivacy & integriteit</span>
                   </div>
                 </div>
-                <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                  Geborgd
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                    Geborgd
+                  </span>
+                  <button
+                    onClick={handleOpenEditCompliance}
+                    className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground"
+                    title="AVG & Giftenreglement bewerken"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
               <div className="space-y-2 text-xs">
                 <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
@@ -1376,7 +1769,7 @@ export function SecretaryManager({
                 </div>
               </div>
               <p className="text-xs text-muted-foreground bg-muted/40 p-3 rounded-xl border border-border/60">
-                Ledenadministratie is afgeschermd met strikte bewaartermijnen en toegangscontrole.
+                {compliance.avg?.notes || "Ledenadministratie is afgeschermd met strikte bewaartermijnen en toegangscontrole."}
               </p>
             </div>
           </div>
@@ -1668,81 +2061,123 @@ export function SecretaryManager({
       {/* SUB-TAB 8: VERKIEZINGSVOORBEREIDING, COMMISSIES & VACATURES (VERHUISD) */}
       {activeSubTab === "verkiezingen" && (
         <div className="space-y-8">
-          <div>
-            <h3 className="text-xl font-bold text-foreground">Verkiezingsvoorbereiding, Commissies & Scouting</h3>
-            <p className="text-xs text-muted-foreground">
-              Evaluatie eerdere campagnes, programmacommissie, kandidaatstellingscommissie en werving van vrijwilligers.
-            </p>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h3 className="text-xl font-bold text-foreground">Verkiezingsvoorbereiding, Commissies & Scouting</h3>
+              <p className="text-xs text-muted-foreground">
+                Evaluatie eerdere campagnes, programmacommissie, kandidaatstellingscommissie en werving van vrijwilligers.
+              </p>
+            </div>
+            <Button
+              onClick={handleOpenEditElections}
+              className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
+            >
+              <Pencil className="w-4 h-4" />
+              Verkiezingspijlers & Commissies Bewerken
+            </Button>
           </div>
 
           {/* Drie Kennispunt Verkiezingszuilen */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* 1. Campagne Evaluatie */}
-            <div className="bg-card border border-border p-6 rounded-2xl shadow-sm space-y-3">
-              <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-sm">
-                <Sparkles className="w-4 h-4" />
-                1. Campagne-evaluatie & Leerpunten
+            <div className="bg-card border border-border p-6 rounded-2xl shadow-sm space-y-3 flex flex-col justify-between">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-sm">
+                    <Sparkles className="w-4 h-4" />
+                    1. Campagne-evaluatie & Leerpunten
+                  </div>
+                  <button
+                    onClick={handleOpenEditElections}
+                    className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                    title="Campagne evaluatie bewerken"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Vastgelegde leerpunten van de gemeenteraadsverkiezingen:
+                </p>
+                <ul className="space-y-1.5 text-xs text-foreground">
+                  {(elections.campaignEvaluation?.keyLearnings || []).map((kl, i) => (
+                    <li key={i} className="flex items-start gap-1.5 text-muted-foreground">
+                      <span className="text-indigo-500 font-bold">•</span>
+                      <span>{kl}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Vastgelegde leerpunten van de gemeenteraadsverkiezingen:
-              </p>
-              <ul className="space-y-1.5 text-xs text-foreground">
-                {(elections.campaignEvaluation?.keyLearnings || []).map((kl, i) => (
-                  <li key={i} className="flex items-start gap-1.5 text-muted-foreground">
-                    <span className="text-indigo-500 font-bold">•</span>
-                    <span>{kl}</span>
-                  </li>
-                ))}
-              </ul>
               <div className="pt-2 border-t border-border text-xs text-indigo-700 dark:text-indigo-300 font-medium">
                 Focus komende periode: {elections.campaignEvaluation?.focusAreasNextElection}
               </div>
             </div>
 
             {/* 2. Programmacommissie */}
-            <div className="bg-card border border-border p-6 rounded-2xl shadow-sm space-y-3">
-              <div className="flex items-center gap-2 text-purple-600 dark:text-purple-400 font-bold text-sm">
-                <BookOpen className="w-4 h-4" />
-                2. Programmacommissie
+            <div className="bg-card border border-border p-6 rounded-2xl shadow-sm space-y-3 flex flex-col justify-between">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-purple-600 dark:text-purple-400 font-bold text-sm">
+                    <BookOpen className="w-4 h-4" />
+                    2. Programmacommissie
+                  </div>
+                  <button
+                    onClick={handleOpenEditElections}
+                    className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                    title="Programmacommissie bewerken"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Status:</span>
+                  <span className="font-bold text-purple-600">{elections.programCommittee?.status}</span>
+                </div>
+                <div className="flex justify-between text-xs border-b border-border/60 pb-1">
+                  <span className="text-muted-foreground">Commissievoorzitter:</span>
+                  <strong className="text-foreground">{elections.programCommittee?.lead}</strong>
+                </div>
+                <div className="flex justify-between text-xs border-b border-border/60 pb-1">
+                  <span className="text-muted-foreground">Deadline concept:</span>
+                  <strong className="text-foreground">{elections.programCommittee?.deadlineDraft}</strong>
+                </div>
+                <div className="flex justify-between text-xs border-b border-border/60 pb-1">
+                  <span className="text-muted-foreground">Vaststelling ALV:</span>
+                  <strong className="text-foreground">{elections.programCommittee?.alvAdoptionDate}</strong>
+                </div>
               </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Status:</span>
-                <span className="font-bold text-purple-600">{elections.programCommittee?.status}</span>
-              </div>
-              <div className="flex justify-between text-xs border-b border-border/60 pb-1">
-                <span className="text-muted-foreground">Commissievoorzitter:</span>
-                <strong className="text-foreground">{elections.programCommittee?.lead}</strong>
-              </div>
-              <div className="flex justify-between text-xs border-b border-border/60 pb-1">
-                <span className="text-muted-foreground">Deadline concept:</span>
-                <strong className="text-foreground">{elections.programCommittee?.deadlineDraft}</strong>
-              </div>
-              <div className="flex justify-between text-xs border-b border-border/60 pb-1">
-                <span className="text-muted-foreground">Vaststelling ALV:</span>
-                <strong className="text-foreground">{elections.programCommittee?.alvAdoptionDate}</strong>
-              </div>
-              <p className="text-xs text-muted-foreground">{elections.programCommittee?.notes}</p>
+              <p className="text-xs text-muted-foreground pt-1 border-t border-border/60">{elections.programCommittee?.notes}</p>
             </div>
 
             {/* 3. Kandidaatstellingscommissie */}
-            <div className="bg-card border border-border p-6 rounded-2xl shadow-sm space-y-3">
-              <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold text-sm">
-                <Users className="w-4 h-4" />
-                3. Kandidaatstelling & Kiesraad
+            <div className="bg-card border border-border p-6 rounded-2xl shadow-sm space-y-3 flex flex-col justify-between">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold text-sm">
+                    <Users className="w-4 h-4" />
+                    3. Kandidaatstelling & Kiesraad
+                  </div>
+                  <button
+                    onClick={handleOpenEditElections}
+                    className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                    title="Kandidaatstellingscommissie bewerken"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Status:</span>
+                  <span className="font-bold text-emerald-600">{elections.candidateCommittee?.status}</span>
+                </div>
+                <div className="flex justify-between text-xs border-b border-border/60 pb-1">
+                  <span className="text-muted-foreground">Voorzitter scouting:</span>
+                  <strong className="text-foreground">{elections.candidateCommittee?.lead}</strong>
+                </div>
+                <div className="flex justify-between text-xs border-b border-border/60 pb-1">
+                  <span className="text-muted-foreground">Gespreksperiode:</span>
+                  <strong className="text-foreground">{elections.candidateCommittee?.interviewPeriod}</strong>
+                </div>
               </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Status:</span>
-                <span className="font-bold text-emerald-600">{elections.candidateCommittee?.status}</span>
-              </div>
-              <div className="flex justify-between text-xs border-b border-border/60 pb-1">
-                <span className="text-muted-foreground">Voorzitter scouting:</span>
-                <strong className="text-foreground">{elections.candidateCommittee?.lead}</strong>
-              </div>
-              <div className="flex justify-between text-xs border-b border-border/60 pb-1">
-                <span className="text-muted-foreground">Gespreksperiode:</span>
-                <strong className="text-foreground">{elections.candidateCommittee?.interviewPeriod}</strong>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-emerald-600 pt-1">
+              <div className="flex items-center gap-2 text-xs text-emerald-600 pt-2 border-t border-border/60">
                 <CheckCircle className="w-4 h-4" />
                 <span>Kiesraad formaliteiten (model H1/Y) geborgd</span>
               </div>
@@ -1989,6 +2424,842 @@ export function SecretaryManager({
               </Button>
               <Button type="submit" size="sm" className="bg-purple-600 hover:bg-purple-700 text-white">
                 Actiepunt Toevoegen
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* DIALOG 4: DAGELIJKS BESTUUR & TAAKVERDELING BEWERKEN */}
+      <Dialog open={isDailyBoardDialogOpen} onOpenChange={setIsDailyBoardDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold">Dagelijks Bestuur & Rolbeheer</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Beheer de statutaire taakverdeling, functies en profielen binnen het dagelijks bestuur conform verenigingsrecht en de WBTR.
+            </DialogDescription>
+          </DialogHeader>
+          {dailyBoardForm && (
+            <form onSubmit={handleSaveDailyBoard} className="space-y-4 text-xs">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3.5 bg-muted/40 rounded-xl border border-border/70">
+                <div>
+                  <label className="font-semibold text-foreground">Bestuurstitel</label>
+                  <Input
+                    value={dailyBoardForm.boardTitle || ""}
+                    onChange={(e) => setDailyBoardForm({ ...dailyBoardForm, boardTitle: e.target.value })}
+                    className="mt-1 h-9 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-foreground">Bestuursstatus</label>
+                  <Input
+                    value={dailyBoardForm.status || ""}
+                    onChange={(e) => setDailyBoardForm({ ...dailyBoardForm, status: e.target.value })}
+                    className="mt-1 h-9 text-xs"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="font-semibold text-foreground">Subtitel / Wettelijk Kader</label>
+                  <Input
+                    value={dailyBoardForm.boardSubtitle || ""}
+                    onChange={(e) => setDailyBoardForm({ ...dailyBoardForm, boardSubtitle: e.target.value })}
+                    className="mt-1 h-9 text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Voorzitter */}
+              <div className="p-3.5 border border-border rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-sm text-indigo-600 dark:text-indigo-400">1. Partijvoorzitter</span>
+                  <span className="text-[11px] text-muted-foreground">Leiding & fractierelatie</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="font-medium">Naam</label>
+                    <Input
+                      value={dailyBoardForm.chairman?.name || ""}
+                      onChange={(e) => setDailyBoardForm({
+                        ...dailyBoardForm,
+                        chairman: { ...dailyBoardForm.chairman, name: e.target.value }
+                      })}
+                      className="mt-1 h-8 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-medium">Functiebadge</label>
+                    <Input
+                      value={dailyBoardForm.chairman?.badge || ""}
+                      onChange={(e) => setDailyBoardForm({
+                        ...dailyBoardForm,
+                        chairman: { ...dailyBoardForm.chairman, badge: e.target.value }
+                      })}
+                      className="mt-1 h-8 text-xs"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="font-medium">Taakomschrijving</label>
+                  <Textarea
+                    value={dailyBoardForm.chairman?.description || ""}
+                    onChange={(e) => setDailyBoardForm({
+                      ...dailyBoardForm,
+                      chairman: { ...dailyBoardForm.chairman, description: e.target.value }
+                    })}
+                    rows={2}
+                    className="mt-1 text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Secretaris */}
+              <div className="p-3.5 border border-border rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-sm text-indigo-600 dark:text-indigo-400">2. Secretaris</span>
+                  <span className="text-[11px] text-muted-foreground">Organisatorische spil</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="font-medium">Naam</label>
+                    <Input
+                      value={dailyBoardForm.secretary?.name || ""}
+                      onChange={(e) => setDailyBoardForm({
+                        ...dailyBoardForm,
+                        secretary: { ...dailyBoardForm.secretary, name: e.target.value }
+                      })}
+                      className="mt-1 h-8 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-medium">Functiebadge</label>
+                    <Input
+                      value={dailyBoardForm.secretary?.badge || ""}
+                      onChange={(e) => setDailyBoardForm({
+                        ...dailyBoardForm,
+                        secretary: { ...dailyBoardForm.secretary, badge: e.target.value }
+                      })}
+                      className="mt-1 h-8 text-xs"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="font-medium">Taakomschrijving</label>
+                  <Textarea
+                    value={dailyBoardForm.secretary?.description || ""}
+                    onChange={(e) => setDailyBoardForm({
+                      ...dailyBoardForm,
+                      secretary: { ...dailyBoardForm.secretary, description: e.target.value }
+                    })}
+                    rows={2}
+                    className="mt-1 text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Penningmeester */}
+              <div className="p-3.5 border border-border rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-sm text-indigo-600 dark:text-indigo-400">3. Penningmeester</span>
+                  <span className="text-[11px] text-muted-foreground">Financiën & kasbeheer</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="font-medium">Naam</label>
+                    <Input
+                      value={dailyBoardForm.treasurer?.name || ""}
+                      onChange={(e) => setDailyBoardForm({
+                        ...dailyBoardForm,
+                        treasurer: { ...dailyBoardForm.treasurer, name: e.target.value }
+                      })}
+                      className="mt-1 h-8 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-medium">Functiebadge</label>
+                    <Input
+                      value={dailyBoardForm.treasurer?.badge || ""}
+                      onChange={(e) => setDailyBoardForm({
+                        ...dailyBoardForm,
+                        treasurer: { ...dailyBoardForm.treasurer, badge: e.target.value }
+                      })}
+                      className="mt-1 h-8 text-xs"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="font-medium">Taakomschrijving</label>
+                  <Textarea
+                    value={dailyBoardForm.treasurer?.description || ""}
+                    onChange={(e) => setDailyBoardForm({
+                      ...dailyBoardForm,
+                      treasurer: { ...dailyBoardForm.treasurer, description: e.target.value }
+                    })}
+                    rows={2}
+                    className="mt-1 text-xs"
+                  />
+                </div>
+              </div>
+
+              <DialogFooter className="pt-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => setIsDailyBoardDialogOpen(false)}>
+                  Annuleren
+                </Button>
+                <Button type="submit" size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                  Bestuurssamenstelling Opslaan
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* DIALOG 5: 1-JAARCYCLUS KWARTAAL BEWERKEN */}
+      <Dialog open={isYearcycleDialogOpen} onOpenChange={setIsYearcycleDialogOpen}>
+        <DialogContent className="max-w-lg rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold">Jaarcyclus Kwartaal Beheren</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Pas de deadlines, status en de wettelijke checklist van het kwartaal aan conform de partijagenda.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSaveYearcycle} className="space-y-4 text-xs">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="font-semibold text-foreground">Kwartaal Selecteren</label>
+                <select
+                  value={yearcycleForm.quarter}
+                  onChange={(e) => {
+                    const sel = yearcycle.find(y => y.quarter === e.target.value);
+                    if (sel) {
+                      setYearcycleForm({
+                        quarter: sel.quarter,
+                        title: sel.title,
+                        period: sel.period,
+                        status: sel.status,
+                        items: [...sel.items],
+                        newItemText: ""
+                      });
+                    } else {
+                      setYearcycleForm({ ...yearcycleForm, quarter: e.target.value });
+                    }
+                  }}
+                  className="w-full mt-1 p-2 rounded-xl border bg-background text-foreground text-xs"
+                >
+                  <option value="Q1">Q1: Jaarverantwoording & ALV (Jan - Mrt)</option>
+                  <option value="Q2">Q2: Ledenraadpleging & Thema's (Apr - Jun)</option>
+                  <option value="Q3">Q3: Voorbereiding & Scouting (Jul - Sep)</option>
+                  <option value="Q4">Q4: Begroting & Najaars-ALV (Okt - Dec)</option>
+                </select>
+              </div>
+              <div>
+                <label className="font-semibold text-foreground">Status</label>
+                <select
+                  value={yearcycleForm.status}
+                  onChange={(e) => setYearcycleForm({ ...yearcycleForm, status: e.target.value as any })}
+                  className="w-full mt-1 p-2 rounded-xl border bg-background text-foreground text-xs"
+                >
+                  <option value="gepland">Gepland</option>
+                  <option value="actief">Actief (Lopend)</option>
+                  <option value="afgerond">Afgerond</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="font-semibold text-foreground">Kwartaaltitel</label>
+                <Input
+                  value={yearcycleForm.title}
+                  onChange={(e) => setYearcycleForm({ ...yearcycleForm, title: e.target.value })}
+                  placeholder="Bijv. Q3: Voorbereiding & Scouting"
+                  className="mt-1 h-9 text-xs"
+                />
+              </div>
+              <div>
+                <label className="font-semibold text-foreground">Periode</label>
+                <Input
+                  value={yearcycleForm.period}
+                  onChange={(e) => setYearcycleForm({ ...yearcycleForm, period: e.target.value })}
+                  placeholder="Bijv. Jul - Sep"
+                  className="mt-1 h-9 text-xs"
+                />
+              </div>
+            </div>
+
+            {/* Checklist items */}
+            <div className="space-y-2">
+              <label className="font-semibold text-foreground">Checklist & Deadlines</label>
+              <div className="space-y-1.5 max-h-48 overflow-y-auto p-2 bg-muted/30 rounded-xl border border-border">
+                {yearcycleForm.items.map((item, index) => (
+                  <div key={index} className="flex items-center justify-between gap-2 p-1.5 bg-card rounded-lg border border-border/60">
+                    <span className="text-xs text-foreground flex-1">{item}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = [...yearcycleForm.items];
+                        next.splice(index, 1);
+                        setYearcycleForm({ ...yearcycleForm, items: next });
+                      }}
+                      className="text-rose-500 hover:text-rose-700 p-1"
+                      title="Item verwijderen"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+                {yearcycleForm.items.length === 0 && (
+                  <p className="text-muted-foreground text-center py-2 text-xs">Geen acties in dit kwartaal</p>
+                )}
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <Input
+                  value={yearcycleForm.newItemText}
+                  onChange={(e) => setYearcycleForm({ ...yearcycleForm, newItemText: e.target.value })}
+                  placeholder="Nieuwe deadline of statutaire taak..."
+                  className="h-8 text-xs flex-1"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      if (yearcycleForm.newItemText.trim()) {
+                        setYearcycleForm({
+                          ...yearcycleForm,
+                          items: [...yearcycleForm.items, yearcycleForm.newItemText.trim()],
+                          newItemText: ""
+                        });
+                      }
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs"
+                  onClick={() => {
+                    if (yearcycleForm.newItemText.trim()) {
+                      setYearcycleForm({
+                        ...yearcycleForm,
+                        items: [...yearcycleForm.items, yearcycleForm.newItemText.trim()],
+                        newItemText: ""
+                      });
+                    }
+                  }}
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1" /> Toevoegen
+                </Button>
+              </div>
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setIsYearcycleDialogOpen(false)}>
+                Annuleren
+              </Button>
+              <Button type="submit" size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                Kwartaal Opslaan
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* DIALOG 6: COMPLIANCE DOSSIER BEWERKEN */}
+      <Dialog open={isComplianceDialogOpen} onOpenChange={setIsComplianceDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold">Wettelijk Compliance & Governance Dossier</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Werk de gegevens bij van KvK, WBTR, UBO-register, AVG privacy en het openbare giftenreglement conform Kennispunt.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSaveCompliance} className="space-y-4 text-xs">
+            {/* 1. KvK */}
+            <div className="p-3.5 border border-border rounded-xl space-y-2.5">
+              <div className="flex items-center gap-2 font-bold text-sm text-indigo-600">
+                <Building2 className="w-4 h-4" /> 1. Kamer van Koophandel (Handelsregister)
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                <div>
+                  <label className="font-medium">KvK Nummer</label>
+                  <Input
+                    value={complianceForm.kvk?.kvkNumber || ""}
+                    onChange={(e) => setComplianceForm({
+                      ...complianceForm,
+                      kvk: { ...complianceForm.kvk, kvkNumber: e.target.value } as any
+                    })}
+                    className="mt-1 h-8 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="font-medium">Statutaire Zetel</label>
+                  <Input
+                    value={complianceForm.kvk?.statutorySeat || ""}
+                    onChange={(e) => setComplianceForm({
+                      ...complianceForm,
+                      kvk: { ...complianceForm.kvk, statutorySeat: e.target.value } as any
+                    })}
+                    className="mt-1 h-8 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="font-medium">Laatste Bestuursmutatie</label>
+                  <Input
+                    type="date"
+                    value={complianceForm.kvk?.lastMutationDate || ""}
+                    onChange={(e) => setComplianceForm({
+                      ...complianceForm,
+                      kvk: { ...complianceForm.kvk, lastMutationDate: e.target.value } as any
+                    })}
+                    className="mt-1 h-8 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-medium">Geregistreerde Bestuurders (Uittreksel)</label>
+                <div className="space-y-1 mt-1">
+                  {(complianceForm.kvk?.boardMembersRegistered || []).map((bm, i) => (
+                    <div key={i} className="flex items-center justify-between p-1 px-2 rounded bg-muted text-xs">
+                      <span>{bm}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const list = [...(complianceForm.kvk?.boardMembersRegistered || [])];
+                          list.splice(i, 1);
+                          setComplianceForm({
+                            ...complianceForm,
+                            kvk: { ...complianceForm.kvk, boardMembersRegistered: list } as any
+                          });
+                        }}
+                        className="text-rose-500 hover:text-rose-700 p-0.5"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                  <div className="flex gap-2 pt-1">
+                    <Input
+                      value={newBoardMemberInput}
+                      onChange={(e) => setNewBoardMemberInput(e.target.value)}
+                      placeholder="Naam & functie (bijv. Jan Jansen (Bestuurslid))"
+                      className="h-8 text-xs flex-1"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-xs"
+                      onClick={() => {
+                        if (newBoardMemberInput.trim()) {
+                          setComplianceForm({
+                            ...complianceForm,
+                            kvk: {
+                              ...complianceForm.kvk,
+                              boardMembersRegistered: [
+                                ...(complianceForm.kvk?.boardMembersRegistered || []),
+                                newBoardMemberInput.trim()
+                              ]
+                            } as any
+                          });
+                          setNewBoardMemberInput("");
+                        }
+                      }}
+                    >
+                      <Plus className="w-3.5 h-3.5 mr-1" /> Bestuurder Toevoegen
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. WBTR */}
+            <div className="p-3.5 border border-border rounded-xl space-y-2.5">
+              <div className="flex items-center gap-2 font-bold text-sm text-purple-600">
+                <Scale className="w-4 h-4" /> 2. WBTR Compliance (Bestuur & Toezicht)
+              </div>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={complianceForm.wbtr?.tegenstrijdigBelangRegeling !== false}
+                    onChange={(e) => setComplianceForm({
+                      ...complianceForm,
+                      wbtr: { ...complianceForm.wbtr, tegenstrijdigBelangRegeling: e.target.checked } as any
+                    })}
+                    className="rounded text-purple-600"
+                  />
+                  <span>Tegenstrijdig belang regeling statutair vastgelegd</span>
+                </label>
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={complianceForm.wbtr?.beletEnOntstentenisRegeling !== false}
+                    onChange={(e) => setComplianceForm({
+                      ...complianceForm,
+                      wbtr: { ...complianceForm.wbtr, beletEnOntstentenisRegeling: e.target.checked } as any
+                    })}
+                    className="rounded text-purple-600"
+                  />
+                  <span>Belet- en ontstentenisregeling in statuten opgenomen</span>
+                </label>
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={complianceForm.wbtr?.meervoudigStemrechtBeperkt !== false}
+                    onChange={(e) => setComplianceForm({
+                      ...complianceForm,
+                      wbtr: { ...complianceForm.wbtr, meervoudigStemrechtBeperkt: e.target.checked } as any
+                    })}
+                    className="rounded text-purple-600"
+                  />
+                  <span>Meervoudig stemrecht begrensd conform wettelijke eis</span>
+                </label>
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={complianceForm.wbtr?.aansprakelijkheidsverzekeringBestuur !== false}
+                    onChange={(e) => setComplianceForm({
+                      ...complianceForm,
+                      wbtr: { ...complianceForm.wbtr, aansprakelijkheidsverzekeringBestuur: e.target.checked } as any
+                    })}
+                    className="rounded text-purple-600"
+                  />
+                  <span>Bestuursaansprakelijkheidsverzekering actief</span>
+                </label>
+              </div>
+              <div>
+                <label className="font-medium">WBTR Toelichting</label>
+                <Input
+                  value={complianceForm.wbtr?.notes || ""}
+                  onChange={(e) => setComplianceForm({
+                    ...complianceForm,
+                    wbtr: { ...complianceForm.wbtr, notes: e.target.value } as any
+                  })}
+                  className="mt-1 h-8 text-xs"
+                />
+              </div>
+            </div>
+
+            {/* 3. UBO & 4. AVG & Giften */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* UBO */}
+              <div className="p-3.5 border border-border rounded-xl space-y-2">
+                <div className="flex items-center gap-2 font-bold text-sm text-amber-600">
+                  <Users className="w-4 h-4" /> 3. UBO-Register
+                </div>
+                <div>
+                  <label className="font-medium">Registratiedatum</label>
+                  <Input
+                    type="date"
+                    value={complianceForm.ubo?.registrationDate || ""}
+                    onChange={(e) => setComplianceForm({
+                      ...complianceForm,
+                      ubo: { ...complianceForm.ubo, registrationDate: e.target.value } as any
+                    })}
+                    className="mt-1 h-8 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="font-medium">Laatste Verificatiedatum</label>
+                  <Input
+                    type="date"
+                    value={complianceForm.ubo?.lastVerificationDate || ""}
+                    onChange={(e) => setComplianceForm({
+                      ...complianceForm,
+                      ubo: { ...complianceForm.ubo, lastVerificationDate: e.target.value } as any
+                    })}
+                    className="mt-1 h-8 text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* AVG & Giften */}
+              <div className="p-3.5 border border-border rounded-xl space-y-2">
+                <div className="flex items-center gap-2 font-bold text-sm text-teal-600">
+                  <ShieldCheck className="w-4 h-4" /> 4. AVG & 5. Giftenreglement
+                </div>
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={complianceForm.avg?.privacyStatementPublished !== false}
+                    onChange={(e) => setComplianceForm({
+                      ...complianceForm,
+                      avg: { ...complianceForm.avg, privacyStatementPublished: e.target.checked } as any
+                    })}
+                    className="rounded text-teal-600"
+                  />
+                  <span>Privacyverklaring gepubliceerd conform AVG</span>
+                </label>
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={complianceForm.giftenreglement?.adoptedByAlv !== false}
+                    onChange={(e) => setComplianceForm({
+                      ...complianceForm,
+                      giftenreglement: { ...complianceForm.giftenreglement, adoptedByAlv: e.target.checked } as any
+                    })}
+                    className="rounded text-teal-600"
+                  />
+                  <span>Openbaar giftenreglement vastgesteld door ALV</span>
+                </label>
+                <div>
+                  <label className="font-medium">AVG Toelichting</label>
+                  <Input
+                    value={complianceForm.avg?.notes || ""}
+                    onChange={(e) => setComplianceForm({
+                      ...complianceForm,
+                      avg: { ...complianceForm.avg, notes: e.target.value } as any
+                    })}
+                    className="mt-1 h-8 text-xs"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setIsComplianceDialogOpen(false)}>
+                Annuleren
+              </Button>
+              <Button type="submit" size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                Compliance Dossier Opslaan
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* DIALOG 7: VERKIEZINGSVOORBEREIDING & COMMISSIES BEWERKEN */}
+      <Dialog open={isElectionsDialogOpen} onOpenChange={setIsElectionsDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold">Verkiezingsvoorbereiding & Commissies</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Beheer de campagne-evaluatie, programmacommissie en de kandidaatstellingscommissie conform Kennispunt.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSaveElections} className="space-y-4 text-xs">
+            {/* 1. Campagne Evaluatie */}
+            <div className="p-3.5 border border-border rounded-xl space-y-2.5">
+              <div className="flex items-center gap-2 font-bold text-sm text-indigo-600">
+                <Sparkles className="w-4 h-4" /> 1. Campagne-evaluatie & Leerpunten
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="font-medium">Vorig Resultaat</label>
+                  <Input
+                    value={electionsForm.campaignEvaluation?.previousResult || ""}
+                    onChange={(e) => setElectionsForm({
+                      ...electionsForm,
+                      campaignEvaluation: { ...electionsForm.campaignEvaluation, previousResult: e.target.value } as any
+                    })}
+                    className="mt-1 h-8 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="font-medium">Focus Komende Periode</label>
+                  <Input
+                    value={electionsForm.campaignEvaluation?.focusAreasNextElection || ""}
+                    onChange={(e) => setElectionsForm({
+                      ...electionsForm,
+                      campaignEvaluation: { ...electionsForm.campaignEvaluation, focusAreasNextElection: e.target.value } as any
+                    })}
+                    className="mt-1 h-8 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-medium">Vastgelegde Leerpunten</label>
+                <div className="space-y-1 mt-1">
+                  {(electionsForm.campaignEvaluation?.keyLearnings || []).map((kl, i) => (
+                    <div key={i} className="flex items-center justify-between p-1 px-2 rounded bg-muted text-xs">
+                      <span>{kl}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const list = [...(electionsForm.campaignEvaluation?.keyLearnings || [])];
+                          list.splice(i, 1);
+                          setElectionsForm({
+                            ...electionsForm,
+                            campaignEvaluation: { ...electionsForm.campaignEvaluation, keyLearnings: list } as any
+                          });
+                        }}
+                        className="text-rose-500 hover:text-rose-700 p-0.5"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                  <div className="flex gap-2 pt-1">
+                    <Input
+                      value={newLearningInput}
+                      onChange={(e) => setNewLearningInput(e.target.value)}
+                      placeholder="Nieuw leerpunt campagne..."
+                      className="h-8 text-xs flex-1"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-xs"
+                      onClick={() => {
+                        if (newLearningInput.trim()) {
+                          setElectionsForm({
+                            ...electionsForm,
+                            campaignEvaluation: {
+                              ...electionsForm.campaignEvaluation,
+                              keyLearnings: [
+                                ...(electionsForm.campaignEvaluation?.keyLearnings || []),
+                                newLearningInput.trim()
+                              ]
+                            } as any
+                          });
+                          setNewLearningInput("");
+                        }
+                      }}
+                    >
+                      <Plus className="w-3.5 h-3.5 mr-1" /> Leerpunt Toevoegen
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Programmacommissie */}
+            <div className="p-3.5 border border-border rounded-xl space-y-2.5">
+              <div className="flex items-center gap-2 font-bold text-sm text-purple-600">
+                <BookOpen className="w-4 h-4" /> 2. Programmacommissie
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <div>
+                  <label className="font-medium">Status</label>
+                  <Input
+                    value={electionsForm.programCommittee?.status || ""}
+                    onChange={(e) => setElectionsForm({
+                      ...electionsForm,
+                      programCommittee: { ...electionsForm.programCommittee, status: e.target.value } as any
+                    })}
+                    className="mt-1 h-8 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="font-medium">Commissievoorzitter</label>
+                  <Input
+                    value={electionsForm.programCommittee?.lead || ""}
+                    onChange={(e) => setElectionsForm({
+                      ...electionsForm,
+                      programCommittee: { ...electionsForm.programCommittee, lead: e.target.value } as any
+                    })}
+                    className="mt-1 h-8 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="font-medium">Deadline Concept</label>
+                  <Input
+                    value={electionsForm.programCommittee?.deadlineDraft || ""}
+                    onChange={(e) => setElectionsForm({
+                      ...electionsForm,
+                      programCommittee: { ...electionsForm.programCommittee, deadlineDraft: e.target.value } as any
+                    })}
+                    className="mt-1 h-8 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="font-medium">Vaststelling ALV</label>
+                  <Input
+                    value={electionsForm.programCommittee?.alvAdoptionDate || ""}
+                    onChange={(e) => setElectionsForm({
+                      ...electionsForm,
+                      programCommittee: { ...electionsForm.programCommittee, alvAdoptionDate: e.target.value } as any
+                    })}
+                    className="mt-1 h-8 text-xs"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="font-medium">Toelichting / Voortgang</label>
+                <Input
+                  value={electionsForm.programCommittee?.notes || ""}
+                  onChange={(e) => setElectionsForm({
+                    ...electionsForm,
+                    programCommittee: { ...electionsForm.programCommittee, notes: e.target.value } as any
+                  })}
+                  className="mt-1 h-8 text-xs"
+                />
+              </div>
+            </div>
+
+            {/* 3. Kandidaatstellingscommissie */}
+            <div className="p-3.5 border border-border rounded-xl space-y-2.5">
+              <div className="flex items-center gap-2 font-bold text-sm text-emerald-600">
+                <Users className="w-4 h-4" /> 3. Kandidaatstelling & Kiesraad
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                <div>
+                  <label className="font-medium">Status</label>
+                  <Input
+                    value={electionsForm.candidateCommittee?.status || ""}
+                    onChange={(e) => setElectionsForm({
+                      ...electionsForm,
+                      candidateCommittee: { ...electionsForm.candidateCommittee, status: e.target.value } as any
+                    })}
+                    className="mt-1 h-8 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="font-medium">Voorzitter Scouting</label>
+                  <Input
+                    value={electionsForm.candidateCommittee?.lead || ""}
+                    onChange={(e) => setElectionsForm({
+                      ...electionsForm,
+                      candidateCommittee: { ...electionsForm.candidateCommittee, lead: e.target.value } as any
+                    })}
+                    className="mt-1 h-8 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="font-medium">Gespreksperiode</label>
+                  <Input
+                    value={electionsForm.candidateCommittee?.interviewPeriod || ""}
+                    onChange={(e) => setElectionsForm({
+                      ...electionsForm,
+                      candidateCommittee: { ...electionsForm.candidateCommittee, interviewPeriod: e.target.value } as any
+                    })}
+                    className="mt-1 h-8 text-xs"
+                  />
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={electionsForm.candidateCommittee?.kiesraadDeadlinesChecked !== false}
+                  onChange={(e) => setElectionsForm({
+                    ...electionsForm,
+                    candidateCommittee: { ...electionsForm.candidateCommittee, kiesraadDeadlinesChecked: e.target.checked } as any
+                  })}
+                  className="rounded text-emerald-600"
+                />
+                <span>Kiesraad formaliteiten (model H1/Y) geborgd</span>
+              </label>
+              <div>
+                <label className="font-medium">Toelichting Scouting</label>
+                <Input
+                  value={electionsForm.candidateCommittee?.notes || ""}
+                  onChange={(e) => setElectionsForm({
+                    ...electionsForm,
+                    candidateCommittee: { ...electionsForm.candidateCommittee, notes: e.target.value } as any
+                  })}
+                  className="mt-1 h-8 text-xs"
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setIsElectionsDialogOpen(false)}>
+                Annuleren
+              </Button>
+              <Button type="submit" size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                Commissies Opslaan
               </Button>
             </DialogFooter>
           </form>

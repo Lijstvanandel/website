@@ -55,6 +55,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { BelafsprakenManager } from "@/components/BelafsprakenManager";
+import { BestuurManager } from "@/components/admin/BestuurManager";
 
 export interface ChairmanMeeting {
   id: string;
@@ -201,6 +202,32 @@ export interface ChairmanStats {
   currentYearInCycle: number;
 }
 
+export interface BoardMemberInfo {
+  roleTitle: string;
+  name: string;
+  description: string;
+  email?: string;
+  phone?: string;
+  panelNote?: string;
+}
+
+export interface ChairmanDailyBoard {
+  partyName?: string;
+  boardTitle?: string;
+  boardSubtitle?: string;
+  status?: string;
+  chairman?: BoardMemberInfo;
+  secretary?: BoardMemberInfo;
+  treasurer?: BoardMemberInfo;
+  additionalMembers?: {
+    id: string;
+    roleTitle: string;
+    name: string;
+    description: string;
+    email?: string;
+  }[];
+}
+
 interface Props {
   token: string | null;
   currentUser: any;
@@ -209,7 +236,7 @@ interface Props {
 
 export function ChairmanManager({ token, currentUser, headers }: Props) {
   const [activeSubTab, setActiveSubTab] = useState<
-    "overzicht" | "vergaderingen" | "fractie" | "commissies" | "jaarcyclus" | "integriteit" | "netwerk"
+    "overzicht" | "vergaderingen" | "fractie" | "commissies" | "jaarcyclus" | "integriteit" | "netwerk" | "bestuur"
   >("overzicht");
 
   const [loading, setLoading] = useState(true);
@@ -217,6 +244,7 @@ export function ChairmanManager({ token, currentUser, headers }: Props) {
 
   // Data states
   const [meetings, setMeetings] = useState<ChairmanMeeting[]>([]);
+  const [dailyBoard, setDailyBoard] = useState<ChairmanDailyBoard | null>(null);
   const [fractieInterviews, setFractieInterviews] = useState<FractieInterview[]>([]);
   const [fractieStart, setFractieStart] = useState<FractieStart | null>(null);
   const [tussenbalans, setTussenbalans] = useState<Tussenbalans | null>(null);
@@ -323,6 +351,45 @@ export function ChairmanManager({ token, currentUser, headers }: Props) {
     actionPoints: []
   });
 
+  const [isDailyBoardModalOpen, setIsDailyBoardModalOpen] = useState(false);
+  const [dailyBoardForm, setDailyBoardForm] = useState<ChairmanDailyBoard>({
+    partyName: "Lijst van Andel",
+    boardTitle: "Bestuur",
+    boardSubtitle: "Statutaire taakverdeling en wisselwerking binnen het dagelijks bestuur conform verenigingsrecht en de WBTR.",
+    status: "Bestuur Compleet & Operationeel",
+    chairman: {
+      roleTitle: "Partijvoorzitter",
+      name: "Sammy van Andel",
+      description: "Leidt ALV en bestuursvergaderingen, bewaakt fractierelatie via 5 instrumenten, stuurt commissies aan en is het gezicht naar buiten.",
+      email: "voorzitter@lijstvanandel.nl",
+      panelNote: "U bevindt zich in het Voorzitterpaneel"
+    },
+    secretary: {
+      roleTitle: "Secretaris",
+      name: "Anja ter Horst",
+      description: "Verantwoordelijk voor correspondentie, notulering ALV, ledenadministratie, KvK/WBTR-formaliteiten en het partijarchief.",
+      email: "secretariaat@lijstvanandel.nl",
+      panelNote: "Eigen beveiligd Secretarispaneel"
+    },
+    treasurer: {
+      roleTitle: "Penningmeester",
+      name: "Stef Mars",
+      description: "Beheert begroting, kasboek, contributie-inning via Stripe/SEPA, giftenregister en verantwoording naar de kascommissie.",
+      email: "penningmeester@lijstvanandel.nl",
+      panelNote: "Eigen beveiligd Penningmeesterpaneel"
+    },
+    additionalMembers: []
+  });
+
+  const [isColleagueChairModalOpen, setIsColleagueChairModalOpen] = useState(false);
+  const [editingColleagueChair, setEditingColleagueChair] = useState<ColleagueChair | null>(null);
+  const [colleagueChairForm, setColleagueChairForm] = useState<ColleagueChair>({
+    party: "",
+    contactPerson: "",
+    lastContact: new Date().toISOString().split("T")[0],
+    notes: ""
+  });
+
   // Load consolidated Chairman data
   const loadChairmanData = useCallback(async () => {
     try {
@@ -333,6 +400,7 @@ export function ChairmanManager({ token, currentUser, headers }: Props) {
       if (res.ok) {
         const data = await res.json();
         setMeetings(data.meetings || []);
+        setDailyBoard(data.dailyBoard || null);
         setFractieInterviews(data.fractieInterviews || []);
         setFractieStart(data.fractieStart || null);
         setTussenbalans(data.tussenbalans || null);
@@ -627,6 +695,98 @@ export function ChairmanManager({ token, currentUser, headers }: Props) {
     }
   };
 
+  const handleDeleteSignal = async (id: string) => {
+    if (!confirm("Weet u zeker dat u dit inwonerssignaal wilt verwijderen?")) return;
+    try {
+      const res = await fetchWithAuth(`/api/chairman/signals/${id}`, {
+        method: "DELETE",
+        headers
+      });
+      if (res.ok) {
+        toast.success("Inwonerssignaal verwijderd");
+        loadChairmanData();
+      } else {
+        toast.error("Fout bij verwijderen signaal");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Netwerkfout bij verwijderen");
+    }
+  };
+
+  // Colleague Chairs Handlers
+  const handleOpenNewColleagueChair = () => {
+    setEditingColleagueChair(null);
+    setColleagueChairForm({
+      party: "",
+      contactPerson: "",
+      lastContact: new Date().toISOString().split("T")[0],
+      notes: ""
+    });
+    setIsColleagueChairModalOpen(true);
+  };
+
+  const handleOpenEditColleagueChair = (chair: ColleagueChair) => {
+    setEditingColleagueChair(chair);
+    setColleagueChairForm({
+      id: chair.id,
+      party: chair.party,
+      contactPerson: chair.contactPerson,
+      lastContact: chair.lastContact || new Date().toISOString().split("T")[0],
+      notes: chair.notes || ""
+    });
+    setIsColleagueChairModalOpen(true);
+  };
+
+  const handleSaveColleagueChair = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!colleagueChairForm.party || !colleagueChairForm.contactPerson) {
+      toast.error("Partij en contactpersoon zijn verplicht");
+      return;
+    }
+    try {
+      const url = editingColleagueChair?.id
+        ? `/api/chairman/colleague-chairs/${editingColleagueChair.id}`
+        : "/api/chairman/colleague-chairs";
+      const method = editingColleagueChair?.id ? "PATCH" : "POST";
+      const res = await fetchWithAuth(url, {
+        method,
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify(colleagueChairForm)
+      });
+      if (res.ok) {
+        toast.success(editingColleagueChair ? "Collega-voorzitter bijgewerkt" : "Collega-voorzitter toegevoegd");
+        setIsColleagueChairModalOpen(false);
+        loadChairmanData();
+      } else {
+        toast.error("Fout bij opslaan collega-voorzitter");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Netwerkfout bij opslaan collega-voorzitter");
+    }
+  };
+
+  const handleDeleteColleagueChair = async (id?: string, party?: string) => {
+    if (!id) return;
+    if (!confirm(`Weet u zeker dat u contactpersoon voor ${party || "deze partij"} wilt verwijderen?`)) return;
+    try {
+      const res = await fetchWithAuth(`/api/chairman/colleague-chairs/${id}`, {
+        method: "DELETE",
+        headers
+      });
+      if (res.ok) {
+        toast.success("Collega-voorzitter verwijderd");
+        loadChairmanData();
+      } else {
+        toast.error("Fout bij verwijderen");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Netwerkfout bij verwijderen");
+    }
+  };
+
   // 4-Jaarcyclus Milestone Toggle
   const handleToggleCycleMilestone = async (year: number, milestoneIdx: number) => {
     const cycleItem = fourYearCycle.find((y) => y.year === year);
@@ -847,6 +1007,86 @@ export function ChairmanManager({ token, currentUser, headers }: Props) {
     } catch (err) {
       console.error(err);
       toast.error("Netwerkfout bij opslaan jaarcyclus");
+    }
+  };
+
+  // Handlers for Daily Board (Dagelijks Bestuur) Management
+  const handleOpenEditDailyBoard = () => {
+    if (dailyBoard) {
+      setDailyBoardForm({
+        partyName: dailyBoard.partyName || "Lijst van Andel",
+        boardTitle: dailyBoard.boardTitle || "Bestuur",
+        boardSubtitle: dailyBoard.boardSubtitle || "Statutaire taakverdeling en wisselwerking binnen het dagelijks bestuur conform verenigingsrecht en de WBTR.",
+        status: dailyBoard.status || "Bestuur Compleet & Operationeel",
+        chairman: {
+          roleTitle: dailyBoard.chairman?.roleTitle || "Partijvoorzitter",
+          name: dailyBoard.chairman?.name || "Sammy van Andel",
+          description: dailyBoard.chairman?.description || "Leidt ALV en bestuursvergaderingen, bewaakt fractierelatie via 5 instrumenten, stuurt commissies aan en is het gezicht naar buiten.",
+          email: dailyBoard.chairman?.email || "voorzitter@lijstvanandel.nl",
+          phone: dailyBoard.chairman?.phone || "",
+          panelNote: dailyBoard.chairman?.panelNote || "U bevindt zich in het Voorzitterpaneel"
+        },
+        secretary: {
+          roleTitle: dailyBoard.secretary?.roleTitle || "Secretaris",
+          name: dailyBoard.secretary?.name || "Anja ter Horst",
+          description: dailyBoard.secretary?.description || "Verantwoordelijk voor correspondentie, notulering ALV, ledenadministratie, KvK/WBTR-formaliteiten en het partijarchief.",
+          email: dailyBoard.secretary?.email || "secretariaat@lijstvanandel.nl",
+          phone: dailyBoard.secretary?.phone || "",
+          panelNote: dailyBoard.secretary?.panelNote || "Eigen beveiligd Secretarispaneel"
+        },
+        treasurer: {
+          roleTitle: dailyBoard.treasurer?.roleTitle || "Penningmeester",
+          name: dailyBoard.treasurer?.name || "Stef Mars",
+          description: dailyBoard.treasurer?.description || "Beheert begroting, kasboek, contributie-inning via Stripe/SEPA, giftenregister en verantwoording naar de kascommissie.",
+          email: dailyBoard.treasurer?.email || "penningmeester@lijstvanandel.nl",
+          phone: dailyBoard.treasurer?.phone || "",
+          panelNote: dailyBoard.treasurer?.panelNote || "Eigen beveiligd Penningmeesterpaneel"
+        },
+        additionalMembers: dailyBoard.additionalMembers ? [...dailyBoard.additionalMembers] : []
+      });
+    }
+    setIsDailyBoardModalOpen(true);
+  };
+
+  const handleAddAdditionalMember = () => {
+    const newMember = {
+      id: `member-${Date.now()}`,
+      roleTitle: "Algemeen Bestuurslid",
+      name: "",
+      description: "Ondersteunt het dagelijks bestuur en behartigt specifieke verenigingsprojecten.",
+      email: ""
+    };
+    setDailyBoardForm((prev) => ({
+      ...prev,
+      additionalMembers: [...(prev.additionalMembers || []), newMember]
+    }));
+  };
+
+  const handleRemoveAdditionalMember = (id: string) => {
+    setDailyBoardForm((prev) => ({
+      ...prev,
+      additionalMembers: (prev.additionalMembers || []).filter((m) => m.id !== id)
+    }));
+  };
+
+  const handleSaveDailyBoard = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetchWithAuth("/api/chairman/daily-board", {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify(dailyBoardForm),
+      });
+      if (res.ok) {
+        toast.success("Bestuurssamenstelling & rollen succesvol bijgewerkt");
+        setIsDailyBoardModalOpen(false);
+        loadChairmanData();
+      } else {
+        toast.error("Fout bij opslaan bestuurssamenstelling");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Netwerkfout bij opslaan dagelijks bestuur");
     }
   };
 
@@ -1085,6 +1325,18 @@ export function ChairmanManager({ token, currentUser, headers }: Props) {
           <HeartHandshake className="w-3.5 h-3.5" />
           <span>Inwoners & Netwerk</span>
         </button>
+
+        <button
+          onClick={() => setActiveSubTab("bestuur")}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+            activeSubTab === "bestuur"
+              ? "bg-amber-600 text-white shadow-sm"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+          }`}
+        >
+          <Users className="w-3.5 h-3.5" />
+          <span>Bestuur & Documenten (/bestuur)</span>
+        </button>
       </div>
 
       {/* SUBTAB 1: OVERZICHT & REGIE */}
@@ -1092,70 +1344,133 @@ export function ChairmanManager({ token, currentUser, headers }: Props) {
         <div className="space-y-6">
           {/* Trio Dagelijks Bestuur Card */}
           <div className="bg-card border border-border rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
               <div>
                 <h3 className="text-lg font-semibold font-display flex items-center gap-2">
                   <ShieldCheck className="w-5 h-5 text-amber-600" />
-                  Dagelijks Bestuur Lijst van Andel
+                  {dailyBoard?.boardTitle || "Bestuur"}
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  Statutaire taakverdeling en wisselwerking binnen het dagelijks bestuur conform verenigingsrecht en de WBTR.
+                  {dailyBoard?.boardSubtitle || "Statutaire taakverdeling en wisselwerking binnen het dagelijks bestuur conform verenigingsrecht en de WBTR."}
                 </p>
               </div>
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
-                Bestuur Compleet & Operationeel
-              </span>
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <a
+                  href="/bestuur"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-2.5 py-1.5 rounded-lg border border-border bg-background hover:bg-muted text-foreground text-xs font-medium flex items-center gap-1.5 transition-colors"
+                >
+                  <ExternalLink className="w-3 h-3 text-accent" />
+                  <span>Live Pagina</span>
+                </a>
+                <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
+                  {dailyBoard?.status || "Bestuur Compleet & Operationeel"}
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setActiveSubTab("bestuur")}
+                  className="h-8 text-xs gap-1.5 border-amber-500/30 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 cursor-pointer"
+                >
+                  <Pencil className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Bestuur & Documenten Beheren</span>
+                </Button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/5">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
-                    Partijvoorzitter
-                  </span>
-                  <Gavel className="w-4 h-4 text-amber-600" />
-                </div>
-                <div className="font-semibold text-base">Sammy van Andel</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  Leidt ALV en bestuursvergaderingen, bewaakt fractierelatie via 5 instrumenten, stuurt commissies aan en is het gezicht naar buiten.
+              {/* Voorzitter */}
+              <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/5 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                      {dailyBoard?.chairman?.roleTitle || "Partijvoorzitter"}
+                    </span>
+                    <Gavel className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <div className="font-semibold text-base">{dailyBoard?.chairman?.name || "Sammy van Andel"}</div>
+                  {dailyBoard?.chairman?.email && (
+                    <div className="text-[11px] text-muted-foreground font-mono mt-0.5">{dailyBoard.chairman.email}</div>
+                  )}
+                  <div className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                    {dailyBoard?.chairman?.description || "Leidt ALV en bestuursvergaderingen, bewaakt fractierelatie via 5 instrumenten, stuurt commissies aan en is het gezicht naar buiten."}
+                  </div>
                 </div>
                 <div className="mt-3 pt-3 border-t border-amber-500/20 text-[11px] text-amber-700 dark:text-amber-300 font-medium">
-                  U bevindt zich in het Voorzitterpaneel
+                  {dailyBoard?.chairman?.panelNote || "U bevindt zich in het Voorzitterpaneel"}
                 </div>
               </div>
 
-              <div className="p-4 rounded-xl border border-indigo-500/30 bg-indigo-500/5">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400">
-                    Secretaris
-                  </span>
-                  <FolderKanban className="w-4 h-4 text-indigo-600" />
-                </div>
-                <div className="font-semibold text-base">Anja ter Horst</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  Verantwoordelijk voor correspondentie, notulering ALV, ledenadministratie, KvK/WBTR-formaliteiten en het partijarchief.
+              {/* Secretaris */}
+              <div className="p-4 rounded-xl border border-indigo-500/30 bg-indigo-500/5 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400">
+                      {dailyBoard?.secretary?.roleTitle || "Secretaris"}
+                    </span>
+                    <FolderKanban className="w-4 h-4 text-indigo-600" />
+                  </div>
+                  <div className="font-semibold text-base">{dailyBoard?.secretary?.name || "Anja ter Horst"}</div>
+                  {dailyBoard?.secretary?.email && (
+                    <div className="text-[11px] text-muted-foreground font-mono mt-0.5">{dailyBoard.secretary.email}</div>
+                  )}
+                  <div className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                    {dailyBoard?.secretary?.description || "Verantwoordelijk voor correspondentie, notulering ALV, ledenadministratie, KvK/WBTR-formaliteiten en het partijarchief."}
+                  </div>
                 </div>
                 <div className="mt-3 pt-3 border-t border-indigo-500/20 text-[11px] text-indigo-700 dark:text-indigo-300 font-medium">
-                  Eigen beveiligd Secretarispaneel
+                  {dailyBoard?.secretary?.panelNote || "Eigen beveiligd Secretarispaneel"}
                 </div>
               </div>
 
-              <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
-                    Penningmeester
-                  </span>
-                  <Scale className="w-4 h-4 text-emerald-600" />
-                </div>
-                <div className="font-semibold text-base">Stef Mars</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  Beheert begroting, kasboek, contributie-inning via Stripe/SEPA, giftenregister en verantwoording naar de kascommissie.
+              {/* Penningmeester */}
+              <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                      {dailyBoard?.treasurer?.roleTitle || "Penningmeester"}
+                    </span>
+                    <Scale className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <div className="font-semibold text-base">{dailyBoard?.treasurer?.name || "Stef Mars"}</div>
+                  {dailyBoard?.treasurer?.email && (
+                    <div className="text-[11px] text-muted-foreground font-mono mt-0.5">{dailyBoard.treasurer.email}</div>
+                  )}
+                  <div className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                    {dailyBoard?.treasurer?.description || "Beheert begroting, kasboek, contributie-inning via Stripe/SEPA, giftenregister en verantwoording naar de kascommissie."}
+                  </div>
                 </div>
                 <div className="mt-3 pt-3 border-t border-emerald-500/20 text-[11px] text-emerald-700 dark:text-emerald-300 font-medium">
-                  Eigen beveiligd Penningmeesterpaneel
+                  {dailyBoard?.treasurer?.panelNote || "Eigen beveiligd Penningmeesterpaneel"}
                 </div>
               </div>
             </div>
+
+            {/* Extra Algemene Bestuursleden indien aanwezig */}
+            {dailyBoard?.additionalMembers && dailyBoard.additionalMembers.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-border">
+                <div className="text-xs font-semibold text-foreground uppercase tracking-wider mb-2">
+                  Algemene Bestuursleden & Extra Portefeuilles:
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {dailyBoard.additionalMembers.map((member) => (
+                    <div key={member.id} className="p-3.5 rounded-xl border border-border bg-background">
+                      <div className="text-xs font-bold uppercase tracking-wider text-primary mb-1">
+                        {member.roleTitle}
+                      </div>
+                      <div className="font-semibold text-sm">{member.name}</div>
+                      {member.email && (
+                        <div className="text-[11px] text-muted-foreground font-mono mt-0.5">{member.email}</div>
+                      )}
+                      <div className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                        {member.description}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Fractie-instrumenten status grid */}
@@ -2158,14 +2473,27 @@ export function ChairmanManager({ token, currentUser, headers }: Props) {
                   </div>
                   <div className="mt-3 pt-3 border-t border-border flex items-center justify-between text-xs">
                     <span className="font-semibold text-foreground">Status: {sig.status}</span>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleUpdateSignalStatus(sig.id, "afgehandeld door fractie")}
-                      className="text-[11px] text-emerald-600 hover:bg-emerald-500/10 h-7 px-2"
-                    >
-                      Markeer Afgehandeld
-                    </Button>
+                    <div className="flex items-center gap-1.5">
+                      {sig.status !== "afgehandeld door fractie" && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleUpdateSignalStatus(sig.id, "afgehandeld door fractie")}
+                          className="text-[11px] text-emerald-600 hover:bg-emerald-500/10 h-7 px-2"
+                        >
+                          Markeer Afgehandeld
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDeleteSignal(sig.id)}
+                        className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-500/10 cursor-pointer"
+                        title="Signaal verwijderen"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -2173,16 +2501,57 @@ export function ChairmanManager({ token, currentUser, headers }: Props) {
 
             {/* Colleague chairs */}
             <div className="pt-4 border-t border-border">
-              <h4 className="font-semibold text-sm mb-3 text-foreground flex items-center gap-2">
-                <Users className="w-4 h-4 text-amber-600" />
-                Contacten met Collega-Voorzitters in Steenwijkerland
-              </h4>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                <h4 className="font-semibold text-sm text-foreground flex items-center gap-2">
+                  <Users className="w-4 h-4 text-amber-600" />
+                  Contacten met Collega-Voorzitters in Steenwijkerland
+                </h4>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleOpenNewColleagueChair}
+                  className="text-xs gap-1.5 h-8 border-amber-500/30 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Collega-voorzitter Toevoegen</span>
+                </Button>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {(network?.colleagueChairs || []).map((c, idx) => (
-                  <div key={idx} className="p-3 rounded-lg border border-border bg-background text-xs">
-                    <div className="font-semibold text-foreground">{c.party}</div>
-                    <div className="text-muted-foreground">{c.contactPerson}</div>
-                    <div className="text-[11px] text-muted-foreground mt-1">{c.notes}</div>
+                  <div key={c.id || idx} className="p-3.5 rounded-lg border border-border bg-background text-xs flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <div className="font-bold text-foreground text-sm">{c.party}</div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleOpenEditColleagueChair(c)}
+                            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                            title="Bewerken"
+                          >
+                            <Pencil className="w-3 h-3 text-amber-600" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteColleagueChair(c.id, c.party)}
+                            className="p-1 rounded hover:bg-rose-500/10 text-red-500"
+                            title="Verwijderen"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="text-muted-foreground font-medium">{c.contactPerson}</div>
+                      {c.lastContact && (
+                        <div className="text-[10px] text-muted-foreground mt-0.5">
+                          Laatste contact: {c.lastContact}
+                        </div>
+                      )}
+                      {c.notes && (
+                        <div className="text-[11px] text-muted-foreground mt-2 bg-muted/30 p-2 rounded border border-border/40">
+                          {c.notes}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -2203,6 +2572,15 @@ export function ChairmanManager({ token, currentUser, headers }: Props) {
             <BelafsprakenManager token={token} headers={headers} />
           </div>
         </div>
+      )}
+
+      {/* SUBTAB 8: BESTUUR & DOCUMENTEN BEHEER (/bestuur) */}
+      {activeSubTab === "bestuur" && (
+        <BestuurManager
+          token={token}
+          headers={headers}
+          onUpdated={loadChairmanData}
+        />
       )}
 
       {/* MODAL: Voortgangsgesprek (Toevoegen of Bewerken) */}
@@ -2898,6 +3276,398 @@ export function ChairmanManager({ token, currentUser, headers }: Props) {
               </Button>
               <Button type="submit" className="bg-amber-600 hover:bg-amber-700 text-white cursor-pointer">
                 Cyclusjaar Opslaan
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Dagelijks Bestuur & Rollen Bewerken */}
+      <Dialog open={isDailyBoardModalOpen} onOpenChange={setIsDailyBoardModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-amber-600" />
+              <span>Dagelijks Bestuur & Statutaire Rollen Beheren</span>
+            </DialogTitle>
+            <DialogDescription>
+              Beheer de bestuurssamenstelling, taakverdeling conform de statuten en verenigingsrecht (WBTR) en de actuele operationele status.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSaveDailyBoard} className="space-y-6 pt-2">
+            {/* Algemene Bestuursgegevens */}
+            <div className="bg-muted/40 p-4 rounded-xl space-y-4 border border-border">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <FolderKanban className="w-3.5 h-3.5 text-amber-600" />
+                <span>Algemene Bestuurskaders & Status</span>
+              </h4>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-medium block mb-1">Titel Bestuursorgaan</label>
+                  <Input
+                    value={dailyBoardForm.boardTitle || ""}
+                    onChange={(e) => setDailyBoardForm({ ...dailyBoardForm, boardTitle: e.target.value })}
+                    placeholder="Bijv. Bestuur"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium block mb-1">Operationele Status</label>
+                  <Input
+                    value={dailyBoardForm.status || ""}
+                    onChange={(e) => setDailyBoardForm({ ...dailyBoardForm, status: e.target.value })}
+                    placeholder="Bijv. Bestuur Compleet & Operationeel"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium block mb-1">Statutaire Ondertitel / WBTR-grondslag</label>
+                <Input
+                  value={dailyBoardForm.boardSubtitle || ""}
+                  onChange={(e) => setDailyBoardForm({ ...dailyBoardForm, boardSubtitle: e.target.value })}
+                  placeholder="Statutaire taakverdeling en wisselwerking..."
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Partijvoorzitter */}
+            <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/5 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+                  <Gavel className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Partijvoorzitter</span>
+                </span>
+                <span className="text-[11px] text-amber-700 dark:text-amber-300 font-medium">Voorzitterspaneel</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium block mb-1">Naam Voorzitter</label>
+                  <Input
+                    value={dailyBoardForm.chairman?.name || ""}
+                    onChange={(e) =>
+                      setDailyBoardForm({
+                        ...dailyBoardForm,
+                        chairman: { ...(dailyBoardForm.chairman || { roleTitle: "Partijvoorzitter", name: "", description: "" }), name: e.target.value }
+                      })
+                    }
+                    placeholder="Naam partijvoorzitter"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium block mb-1">E-mailadres (optioneel)</label>
+                  <Input
+                    type="email"
+                    value={dailyBoardForm.chairman?.email || ""}
+                    onChange={(e) =>
+                      setDailyBoardForm({
+                        ...dailyBoardForm,
+                        chairman: { ...(dailyBoardForm.chairman || { roleTitle: "Partijvoorzitter", name: "", description: "" }), email: e.target.value }
+                      })
+                    }
+                    placeholder="voorzitter@partij.nl"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1">Taakverdeling & Verantwoordelijkheden</label>
+                <Textarea
+                  rows={2}
+                  value={dailyBoardForm.chairman?.description || ""}
+                  onChange={(e) =>
+                    setDailyBoardForm({
+                      ...dailyBoardForm,
+                      chairman: { ...(dailyBoardForm.chairman || { roleTitle: "Partijvoorzitter", name: "", description: "" }), description: e.target.value }
+                    })
+                  }
+                  placeholder="Taken en bevoegdheden van de voorzitter..."
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Secretaris */}
+            <div className="p-4 rounded-xl border border-indigo-500/30 bg-indigo-500/5 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400 flex items-center gap-1.5">
+                  <FolderKanban className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Secretaris</span>
+                </span>
+                <span className="text-[11px] text-indigo-700 dark:text-indigo-300 font-medium">Secretarispaneel</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium block mb-1">Naam Secretaris</label>
+                  <Input
+                    value={dailyBoardForm.secretary?.name || ""}
+                    onChange={(e) =>
+                      setDailyBoardForm({
+                        ...dailyBoardForm,
+                        secretary: { ...(dailyBoardForm.secretary || { roleTitle: "Secretaris", name: "", description: "" }), name: e.target.value }
+                      })
+                    }
+                    placeholder="Naam secretaris"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium block mb-1">E-mailadres (optioneel)</label>
+                  <Input
+                    type="email"
+                    value={dailyBoardForm.secretary?.email || ""}
+                    onChange={(e) =>
+                      setDailyBoardForm({
+                        ...dailyBoardForm,
+                        secretary: { ...(dailyBoardForm.secretary || { roleTitle: "Secretaris", name: "", description: "" }), email: e.target.value }
+                      })
+                    }
+                    placeholder="secretariaat@partij.nl"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1">Taakverdeling & Verantwoordelijkheden</label>
+                <Textarea
+                  rows={2}
+                  value={dailyBoardForm.secretary?.description || ""}
+                  onChange={(e) =>
+                    setDailyBoardForm({
+                      ...dailyBoardForm,
+                      secretary: { ...(dailyBoardForm.secretary || { roleTitle: "Secretaris", name: "", description: "" }), description: e.target.value }
+                    })
+                  }
+                  placeholder="Taken en bevoegdheden van de secretaris..."
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Penningmeester */}
+            <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                  <Scale className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Penningmeester</span>
+                </span>
+                <span className="text-[11px] text-emerald-700 dark:text-emerald-300 font-medium">Penningmeesterpaneel</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium block mb-1">Naam Penningmeester</label>
+                  <Input
+                    value={dailyBoardForm.treasurer?.name || ""}
+                    onChange={(e) =>
+                      setDailyBoardForm({
+                        ...dailyBoardForm,
+                        treasurer: { ...(dailyBoardForm.treasurer || { roleTitle: "Penningmeester", name: "", description: "" }), name: e.target.value }
+                      })
+                    }
+                    placeholder="Naam penningmeester"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium block mb-1">E-mailadres (optioneel)</label>
+                  <Input
+                    type="email"
+                    value={dailyBoardForm.treasurer?.email || ""}
+                    onChange={(e) =>
+                      setDailyBoardForm({
+                        ...dailyBoardForm,
+                        treasurer: { ...(dailyBoardForm.treasurer || { roleTitle: "Penningmeester", name: "", description: "" }), email: e.target.value }
+                      })
+                    }
+                    placeholder="penningmeester@partij.nl"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1">Taakverdeling & Verantwoordelijkheden</label>
+                <Textarea
+                  rows={2}
+                  value={dailyBoardForm.treasurer?.description || ""}
+                  onChange={(e) =>
+                    setDailyBoardForm({
+                      ...dailyBoardForm,
+                      treasurer: { ...(dailyBoardForm.treasurer || { roleTitle: "Penningmeester", name: "", description: "" }), description: e.target.value }
+                    })
+                  }
+                  placeholder="Taken en bevoegdheden van de penningmeester..."
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Extra Bestuursleden */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    Aanvullende Bestuursleden (Optioneel)
+                  </h4>
+                  <p className="text-[11px] text-muted-foreground">
+                    Bijvoorbeeld Algemeen Bestuurslid, Campagnecoördinator of Vicevoorzitter.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleAddAdditionalMember}
+                  className="text-xs gap-1.5 h-8 border-primary/30"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Lid Toevoegen</span>
+                </Button>
+              </div>
+
+              {dailyBoardForm.additionalMembers && dailyBoardForm.additionalMembers.length > 0 && (
+                <div className="space-y-3">
+                  {dailyBoardForm.additionalMembers.map((member, index) => (
+                    <div key={member.id} className="p-3.5 rounded-xl border border-border bg-card space-y-3 relative">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                          Lid #{index + 1}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveAdditionalMember(member.id)}
+                          className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs font-medium block mb-1">Functietitel / Rol</label>
+                          <Input
+                            value={member.roleTitle}
+                            onChange={(e) => {
+                              const updated = [...(dailyBoardForm.additionalMembers || [])];
+                              updated[index].roleTitle = e.target.value;
+                              setDailyBoardForm({ ...dailyBoardForm, additionalMembers: updated });
+                            }}
+                            placeholder="Bijv. Algemeen Bestuurslid"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium block mb-1">Naam</label>
+                          <Input
+                            value={member.name}
+                            onChange={(e) => {
+                              const updated = [...(dailyBoardForm.additionalMembers || [])];
+                              updated[index].name = e.target.value;
+                              setDailyBoardForm({ ...dailyBoardForm, additionalMembers: updated });
+                            }}
+                            placeholder="Volledige naam"
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-medium block mb-1">Taakomschrijving / Portefeuille</label>
+                        <Input
+                          value={member.description}
+                          onChange={(e) => {
+                            const updated = [...(dailyBoardForm.additionalMembers || [])];
+                            updated[index].description = e.target.value;
+                            setDailyBoardForm({ ...dailyBoardForm, additionalMembers: updated });
+                          }}
+                          placeholder="Bijv. Verantwoordelijk voor vrijwilligers en campagne-evenementen"
+                          required
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="outline" onClick={() => setIsDailyBoardModalOpen(false)}>
+                Annuleren
+              </Button>
+              <Button type="submit" className="bg-amber-600 hover:bg-amber-700 text-white cursor-pointer">
+                Bestuurssamenstelling Opslaan
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Collega-voorzitter Toevoegen / Bewerken */}
+      <Dialog open={isColleagueChairModalOpen} onOpenChange={setIsColleagueChairModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5 text-amber-600" />
+              <span>{editingColleagueChair ? "Collega-voorzitter Bewerken" : "Collega-voorzitter Toevoegen"}</span>
+            </DialogTitle>
+            <DialogDescription>
+              Onderhoud contacten met voorzitters van andere politieke partijen in Steenwijkerland.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSaveColleagueChair} className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold">Partij of Fractie *</label>
+              <Input
+                required
+                placeholder="Bijv. BGL, VVD Steenwijkerland, CDA, CPB"
+                value={colleagueChairForm.party}
+                onChange={(e) => setColleagueChairForm({ ...colleagueChairForm, party: e.target.value })}
+                className="text-xs h-9"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold">Contactpersoon / Partijvoorzitter *</label>
+              <Input
+                required
+                placeholder="Bijv. Jan de Vries"
+                value={colleagueChairForm.contactPerson}
+                onChange={(e) => setColleagueChairForm({ ...colleagueChairForm, contactPerson: e.target.value })}
+                className="text-xs h-9"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold">Datum Laatste Contact</label>
+              <Input
+                type="date"
+                value={colleagueChairForm.lastContact}
+                onChange={(e) => setColleagueChairForm({ ...colleagueChairForm, lastContact: e.target.value })}
+                className="text-xs h-9"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold">Notities / Relatie / Overlegpunten</label>
+              <Textarea
+                placeholder="Bijv. Kwartaaloverleg gehad over lokale democratie, afspraak voor voorjaar..."
+                value={colleagueChairForm.notes}
+                onChange={(e) => setColleagueChairForm({ ...colleagueChairForm, notes: e.target.value })}
+                rows={3}
+                className="text-xs resize-none"
+              />
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="outline" onClick={() => setIsColleagueChairModalOpen(false)}>
+                Annuleren
+              </Button>
+              <Button type="submit" className="bg-amber-600 hover:bg-amber-700 text-white cursor-pointer">
+                {editingColleagueChair ? "Wijzigingen Opslaan" : "Collega-voorzitter Opslaan"}
               </Button>
             </DialogFooter>
           </form>
