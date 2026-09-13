@@ -103,7 +103,9 @@ import {
   runBulkClassification,
   startBulkClassificationInBackground,
   getBulkClassificationStatus,
-  cancelBulkClassification
+  cancelBulkClassification,
+  getDeadLetterQueue,
+  clearDeadLetterQueue
 } from "./src/server/bulkClassificationService.js";
 import { enrichTopicWithStandpunten } from "./src/lib/standpuntMatcher.js";
 import { scanTopicDocumentsAndMatchStandpunten } from "./src/server/standpuntScannerService.js";
@@ -8709,6 +8711,25 @@ Sitemap: ${baseUrl}/sitemap.xml
     }
   });
 
+  // Dead Letter Queue (DLQ) endpoints for audit and triage of failed classifications
+  app.get("/api/council/classify-dlq", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    try {
+      const items = getDeadLetterQueue();
+      res.json({ success: true, count: items.length, items });
+    } catch (err: any) {
+      res.status(500).json({ error: "Fout bij ophalen DLQ: " + err.message });
+    }
+  });
+
+  app.post("/api/council/classify-dlq/clear", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    try {
+      clearDeadLetterQueue();
+      res.json({ success: true, message: "Dead Letter Queue succesvol gewist" });
+    } catch (err: any) {
+      res.status(500).json({ error: "Fout bij wissen DLQ: " + err.message });
+    }
+  });
+
   // 6. Add a document manually to a dossier (with optional file upload)
   app.post(
     "/api/council/dossiers/:slug/documents",
@@ -9009,7 +9030,7 @@ Sitemap: ${baseUrl}/sitemap.xml
         const uploadId = req.body.uploadId || (req.headers["x-upload-id"] as string);
         const chunkIndex = parseInt(req.body.chunkIndex || (req.headers["x-chunk-index"] as string) || "0", 10);
         const totalChunks = parseInt(req.body.totalChunks || (req.headers["x-total-chunks"] as string) || "1", 10);
-        let rawHeaderName = (req.headers["x-file-name"] as string) || req.body.fileName || "uploaded_file.zip";
+        const rawHeaderName = (req.headers["x-file-name"] as string) || req.body.fileName || "uploaded_file.zip";
         let fileName = rawHeaderName;
         try {
           fileName = decodeURIComponent(rawHeaderName);
@@ -9019,7 +9040,9 @@ Sitemap: ${baseUrl}/sitemap.xml
             if (fixed && !fixed.includes("\ufffd")) {
               fileName = fixed;
             }
-          } catch (_err) {}
+          } catch (_err) {
+            // ignore fallback decoding error
+          }
         }
 
         if (!uploadId) {
@@ -9115,7 +9138,9 @@ Sitemap: ${baseUrl}/sitemap.xml
           // Clean up temporary chunk files
           try {
             fs.rmSync(tempDir, { recursive: true, force: true });
-          } catch (_e) {}
+          } catch (_e) {
+            // ignore temp cleanup error
+          }
 
           // Process the merged file through dossier manager
           const mockMulterFile: Express.Multer.File = {

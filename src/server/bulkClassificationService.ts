@@ -10,17 +10,13 @@ import {
   normalizeSubdossier,
   detectWijkenKernen,
   cleanPublicTitle,
-  normalizeRecord
+  normalizeRecord,
+  validateRecordConformity
 } from "./taxonomyClassifier.js";
-
-const METADATA_PATH = path.join(process.cwd(), "public", "data", "raadsstukken_metadata_tussentijds.json");
-const DIST_METADATA_PATH = path.join(process.cwd(), "dist", "data", "raadsstukken_metadata_tussentijds.json");
-const METADATA_CSV_PATH = path.join(process.cwd(), "public", "data", "raadsstukken_metadata_tussentijds.csv");
-const DIST_METADATA_CSV_PATH = path.join(process.cwd(), "dist", "data", "raadsstukken_metadata_tussentijds.csv");
 
 const ROOT_DOCS_DIR = path.join(process.cwd(), "public", "uploads", "documents");
 
-// The 5 official recipient-oriented dossier categories
+// The 7 official recipient-oriented dossier categories
 export const OFFICIAL_DOSSIERS = [...CANONICAL_HOOFDDOSSIERS];
 
 // Lazy Gemini client
@@ -28,7 +24,7 @@ let geminiClient: GoogleGenAI | null = null;
 let isGeminiQuotaExhausted = false;
 let geminiQuotaExhaustedMessage = "";
 
-export const RATE_LIMIT_DELAY_MS = 1100; // ~55 requests per minute, staying safely under the 60 RPM limit
+export const RATE_LIMIT_DELAY_MS = 1100; // ~55 requests per minute
 
 export class GeminiQuotaExceededError extends Error {
   retryAfterSeconds: number;
@@ -68,11 +64,41 @@ function getGemini(): GoogleGenAI | null {
 }
 
 /**
- * Scan for all PDF files recursively under public/uploads/documents
+ * Asynchrone, non-blocking scan van PDF-bestanden met chunking om de Event Loop niet te blokkeren.
  */
-export function scanPdfFiles(): Array<{ absolutePath: string; relativePath: string; filename: string }> {
+export async function scanPdfFilesAsync(): Promise<Array<{ absolutePath: string; relativePath: string; filename: string }>> {
   const filesList: Array<{ absolutePath: string; relativePath: string; filename: string }> = [];
 
+  async function traverse(dir: string) {
+    try {
+      const exists = await fs.promises.access(dir).then(() => true).catch(() => false);
+      if (!exists) return;
+
+      const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await traverse(fullPath);
+        } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".pdf")) {
+          const relative = path.relative(ROOT_DOCS_DIR, fullPath);
+          filesList.push({
+            absolutePath: fullPath,
+            relativePath: relative,
+            filename: entry.name
+          });
+        }
+      }
+    } catch (err) {
+      console.warn(`[SCAN ASYNC] Could not scan directory ${dir}:`, err);
+    }
+  }
+
+  await traverse(ROOT_DOCS_DIR);
+  return filesList;
+}
+
+export function scanPdfFiles(): Array<{ absolutePath: string; relativePath: string; filename: string }> {
+  const filesList: Array<{ absolutePath: string; relativePath: string; filename: string }> = [];
   function traverse(dir: string) {
     if (!fs.existsSync(dir)) return;
     const list = fs.readdirSync(dir);
@@ -85,61 +111,83 @@ export function scanPdfFiles(): Array<{ absolutePath: string; relativePath: stri
         const relative = path.relative(ROOT_DOCS_DIR, fullPath);
         filesList.push({
           absolutePath: fullPath,
-          relativePath: relative, // e.g. "overijssel/file.pdf"
+          relativePath: relative,
           filename: item
         });
       }
     }
   }
-
   traverse(ROOT_DOCS_DIR);
   return filesList;
 }
 
 /**
- * Run fallback keyword-based classifier in case Gemini fails or API key is missing
+ * Kop-Staart extractie: Behoudt inleiding & context (eerste 8.000 karakters)
+ * en juridische dictums/besluitvorming/datums aan het einde (laatste 4.000 karakters).
  */
-export function runFallbackClassification(text: string, filename: string): Partial<RaadsstukMetadata> {
+export function extractHeadTailText(text: string, headChars = 8000, tailChars = 4000): string {
+  if (!text) return "";
+  if (text.length <= headChars + tailChars) {
+    return text;
+  }
+  const head = text.substring(0, headChars);
+  const tail = text.substring(text.length - tailChars);
+  return `${head}\n\n[... JURIDISCHE KERN, DICTUM & BESLUITVORMING IN STAART ...]\n\n${tail}`;
+}
+
+export interface DeadLetterItem {
+  filename: string;
+  relativePath: string;
+  error: string;
+  timestamp: string;
+}
+
+// Dead Letter Queue (DLQ) voor documenten die falen in AI-classificatie
+const deadLetterQueue: DeadLetterItem[] = [];
+
+export function getDeadLetterQueue(): DeadLetterItem[] {
+  return [...deadLetterQueue];
+}
+
+export function clearDeadLetterQueue(): void {
+  deadLetterQueue.length = 0;
+}
+
+/**
+ * Strikte fallback voor als Gemini offline is:
+ * Plaatst het item transparant in de Dead Letter Queue en geeft GEEN verzonnen categorisering.
+ */
+export function runFallbackClassification(
+  text: string,
+  filename: string,
+  relativePath = "",
+  failureReason = "API niet beschikbaar"
+): Partial<RaadsstukMetadata> {
   const cleanTitle = cleanPublicTitle(filename);
-  const dossier = normalizeHoofddossier("", cleanTitle, "", text);
-  const subdossier = normalizeSubdossier(dossier, "", cleanTitle, "", text);
   const detectedWijken = detectWijkenKernen(cleanTitle, "", text);
 
-  // Attempt to parse a date
-  const content = (filename + " " + text).toLowerCase();
-  let datum = "";
-  const dateMatch = content.match(/(\d{4})[-/](\d{2})[-/](\d{2})/);
-  if (dateMatch) {
-    datum = `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
-  } else {
-    const monthNames: Record<string, string> = {
-      januari: "01", februari: "02", maart: "03", april: "04", mei: "05", juni: "06",
-      juli: "07", augustus: "08", september: "09", oktober: "10", november: "11", december: "12"
-    };
-    for (const [monthName, monthNum] of Object.entries(monthNames)) {
-      const regex = new RegExp(`(\\d{1,2})\\s+${monthName}\\s+(\\d{4})`, "i");
-      const m = content.match(regex);
-      if (m) {
-        const day = m[1].padStart(2, "0");
-        datum = `${m[2]}-${monthNum}-${day}`;
-        break;
-      }
-    }
-  }
+  // Registreer in DLQ
+  deadLetterQueue.push({
+    filename,
+    relativePath,
+    error: failureReason,
+    timestamp: new Date().toISOString()
+  });
 
   return {
     titel: cleanTitle,
-    dossier,
-    subdossier,
-    datum: datum || new Date().toISOString().split("T")[0],
+    dossier: "ONGECLASSIFICEERD_FALEN",
+    subdossier: "Audit & Retry Vereist (DLQ)",
+    datum: new Date().toISOString().split("T")[0],
     wijk_of_kern: detectedWijken.join(", "),
     entiteiten: "",
-    relaties: ""
+    relaties: "",
+    skos_tags: ["DLQ_Audit_Vereist"]
   };
 }
 
 /**
- * Classify a document using Gemini with the exact PDF taxonomy guidelines
+ * Classify a document using Gemini with strict negative constraints and 7 canonical dossiers.
  */
 async function classifyWithGemini(
   text: string,
@@ -151,65 +199,60 @@ async function classifyWithGemini(
     throw new Error("Gemini client is not initialized.");
   }
 
-  // First 5 pages of text
-  const textSample = text.substring(0, 12000);
+  // Kop-staart RAG extractie (8.000 inleiding + 4.000 besluit/dictum)
+  const textSample = extractHeadTailText(text, 8000, 4000);
 
   const prompt = `
-  Analyseer het gemeenteraadsdocument/provinciaal/waterschapsdocument om de metadata te extraheren volgens de strikte taxonomie en de ontologische routeringsregels van de gemeente Steenwijkerland.
+  Analyseer het bestuursrechtelijke document (gemeenteraad, provincie of waterschap) van de gemeente Steenwijkerland.
+  Classificeer de inhoudelijke beleidsopgave strikt volgens de 7 canonieke hoofddossiers en de harde verbodsbepalingen.
 
   Bestandsnaam: ${filename}
   Relatief pad: ${relativePath}
 
-  === STRICTE CATEGORIEËN (Kies EXACT ÉÉN van de 5 hoofddossiers/leefdomeinen) ===
-  1. "Ruimte, Wonen & Bereikbaarheid"
-     - Bestemmingsplannen, omgevingsplannen, BOPA's, gebiedsontwikkeling, VAB, woonvisies, woningbouw, welstandsnota's, zienswijzen over bestemmingsplannen.
-     - Verkeersplannen (GVVP), mobiliteitsvisie, wegenonderhoud, laadinfrastructuur, fietspaden, openbaar vervoer, bruggen, parkeervergunningen.
-  2. "Klimaat, Water & Natuur"
-     - Stikstofproblematiek, AERIUS, flora/faunawet, Natura 2000 (De Weerribben/Wieden), milieueffectrapportages (MER), PFAS/asbest, geurhinder/emissies (IceBear), energietransitie, zonneparken, windenergie, peilbesluiten, waterpeil, duurzaamheidsleningen.
-  3. "Sociaal Domein, Zorg & Jeugd"
-     - Participatiewet, schuldhulpverlening, minimabeleid, bijzondere bijstand, re-integratie, sociale werkvoorzieningen.
-     - Wet maatschappelijke ondersteuning (Wmo), GGD IJsselland, gezondheidsbeleid (GALA), mantelzorgondersteuning.
-     - Regionaal Serviceteam Jeugd IJsselland (RSJ), jeugdzorg, onderwijshuisvesting (IHP), asielopvang, vluchtelingen, inburgering, Spreidingswet.
-  4. "Lokale Economie, Toerisme & Cultuur"
-     - Bedrijventerreinen (Eeserwold, Groot Verlaat), detailhandel, toerisme/recreatie, toeristenbelasting, pachtbeleid.
-     - Sportverenigingen/subsidies, musea (Stadsmuseum, Spijkervetstallen), bibliotheken, monumenten, theaters (Scala, Rabo Theater De Meenthe).
-  5. "Bestuur, Financiën & Openbare Orde"
-     - Algemene Plaatselijke Verordening (APV), Veiligheidsregio IJsselland (VRIJ), brandweer, politie, crisisbeheersing, ondermijning.
-     - Fysiek onderhoud, riolering, openbare verlichting, begraafplaatsen, gladheidbestrijding, speelplaatsen, bomenkap.
-     - Planning & Control (Programmabegroting, Jaarstukken), Belastingverordeningen, Rekenkamerverordeningen, Gemeenschappelijke Regelingen (GR).
+  === HARDE REGELS & NEGATIEVE VERBODSBEPALINGEN (ZEER BELANGRIJK) ===
+  1. VERBOD OP AFZENDER/ACTOR ALS CATEGORIE:
+     Het is TEN STRENGSTE VERBODEN om de afzender of instantie (zoals "WDODelta", "Waterschap Drents Overijsselse Delta", "Provincie Overijssel", "Provinciale Staten", "COA", "Enexis", "GGD IJsselland", "Veiligheidsregio IJsselland", "Raadszaken") te gebruiken als hoofddossier of subdossier!
+     - Deze instanties horen UITSLUITEND in de komma-gescheiden string "entiteiten".
+     - Classificeer de BESTUURSRECHTELIJKE IMPACT en de INHOUDELIJKE OPGAVE van het document.
 
-  === SUBDOSSIER EXTRACTIE (Gebaseerd op de SKOS Matrix) ===
-  Analyseer de kern/gebeurtenis uit de tekst en koppel dit aan specifieke concepten/SKOS-labels uit de volgende lijst. Combineer of kies de meest relevante als subdossier:
-  - Woningbouw (Inbreiding, Streekcentrum, Architectuur, Participatie)
-  - Waterkwaliteit / Peilbeheer / Natuurwetgeving / Ecologisch Herstel
-  - Stikstof (Jurisprudentie, Landbouw)
-  - Bestuursrechtelijke Handhaving / Procedures / Planschade
-  - Infrastructuur (Onderwijs, Verkeer, Energie, Wegenonderhoud)
-  - Ruimtelijke Ordening (Transformatie, Bedrijven, Buitengebied)
-  - Netcongestie (Transitie, Netuitbreiding)
-  - Erfgoed (Bufferzone)
-  - Economie (Agrarisch, Industriële Uitbreiding)
-  - Sociale Volkshuisvesting / Asielopvang / Leefbaarheid Krimp
-  - Toerisme Overlast / Lokale Belastingen / Mijnbouw / Bodemdaling
+  2. FRICTIELIJNEN & LOKALE CONTEXT (STEENWIJKERLAND):
+     - TAM-omgevingsplannen en bestemmingsplannen in dorpskernen (bijv. Zuidveen, De Pol, Willemsoord, Blokzijl, Spoorzone Steenwijk) gaan ALTIJD naar "Ruimtelijke Ordening, Wonen & Omgevingswet".
+     - Peilbesluiten, waterpeil, OGOR, veenoxidatie en bodemdaling (ook van WDODelta) gaan ALTIJD naar "Landbouw, Natuur & Waterbeheer".
+     - Smart Energy Hub Groot Verlaat, netcongestie, zonneparken, bedrijventerreinen, toerismeregulering Giethoorn en UNESCO Weldaad gaan ALTIJD naar "Lokale Economie, Toerisme & Energie-infrastructuur".
+     - Provinciale N-wegen (N761, N334, N762, N333), bruggen (Ronduitebrug, Meenthebrug, Scheerbrug), pontje Jonen en fietspaden gaan ALTIJD naar "Verkeer, Wegen & Fysieke Bereikbaarheid".
+     - Asielopvang (COA/Spreidingswet), Jeugdzorg (RSJ), Wmo, publieke gezondheid (GGD) en armoedebeleid gaan ALTIJD naar "Sociaal Domein, Asiel & Leefbaarheid".
+     - Gaswinning (Vermilion, Eesveen) en seismische monitoring gaan ALTIJD naar "Mijnbouw & Ondergrondse Opgaven".
+     - Financiën (Programmabegroting, Jaarrekening, OZB), APV, politie/brandweer (VRIJ) en raadsvoorstellen gaan ALTIJD naar "Bestuur, Financiën & Juridische Zaken".
 
-  === ONTOLOGISCHE ROUTERINGSREGELS (Bypass ambtelijk jargon!) ===
-  1. Gemeenschappelijke Regeling (GR) Paradox: Documenten over "GGD IJsselland" moeten naar "Sociaal Domein, Zorg & Jeugd". Documenten over "RSJ IJsselland" moeten naar "Sociaal Domein, Zorg & Jeugd". Documenten over "Omgevingsdienst IJsselland (ODIJ)" moeten naar "Klimaat, Water & Natuur" of "Bestuur, Financiën & Openbare Orde". ALLEEN statutaire of pure procesmatige financiële stukken van een GR gaan naar "Bestuur, Financiën & Openbare Orde".
-  2. Zienswijzen en Inspraak: Nooit in een aparte categorie plaatsen. Routeer altijd naar het onderliggende hoofdonderwerp.
-  3. Subsidies: Altijd routeren naar het beleidsdoel (bijv. subsidie voor theater De Meenthe naar "Lokale Economie, Toerisme & Cultuur").
-  4. Macro-regel voor Brondata (Overijssel / Waterschap): Indien het document provinciaal of waterschapsbreed is en geen expliciete lokale kernen vermeldt, is de scope "Provinciebreed" of "Waterschapbreed", en is de wijk_of_kern leeg. Indien een specifieke kern zoals Giethoorn of Blokzijl expliciet wordt genoemd, tag deze dan.
+  === DE 7 CANONIEKE HOOFDDOSSIERS (Kies EXACT ÉÉN) ===
+  1. "Ruimtelijke Ordening, Wonen & Omgevingswet"
+     - Bestemmingsplannen, Omgevingsvisie, TAM-omgevingsplannen, BOPA, woningbouw, inbreiding, sociale volkshuisvesting (Wetland Wonen), beeldkwaliteit, planschade/SAOZ.
+  2. "Landbouw, Natuur & Waterbeheer"
+     - Waterpeilbeheer, peilbesluiten (WDODelta), OGOR, bodemdaling/veenoxidatie, stikstof (AERIUS/KDW), Natura 2000 (Weerribben-Wieden), agrarische transitie/pacht, waterkwaliteit (KRW), dijkversterking.
+  3. "Lokale Economie, Toerisme & Energie-infrastructuur"
+     - Netcongestie, Smart Energy Hub, windenergie, zonneparken, bedrijventerreinen (Eeserwold, Groot Verlaat), toerisme/vaarverordening Giethoorn, cultuur/UNESCO (Koloniën van Weldadigheid), De Meenthe, sport.
+  4. "Verkeer, Wegen & Fysieke Bereikbaarheid"
+     - N-wegen (N761/N334/N762/N333), bruggen (Ronduitebrug, Meenthebrug, Scheerbrug), snelfietsroutes, openbaar vervoer (RRReis), GVVP, verkeersveiligheid.
+  5. "Sociaal Domein, Asiel & Leefbaarheid"
+     - Jeugdzorg (RSJ), Wmo, publieke gezondheid (GGD), asielopvang (COA, Spreidingswet), Participatiewet/schuldhulp, onderwijshuisvesting (IHP) & kindcentra, leefbaarheid kleine kernen.
+  6. "Mijnbouw & Ondergrondse Opgaven"
+     - Gaswinning (Vermilion, Eesveen), winningsplannen, bodembeweging/seismische monitoring, mijnbouwschade, geothermie.
+  7. "Bestuur, Financiën & Juridische Zaken"
+     - Programmabegroting, jaarrekening, gemeentefonds, belastingen (OZB, leges), APV, politie, brandweer, Veiligheidsregio IJsselland (VRIJ), rekenkamer, riolering & openbare ruimte.
 
   === WIJKEN & KERNEN ===
-  Zoek naar Steenwijk (Centrum/Binnenstad, Clingenborgh, De Gagels, Nieuwe gagels, Dolderkanaal, Groot Verlaat, Oostermeenthe, Oostwijken, Paddenpoel, Kornputkwartier, Steenwijk West, Steenwijkerdiep, Torenlanden, Woldmeenthe), Barsbeek, Heetveld, Belt-Schutsloot, Blankenham, Blokzijl, De Pol, Baars, de Bult, Doosje, Eeserwold, Eesveen, Giethoorn, Ijsselham, Paasloo, Basse, Jonen, Dwarsgracht, Kalenberg, Kallenkote, Klosse, Roekebos, Dinxterveen, Kuinre, Willemsoord, Moespot, Leeuwte, Nederland, Baarlo, Oldemarkt, Onna, Ossenzijl, Scheerwolde, Sint Jansklooster, Steenwijkerwold, Witte paarden, Tuk, Vollenhove, Wanneperveen, Wetering.
+  Steenwijk (Centrum, West, Spoorzone, Groot Verlaat, Oostermeenthe, Woldmeenthe, Kornputkwartier), Barsbeek, Belt-Schutsloot, Blankenham, Blokzijl, De Pol, Baars, De Bult, Doosje, Eeserwold, Eesveen, Giethoorn, Ijsselham, Paasloo, Basse, Jonen, Dwarsgracht, Kalenberg, Kallenkote, Kuinre, Marijenkampen, Willemsoord, Nederland, Baarlo, Oldemarkt, Onna, Ossenzijl, Scheerwolde, Sint Jansklooster, Steenwijkerwold, Witte Paarden, Tuk, Vollenhove, Wanneperveen, Wetering, Zuidveen.
 
-  Geef de resultaten terug in EXACT dit JSON formaat:
+  Geef het resultaat terug in dit JSON formaat:
   {
-    "titel": "Korte, heldere en representatieve publiekstitel (vrij van ambtelijk jargon)",
-    "dossier": "Kies exact één van de 5 hoofddossiers",
-    "subdossier": "Specifiek project, wet of programma (bijv. 'IceBear', 'Omgevingsvisie', 'Spreidingswet')",
-    "datum": "YYYY-MM-DD (indien geen datum vindbaar, gebruik de datum uit de bestandsnaam of de huidige datum)",
-    "wijk_of_kern": "Komma-gescheiden lijst van gevonden Steenwijkerlandse wijken of kernen (bijv. 'Giethoorn' of 'Vollenhove, Blokzijl'). Laat leeg of geef 'Provinciebreed' / 'Waterschapbreed' als het om een overkoepelend provinciaal of waterschapsdocument gaat.",
-    "entiteiten": "Komma-gescheiden lijst van andere betrokken overheden, partijen of organen (bijv. 'Provincie Overijssel, WDODelta, GGD IJsselland')",
-    "relaties": "Komma-gescheiden lijst van expliciet genoemde eerdere documenttitels of dossierkoppelingen"
+    "titel": "Heldere, representatieve publiekstitel (vrij van ambtelijk jargon)",
+    "dossier": "Exact één van de 7 canonieke hoofddossiers",
+    "subdossier": "Inhoudelijk SKOS-concept (bijv. 'Waterpeilbeheer & Peilbesluiten', 'Woningbouw & Inbreiding', 'Netcongestie & Energie-infrastructuur')",
+    "datum": "YYYY-MM-DD",
+    "wijk_of_kern": "Gevonden Steenwijkerlandse kernen (komma-gescheiden, of leeg indien algemeen/interbestuurlijk)",
+    "entiteiten": "Komma-gescheiden betrokken actoren (bijv. 'WDODelta, Provincie Overijssel, Enexis, COA')",
+    "relaties": "Eventuele gerelateerde documenttitels of dossiernummers",
+    "skos_tags": ["Array van strings met specifieke ontologische SKOS-labels (bijv. ['Netcongestie', 'Bodemdaling', 'Woningbouw', 'Asiel_Spreidingswet', 'Waterpeilbeheer', 'Smart_Energy_Hub', 'Planschade', 'Stikstof_AERIUS', 'Jeugdzorg_RSJ', 'Provinciale_Wegen']). Zoek naar het achterliggende concept, ook als het woord niet letterlijk in de tekst staat."]
   }
 
   Document text:
@@ -227,14 +270,29 @@ async function classifyWithGemini(
           type: Type.OBJECT,
           properties: {
             titel: { type: Type.STRING },
-            dossier: { type: Type.STRING },
+            dossier: {
+              type: Type.STRING,
+              enum: [
+                "Ruimtelijke Ordening, Wonen & Omgevingswet",
+                "Landbouw, Natuur & Waterbeheer",
+                "Lokale Economie, Toerisme & Energie-infrastructuur",
+                "Verkeer, Wegen & Fysieke Bereikbaarheid",
+                "Sociaal Domein, Asiel & Leefbaarheid",
+                "Mijnbouw & Ondergrondse Opgaven",
+                "Bestuur, Financiën & Juridische Zaken"
+              ]
+            },
             subdossier: { type: Type.STRING },
             datum: { type: Type.STRING },
             wijk_of_kern: { type: Type.STRING },
             entiteiten: { type: Type.STRING },
-            relaties: { type: Type.STRING }
+            relaties: { type: Type.STRING },
+            skos_tags: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING }
+            }
           },
-          required: ["titel", "dossier", "subdossier", "datum", "wijk_of_kern", "entiteiten", "relaties"]
+          required: ["titel", "dossier", "subdossier", "datum", "wijk_of_kern", "entiteiten", "relaties", "skos_tags"]
         }
       }
     });
@@ -272,6 +330,7 @@ export interface ClassificationProgress {
   processed: number;
   newlyClassified: number;
   alreadyProcessed: number;
+  deadLetterCount: number;
   activeFile: string;
   logs: string[];
 }
@@ -287,11 +346,13 @@ let activeProgress: ClassificationProgress = {
   processed: 0,
   newlyClassified: 0,
   alreadyProcessed: 0,
+  deadLetterCount: 0,
   activeFile: "",
   logs: []
 };
 
 export function getBulkClassificationStatus(): ClassificationProgress {
+  activeProgress.deadLetterCount = deadLetterQueue.length;
   return activeProgress;
 }
 
@@ -313,24 +374,30 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
 
   activeProgress = {
     isRunning: true,
+    isPaused: false,
+    pauseReason: undefined,
+    pauseRemainingSeconds: 0,
+    pauseResumesAt: undefined,
+    ratePerMinute: 55,
     total: 0,
     processed: 0,
     newlyClassified: 0,
     alreadyProcessed: 0,
+    deadLetterCount: deadLetterQueue.length,
     activeFile: "",
-    logs: ["Inladen van bestanden en metadata gestart..."]
+    logs: ["Inladen van bestanden en metadata gestart via non-blocking scan..."]
   };
 
   // Run asynchronously in the background
   Promise.resolve().then(async () => {
     try {
       const currentMetadata = getRawMetadata();
-      const allFiles = scanPdfFiles();
+      const allFiles = await scanPdfFilesAsync();
       const totalToProcess = currentMetadata.length + allFiles.length;
       activeProgress.total = totalToProcess;
-      activeProgress.logs.push(`Start data-herstructurering: ${currentMetadata.length} geregistreerde raadsstukken en ${allFiles.length} serverbestanden.`);
+      activeProgress.logs.push(`Sanering & Classificatie gestart: ${currentMetadata.length} geregistreerde raadsstukken en ${allFiles.length} fysieke documenten.`);
 
-      // 1. Reorganize & Canonicalize all existing metadata documents according to the official taxonomy
+      // 1. Saneren & normaliseren van alle bestaande documenten naar de 7 canonieke dossiers
       const processedFilenames = new Set<string>();
       const reclassifiedMetadata: RaadsstukMetadata[] = [];
 
@@ -345,37 +412,42 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
         activeProgress.processed++;
 
         const norm = normalizeRecord(rawItem);
+        const validation = validateRecordConformity(norm);
+
+        if (!validation.valid) {
+          activeProgress.logs.push(`[VALIDATIE HERSTEL] Document ${norm.bestandsnaam}: ${validation.errors.join(", ")}`);
+        }
+
         reclassifiedMetadata.push(norm);
         if (norm.bestandsnaam) {
           processedFilenames.add(norm.bestandsnaam.toLowerCase().trim());
         }
 
         activeProgress.newlyClassified++;
-        if (i % 20 === 0 || i === currentMetadata.length - 1) {
-          activeProgress.logs.push(`[${activeProgress.processed}/${activeProgress.total}] Herstructureerd: "${norm.titel.substring(0, 45)}" ➔ [${norm.dossier}] / [${norm.subdossier}]`);
+        if (i % 25 === 0 || i === currentMetadata.length - 1) {
+          activeProgress.logs.push(`[${activeProgress.processed}/${activeProgress.total}] Gesaneerd: "${norm.titel.substring(0, 40)}" ➔ [${norm.dossier}] / [${norm.subdossier}]`);
         }
 
         if (activeProgress.logs.length > 300) {
           activeProgress.logs.shift();
         }
 
-        // Short pause to allow event loop and real-time status polling
-        await new Promise((resolve) => setTimeout(resolve, 8));
+        // Asynchroon pauzeren voor event loop
+        await new Promise((resolve) => setTimeout(resolve, 5));
 
-        // Periodic checkpoint save every 50 items
+        // Periodieke opslag
         if (i > 0 && i % 50 === 0) {
           saveMasterMetadata(reclassifiedMetadata);
         }
       }
 
-      // 2. Scan and classify any uploaded physical files that aren't already in metadata
+      // 2. Scan and classify new physical files with Gemini and Kop-Staart extraction
       for (const file of allFiles) {
         if (!activeProgress.isRunning) {
           activeProgress.logs.push("Classificatie handmatig gestopt.");
           break;
         }
 
-        // Yield control to the Node.js event loop to keep Express server responsive
         await new Promise((resolve) => setTimeout(resolve, 15));
 
         const fnLower = file.filename.toLowerCase().trim();
@@ -384,25 +456,23 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
 
         if (!options.force && processedFilenames.has(fnLower)) {
           activeProgress.alreadyProcessed++;
-          // Skip logging every single file to prevent log overflow
           if (activeProgress.processed % 50 === 0 || activeProgress.processed === allFiles.length) {
-            activeProgress.logs.push(`[${activeProgress.processed}/${activeProgress.total}] Reeds verwerkt bestand overgeslagen: ${file.filename}`);
+            activeProgress.logs.push(`[${activeProgress.processed}/${activeProgress.total}] Reeds verwerkt: ${file.filename}`);
           }
           continue;
         }
 
         // Determine origin folder
-        let origin = "Algemeen";
+        let origin = "Gemeente Steenwijkerland";
         if (file.relativePath.startsWith("overijssel")) {
           origin = "Provincie Overijssel";
         } else if (file.relativePath.startsWith("waterschap")) {
-          origin = "Waterschap WDODelta";
+          origin = "WDODelta";
         }
 
         const timestamp = new Date().toLocaleTimeString();
         activeProgress.logs.push(`[${timestamp}] [${activeProgress.processed}/${activeProgress.total}] Analyseren: ${file.filename} (${origin})`);
         
-        // Limit log array size to prevent memory bloat
         if (activeProgress.logs.length > 300) {
           activeProgress.logs.shift();
         }
@@ -419,16 +489,15 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
         let attempts = 0;
         const maxNonQuotaRetries = 3;
 
-        // If no API key configured, use heuristic
+        // If no API key configured, use DLQ fallback
         if (!process.env.GEMINI_API_KEY) {
-          meta = runFallbackClassification(text, file.filename);
+          meta = runFallbackClassification(text, file.filename, file.relativePath, "Geen GEMINI_API_KEY geconfigureerd");
           success = true;
         }
 
         while (!success && activeProgress.isRunning) {
           attempts++;
           try {
-            // Respect rate limiting queue delay (~55 requests/min)
             await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_DELAY_MS));
             if (!activeProgress.isRunning) break;
 
@@ -447,79 +516,58 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
               activeProgress.isPaused = true;
               activeProgress.pauseRemainingSeconds = waitSeconds;
               activeProgress.pauseResumesAt = resumeAt;
-              activeProgress.pauseReason = err.isPrepaymentDepleted
-                ? `Gemini API melding: Prepayment credits / quotum bereikt (429 RESOURCE_EXHAUSTED). Pauzeert ${waitSeconds}s tot herstel...`
-                : `Gemini API rate limit per minuut bereikt (429 RESOURCE_EXHAUSTED). Pauzeert ${waitSeconds}s tot quotum-reset...`;
+              activeProgress.pauseReason = `Gemini API quota (429 RESOURCE_EXHAUSTED). Pauzeert ${waitSeconds}s tot ${resumeAt}...`;
 
-              activeProgress.logs.push(`================================================================`);
-              activeProgress.logs.push(`[RATE LIMIT PAUZE] ⏸️ 429 RESOURCE_EXHAUSTED van Gemini API.`);
-              activeProgress.logs.push(`[RATE LIMIT PAUZE] Wachten voor ${waitSeconds} seconden tot quotum reset (hervatting om ${resumeAt}).`);
-              activeProgress.logs.push(`[RATE LIMIT PAUZE] Bestand "${file.filename}" blijft in de AI-wachtrij en wordt direct opnieuw geanalyseerd met AI.`);
-              activeProgress.logs.push(`================================================================`);
+              activeProgress.logs.push(`[RATE LIMIT PAUZE] ⏸️ 429 RESOURCE_EXHAUSTED. Wachten tot ${resumeAt}...`);
               if (activeProgress.logs.length > 300) activeProgress.logs.shift();
 
-              // Checkpoint save during pause so all processed files are committed
               saveMasterMetadata(reclassifiedMetadata);
 
-              // Live countdown ticks
               for (let sec = waitSeconds; sec > 0; sec--) {
                 if (!activeProgress.isRunning) break;
                 activeProgress.pauseRemainingSeconds = sec;
-                if (sec === 45 || sec === 30 || sec === 15 || sec === 5) {
-                  activeProgress.logs.push(`[PAUZE-TIMER] ⏳ Nog ${sec}s wachten tot herstart Gemini AI (hervat om ${resumeAt})...`);
-                  if (activeProgress.logs.length > 300) activeProgress.logs.shift();
-                }
                 await new Promise((r) => setTimeout(r, 1000));
               }
 
-              if (!activeProgress.isRunning) {
-                activeProgress.isPaused = false;
-                break;
-              }
+              if (!activeProgress.isRunning) break;
 
               activeProgress.isPaused = false;
               activeProgress.pauseReason = undefined;
               activeProgress.pauseRemainingSeconds = 0;
-              activeProgress.pauseResumesAt = undefined;
-              activeProgress.logs.push(`[HERVAT] ▶️ Quotum wachttijd verstreken (${resumeAt}). Gemini AI classificatie wordt nu hervat voor "${file.filename}"...`);
-              if (activeProgress.logs.length > 300) activeProgress.logs.shift();
-
-              // Retry this same file in the while loop with Gemini!
               continue;
             }
 
-            // Transient network error (500, 503, connection reset)
-            if (attempts < maxNonQuotaRetries && (err?.message?.includes("503") || err?.message?.includes("500") || err?.message?.includes("ECONNRESET") || err?.message?.includes("fetch failed"))) {
-              activeProgress.logs.push(`  ↳ Tijdelijke netwerkfout (${err?.message || 500}). Herkansen over 5s (poging ${attempts}/${maxNonQuotaRetries})...`);
+            // Transient network error (503, 500)
+            if (attempts < maxNonQuotaRetries && (err?.message?.includes("503") || err?.message?.includes("500") || err?.message?.includes("ECONNRESET"))) {
+              activeProgress.logs.push(`  ↳ Tijdelijke netwerkfout (${err?.message || 500}). Herkansen over 5s...`);
               await new Promise((r) => setTimeout(r, 5000));
               continue;
             }
 
-            // Other unrecoverable error on this file
-            activeProgress.logs.push(`  ↳ [WAARSCHUWING] AI-analyse mislukt voor "${file.filename}" (${err?.message || "fout"}). Heuristiek gebruikt voor dit specifieke bestand.`);
-            meta = runFallbackClassification(text, file.filename);
+            // Other unrecoverable error: route to DLQ
+            activeProgress.logs.push(`  ↳ [DLQ] AI-analyse mislukt voor "${file.filename}" (${err?.message || "fout"}). Geplaatst in Dead Letter Queue.`);
+            meta = runFallbackClassification(text, file.filename, file.relativePath, err?.message || "Classificatiefout");
             success = true;
           }
         }
 
-        if (!activeProgress.isRunning) {
-          activeProgress.logs.push("Classificatie handmatig gestopt.");
-          break;
-        }
+        if (!activeProgress.isRunning) break;
 
         // Prepare complete metadata record with strict taxonomy normalization
-        const record: RaadsstukMetadata = normalizeRecord({
+        const initialRecord: RaadsstukMetadata = {
           bestandsnaam: file.filename,
           titel: meta.titel || file.filename.replace(/\.pdf$/i, "").replace(/[_-]/g, " "),
-          dossier: meta.dossier || "Bestuur, Financiën & Openbare Orde",
+          dossier: meta.dossier || "Bestuur, Financiën & Juridische Zaken",
           subdossier: meta.subdossier || "",
           datum: meta.datum || new Date().toISOString().split("T")[0],
           wijk_of_kern: meta.wijk_of_kern || "",
-          entiteiten: meta.entiteiten || (origin !== "Algemeen" ? origin : ""),
-          relaties: meta.relaties || ""
-        }, text);
+          entiteiten: meta.entiteiten || (origin !== "Gemeente Steenwijkerland" ? origin : ""),
+          relaties: meta.relaties || "",
+          skos_tags: meta.skos_tags || []
+        };
 
-        // Add to our current metadata list (avoid duplicates)
+        const record = normalizeRecord(initialRecord, text);
+
         const existingIndex = reclassifiedMetadata.findIndex(
           (item) => (item.bestandsnaam || "").toLowerCase().trim() === fnLower
         );
@@ -538,17 +586,15 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
           activeProgress.logs.shift();
         }
 
-        // Periodic checkpoint save every 20 newly classified items
         if (activeProgress.newlyClassified > 0 && activeProgress.newlyClassified % 20 === 0) {
           saveMasterMetadata(reclassifiedMetadata);
         }
       }
 
-      // Final complete normalization pass across all items and save everywhere (data/, sqlite, public/, dist/, csv, graph)
-      const finalizedMetadata = reclassifiedMetadata.map(item => normalizeRecord(item));
-      saveMasterMetadata(finalizedMetadata);
+      // Sla de reeds genormaliseerde metadata direct op
+      saveMasterMetadata(reclassifiedMetadata);
 
-      activeProgress.logs.push(`[VOLTOOID] Herstructurering en classificatie succesvol afgerond! Totaal: ${activeProgress.processed}/${activeProgress.total}. 5 canonieke hoofddossiers en 57 subdossiers gesynchroniseerd.`);
+      activeProgress.logs.push(`[VOLTOOID] Herstructurering en classificatie succesvol afgerond! Totaal: ${activeProgress.processed}/${activeProgress.total}. 7 canonieke hoofddossiers gesynchroniseerd.`);
       activeProgress.isRunning = false;
       activeProgress.activeFile = "";
 
@@ -558,131 +604,4 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
       activeProgress.isRunning = false;
     }
   });
-}
-
-/**
- * Perform bulk classification on all pdf files in public/uploads/documents/ (recursively)
- * and update the master metadata file.
- */
-export async function runBulkClassification(options: { force?: boolean } = {}): Promise<{
-  totalScanned: number;
-  newlyClassified: number;
-  alreadyProcessed: number;
-  results: Array<{ filename: string; dossier: string; title: string; origin: string }>;
-}> {
-  const currentMetadata = getRawMetadata().map(item => normalizeRecord(item));
-  const processedSet = new Set<string>();
-  currentMetadata.forEach((item) => {
-    if (item.bestandsnaam) {
-      processedSet.add(item.bestandsnaam.toLowerCase().trim());
-    }
-  });
-
-  const allFiles = scanPdfFiles();
-  const results: Array<{ filename: string; dossier: string; title: string; origin: string }> = [];
-
-  let newlyClassified = 0;
-  let alreadyProcessed = 0;
-
-  for (const file of allFiles) {
-    const fnLower = file.filename.toLowerCase().trim();
-    if (!options.force && processedSet.has(fnLower)) {
-      alreadyProcessed++;
-      continue;
-    }
-
-    // Determine origin folder
-    let origin = "Algemeen";
-    if (file.relativePath.startsWith("overijssel")) {
-      origin = "Provincie Overijssel";
-    } else if (file.relativePath.startsWith("waterschap")) {
-      origin = "Waterschap WDODelta";
-    }
-
-    console.log(`[BULK CLASS] Processing: ${file.relativePath} (${origin})`);
-
-    let text = "";
-    try {
-      text = await extractTextFromFile(file.absolutePath);
-    } catch (err) {
-      console.warn(`[BULK CLASS] Failed text extraction for ${file.filename}:`, err);
-    }
-
-    let meta: Partial<RaadsstukMetadata> = {};
-    let success = false;
-    let attempts = 0;
-    const maxNonQuotaRetries = 3;
-
-    if (!process.env.GEMINI_API_KEY) {
-      meta = runFallbackClassification(text, file.filename);
-      success = true;
-    }
-
-    while (!success) {
-      attempts++;
-      try {
-        await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_DELAY_MS));
-        meta = await classifyWithGemini(text, file.filename, file.relativePath);
-        success = true;
-      } catch (err: any) {
-        if (err instanceof GeminiQuotaExceededError || err?.name === "GeminiQuotaExceededError") {
-          const waitSeconds = err.retryAfterSeconds || 60;
-          console.warn(`[BULK CLASS] Quota 429 encountered. Waiting ${waitSeconds}s before retrying...`);
-          await new Promise((r) => setTimeout(r, waitSeconds * 1000));
-          continue;
-        }
-
-        if (attempts < maxNonQuotaRetries && (err?.message?.includes("503") || err?.message?.includes("500") || err?.message?.includes("ECONNRESET"))) {
-          await new Promise((r) => setTimeout(r, 5000));
-          continue;
-        }
-
-        meta = runFallbackClassification(text, file.filename);
-        success = true;
-      }
-    }
-
-    // Prepare complete metadata record
-    const record: RaadsstukMetadata = normalizeRecord({
-      bestandsnaam: file.filename,
-      titel: meta.titel || file.filename.replace(/\.pdf$/i, ""),
-      dossier: meta.dossier || "Bestuur, Financiën & Openbare Orde",
-      subdossier: meta.subdossier || "",
-      datum: meta.datum || new Date().toISOString().split("T")[0],
-      wijk_of_kern: meta.wijk_of_kern || "",
-      entiteiten: meta.entiteiten || (origin !== "Algemeen" ? origin : ""),
-      relaties: meta.relaties || ""
-    }, text);
-
-    // Add to our current metadata list (avoid duplicates)
-    const existingIndex = currentMetadata.findIndex(
-      (item) => (item.bestandsnaam || "").toLowerCase().trim() === fnLower
-    );
-
-    if (existingIndex !== -1) {
-      currentMetadata[existingIndex] = record;
-    } else {
-      currentMetadata.push(record);
-    }
-
-    newlyClassified++;
-    results.push({
-      filename: file.filename,
-      dossier: record.dossier,
-      title: record.titel,
-      origin
-    });
-  }
-
-  if (newlyClassified > 0) {
-    const finalizedMetadata = currentMetadata.map(item => normalizeRecord(item));
-    saveMasterMetadata(finalizedMetadata);
-  }
-
-  return {
-    totalScanned: allFiles.length,
-    newlyClassified,
-    alreadyProcessed,
-    results
-  };
 }

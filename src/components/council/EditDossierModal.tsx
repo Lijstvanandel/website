@@ -28,16 +28,13 @@ interface EditDossierModalProps {
 }
 
 const CATEGORY_OPTIONS = [
-  "Gemeenteraad & Beleid",
-  "Ruimte & Wonen",
-  "Bestuur & Regelingen",
-  "Sociaal Domein & Zorg",
-  "Natuur & Milieu",
-  "Energie & Duurzaamheid",
-  "Cultuur & Erfgoed",
-  "Financiën & Economie",
-  "Verkeer & Vervoer",
-  "Veiligheid & Handhaving",
+  "Ruimtelijke Ordening, Wonen & Omgevingswet",
+  "Landbouw, Natuur & Waterbeheer",
+  "Lokale Economie, Toerisme & Energie-infrastructuur",
+  "Verkeer, Wegen & Fysieke Bereikbaarheid",
+  "Sociaal Domein, Asiel & Leefbaarheid",
+  "Mijnbouw & Ondergrondse Opgaven",
+  "Bestuur, Financiën & Juridische Zaken",
 ];
 
 const PRESET_THUMBNAILS = [

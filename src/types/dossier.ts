@@ -7,6 +7,7 @@ export interface RaadsstukMetadata {
   relaties: string;
   subdossier?: string;
   wijk_of_kern?: string;
+  skos_tags?: string[];
 }
 
 export interface GraphNode {
@@ -44,6 +45,7 @@ export interface DossierDocument {
   subdossier?: string;
   wijk_of_kern?: string;
   wijken?: string[];
+  skos_tags?: string[];
   datum: string | null;
   entiteiten: string[];
   relaties: string[];

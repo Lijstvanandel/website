@@ -117,7 +117,7 @@ export async function parsePdfBuffer(buf: Buffer): Promise<string> {
     if (!extractedText && typeof pdfDefault === "function") {
       try {
         // Try standard function invocation: pdfParse(buf)
-        const res = await (pdfDefault as Function)(buf);
+        const res = await (pdfDefault as (...args: any[]) => any)(buf);
         if (res?.text) extractedText = String(res.text);
         else if (typeof res === "string") extractedText = res;
       } catch (fnErr: any) {
@@ -139,7 +139,9 @@ export async function parsePdfBuffer(buf: Buffer): Promise<string> {
                 const res = await parser.getText();
                 if (res?.text) extractedText = String(res.text);
               }
-            } catch (_e4) {}
+            } catch (_e4) {
+              // ignore parser instantiate fallback error
+            }
           }
         }
       }
@@ -150,7 +152,9 @@ export async function parsePdfBuffer(buf: Buffer): Promise<string> {
       try {
         const res = await (pdfParseModule as any)(buf);
         if (res?.text) extractedText = String(res.text);
-      } catch (_e5) {}
+      } catch (_e5) {
+        // ignore pdfParseModule error
+      }
     }
 
     if (extractedText && extractedText.trim().length > 0) {

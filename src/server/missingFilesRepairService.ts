@@ -167,7 +167,9 @@ function getKnownMetadataUrls(filename: string): { url?: string; category?: "ove
       if (fs.existsSync(p)) {
         try {
           cachedOverijsselMeta = JSON.parse(fs.readFileSync(p, "utf-8"));
-        } catch {}
+        } catch {
+          // ignore overijssel parse error
+        }
       }
     }
     if (Array.isArray(cachedOverijsselMeta)) {
@@ -190,7 +192,9 @@ function getKnownMetadataUrls(filename: string): { url?: string; category?: "ove
       if (fs.existsSync(p)) {
         try {
           cachedWaterschapMeta = JSON.parse(fs.readFileSync(p, "utf-8"));
-        } catch {}
+        } catch {
+          // ignore waterschap parse error
+        }
       }
     }
     if (Array.isArray(cachedWaterschapMeta)) {
@@ -339,7 +343,9 @@ export async function repairSingleMissingFile(filename: string): Promise<{
         if (!fs.existsSync(distPath) && fs.existsSync(path.dirname(distPath))) {
           fs.copyFileSync(primaryPath, distPath);
         }
-      } catch {}
+      } catch {
+        // ignore dist sync error
+      }
 
       return {
         success: true,

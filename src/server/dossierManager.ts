@@ -25,7 +25,9 @@ function ensureMasterDirs() {
     if (!fs.existsSync(MASTER_METADATA_DIR)) {
       fs.mkdirSync(MASTER_METADATA_DIR, { recursive: true });
     }
-  } catch (_e) {}
+  } catch (_e) {
+    // ignore dir creation error
+  }
 }
 
 // Helper to sanitize slug
@@ -132,7 +134,7 @@ export function getSubdossierThumbnail(subTitle: string, hoofddossier?: string):
   return "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=800&auto=format&fit=crop&q=80";
 }
 
-// Category and image presets for dossiers
+// Category and image presets for dossiers (7 Inhoudelijke Canonieke Domeinen)
 const DOSSIER_PRESETS: Record<
   string,
   {
@@ -143,81 +145,116 @@ const DOSSIER_PRESETS: Record<
     wijkNaam?: string;
   }
 > = {
+  "Ruimtelijke Ordening, Wonen & Omgevingswet": {
+    category: "Ruimtelijke Ordening, Wonen & Omgevingswet",
+    thumbnail: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800&auto=format&fit=crop&q=80",
+    description: "Bestemmingsplannen, Omgevingsvisie, TAM-omgevingsplannen, BOPA, woningbouw, inbreiding, sociale volkshuisvesting (Wetland Wonen), beeldkwaliteit en planschade/SAOZ."
+  },
+  "Landbouw, Natuur & Waterbeheer": {
+    category: "Landbouw, Natuur & Waterbeheer",
+    thumbnail: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=800&auto=format&fit=crop&q=80",
+    description: "Waterpeilbeheer & peilbesluiten (WDODelta), OGOR, veenoxidatie & bodemdaling, stikstof (AERIUS/KDW), Natura 2000 Weerribben-Wieden, agrarische transitie en waterkwaliteit."
+  },
+  "Lokale Economie, Toerisme & Energie-infrastructuur": {
+    category: "Lokale Economie, Toerisme & Energie-infrastructuur",
+    thumbnail: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=800&auto=format&fit=crop&q=80",
+    description: "Netcongestie, Smart Energy Hub Groot Verlaat, zonneparken, bedrijventerreinen (Eeserwold), toerisme & vaarverordening Giethoorn, UNESCO Koloniën van Weldadigheid, De Meenthe en sport."
+  },
+  "Verkeer, Wegen & Fysieke Bereikbaarheid": {
+    category: "Verkeer, Wegen & Fysieke Bereikbaarheid",
+    thumbnail: "https://images.unsplash.com/photo-1517649763962-0c623266ddc0?w=800&auto=format&fit=crop&q=80",
+    description: "Provinciale N-wegen (N761, N334, N762, N333), bruggen (Ronduitebrug, Meenthebrug, Scheerbrug), pontje Jonen, snelfietsroutes, openbaar vervoer (RRReis) en GVVP."
+  },
+  "Sociaal Domein, Asiel & Leefbaarheid": {
+    category: "Sociaal Domein, Asiel & Leefbaarheid",
+    thumbnail: "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=800&auto=format&fit=crop&q=80",
+    description: "Jeugdzorg (RSJ), Wmo, publieke gezondheid (GGD IJsselland), asielopvang (COA, Spreidingswet), Participatiewet/schuldhulp, onderwijshuisvesting (IHP) en leefbaarheid kleine kernen."
+  },
+  "Mijnbouw & Ondergrondse Opgaven": {
+    category: "Mijnbouw & Ondergrondse Opgaven",
+    thumbnail: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&auto=format&fit=crop&q=80",
+    description: "Gaswinning (Vermilion, Eesveen), winningsplannen, seismische monitoring, bodembeweging, mijnbouwschade en geothermie/ondergrondse netten."
+  },
+  "Bestuur, Financiën & Juridische Zaken": {
+    category: "Bestuur, Financiën & Juridische Zaken",
+    thumbnail: "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=800&auto=format&fit=crop&q=80",
+    description: "Planning & control (programmabegroting/jaarrekening), gemeentefonds, belastingen (OZB/leges), APV, openbare orde, veiligheidsregio (VRIJ), politie, brandweer, rekenkamer en riolering."
+  },
+  // Legacy backward-compatibility mappings
+  "Ruimte, Wonen & Bereikbaarheid": {
+    category: "Ruimtelijke Ordening, Wonen & Omgevingswet",
+    thumbnail: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800&auto=format&fit=crop&q=80",
+    description: "Woningbouw, bestemmingsplannen, gebiedsontwikkeling, verkeer, N-wegen, bruggen en ruimtelijke ordening in de kernen."
+  },
+  "Klimaat, Water & Natuur": {
+    category: "Landbouw, Natuur & Waterbeheer",
+    thumbnail: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=800&auto=format&fit=crop&q=80",
+    description: "Waterbeheer, peilbesluiten (WDODelta), stikstof & AERIUS, energietransitie, netcongestie, mijnbouw/gaswinning en Nationaal Park Weerribben-Wieden."
+  },
+  "Sociaal Domein, Zorg & Jeugd": {
+    category: "Sociaal Domein, Asiel & Leefbaarheid",
+    thumbnail: "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=800&auto=format&fit=crop&q=80",
+    description: "Jeugdzorg (RSJ), WMO, publieke gezondheid (GGD), armoedebeleid, participatiewet, onderwijshuisvesting en asielopvang/vluchtelingen."
+  },
+  "Lokale Economie, Toerisme & Cultuur": {
+    category: "Lokale Economie, Toerisme & Energie-infrastructuur",
+    thumbnail: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=800&auto=format&fit=crop&q=80",
+    description: "Toeristische regulering (Giethoorn vaarbeleid/parkeren), bedrijventerreinen, agrarische economie & pacht, De Meenthe, cultuur en UNESCO Werelderfgoed."
+  },
+  "Bestuur, Financiën & Openbare Orde": {
+    category: "Bestuur, Financiën & Juridische Zaken",
+    thumbnail: "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=800&auto=format&fit=crop&q=80",
+    description: "Planning & control (begroting/jaarrekening), belastingen, openbare orde & APV, politie, brandweer, beheer openbare ruimte en rekenkamer."
+  },
   "Bestuur, Financiën & Organisatie": {
-    category: "Bestuur, Financiën & Organisatie",
+    category: "Bestuur, Financiën & Juridische Zaken",
     thumbnail: "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=800&auto=format&fit=crop&q=80",
     description: "Begrotingen, jaarrekeningen, gemeentelijke belastingen, moties, rekenkamer en gemeenschappelijke regelingen."
   },
   "Wonen, Bouwen & Ontwikkeling": {
-    category: "Wonen, Bouwen & Ontwikkeling",
+    category: "Ruimtelijke Ordening, Wonen & Omgevingswet",
     thumbnail: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800&auto=format&fit=crop&q=80",
     description: "Woningbouw, nieuwbouwprojecten, bestemmingsplannen, omgevingsvisie, kaveluitgifte en ruimtelijke ordening."
   },
   "Natuur, Milieu & Klimaat": {
-    category: "Natuur, Milieu & Klimaat",
+    category: "Landbouw, Natuur & Waterbeheer",
     thumbnail: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=800&auto=format&fit=crop&q=80",
     description: "Waterbeheer, Weerribben-Wieden, stikstofbeleid, energietransitie, zonneparken en klimaatadaptatie."
   },
   "Zorg, Gezondheid & Welzijn": {
-    category: "Zorg, Gezondheid & Welzijn",
+    category: "Sociaal Domein, Asiel & Leefbaarheid",
     thumbnail: "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=800&auto=format&fit=crop&q=80",
     description: "Wmo, publieke gezondheid (GGD), mantelzorgondersteuning, thuiszorg en beschermd wonen."
   },
   "Jeugd, Gezin & Onderwijs": {
-    category: "Jeugd, Gezin & Onderwijs",
+    category: "Sociaal Domein, Asiel & Leefbaarheid",
     thumbnail: "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=800&auto=format&fit=crop&q=80",
     description: "Jeugdhulp, Regionaal Serviceteam Jeugd (RSJ), onderwijshuisvesting, scholen en kindermishandeling."
   },
   "Verkeer, Wegen & Openbare Ruimte": {
-    category: "Verkeer, Wegen & Openbare Ruimte",
+    category: "Verkeer, Wegen & Fysieke Bereikbaarheid",
     thumbnail: "https://images.unsplash.com/photo-1517649763962-0c623266ddc0?w=800&auto=format&fit=crop&q=80",
     description: "Wegenonderhoud, verkeersveiligheid, fietsinfrastructuur, parkeerbeleid, openbaar vervoer, grachten en verlichting."
   },
   "Kunst, Cultuur & Sport": {
-    category: "Kunst, Cultuur & Sport",
+    category: "Lokale Economie, Toerisme & Energie-infrastructuur",
     thumbnail: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800&auto=format&fit=crop&q=80",
     description: "Podiumkunsten (De Meenthe, Scala), musea, erfgoed, beeldende kunst, bibliotheken en sportaccommodaties."
   },
   "Veiligheid, Toezicht & Handhaving": {
-    category: "Veiligheid, Toezicht & Handhaving",
+    category: "Bestuur, Financiën & Juridische Zaken",
     thumbnail: "https://images.unsplash.com/photo-1575881875475-3102470d5a86?w=800&auto=format&fit=crop&q=80",
     description: "Veiligheidsregio IJsselland, brandweer, toezicht & handhaving, APV, openbare orde en crisisbeheersing."
   },
   "Samenleving, Werk & Inclusie": {
-    category: "Samenleving, Werk & Inclusie",
+    category: "Sociaal Domein, Asiel & Leefbaarheid",
     thumbnail: "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=800&auto=format&fit=crop&q=80",
     description: "Asiel- en vluchtelingenopvang, Participatiewet, schuldhulpverlening, armoedebestrijding en burgerparticipatie."
   },
   "Economie, Ondernemen & Toerisme": {
-    category: "Economie, Ondernemen & Toerisme",
+    category: "Lokale Economie, Toerisme & Energie-infrastructuur",
     thumbnail: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=800&auto=format&fit=crop&q=80",
     description: "Bedrijventerreinen, waterrecreatie, toerisme, agrarische zaken & pachtbeleid, horeca en detailhandel."
-  },
-  // Backwards compatibility aliases
-  "Ruimte, Wonen & Bereikbaarheid": {
-    category: "Wonen, Bouwen & Ontwikkeling",
-    thumbnail: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800&auto=format&fit=crop&q=80",
-    description: "Woningbouw, bestemmingsplannen, gebiedsontwikkeling, verkeer en ruimtelijke ordening in de kernen."
-  },
-  "Klimaat, Water & Natuur": {
-    category: "Natuur, Milieu & Klimaat",
-    thumbnail: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=800&auto=format&fit=crop&q=80",
-    description: "Waterbeheer, stikstof, energietransitie, en natuurbeheer waaronder Nationaal Park Weerribben-Wieden."
-  },
-  "Sociaal Domein, Zorg & Jeugd": {
-    category: "Zorg, Gezondheid & Welzijn",
-    thumbnail: "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?w=800&auto=format&fit=crop&q=80",
-    description: "Jeugdzorg, WMO, armoedebeleid, participatiewet, volksgezondheid en asielopvang."
-  },
-  "Lokale Economie, Toerisme & Cultuur": {
-    category: "Economie, Ondernemen & Toerisme",
-    thumbnail: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=800&auto=format&fit=crop&q=80",
-    description: "Recreatie, toerisme, lokale economie, landbouw/pacht, kunst, cultuur en erfgoed."
-  },
-  "Bestuur, Financiën & Openbare Orde": {
-    category: "Bestuur, Financiën & Organisatie",
-    thumbnail: "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=800&auto=format&fit=crop&q=80",
-    description: "Gemeentefinanciën, veiligheid, handhaving, onderhoud openbare ruimte en regionale samenwerkingen (GR)."
   }
 };
 
@@ -257,7 +294,9 @@ export function getRawMetadata(): RaadsstukMetadata[] {
     if (Array.isArray(kvMaster) && kvMaster.length > 0) {
       return kvMaster;
     }
-  } catch (_e) {}
+  } catch (_e) {
+    // ignore kv store read error
+  }
 
   // 4. Check documents backup path
   try {
@@ -268,7 +307,9 @@ export function getRawMetadata(): RaadsstukMetadata[] {
         return parsed;
       }
     }
-  } catch (_e) {}
+  } catch (_e) {
+    // ignore backup read error
+  }
 
   return [];
 }
@@ -396,7 +437,9 @@ export function countPhysicalFilesOnDisk(): {
             } else {
               otherSubdirsCount += subCount;
             }
-          } catch (_e) {}
+          } catch (_e) {
+            // ignore subDir read error
+          }
         }
       }
     }
@@ -422,7 +465,9 @@ export function saveMasterMetadata(items: RaadsstukMetadata[], csvContent?: stri
   // 2. Save to master backup in uploads/documents (gitignored)
   try {
     fs.writeFileSync(MASTER_METADATA_BACKUP_PATH, JSON.stringify(items, null, 2), "utf-8");
-  } catch (_e) {}
+  } catch (_e) {
+    // ignore backup write error
+  }
 
   // 3. Save to SQLite kv_store (gitignored & persistent in database.sqlite)
   try {
@@ -545,16 +590,27 @@ export function generateMasterMetadataCsv(items: RaadsstukMetadata[]): string {
     return `"${str}"`;
   };
 
-  const rows = items.map((item) => [
-    escapeCsv(item.bestandsnaam),
-    escapeCsv(item.titel || item.bestandsnaam),
-    escapeCsv(item.dossier || "Algemeen"),
-    escapeCsv(item.subdossier || "Algemeen"),
-    escapeCsv(item.wijk_of_kern || ""),
-    escapeCsv(item.datum || ""),
-    escapeCsv(item.entiteiten || ""),
-    escapeCsv(item.relaties || "")
-  ].join(";"));
+  const rows = items.map((item) => {
+    const rawDossier = item.dossier;
+    const rawSub = item.subdossier;
+    const title = item.titel || item.bestandsnaam;
+    const entities = item.entiteiten;
+    const rels = item.relaties;
+
+    const hoofddossier = normalizeHoofddossier(rawDossier, title, entities, rels);
+    const subdossier = normalizeSubdossier(hoofddossier, rawSub, title, entities, rels);
+
+    return [
+      escapeCsv(item.bestandsnaam),
+      escapeCsv(title),
+      escapeCsv(hoofddossier || "Algemeen"),
+      escapeCsv(subdossier || "Algemeen"),
+      escapeCsv(item.wijk_of_kern || ""),
+      escapeCsv(item.datum || ""),
+      escapeCsv(entities || ""),
+      escapeCsv(rels || "")
+    ].join(";");
+  });
 
   return "\uFEFF" + headers.join(";") + "\r\n" + rows.join("\r\n");
 }
@@ -612,7 +668,9 @@ export function syncPhysicalFilesystemDocuments(): {
               fileSize: st.size,
               mtime: st.mtime,
             });
-          } catch (_e) {}
+          } catch (_e) {
+            // ignore stat error
+          }
         } else if (entry.isDirectory()) {
           const subDirName = entry.name;
           const subDirPath = path.join(DOCUMENTS_DIR, subDirName);
@@ -631,10 +689,14 @@ export function syncPhysicalFilesystemDocuments(): {
                     fileSize: subSt.size,
                     mtime: subSt.mtime,
                   });
-                } catch (_e) {}
+                } catch (_e) {
+                  // ignore subSt error
+                }
               }
             }
-          } catch (_e) {}
+          } catch (_e) {
+            // ignore subDir readdir error
+          }
         }
       }
     } catch (err) {
@@ -670,14 +732,19 @@ export function syncPhysicalFilesystemDocuments(): {
           const wsKey = fn.toLowerCase().trim();
           const wsBase = path.basename(fn).toLowerCase().trim();
           if (!itemMap.has(wsKey) && !baseNameMap.has(wsBase)) {
+            const docTitle = ws.titel || cleanDocumentTitle(fn);
+            const docEntities = ws.entiteiten || "Waterschap Drents Overijsselse Delta, Waterbeheer, Dijken, Peilbesluit";
+            const canonicalHoofd = normalizeHoofddossier(ws.dossier || "Klimaat, Water & Natuur", docTitle, docEntities, "");
+            const canonicalSub = normalizeSubdossier(canonicalHoofd, ws.subdossier, docTitle, docEntities, "");
+
             const wsItem: RaadsstukMetadata = {
               bestandsnaam: fn.includes("/") ? fn : `waterschap/${fn}`,
-              titel: ws.titel || cleanDocumentTitle(fn),
-              dossier: "Waterschap & Waterbeheer",
-              subdossier: "Waterschap Drents Overijsselse Delta",
-              wijk_of_kern: ws.wijk_of_kern || detectWijkOrKern(ws.titel || fn) || "",
+              titel: docTitle,
+              dossier: canonicalHoofd,
+              subdossier: canonicalSub,
+              wijk_of_kern: ws.wijk_of_kern || detectWijkOrKern(docTitle) || "",
               datum: ws.datum || extractDateFromFilename(fn),
-              entiteiten: ws.entiteiten || "Waterschap Drents Overijsselse Delta, Waterbeheer, Dijken",
+              entiteiten: docEntities,
               relaties: ws.relaties || "",
             };
             itemMap.set(wsKey, wsItem);
@@ -685,7 +752,9 @@ export function syncPhysicalFilesystemDocuments(): {
           }
         }
       }
-    } catch (_e) {}
+    } catch (_e) {
+      // ignore waterschap json read error
+    }
   }
 
   // Check specialized Overijssel metadata JSON
@@ -701,14 +770,19 @@ export function syncPhysicalFilesystemDocuments(): {
           const ovKey = fn.toLowerCase().trim();
           const ovBase = path.basename(fn).toLowerCase().trim();
           if (!itemMap.has(ovKey) && !baseNameMap.has(ovBase)) {
+            const docTitle = ov.titel || cleanDocumentTitle(fn);
+            const docEntities = ov.entiteiten || "Provincie Overijssel, Regionaal Beleid";
+            const canonicalHoofd = normalizeHoofddossier(ov.dossier, docTitle, docEntities, "");
+            const canonicalSub = normalizeSubdossier(canonicalHoofd, ov.subdossier, docTitle, docEntities, "");
+
             const ovItem: RaadsstukMetadata = {
               bestandsnaam: fn.includes("/") ? fn : `overijssel/${fn}`,
-              titel: ov.titel || cleanDocumentTitle(fn),
-              dossier: "Provincie Overijssel",
-              subdossier: "Provinciale Staten & Besluiten",
-              wijk_of_kern: ov.wijk_of_kern || detectWijkOrKern(ov.titel || fn) || "",
+              titel: docTitle,
+              dossier: canonicalHoofd,
+              subdossier: canonicalSub,
+              wijk_of_kern: ov.wijk_of_kern || detectWijkOrKern(docTitle) || "",
               datum: ov.datum || extractDateFromFilename(fn),
-              entiteiten: ov.entiteiten || "Provincie Overijssel, Provinciale Staten, Regionaal Beleid",
+              entiteiten: docEntities,
               relaties: ov.relaties || "",
             };
             itemMap.set(ovKey, ovItem);
@@ -716,7 +790,9 @@ export function syncPhysicalFilesystemDocuments(): {
           }
         }
       }
-    } catch (_e) {}
+    } catch (_e) {
+      // ignore overijssel json read error
+    }
   }
 
   // Check all physical disk files and reconcile or add
@@ -1879,7 +1955,9 @@ export async function processUploadedCouncilDocuments(
       if (!fs.existsSync(targetDir)) {
         fs.mkdirSync(targetDir, { recursive: true });
       }
-    } catch (_e) {}
+    } catch (_e) {
+      // ignore mkdir error
+    }
 
     const targetFilePath = path.join(targetDir, cleanBasename);
 
@@ -1913,7 +1991,9 @@ export async function processUploadedCouncilDocuments(
     if (!match) {
       try {
         match = metadataByFilename.get(decodeURIComponent(cleanBasename.toLowerCase().trim()));
-      } catch (_e) {}
+      } catch (_e) {
+        // ignore decode error
+      }
     }
 
     if (match) {
@@ -2015,7 +2095,9 @@ export async function processUploadedCouncilDocuments(
             if (fs.existsSync(tempExtractDir)) {
               fs.rmSync(tempExtractDir, { recursive: true, force: true });
             }
-          } catch (_e) {}
+          } catch (_e) {
+            // ignore cleanup error
+          }
         }
       }
 
@@ -2051,7 +2133,9 @@ export async function processUploadedCouncilDocuments(
       if (sourceZipPath && fs.existsSync(sourceZipPath)) {
         try {
           fs.unlinkSync(sourceZipPath);
-        } catch (_e) {}
+        } catch (_e) {
+          // ignore unlink error
+        }
       }
     } else {
       // Regular single file
@@ -2159,13 +2243,18 @@ export function rebuildNetworkGraph(items: RaadsstukMetadata[]): NetworkGraphDat
     const fn = (item.bestandsnaam || "").trim();
     if (!fn) return;
 
+    const canonicalGroup = normalizeHoofddossier(item.dossier, item.titel, item.entiteiten, item.relaties);
+
     if (!nodeIds.has(fn)) {
       nodes.push({
         id: fn,
         label: (item.titel || fn).trim(),
-        group: (item.dossier || "Algemeen").trim(),
+        group: canonicalGroup,
         type: "Raadsstuk",
         date: item.datum || null,
+        dossier: canonicalGroup,
+        subdossier: normalizeSubdossier(canonicalGroup, item.subdossier, item.titel, item.entiteiten, item.relaties),
+        bestandsnaam: fn
       });
       nodeIds.add(fn);
     }
