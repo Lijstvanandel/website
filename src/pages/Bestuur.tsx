@@ -13,13 +13,15 @@ import {
   Settings, 
   FileCheck2,
   Calendar,
-  HardDrive
+  HardDrive,
+  Eye
 } from "lucide-react";
 import placeholder from "@/assets/silhouette.png";
 import sammyImg from "@/assets/sammy.png";
 import stefImg from "@/assets/stef-mars.jpg";
 import { useAuth } from "@/context/AuthContext";
 import { safeJson } from "@/lib/api";
+import { BestuurDocumentViewer, BestuurDocViewerItem } from "@/components/BestuurDocumentViewer";
 
 export interface BestuurslidItem {
   id: string;
@@ -141,6 +143,23 @@ const Bestuur = () => {
   const { user } = useAuth();
   const [boardData, setBoardData] = useState<BestuurData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedViewerDoc, setSelectedViewerDoc] = useState<BestuurDocViewerItem | null>(null);
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
+
+  const handleOpenDocViewer = (doc: OrganisatieDoc) => {
+    setSelectedViewerDoc({
+      id: doc.id,
+      titel: doc.titel,
+      beschrijving: doc.beschrijving,
+      category: doc.category,
+      fileUrl: doc.fileUrl,
+      fileName: doc.fileName,
+      fileSize: doc.fileSize,
+      datum: doc.datum,
+      href: doc.href,
+    });
+    setIsViewerOpen(true);
+  };
 
   const canManage = user?.role === "admin" || 
                     user?.role === "voorzitter" || 
@@ -423,7 +442,8 @@ const Bestuur = () => {
               return (
                 <div
                   key={doc.id || doc.titel}
-                  className="group rounded-lg border border-border/80 hover:border-accent/60 bg-background/50 hover:bg-accent/5 p-3.5 transition-all"
+                  className="group rounded-lg border border-border/80 hover:border-accent/60 bg-background/50 hover:bg-accent/5 p-3.5 transition-all cursor-pointer"
+                  onClick={() => handleOpenDocViewer(doc)}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-start gap-2.5">
@@ -431,8 +451,8 @@ const Bestuur = () => {
                         <FileText className="w-3.5 h-3.5" />
                       </div>
                       <div>
-                        <div className="font-medium text-sm text-foreground group-hover:text-accent transition-colors leading-snug">
-                          {doc.titel}
+                        <div className="font-medium text-sm text-foreground group-hover:text-accent transition-colors leading-snug flex items-center gap-1.5">
+                          <span>{doc.titel}</span>
                         </div>
                         {doc.beschrijving && (
                           <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
@@ -459,26 +479,37 @@ const Bestuur = () => {
                       </div>
                     </div>
 
-                    {hasDownload ? (
-                      <a
-                        href={targetUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        download={!!doc.fileUrl}
-                        className="p-2 rounded-md bg-accent/10 text-accent hover:bg-accent hover:text-accent-foreground transition-all shrink-0"
-                        title={`Download of bekijk ${doc.titel}`}
+                    <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenDocViewer(doc)}
+                        className="p-2 rounded-md bg-accent/10 text-accent hover:bg-accent hover:text-accent-foreground transition-all cursor-pointer"
+                        title={`Bekijk ${doc.titel} in PDF-viewer`}
                       >
-                        {doc.fileUrl ? (
-                          <Download className="w-4 h-4" />
-                        ) : (
-                          <ExternalLink className="w-4 h-4" />
-                        )}
-                      </a>
-                    ) : (
-                      <span className="text-[10px] text-muted-foreground px-2 py-1 rounded bg-muted/60 shrink-0">
-                        Binnenkort
-                      </span>
-                    )}
+                        <Eye className="w-4 h-4" />
+                      </button>
+
+                      {hasDownload ? (
+                        <a
+                          href={targetUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          download={!!doc.fileUrl}
+                          className="p-2 rounded-md bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-all"
+                          title={`Download ${doc.titel}`}
+                        >
+                          {doc.fileUrl ? (
+                            <Download className="w-4 h-4" />
+                          ) : (
+                            <ExternalLink className="w-4 h-4" />
+                          )}
+                        </a>
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground px-2 py-1 rounded bg-muted/60">
+                          Binnenkort
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -496,6 +527,16 @@ const Bestuur = () => {
           </div>
         </aside>
       </div>
+
+      {/* PDF Document Viewer Modal */}
+      <BestuurDocumentViewer
+        document={selectedViewerDoc}
+        isOpen={isViewerOpen}
+        onClose={() => {
+          setIsViewerOpen(false);
+          setSelectedViewerDoc(null);
+        }}
+      />
     </div>
   );
 };

@@ -25,6 +25,7 @@ interface DossierDocumentViewerProps {
   isOpen: boolean;
   onClose: () => void;
   onDocumentUpdated?: (updatedDoc: DossierDocument) => void;
+  initialPage?: number;
 }
 
 export const DossierDocumentViewer: React.FC<DossierDocumentViewerProps> = ({
@@ -32,6 +33,7 @@ export const DossierDocumentViewer: React.FC<DossierDocumentViewerProps> = ({
   isOpen,
   onClose,
   onDocumentUpdated,
+  initialPage = 1,
 }) => {
   const { token: authContextToken } = useAuth();
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -216,7 +218,7 @@ export const DossierDocumentViewer: React.FC<DossierDocumentViewerProps> = ({
             {document.fileExists ? (
               <iframe
                 id="dossier-pdf-iframe"
-                src={`${fileUrl}#toolbar=1&navpanes=0`}
+                src={`${fileUrl}#page=${initialPage || 1}&toolbar=1&navpanes=0`}
                 className="w-full h-full border-0 bg-white"
                 title={document.titel}
               />
