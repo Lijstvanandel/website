@@ -21,6 +21,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import multer from "multer";
 import rateLimit from "express-rate-limit";
+import AdmZip from "adm-zip";
 
 const appDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
 import Stripe from "stripe";
@@ -10255,6 +10256,135 @@ Sitemap: ${baseUrl}/sitemap.xml
       topic,
       message: "Ondersteuningsdossier gereset."
     });
+  });
+
+  // 6b-2. Export all documents for a topic as a single .ZIP archive
+  app.get("/api/council/topics/:topicId/export-zip", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
+    const { topicId } = req.params;
+    const db = getDb();
+    const topic = (db.councilAgendaTopics || []).find((t: any) => t.id === topicId);
+    if (!topic) {
+      return res.status(404).json({ error: "Agendapunt niet gevonden" });
+    }
+
+    const docs = Array.isArray(topic.documents) ? topic.documents : [];
+    if (docs.length === 0) {
+      return res.status(400).json({ error: "Dit agendapunt bevat geen documenten om te exporteren." });
+    }
+
+    const safeTopicTitle = (topic.title || "Agendapunt")
+      .replace(/[/\\?%*:|"<>]/g, "-")
+      .replace(/\s+/g, "_")
+      .slice(0, 60);
+    const meetingDate = (topic.meetingDate || "datum").replace(/[/\\?%*:|"<>]/g, "-");
+    const zipFilename = `Raadsstukken_${meetingDate}_${safeTopicTitle}.zip`;
+
+    try {
+      const zip = new AdmZip();
+      const usedFilenames = new Set<string>();
+
+      // Read or fetch each document
+      await Promise.all(
+        docs.map(async (doc: any, index: number) => {
+          let cleanDocTitle = (doc.title || `Document_${index + 1}`)
+            .replace(/[/\\?%*:|"<>]/g, "-")
+            .replace(/\s+/g, " ")
+            .trim();
+
+          const ext = doc.fileType === "DOC" || cleanDocTitle.toLowerCase().endsWith(".docx")
+            ? ".docx"
+            : doc.fileType === "XLS" || cleanDocTitle.toLowerCase().endsWith(".xlsx")
+            ? ".xlsx"
+            : ".pdf";
+
+          if (!cleanDocTitle.toLowerCase().endsWith(ext)) {
+            cleanDocTitle += ext;
+          }
+
+          // Avoid duplicate filename collision inside zip
+          let finalEntryName = cleanDocTitle;
+          let counter = 1;
+          while (usedFilenames.has(finalEntryName.toLowerCase())) {
+            const baseWithoutExt = cleanDocTitle.slice(0, cleanDocTitle.lastIndexOf("."));
+            finalEntryName = `${baseWithoutExt} (${counter})${ext}`;
+            counter++;
+          }
+          usedFilenames.add(finalEntryName.toLowerCase());
+
+          // 1. Try local filesystem if doc.url is local
+          let docBuffer: Buffer | null = null;
+          if (doc.url && doc.url.startsWith("/uploads/")) {
+            const localPath = path.join(process.cwd(), "public", doc.url);
+            if (fs.existsSync(localPath)) {
+              try {
+                docBuffer = fs.readFileSync(localPath);
+              } catch (readErr) {
+                console.warn(`[ZIP EXPORT] Kon lokaal bestand niet inlezen: ${localPath}`, readErr);
+              }
+            }
+          }
+
+          // 2. Fetch via HTTP/HTTPS if doc.url is remote or local wasn't found
+          if (!docBuffer && doc.url && (doc.url.startsWith("http://") || doc.url.startsWith("https://"))) {
+            try {
+              const resp = await fetch(doc.url, {
+                signal: AbortSignal.timeout(20000),
+                headers: {
+                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/1.0",
+                },
+              });
+              if (resp.ok) {
+                const arrayBuf = await resp.arrayBuffer();
+                docBuffer = Buffer.from(arrayBuf);
+              }
+            } catch (fetchErr: any) {
+              console.warn(`[ZIP EXPORT] Kon document niet downloaden van ${doc.url}:`, fetchErr?.message);
+            }
+          }
+
+          // 3. Fallback: create a structured reference text file if downloading failed
+          if (docBuffer) {
+            zip.addFile(finalEntryName, docBuffer);
+          } else {
+            const fallbackInfo = `Document: ${doc.title}\nAgendapunt: ${topic.title}\nVergadering: ${topic.meetingTitle} (${topic.meetingDateDisplay || topic.meetingDate})\nOriginele downloadlink: ${doc.url}\n\nKon het bronbestand niet rechtstreeks downloaden tijdens de export. U kunt het document openen via bovenstaande link.`;
+            zip.addFile(`${finalEntryName.replace(/\.[^/.]+$/, "")}_downloadlink.txt`, Buffer.from(fallbackInfo, "utf-8"));
+          }
+        })
+      );
+
+      // Add a handy Readme / Samenvatting index file inside the ZIP
+      const summaryContent = [
+        `=============================================================`,
+        `LIJST VAN ANDEL - RAADSSTUKKEN DOSSIER EXPORT`,
+        `=============================================================`,
+        ``,
+        `Agendapunt:   ${topic.title}`,
+        `Vergadering:  ${topic.meetingTitle}`,
+        `Datum:        ${topic.meetingDateDisplay || topic.meetingDate}`,
+        `Categorie:    ${topic.category || "Algemeen"}`,
+        `Fractielid:   ${topic.assignedName || "Nog niet toegewezen"}`,
+        `Bronpagina:   ${topic.sourceUrl || "Niet beschikbaar"}`,
+        ``,
+        `BIJBEHORENDE DOCUMENTEN (${docs.length}):`,
+        ...docs.map((d: any, idx: number) => `  ${idx + 1}. ${d.title} [${d.fileType || "PDF"}] - ${d.url}`),
+        ``,
+        topic.bijdragePolitiekeMarkt ? `\n--- BIJDRAGE POLITIEKE MARKT ---\n${topic.bijdragePolitiekeMarkt}\n` : ``,
+        topic.bijdrageRaadsvergadering ? `\n--- BIJDRAGE RAADSVERGADERING ---\n${topic.bijdrageRaadsvergadering}\n` : ``,
+        `Gegenereerd op: ${new Date().toLocaleString("nl-NL")}`,
+      ].filter(Boolean).join("\n");
+
+      zip.addFile(`00_Inhoudsopgave_${safeTopicTitle}.txt`, Buffer.from(summaryContent, "utf-8"));
+
+      const zipBuffer = zip.toBuffer();
+
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename="${zipFilename}"`);
+      res.setHeader("Content-Length", zipBuffer.length);
+      return res.send(zipBuffer);
+    } catch (zipErr: any) {
+      console.error("[ZIP EXPORT ERROR]:", zipErr);
+      return res.status(500).json({ error: "Fout bij samenstellen van ZIP-bestand: " + (zipErr.message || zipErr) });
+    }
   });
 
   // 6c. Standpunten koppeling & handmatige fractie-aanpassingen

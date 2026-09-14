@@ -56,6 +56,10 @@ import {
   FolderKanban,
   ChevronLeft,
   Gavel,
+  Banknote,
+  Save,
+  Sparkles,
+  Loader2,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VideoPlayer } from "@/components/VideoPlayer";

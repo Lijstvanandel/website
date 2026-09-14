@@ -665,6 +665,67 @@ export default function Raadspaneel() {
     }
   };
 
+  // Export topic documents as single .ZIP
+  const [exportingTopicZipId, setExportingTopicZipId] = useState<string | null>(null);
+
+  const handleExportTopicZip = async (topic: CouncilAgendaTopic) => {
+    if (!token) return;
+    if (!topic.documents || topic.documents.length === 0) {
+      toast.info("Dit onderwerp bevat geen documenten om te downloaden.");
+      return;
+    }
+
+    setExportingTopicZipId(topic.id);
+    const toastId = toast.loading(`ZIP archief voor "${topic.title.slice(0, 30)}..." samenstellen...`);
+
+    try {
+      const res = await fetch(`/api/council/topics/${topic.id}/export-zip`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!res.ok) {
+        let errMessage = "Downloaden mislukt.";
+        try {
+          const errData = await res.json();
+          if (errData?.error) errMessage = errData.error;
+        } catch {
+          // ignore
+        }
+        throw new Error(errMessage);
+      }
+
+      const blob = await res.blob();
+      const contentDisposition = res.headers.get("Content-Disposition");
+      let filename = `Raadsstukken_${topic.meetingDate || "datum"}_${topic.title.slice(0, 30).replace(/[^a-zA-Z0-9_-]/g, "_")}.zip`;
+
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="?([^";]+)"?/i);
+        if (match && match[1]) {
+          filename = match[1];
+        }
+      }
+
+      // Trigger browser download
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(downloadUrl);
+
+      toast.success(`ZIP-archief met ${topic.documents.length} document(en) gedownload!`, { id: toastId });
+    } catch (err: any) {
+      console.error("[EXPORT TOPIC ZIP ERROR]:", err);
+      toast.error(err.message || "Fout bij downloaden van ZIP archief", { id: toastId });
+    } finally {
+      setExportingTopicZipId(null);
+    }
+  };
+
   // Delete note handler
   const handleDeleteNote = async (topicId: string, noteId: string) => {
     if (!token) return;
@@ -1332,8 +1393,22 @@ export default function Raadspaneel() {
                           </span>
                         </div>
 
-                        {/* Document read status */}
+                        {/* Document read status & ZIP export */}
                         <div className="flex items-center gap-2 shrink-0">
+                          {totalDocs > 0 && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleExportTopicZip(topic);
+                              }}
+                              disabled={exportingTopicZipId === topic.id}
+                              className="p-1 rounded-md text-muted-foreground hover:text-accent hover:bg-accent/10 transition-colors"
+                              title={`Download alle ${totalDocs} document(en) in .zip`}
+                            >
+                              <Download className={`w-3.5 h-3.5 ${exportingTopicZipId === topic.id ? "animate-bounce text-accent" : ""}`} />
+                            </button>
+                          )}
                           {totalDocs > 0 && (
                             <span
                               className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold ${
@@ -1383,10 +1458,25 @@ export default function Raadspaneel() {
                         </span>
                       )}
                     </div>
-                    <span className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Calendar className="w-3.5 h-3.5 text-accent" />
-                      {selectedTopic.meetingDateDisplay || selectedTopic.meetingDate}
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5 text-accent" />
+                        {selectedTopic.meetingDateDisplay || selectedTopic.meetingDate}
+                      </span>
+                      {selectedTopic.documents && selectedTopic.documents.length > 0 && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleExportTopicZip(selectedTopic)}
+                          disabled={exportingTopicZipId === selectedTopic.id}
+                          className="h-7 px-2.5 text-xs rounded-lg border-accent/40 bg-accent/5 hover:bg-accent/15 text-accent font-semibold flex items-center gap-1.5 transition-all shadow-2xs"
+                          title="Download alle vergaderstukken van dit onderwerp in één .ZIP bestand"
+                        >
+                          <Download className={`w-3.5 h-3.5 ${exportingTopicZipId === selectedTopic.id ? "animate-bounce" : ""}`} />
+                          <span>{exportingTopicZipId === selectedTopic.id ? "Exporteren..." : "Export ZIP"}</span>
+                        </Button>
+                      )}
+                    </div>
                   </div>
 
                   <h2 className="text-xl sm:text-2xl font-display font-bold text-foreground leading-snug">
@@ -1629,14 +1719,29 @@ export default function Raadspaneel() {
 
                 {/* Documentenlijst (Direct te bekijken en af te vinken) */}
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <h3 className="font-display font-bold text-base text-foreground flex items-center gap-2">
                       <FileText className="w-4 h-4 text-accent" />
                       <span>Bijbehorende Vergaderstukken ({selectedTopic.documents.length})</span>
                     </h3>
-                    <span className="text-xs text-muted-foreground">
-                      Vink aan zodra doorgenomen
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {selectedTopic.documents.length > 0 && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleExportTopicZip(selectedTopic)}
+                          disabled={exportingTopicZipId === selectedTopic.id}
+                          className="h-7 px-2.5 text-xs rounded-lg border-border hover:border-accent/40 bg-card hover:bg-muted text-foreground flex items-center gap-1.5 transition-all shadow-2xs"
+                          title="Download alle documenten in 1 ZIP archief"
+                        >
+                          <Download className={`w-3.5 h-3.5 text-accent ${exportingTopicZipId === selectedTopic.id ? "animate-bounce" : ""}`} />
+                          <span className="font-medium text-[11.5px]">{exportingTopicZipId === selectedTopic.id ? "Inpakken..." : "Download alles (.zip)"}</span>
+                        </Button>
+                      )}
+                      <span className="text-xs text-muted-foreground hidden sm:inline">
+                        Vink aan zodra doorgenomen
+                      </span>
+                    </div>
                   </div>
 
                   {selectedTopic.documents.length === 0 ? (

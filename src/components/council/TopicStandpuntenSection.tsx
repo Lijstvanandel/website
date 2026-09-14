@@ -60,11 +60,33 @@ export function TopicStandpuntenSection({
   onTopicUpdated,
   onOpenDocumentViewer,
 }: TopicStandpuntenSectionProps) {
+  // Collapsible state per topic (defaults to open, persisted per topic preference)
+  const [isSectionCollapsed, setIsSectionCollapsed] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem(`topic_standpunten_collapsed_${topic.id}`);
+      return saved === "true";
+    } catch {
+      return false;
+    }
+  });
+
   const [filterStance, setFilterStance] = useState<"all" | "positief" | "negatief" | "genuanceerd">("all");
   const [expandedQuotes, setExpandedQuotes] = useState<Record<string, boolean>>({});
   const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiSuccessMessage, setAiSuccessMessage] = useState<string | null>(null);
+
+  const toggleSectionCollapse = () => {
+    setIsSectionCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(`topic_standpunten_collapsed_${topic.id}`, String(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
 
   // Manual standpoint modal
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -230,16 +252,49 @@ export function TopicStandpuntenSection({
     >
       {/* Header */}
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 pb-3 border-b border-border/70">
-        <div className="space-y-1 min-w-0 max-w-full">
+        <div 
+          onClick={toggleSectionCollapse}
+          className="space-y-1 min-w-0 max-w-full cursor-pointer select-none group"
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              toggleSectionCollapse();
+            }
+          }}
+          title={isSectionCollapsed ? "Klik om sectie uit te klappen" : "Klik om sectie in te klappen"}
+        >
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="p-1.5 rounded-lg bg-accent/10 text-accent shrink-0">
+            <div className="p-1.5 rounded-lg bg-accent/10 text-accent shrink-0 group-hover:bg-accent/20 transition-colors">
               <BookOpen className="w-4 h-4" />
             </div>
-            <h3 className="font-semibold text-sm sm:text-base text-foreground flex items-center gap-2 flex-wrap">
+            <h3 className="font-semibold text-sm sm:text-base text-foreground flex items-center gap-2 flex-wrap group-hover:text-accent transition-colors">
               <span>Partijprogramma & Standpunten</span>
               <span className="text-xs px-2 py-0.5 rounded-full bg-accent/15 text-accent font-mono font-medium">
                 {matched.length} gekoppeld
               </span>
+              {isSectionCollapsed && (
+                <span
+                  className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${
+                    summary.primaryStance === "negatief"
+                      ? "bg-rose-500/20 text-rose-700 dark:text-rose-300"
+                      : summary.primaryStance === "positief"
+                      ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300"
+                      : summary.primaryStance === "gemengd"
+                      ? "bg-amber-500/20 text-amber-700 dark:text-amber-300"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {summary.primaryStance === "negatief"
+                    ? "Kritisch / Negatief"
+                    : summary.primaryStance === "positief"
+                    ? "Positief / Voor"
+                    : summary.primaryStance === "gemengd"
+                    ? "Gemengd"
+                    : "Neutraal"}
+                </span>
+              )}
             </h3>
           </div>
           <p className="text-xs text-muted-foreground leading-relaxed">
@@ -291,8 +346,33 @@ export function TopicStandpuntenSection({
               <ExternalLink className="w-3 h-3 opacity-60" />
             </Link>
           </Button>
+
+          {/* Toggle Inklappen / Uitklappen Button */}
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={toggleSectionCollapse}
+            className="h-8 text-xs px-2 text-muted-foreground hover:text-foreground rounded-lg border border-border/60 hover:bg-muted/80 gap-1"
+            title={isSectionCollapsed ? "Sectie uitklappen" : "Sectie inklappen"}
+          >
+            {isSectionCollapsed ? (
+              <>
+                <ChevronDown className="w-4 h-4 text-accent" />
+                <span className="font-medium text-[11px]">Uitklappen</span>
+              </>
+            ) : (
+              <>
+                <ChevronUp className="w-4 h-4" />
+                <span className="font-medium text-[11px]">Inklappen</span>
+              </>
+            )}
+          </Button>
         </div>
       </div>
+
+      {!isSectionCollapsed && (
+        <>
 
       {/* AI Alert Messages */}
       {aiSuccessMessage && (
@@ -672,6 +752,8 @@ export function TopicStandpuntenSection({
             );
           })}
         </div>
+      )}
+        </>
       )}
 
       {/* Modal: Standpunt handmatig koppelen */}
