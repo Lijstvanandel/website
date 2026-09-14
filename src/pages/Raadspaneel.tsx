@@ -179,7 +179,15 @@ export default function Raadspaneel() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const isCouncilOrAdmin = Boolean(
-    user && (user.role === "admin" || user.role === "raadslid" || user.role === "fractielid")
+    user && (
+      user.role === "admin" || 
+      user.role === "raadslid" || 
+      user.role === "fractielid" || 
+      user.role === "voorzitter" || 
+      user.role === "bestuur" || 
+      user.role === "secretaris" || 
+      user.role === "penningmeester"
+    )
   );
 
   const initialDossierSlug = slug || searchParams.get("dossier") || null;
@@ -1526,6 +1534,37 @@ export default function Raadspaneel() {
 
                         {/* Document read status & ZIP export */}
                         <div className="flex items-center gap-2 shrink-0">
+                          {/* Quick Park / Unpark Action */}
+                          {isCouncilOrAdmin && (
+                            topic.isParked ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleUnparkTopic(topic.id);
+                                }}
+                                className="px-2 py-0.5 rounded-md text-[10.5px] font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/25 border border-emerald-500/30 flex items-center gap-1 transition-colors"
+                                title="Parkering opheffen (terug naar Oordeelvorming - Bespreekstukken)"
+                              >
+                                <RotateCcw className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                                <span>Herstel</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenParkModal(topic);
+                                }}
+                                className="px-1.5 py-0.5 rounded-md text-[10.5px] text-muted-foreground hover:text-amber-700 dark:hover:text-amber-400 hover:bg-amber-500/10 transition-colors flex items-center gap-1"
+                                title="Parkeer dit onderwerp (reden verplicht)"
+                              >
+                                <PauseCircle className="w-3 h-3 text-amber-500" />
+                                <span className="hidden sm:inline">Parkeer</span>
+                              </button>
+                            )
+                          )}
+
                           {totalDocs > 0 && (
                             <button
                               type="button"

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { 
   Users, 
   ShieldCheck, 
@@ -36,6 +36,7 @@ import placeholder from "@/assets/silhouette.png";
 import { getSafeDocumentUrl } from "@/lib/documentUrl";
 import sammyImg from "@/assets/sammy.png";
 import stefImg from "@/assets/stef-mars.jpg";
+import { useAuth } from "@/context/AuthContext";
 
 export interface OrganisatieDocItem {
   id: string;
@@ -85,7 +86,18 @@ interface BestuurManagerProps {
   onUpdated?: () => void;
 }
 
-export const BestuurManager: React.FC<BestuurManagerProps> = ({ headers = {}, onUpdated }) => {
+export const BestuurManager: React.FC<BestuurManagerProps> = ({ token: propToken, headers = {}, onUpdated }) => {
+  const { token: authContextToken } = useAuth();
+  const effectiveToken = propToken || authContextToken || (typeof window !== "undefined" ? (localStorage.getItem("auth_token") || localStorage.getItem("token")) : "") || "";
+
+  const authHeaders = useMemo(() => {
+    const h: Record<string, string> = { ...headers };
+    if (effectiveToken && !h.Authorization) {
+      h.Authorization = `Bearer ${effectiveToken}`;
+    }
+    return h;
+  }, [headers, effectiveToken]);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingImageFor, setUploadingImageFor] = useState<string | null>(null);
@@ -222,7 +234,7 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ headers = {}, on
       const res = await fetchWithAuth("/api/chairman/daily-board", {
         method: "PATCH",
         headers: {
-          ...headers,
+          ...authHeaders,
           "Content-Type": "application/json"
         },
         body: JSON.stringify(formData)
@@ -233,7 +245,8 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ headers = {}, on
         if (onUpdated) onUpdated();
         loadData();
       } else {
-        toast.error("Fout bij opslaan van bestuursgegevens");
+        const errJson = await safeJson(res, {});
+        toast.error(errJson.error || "Fout bij opslaan van bestuursgegevens");
       }
     } catch (err) {
       console.error("Fout bij opslaan:", err);
@@ -253,7 +266,7 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ headers = {}, on
       const res = await fetchWithAuth("/api/chairman/board-member/upload-image", {
         method: "POST",
         headers: {
-          Authorization: headers.Authorization || `Bearer ${localStorage.getItem("token")}`
+          ...authHeaders
         },
         body: uploadFormData
       });
@@ -288,7 +301,8 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ headers = {}, on
         }
         toast.success("Foto succesvol geüpload en gekoppeld!");
       } else {
-        toast.error("Fout bij uploaden van afbeelding");
+        const errJson = await safeJson(res, {});
+        toast.error(errJson.error || "Fout bij uploaden van afbeelding");
       }
     } catch (err) {
       console.error(err);
@@ -357,7 +371,7 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ headers = {}, on
       const res = await fetchWithAuth("/api/organization-docs/upload", {
         method: "POST",
         headers: {
-          Authorization: headers.Authorization || `Bearer ${localStorage.getItem("token")}`
+          ...authHeaders
         },
         body: uploadFormData
       });
@@ -368,12 +382,13 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ headers = {}, on
         setDocForm((prev) => ({
           ...prev,
           fileUrl: safeUrl,
-          fileName: data.fileName,
-          fileSize: data.fileSize
+          fileName: data.fileName || file.name,
+          fileSize: data.fileSize || `${Math.round(file.size / 1024)} KB`
         }));
-        toast.success(`Bestand '${data.fileName}' succesvol geüpload en gekoppeld!`);
+        toast.success(`Bestand '${data.fileName || file.name}' succesvol geüpload en gekoppeld!`);
       } else {
-        toast.error("Fout bij uploaden van document");
+        const errJson = await safeJson(res, {});
+        toast.error(errJson.error || "Fout bij uploaden van document");
       }
     } catch (err) {
       console.error(err);
@@ -390,8 +405,10 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ headers = {}, on
       return;
     }
 
+    const docId = docForm.id || `doc-${Date.now()}`;
     const sanitizedDoc: OrganisatieDocItem = {
       ...docForm,
+      id: docId,
       fileUrl: getSafeDocumentUrl(docForm.fileUrl, docForm.fileName, docForm.href) || docForm.fileUrl
     };
 
@@ -406,39 +423,49 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ headers = {}, on
     setIsDocModalOpen(false);
 
     try {
-      await fetchWithAuth("/api/chairman/daily-board", {
+      const res = await fetchWithAuth("/api/chairman/daily-board", {
         method: "PATCH",
         headers: {
-          ...headers,
+          ...authHeaders,
           "Content-Type": "application/json"
         },
         body: JSON.stringify({ ...formData, organisatieDocs: updatedDocs })
       });
-      toast.success(editingDocIndex !== null ? "Document bijgewerkt en direct opgeslagen!" : "Document toegevoegd en direct opgeslagen!");
-      if (onUpdated) onUpdated();
+      if (res.ok) {
+        toast.success(editingDocIndex !== null ? `Document '${sanitizedDoc.titel}' opgeslagen!` : `Document '${sanitizedDoc.titel}' toegevoegd en opgeslagen!`);
+        if (onUpdated) onUpdated();
+      } else {
+        const errJson = await safeJson(res, {});
+        toast.error(errJson.error || "Fout bij opslaan naar de server");
+      }
     } catch (err) {
       console.error(err);
-      toast.info("Document toegevoegd aan lijst. Klik op 'Wijzigingen Opslaan' om definitief vast te leggen.");
+      toast.info("Document bijgewerkt in lijst.");
     }
   };
 
   const handleDeleteDoc = async (index: number) => {
+    const docToDelete = formData.organisatieDocs[index];
     const updatedDocs = formData.organisatieDocs.filter((_, i) => i !== index);
     setFormData((prev) => ({
       ...prev,
       organisatieDocs: updatedDocs
     }));
     try {
-      await fetchWithAuth("/api/chairman/daily-board", {
+      const res = await fetchWithAuth("/api/chairman/daily-board", {
         method: "PATCH",
         headers: {
-          ...headers,
+          ...authHeaders,
           "Content-Type": "application/json"
         },
         body: JSON.stringify({ ...formData, organisatieDocs: updatedDocs })
       });
-      toast.success("Document verwijderd en direct opgeslagen");
-      if (onUpdated) onUpdated();
+      if (res.ok) {
+        toast.success(`Document '${docToDelete?.titel || "item"}' verwijderd!`);
+        if (onUpdated) onUpdated();
+      } else {
+        toast.error("Fout bij verwijderen van document");
+      }
     } catch (err) {
       toast.success("Document verwijderd");
     }

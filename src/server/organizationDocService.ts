@@ -283,7 +283,9 @@ export async function ensureBestuurDocumentPdf(
       if (!fs.existsSync(targetDist)) {
         try {
           fs.copyFileSync(p, targetDist);
-        } catch (_e) {}
+        } catch (_e) {
+          // ignore copy error if file is locked or already in place
+        }
       }
       return p;
     }
@@ -540,7 +542,9 @@ export async function ensureBestuurDocumentPdf(
     fs.writeFileSync(outPub, pdfBytes);
     try {
       fs.writeFileSync(outDist, pdfBytes);
-    } catch (_e) {}
+    } catch (_e) {
+      // ignore dist write failure in environments without dist folder
+    }
 
     return outPub;
   } catch (err) {
