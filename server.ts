@@ -603,9 +603,27 @@ function getDb() {
       productName: "Lidmaatschap Lijst van Andel (1 jaar)",
       description: "Jaarlijkse partijcontributie voor leden van Lijst van Andel",
       requirePaymentAtRegistration: true,
+      bankIban: "NL91 RBRB 0823 4192 11",
+      bankAccountName: "Lijst van Andel",
+      manualPaymentAmount: 25.00,
+      popupEnabled: true,
+      popupDelaySeconds: 90,
+      popupTitle: "Lukt het lid worden niet?",
+      popupText: "U kunt ook €25,00 overmaken naar ons rekeningnummer {iban} (t.n.v. {accountName}) en in de omschrijving uw e-mailadres en telefoonnummer zetten. Wij nemen dan contact met u op.",
       updatedAt: new Date().toISOString()
     };
     saveDb(db);
+  } else {
+    // Ensure fallback fields exist on existing db.membershipSettings
+    let modified = false;
+    if (db.membershipSettings.bankIban === undefined) { db.membershipSettings.bankIban = "NL91 RBRB 0823 4192 11"; modified = true; }
+    if (db.membershipSettings.bankAccountName === undefined) { db.membershipSettings.bankAccountName = "Lijst van Andel"; modified = true; }
+    if (db.membershipSettings.manualPaymentAmount === undefined) { db.membershipSettings.manualPaymentAmount = 25.00; modified = true; }
+    if (db.membershipSettings.popupEnabled === undefined) { db.membershipSettings.popupEnabled = true; modified = true; }
+    if (db.membershipSettings.popupDelaySeconds === undefined) { db.membershipSettings.popupDelaySeconds = 90; modified = true; }
+    if (db.membershipSettings.popupTitle === undefined) { db.membershipSettings.popupTitle = "Lukt het lid worden niet?"; modified = true; }
+    if (db.membershipSettings.popupText === undefined) { db.membershipSettings.popupText = "U kunt ook €25,00 overmaken naar ons rekeningnummer {iban} (t.n.v. {accountName}) en in de omschrijving uw e-mailadres en telefoonnummer zetten. Wij nemen dan contact met u op."; modified = true; }
+    if (modified) saveDb(db);
   }
 
   // Initialize Penningmeester / Treasurer domain data
@@ -3203,6 +3221,13 @@ async function startServer() {
       productName: "Lidmaatschap Lijst van Andel (1 jaar)",
       description: "Jaarlijkse partijcontributie voor leden van Lijst van Andel",
       requirePaymentAtRegistration: true,
+      bankIban: "NL91 RBRB 0823 4192 11",
+      bankAccountName: "Lijst van Andel",
+      manualPaymentAmount: 25.00,
+      popupEnabled: true,
+      popupDelaySeconds: 90,
+      popupTitle: "Lukt het lid worden niet?",
+      popupText: "U kunt ook €25,00 overmaken naar ons rekeningnummer {iban} (t.n.v. {accountName}) en in de omschrijving uw e-mailadres en telefoonnummer zetten. Wij nemen dan contact met u op."
     };
     res.json({
       enabled: settings.enabled !== false,
@@ -3212,7 +3237,15 @@ async function startServer() {
       productName: settings.productName || "Lidmaatschap Lijst van Andel (1 jaar)",
       description: settings.description || "Jaarlijkse contributie voor partijleden",
       requirePaymentAtRegistration: settings.requirePaymentAtRegistration !== false,
-      isStripeConfigured: Boolean(process.env.STRIPE_SECRET_KEY)
+      isStripeConfigured: Boolean(process.env.STRIPE_SECRET_KEY),
+      // Bank transfer & Help Pop-up settings (dynamically managed)
+      bankIban: settings.bankIban || "NL91 RBRB 0823 4192 11",
+      bankAccountName: settings.bankAccountName || "Lijst van Andel",
+      manualPaymentAmount: settings.manualPaymentAmount !== undefined ? Number(settings.manualPaymentAmount) : 25.00,
+      popupEnabled: settings.popupEnabled !== false,
+      popupDelaySeconds: settings.popupDelaySeconds !== undefined ? Number(settings.popupDelaySeconds) : 90,
+      popupTitle: settings.popupTitle || "Lukt het lid worden niet?",
+      popupText: settings.popupText || "U kunt ook €25,00 overmaken naar ons rekeningnummer {iban} (t.n.v. {accountName}) en in de omschrijving uw e-mailadres en telefoonnummer zetten. Wij nemen dan contact met u op."
     });
   });
 
@@ -3227,6 +3260,13 @@ async function startServer() {
       productName: "Lidmaatschap Lijst van Andel (1 jaar)",
       description: "Jaarlijkse partijcontributie voor leden van Lijst van Andel",
       requirePaymentAtRegistration: true,
+      bankIban: "NL91 RBRB 0823 4192 11",
+      bankAccountName: "Lijst van Andel",
+      manualPaymentAmount: 25.00,
+      popupEnabled: true,
+      popupDelaySeconds: 90,
+      popupTitle: "Lukt het lid worden niet?",
+      popupText: "U kunt ook €25,00 overmaken naar ons rekeningnummer {iban} (t.n.v. {accountName}) en in de omschrijving uw e-mailadres en telefoonnummer zetten. Wij nemen dan contact met u op."
     };
 
     const hasStripeKey = Boolean(process.env.STRIPE_SECRET_KEY);
@@ -3263,7 +3303,22 @@ async function startServer() {
   });
 
   app.patch("/api/admin/membership/settings", requireAuth, requireTreasurerOrAdmin, (req: any, res: any) => {
-    const { enabled, amount, currency, interval, productName, description, requirePaymentAtRegistration } = req.body;
+    const {
+      enabled,
+      amount,
+      currency,
+      interval,
+      productName,
+      description,
+      requirePaymentAtRegistration,
+      bankIban,
+      bankAccountName,
+      manualPaymentAmount,
+      popupEnabled,
+      popupDelaySeconds,
+      popupTitle,
+      popupText
+    } = req.body;
     const db = getDb();
     if (!db.membershipSettings) db.membershipSettings = {};
 
@@ -3274,10 +3329,20 @@ async function startServer() {
     if (productName !== undefined) db.membershipSettings.productName = String(productName).trim();
     if (description !== undefined) db.membershipSettings.description = String(description).trim();
     if (requirePaymentAtRegistration !== undefined) db.membershipSettings.requirePaymentAtRegistration = Boolean(requirePaymentAtRegistration);
+    
+    // Dynamic pop-up & bank transfer fields
+    if (bankIban !== undefined) db.membershipSettings.bankIban = String(bankIban).trim().toUpperCase();
+    if (bankAccountName !== undefined) db.membershipSettings.bankAccountName = String(bankAccountName).trim();
+    if (manualPaymentAmount !== undefined) db.membershipSettings.manualPaymentAmount = Math.max(0, parseFloat(manualPaymentAmount) || 0);
+    if (popupEnabled !== undefined) db.membershipSettings.popupEnabled = Boolean(popupEnabled);
+    if (popupDelaySeconds !== undefined) db.membershipSettings.popupDelaySeconds = Math.max(5, parseInt(popupDelaySeconds, 10) || 90);
+    if (popupTitle !== undefined) db.membershipSettings.popupTitle = String(popupTitle).trim();
+    if (popupText !== undefined) db.membershipSettings.popupText = String(popupText).trim();
+
     db.membershipSettings.updatedAt = new Date().toISOString();
 
     saveDb(db);
-    res.json({ message: "Contributie-instellingen succesvol opgeslagen", settings: db.membershipSettings });
+    res.json({ message: "Contributie- en overboekingsinstellingen succesvol opgeslagen", settings: db.membershipSettings });
   });
 
   // ==========================================
@@ -9565,6 +9630,7 @@ async function startServer() {
         { url: "/standpunten", priority: "0.9", changefreq: "weekly" },
         { url: "/nieuws", priority: "0.9", changefreq: "daily" },
         { url: "/wijken-en-kernen", priority: "0.9", changefreq: "weekly" },
+        { url: "/peilingen", priority: "0.8", changefreq: "weekly" },
         { url: "/agenda", priority: "0.8", changefreq: "daily" },
         { url: "/fractie", priority: "0.8", changefreq: "monthly" },
         { url: "/bestuur", priority: "0.7", changefreq: "monthly" },
@@ -9607,6 +9673,7 @@ ${allUrls.map(u => `  <url>
 </urlset>`;
 
       res.setHeader("Content-Type", "application/xml; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400");
       return res.send(xml);
     } catch (e: any) {
       console.error("Fout bij genereren van sitemap:", e);
@@ -9635,6 +9702,7 @@ Disallow: /*?*tab=
 Sitemap: ${baseUrl}/sitemap.xml
 `;
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
     return res.send(txt);
   });
 

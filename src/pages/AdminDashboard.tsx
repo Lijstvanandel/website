@@ -348,6 +348,17 @@ export default function AdminDashboard() {
   const [settingsProductName, setSettingsProductName] = useState("Lidmaatschap Lijst van Andel (1 jaar)");
   const [settingsDescription, setSettingsDescription] = useState("Jaarlijkse contributie voor partijleden");
 
+  // Dynamic Word Lid Pop-up & Bank transfer settings
+  const [settingsBankIban, setSettingsBankIban] = useState("NL91 RBRB 0823 4192 11");
+  const [settingsBankAccountName, setSettingsBankAccountName] = useState("Lijst van Andel");
+  const [settingsManualPaymentAmount, setSettingsManualPaymentAmount] = useState("25.00");
+  const [settingsPopupEnabled, setSettingsPopupEnabled] = useState(true);
+  const [settingsPopupDelaySeconds, setSettingsPopupDelaySeconds] = useState("90");
+  const [settingsPopupTitle, setSettingsPopupTitle] = useState("Lukt het lid worden niet?");
+  const [settingsPopupText, setSettingsPopupText] = useState(
+    "U kunt ook €25,00 overmaken naar ons rekeningnummer {iban} (t.n.v. {accountName}) en in de omschrijving uw e-mailadres en telefoonnummer zetten. Wij nemen dan contact met u op."
+  );
+
   const fetchMembershipSettings = useCallback(() => {
     fetch("/api/admin/membership/settings", { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => (r.ok ? r.json() : null))
@@ -360,6 +371,15 @@ export default function AdminDashboard() {
             setSettingsRequirePayment(data.settings.requirePaymentAtRegistration !== false);
             setSettingsProductName(data.settings.productName || "Lidmaatschap Lijst van Andel (1 jaar)");
             setSettingsDescription(data.settings.description || "Jaarlijkse contributie voor partijleden");
+            
+            // Populate bank & popup settings
+            if (data.settings.bankIban) setSettingsBankIban(data.settings.bankIban);
+            if (data.settings.bankAccountName) setSettingsBankAccountName(data.settings.bankAccountName);
+            if (data.settings.manualPaymentAmount !== undefined) setSettingsManualPaymentAmount(String(data.settings.manualPaymentAmount));
+            if (data.settings.popupEnabled !== undefined) setSettingsPopupEnabled(Boolean(data.settings.popupEnabled));
+            if (data.settings.popupDelaySeconds !== undefined) setSettingsPopupDelaySeconds(String(data.settings.popupDelaySeconds));
+            if (data.settings.popupTitle) setSettingsPopupTitle(data.settings.popupTitle);
+            if (data.settings.popupText) setSettingsPopupText(data.settings.popupText);
           }
         }
       })
@@ -379,11 +399,18 @@ export default function AdminDashboard() {
           requirePaymentAtRegistration: settingsRequirePayment,
           productName: settingsProductName,
           description: settingsDescription,
+          bankIban: settingsBankIban,
+          bankAccountName: settingsBankAccountName,
+          manualPaymentAmount: parseFloat(settingsManualPaymentAmount) || 25.00,
+          popupEnabled: settingsPopupEnabled,
+          popupDelaySeconds: parseInt(settingsPopupDelaySeconds, 10) || 90,
+          popupTitle: settingsPopupTitle,
+          popupText: settingsPopupText,
         }),
       });
       const data = await safeJson(res, {});
       if (!res.ok) throw new Error(data.error || "Kon instellingen niet opslaan");
-      toast.success("Contributie-instellingen succesvol opgeslagen!");
+      toast.success("Contributie- en 'Word lid' pop-up instellingen succesvol opgeslagen!");
       fetchMembershipSettings();
     } catch (err: unknown) {
       const error = err as Error;
@@ -1560,6 +1587,221 @@ export default function AdminDashboard() {
                 </tbody>
               </table>
             </div>
+          </div>
+
+          {/* INSTELLINGEN: CONTRIBUTIE, REKENINGNUMMER & 'WORD LID' HULP POP-UP */}
+          <div className="bg-card rounded-xl border border-border p-6 shadow-sm space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-border/60">
+              <div>
+                <h3 className="text-xl font-display text-foreground flex items-center gap-2">
+                  <Banknote className="w-5 h-5 text-primary" />
+                  Instellingen Contributie, Rekeningnummer & 'Word Lid' Pop-up
+                </h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Beheer het partijrekeningnummer voor handmatige overboekingen en de automatische hulp pop-up op de /word-lid pagina.
+                </p>
+              </div>
+              <Button
+                type="button"
+                onClick={handleSaveMembershipSettings}
+                disabled={savingSettings}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold px-4 h-9 shadow-sm"
+              >
+                {savingSettings ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <Save className="w-4 h-4 mr-1.5" />}
+                Instellingen Opslaan
+              </Button>
+            </div>
+
+            <form onSubmit={handleSaveMembershipSettings} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Kolom 1: Bank- en Overboekingsgegevens */}
+                <div className="space-y-4 p-5 rounded-xl bg-muted/30 border border-border">
+                  <h4 className="text-sm font-bold text-foreground flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                    1. Bankgegevens voor Handmatige Overboeking
+                  </h4>
+                  <p className="text-xs text-muted-foreground">
+                    Deze gegevens worden getoond in de pop-up en de betaalinstructies op de website.
+                  </p>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-foreground">
+                      IBAN Rekeningnummer
+                    </label>
+                    <Input
+                      value={settingsBankIban}
+                      onChange={(e) => setSettingsBankIban(e.target.value)}
+                      placeholder="bijv. NL91 RBRB 0823 4192 11"
+                      className="text-xs h-9 font-mono"
+                    />
+                    <span className="text-[11px] text-muted-foreground block">
+                      Het officiële partijrekeningnummer van Lijst van Andel.
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-foreground">
+                      Naam Rekeninghouder (t.n.v.)
+                    </label>
+                    <Input
+                      value={settingsBankAccountName}
+                      onChange={(e) => setSettingsBankAccountName(e.target.value)}
+                      placeholder="Lijst van Andel"
+                      className="text-xs h-9"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-foreground">
+                      Aanbevolen Overboekingsbedrag (€)
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-xs text-muted-foreground font-mono">€</span>
+                      <Input
+                        type="number"
+                        step="0.50"
+                        min="1"
+                        value={settingsManualPaymentAmount}
+                        onChange={(e) => setSettingsManualPaymentAmount(e.target.value)}
+                        placeholder="25.00"
+                        className="text-xs h-9 pl-7 font-mono"
+                      />
+                    </div>
+                    <span className="text-[11px] text-muted-foreground block">
+                      Het bedrag dat in de pop-up wordt gesuggereerd (bijv. €25,00 voor handmatige overboeking).
+                    </span>
+                  </div>
+                </div>
+
+                {/* Kolom 2: Pop-up Gedrag & Vertraging */}
+                <div className="space-y-4 p-5 rounded-xl bg-muted/30 border border-border">
+                  <h4 className="text-sm font-bold text-foreground flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-primary" />
+                    2. 'Word Lid' Hulp Pop-up Configuratie
+                  </h4>
+                  <p className="text-xs text-muted-foreground">
+                    Verschijnt automatisch voor bezoekers die het registratieformulier bekijken.
+                  </p>
+
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-background border border-border">
+                    <div>
+                      <span className="text-xs font-semibold text-foreground block">
+                        Automatische Pop-up Inschakelen
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">
+                        Toon het hulpvenster automatisch na de ingestelde tijd
+                      </span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settingsPopupEnabled}
+                      onChange={(e) => setSettingsPopupEnabled(e.target.checked)}
+                      className="h-4 w-4 rounded border-border text-primary cursor-pointer"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-foreground">
+                      Vertraging voor weergave (seconden)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min="5"
+                        max="600"
+                        value={settingsPopupDelaySeconds}
+                        onChange={(e) => setSettingsPopupDelaySeconds(e.target.value)}
+                        placeholder="90"
+                        className="text-xs h-9 w-32 font-mono"
+                      />
+                      <span className="text-xs text-muted-foreground font-medium">
+                        seconden ({((parseInt(settingsPopupDelaySeconds, 10) || 90) / 60).toFixed(1)} minuten)
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-muted-foreground block">
+                      Standaard ingesteld op 90 seconden (1,5 minuut).
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-foreground">
+                      Titel van de Pop-up
+                    </label>
+                    <Input
+                      value={settingsPopupTitle}
+                      onChange={(e) => setSettingsPopupTitle(e.target.value)}
+                      placeholder="Lukt het lid worden niet?"
+                      className="text-xs h-9"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Tekst van de Pop-up */}
+              <div className="space-y-1.5 p-5 rounded-xl bg-muted/30 border border-border">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-foreground">
+                    Tekst van het Pop-up Bericht
+                  </label>
+                  <span className="text-[11px] text-muted-foreground">
+                    Beschikbare tags: <code className="bg-muted px-1 rounded font-mono">{"{iban}"}</code>, <code className="bg-muted px-1 rounded font-mono">{"{accountName}"}</code>, <code className="bg-muted px-1 rounded font-mono">{"{amount}"}</code>
+                  </span>
+                </div>
+                <Textarea
+                  rows={3}
+                  value={settingsPopupText}
+                  onChange={(e) => setSettingsPopupText(e.target.value)}
+                  placeholder="U kunt ook €25,00 overmaken naar ons rekeningnummer {iban} en in de omschrijving uw e-mailadres en telefoonnummer zetten. Wij nemen dan contact met u op."
+                  className="text-xs font-sans leading-relaxed"
+                />
+              </div>
+
+              {/* Live Voorbeeld / Preview van de Pop-up */}
+              <div className="p-5 rounded-xl bg-gradient-to-br from-primary/5 via-card to-muted/30 border border-primary/20 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Live Voorbeeld van de Pop-up voor de Bezoeker:
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    Verschijnt op /word-lid na {settingsPopupDelaySeconds} sec
+                  </span>
+                </div>
+
+                <div className="p-4 rounded-xl bg-card border border-border shadow-md max-w-lg mx-auto space-y-3">
+                  <div className="flex items-center gap-2 text-foreground font-bold text-sm">
+                    <Banknote className="w-4 h-4 text-primary" />
+                    {settingsPopupTitle || "Lukt het lid worden niet?"}
+                  </div>
+                  <p className="text-xs text-foreground/90 leading-relaxed bg-muted/40 p-3 rounded-lg border border-border/60">
+                    {(settingsPopupText || "")
+                      .replace(/{iban}/g, settingsBankIban)
+                      .replace(/{accountName}/g, settingsBankAccountName)
+                      .replace(/{amount}/g, `€${parseFloat(settingsManualPaymentAmount || "25").toFixed(2).replace(".", ",")}`)}
+                  </p>
+                  <div className="p-2.5 rounded-lg bg-background border border-border text-[11px] flex items-center justify-between">
+                    <div>
+                      <span className="text-muted-foreground block text-[10px]">IBAN:</span>
+                      <span className="font-mono font-bold text-foreground">{settingsBankIban}</span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded bg-primary/10 text-primary font-semibold text-[10px]">
+                      t.n.v. {settingsBankAccountName}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <Button
+                  type="submit"
+                  disabled={savingSettings}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold px-6 h-10 shadow-sm"
+                >
+                  {savingSettings ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <Save className="w-4 h-4 mr-1.5" />}
+                  Instellingen Opslaan
+                </Button>
+              </div>
+            </form>
           </div>
         </TabsContent>
 

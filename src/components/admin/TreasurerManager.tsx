@@ -1720,6 +1720,22 @@ export function TreasurerManager(props?: TreasurerManagerProps) {
                     })
                   }
                   className="text-xs h-9"
+                  placeholder="bijv. RegioBank"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-semibold text-foreground">Partij IBAN Rekeningnummer (voor contributie overboekingen)</label>
+                <Input
+                  value={data.settings.bankIban || ""}
+                  onChange={(e) =>
+                    setData({
+                      ...data,
+                      settings: { ...data.settings, bankIban: e.target.value }
+                    })
+                  }
+                  className="text-xs h-9 font-mono"
+                  placeholder="bijv. NL91 RBRB 0823 4192 11"
                 />
               </div>
 

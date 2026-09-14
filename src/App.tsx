@@ -90,6 +90,8 @@ const App = () => (
                       <Route path="/reset-wachtwoord" element={<ResetPassword />} />
                       <Route path="/login" element={<Login />} />
                       <Route path="/registreren" element={<Register />} />
+                      <Route path="/word-lid" element={<Register />} />
+                      <Route path="/wordlid" element={<Register />} />
                       <Route path="/dashboard" element={<Dashboard />} />
                       <Route path="/peilingen" element={<Polls />} />
                       <Route path="/polls" element={<Polls />} />

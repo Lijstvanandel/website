@@ -19,12 +19,96 @@ const ROOT_DOCS_DIR = path.join(process.cwd(), "public", "uploads", "documents")
 // The 7 official recipient-oriented dossier categories
 export const OFFICIAL_DOSSIERS = [...CANONICAL_HOOFDDOSSIERS];
 
+// Gemini model configuration & strict Free Tier rate limit constants
+export const CLASSIFIER_MODEL = "gemini-2.5-flash";
+export const FREE_TIER_RPM_LIMIT = 10; // Max 10 Requests Per Minute
+export const FREE_TIER_RPD_LIMIT = 250; // Max 250 Requests Per Day
+export const RATE_LIMIT_DELAY_MS = 6200; // ~9.6 requests per minute (guarantees staying below 10 RPM)
+
+const QUOTA_TRACKER_PATH = path.join(process.cwd(), "public", "data", "gemini_quota_tracker.json");
+
 // Lazy Gemini client
 let geminiClient: GoogleGenAI | null = null;
 let isGeminiQuotaExhausted = false;
 let geminiQuotaExhaustedMessage = "";
 
-export const RATE_LIMIT_DELAY_MS = 1100; // ~55 requests per minute
+// Sliding window timestamps for rate limiter (last 60s)
+const requestTimestamps: number[] = [];
+let lastRequestTime = 0;
+
+export interface QuotaTrackerState {
+  date: string; // YYYY-MM-DD
+  requestsToday: number;
+  dailyLimit: number;
+  rpmLimit: number;
+  model: string;
+  lastRequestTime?: string;
+}
+
+/**
+ * Laadt en initialiseert de dagelijkse quotumtracker van schijf.
+ * Resets automatisch op UTC middernacht.
+ */
+function loadQuotaTracker(): QuotaTrackerState {
+  const today = new Date().toISOString().split("T")[0];
+  try {
+    if (fs.existsSync(QUOTA_TRACKER_PATH)) {
+      const raw = fs.readFileSync(QUOTA_TRACKER_PATH, "utf-8");
+      const data = JSON.parse(raw);
+      if (data && data.date === today) {
+        return {
+          date: today,
+          requestsToday: Number(data.requestsToday) || 0,
+          dailyLimit: FREE_TIER_RPD_LIMIT,
+          rpmLimit: FREE_TIER_RPM_LIMIT,
+          model: CLASSIFIER_MODEL,
+          lastRequestTime: data.lastRequestTime
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("[QUOTA TRACKER] Kon quotumbestand niet lezen, initialiseert nieuw:", err);
+  }
+
+  const newState: QuotaTrackerState = {
+    date: today,
+    requestsToday: 0,
+    dailyLimit: FREE_TIER_RPD_LIMIT,
+    rpmLimit: FREE_TIER_RPM_LIMIT,
+    model: CLASSIFIER_MODEL,
+  };
+  saveQuotaTracker(newState);
+  return newState;
+}
+
+function saveQuotaTracker(state: QuotaTrackerState): void {
+  try {
+    const dir = path.dirname(QUOTA_TRACKER_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(QUOTA_TRACKER_PATH, JSON.stringify(state, null, 2), "utf-8");
+  } catch (err) {
+    console.warn("[QUOTA TRACKER] Kon quotumbestand niet opslaan:", err);
+  }
+}
+
+export function getDailyQuotaUsage(): {
+  requestsToday: number;
+  dailyLimit: number;
+  remainingToday: number;
+  rpmLimit: number;
+  model: string;
+} {
+  const tracker = loadQuotaTracker();
+  return {
+    requestsToday: tracker.requestsToday,
+    dailyLimit: tracker.dailyLimit,
+    remainingToday: Math.max(0, tracker.dailyLimit - tracker.requestsToday),
+    rpmLimit: tracker.rpmLimit,
+    model: tracker.model
+  };
+}
 
 export class GeminiQuotaExceededError extends Error {
   retryAfterSeconds: number;
@@ -35,6 +119,123 @@ export class GeminiQuotaExceededError extends Error {
     this.retryAfterSeconds = retryAfterSeconds;
     this.isPrepaymentDepleted = isPrepaymentDepleted;
   }
+}
+
+export class GeminiDailyQuotaExceededError extends Error {
+  requestsToday: number;
+  dailyLimit: number;
+  constructor(requestsToday: number, dailyLimit: number) {
+    super(`Dagelijkse limiet van ${dailyLimit} verzoeken voor ${CLASSIFIER_MODEL} bereikt (${requestsToday}/${dailyLimit}). Het quotum reset om 00:00 UTC.`);
+    this.name = "GeminiDailyQuotaExceededError";
+    this.requestsToday = requestsToday;
+    this.dailyLimit = dailyLimit;
+  }
+}
+
+/**
+ * Sliding-window rate limiter die ervoor zorgt dat we NOOIT meer dan 10 RPM aanvragen
+ * en een veilige tussenpauze handhaven.
+ */
+async function waitForRateLimitSlot(): Promise<void> {
+  const now = Date.now();
+
+  // 1. Minimaal interval sinds vorig verzoek (min. 6.2s)
+  const elapsedSinceLast = now - lastRequestTime;
+  if (elapsedSinceLast < RATE_LIMIT_DELAY_MS) {
+    const sleepNeeded = RATE_LIMIT_DELAY_MS - elapsedSinceLast;
+    await new Promise((r) => setTimeout(r, sleepNeeded));
+  }
+
+  // 2. Sliding window voor maximaal 10 requests per 60 seconden
+  const currentNow = Date.now();
+  const windowStart = currentNow - 60000;
+  
+  // Verwijder verzoeken ouder dan 60 seconden
+  while (requestTimestamps.length > 0 && requestTimestamps[0] < windowStart) {
+    requestTimestamps.shift();
+  }
+
+  if (requestTimestamps.length >= FREE_TIER_RPM_LIMIT) {
+    const oldest = requestTimestamps[0];
+    const waitTime = Math.max(100, oldest + 60100 - currentNow);
+    await new Promise((r) => setTimeout(r, waitTime));
+    
+    // Na wachten opnieuw opschonen
+    const afterWaitNow = Date.now();
+    while (requestTimestamps.length > 0 && requestTimestamps[0] < (afterWaitNow - 60000)) {
+      requestTimestamps.shift();
+    }
+  }
+
+  const execTime = Date.now();
+  requestTimestamps.push(execTime);
+  lastRequestTime = execTime;
+}
+
+/**
+ * Privacy & AVG Sanitizer:
+ * Aangezien in het gratis abonnement van Gemini de prompts gebruikt mogen worden voor modeltraining,
+ * worden alle privacygevoelige data (zoals BSN, IBAN, persoonsadressen, e-mails en telefoonnummers)
+ * strikt gemaskeerd vóór verzending naar de Google Gemini API.
+ */
+export function sanitizeTextForGemini(text: string): { sanitizedText: string; anonymizedCount: number } {
+  if (!text) return { sanitizedText: "", anonymizedCount: 0 };
+  let sanitized = text;
+  let anonymizedCount = 0;
+
+  // 1. Burgerservicenummers (BSN)
+  const bsnRegex = /\b(?:BSN|burgerservicenummer|bsn-nr|sofinummer)[\s:]*([0-9]{8,9})\b/gi;
+  sanitized = sanitized.replace(bsnRegex, () => {
+    anonymizedCount++;
+    return "BSN: [BSN_GEANONIMISEERD]";
+  });
+
+  // Losse 9-cijferige nummers in persoonscontext
+  const generalBsnRegex = /\b(?!20\d{2})([0-9]{9})\b/g;
+  sanitized = sanitized.replace(generalBsnRegex, (match) => {
+    anonymizedCount++;
+    return "[PERSOONSNUMMER_GEANONIMISEERD]";
+  });
+
+  // 2. IBAN Bankrekeningen (NL / EU)
+  const ibanRegex = /\b[A-Z]{2}[0-9]{2}[A-Z]{4}[0-9]{10}\b|\b[A-Z]{2}[0-9]{2}\s?[0-9]{4}\s?[0-9]{4}\s?[0-9]{2,4}\b/gi;
+  sanitized = sanitized.replace(ibanRegex, () => {
+    anonymizedCount++;
+    return "[IBAN_GEANONIMISEERD]";
+  });
+
+  // 3. E-mailadressen
+  const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
+  sanitized = sanitized.replace(emailRegex, () => {
+    anonymizedCount++;
+    return "[EMAIL_GEANONIMISEERD]";
+  });
+
+  // 4. Telefoonnummers (NL mobiel en vaste netnummers)
+  const phoneRegex = /(?:\+31\s?\(0\)\s?|\+31\s?|0031\s?|0)[1-9](?:[0-9\s-]{7,10})\b/g;
+  sanitized = sanitized.replace(phoneRegex, () => {
+    anonymizedCount++;
+    return "[TELEFOON_GEANONIMISEERD]";
+  });
+
+  // 5. Postcode + Huisnummer van particulieren (bijv. 8331 AA 12 of 8332 BC 45a)
+  const addressRegex = /\b([1-9][0-9]{3}\s?[A-Za-z]{2})\s+([0-9]+[a-zA-Z0-9\-_/]*)\b/g;
+  sanitized = sanitized.replace(addressRegex, (_m, pc) => {
+    anonymizedCount++;
+    return `${pc} [HUISNUMMER_GEANONIMISEERD]`;
+  });
+
+  // 6. Geboortedata
+  const dobRegex = /\b(?:geboren(?:\s+op)?|geboortedatum)[\s:]*([0-9]{1,2}[-/.][0-9]{1,2}[-/.][0-9]{2,4})\b/gi;
+  sanitized = sanitized.replace(dobRegex, () => {
+    anonymizedCount++;
+    return "geboortedatum: [GEBOORTEDATUM_GEANONIMISEERD]";
+  });
+
+  // 7. Vertrouwelijkheids- en geheimhoudingsmarkeringen
+  sanitized = sanitized.replace(/\b(?:STRIKT\s+)?(?:GEHEIM|CONFIDENTIEEL|NIET\s+OPENBAAR|PERSOONLIJKE\s+GEGEVENS)\b/gi, "[VERTROUWELIJK_GEMASKEERD]");
+
+  return { sanitizedText: sanitized, anonymizedCount };
 }
 
 export function getGeminiQuotaStatus(): { exhausted: boolean; message: string } {
@@ -187,7 +388,11 @@ export function runFallbackClassification(
 }
 
 /**
- * Classify a document using Gemini with strict negative constraints and 7 canonical dossiers.
+ * Classify a document using Gemini (model: gemini-2.5-flash) with:
+ * 1. Privacy Sanitizing (stripping BSN, IBAN, contact data to prevent sending sensitive data to Google)
+ * 2. Sliding window rate limiting (<= 10 RPM, min 6.2s interval)
+ * 3. Daily quota tracking (<= 250 RPD in Free Tier)
+ * 4. Automatic 429 RESOURCE_EXHAUSTED backoff and retry handling
  */
 async function classifyWithGemini(
   text: string,
@@ -199,8 +404,20 @@ async function classifyWithGemini(
     throw new Error("Gemini client is not initialized.");
   }
 
-  // Kop-staart RAG extractie (8.000 inleiding + 4.000 besluit/dictum)
-  const textSample = extractHeadTailText(text, 8000, 4000);
+  // 1. Check daily quota (max 250 RPD)
+  const quota = loadQuotaTracker();
+  if (quota.requestsToday >= FREE_TIER_RPD_LIMIT) {
+    throw new GeminiDailyQuotaExceededError(quota.requestsToday, FREE_TIER_RPD_LIMIT);
+  }
+
+  // 2. Privacy & AVG sanitization: geanonimiseerde tekst vóór prompt-samenstelling
+  const { sanitizedText, anonymizedCount } = sanitizeTextForGemini(text);
+  if (anonymizedCount > 0) {
+    console.log(`[PRIVACY SANITIZER] ${anonymizedCount} persoons/privacy-elementen gemaskeerd in "${filename}" vóór verzending naar Gemini.`);
+  }
+
+  // Kop-staart RAG extractie (8.000 inleiding + 4.000 besluit/dictum) van de gesaneerde tekst
+  const textSample = extractHeadTailText(sanitizedText, 8000, 4000);
 
   const prompt = `
   Analyseer het bestuursrechtelijke document (gemeenteraad, provincie of waterschap) van de gemeente Steenwijkerland.
@@ -259,10 +476,13 @@ async function classifyWithGemini(
   ${textSample}
   `;
 
+  // 3. Wacht op beschikbaarheid in de 10 RPM rate limiter
+  await waitForRateLimitSlot();
+
   let response: any = null;
   try {
     response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: CLASSIFIER_MODEL,
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -296,6 +516,13 @@ async function classifyWithGemini(
         }
       }
     });
+
+    // Registreer succesvol verzoek in dagtracker
+    const currentQuota = loadQuotaTracker();
+    currentQuota.requestsToday += 1;
+    currentQuota.lastRequestTime = new Date().toISOString();
+    saveQuotaTracker(currentQuota);
+
   } catch (err: any) {
     const errMsg = err?.message || String(err);
     const isQuota =
@@ -326,6 +553,11 @@ export interface ClassificationProgress {
   pauseRemainingSeconds?: number;
   pauseResumesAt?: string;
   ratePerMinute: number;
+  rpdLimit: number;
+  dailyRequestsUsed: number;
+  dailyRequestsRemaining: number;
+  modelName: string;
+  privacySanitized: boolean;
   total: number;
   processed: number;
   newlyClassified: number;
@@ -341,7 +573,12 @@ let activeProgress: ClassificationProgress = {
   pauseReason: undefined,
   pauseRemainingSeconds: 0,
   pauseResumesAt: undefined,
-  ratePerMinute: 55,
+  ratePerMinute: FREE_TIER_RPM_LIMIT,
+  rpdLimit: FREE_TIER_RPD_LIMIT,
+  dailyRequestsUsed: 0,
+  dailyRequestsRemaining: FREE_TIER_RPD_LIMIT,
+  modelName: CLASSIFIER_MODEL,
+  privacySanitized: true,
   total: 0,
   processed: 0,
   newlyClassified: 0,
@@ -352,6 +589,13 @@ let activeProgress: ClassificationProgress = {
 };
 
 export function getBulkClassificationStatus(): ClassificationProgress {
+  const daily = getDailyQuotaUsage();
+  activeProgress.ratePerMinute = FREE_TIER_RPM_LIMIT;
+  activeProgress.rpdLimit = FREE_TIER_RPD_LIMIT;
+  activeProgress.dailyRequestsUsed = daily.requestsToday;
+  activeProgress.dailyRequestsRemaining = daily.remainingToday;
+  activeProgress.modelName = CLASSIFIER_MODEL;
+  activeProgress.privacySanitized = true;
   activeProgress.deadLetterCount = deadLetterQueue.length;
   return activeProgress;
 }
@@ -372,20 +616,29 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
     return;
   }
 
+  const daily = getDailyQuotaUsage();
+
   activeProgress = {
     isRunning: true,
     isPaused: false,
     pauseReason: undefined,
     pauseRemainingSeconds: 0,
     pauseResumesAt: undefined,
-    ratePerMinute: 55,
+    ratePerMinute: FREE_TIER_RPM_LIMIT,
+    rpdLimit: FREE_TIER_RPD_LIMIT,
+    dailyRequestsUsed: daily.requestsToday,
+    dailyRequestsRemaining: daily.remainingToday,
+    modelName: CLASSIFIER_MODEL,
+    privacySanitized: true,
     total: 0,
     processed: 0,
     newlyClassified: 0,
     alreadyProcessed: 0,
     deadLetterCount: deadLetterQueue.length,
     activeFile: "",
-    logs: ["Inladen van bestanden en metadata gestart via non-blocking scan..."]
+    logs: [
+      `Initialisatie gestart met model ${CLASSIFIER_MODEL} (Gratis limiet: max ${FREE_TIER_RPM_LIMIT} RPM, ${FREE_TIER_RPD_LIMIT} RPD). Privacy-sanitizing geactiveerd.`
+    ]
   };
 
   // Run asynchronously in the background
@@ -498,12 +751,18 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
         while (!success && activeProgress.isRunning) {
           attempts++;
           try {
-            await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_DELAY_MS));
-            if (!activeProgress.isRunning) break;
-
             meta = await classifyWithGemini(text, file.filename, file.relativePath);
             success = true;
           } catch (err: any) {
+            // Daily Quota (250 RPD) Exceeded Handling
+            if (err instanceof GeminiDailyQuotaExceededError || err?.name === "GeminiDailyQuotaExceededError") {
+              activeProgress.logs.push(`[DAGQUOTUM BEREIKT] ⚠️ 250 verzoeken/dag limiet voor ${CLASSIFIER_MODEL} bereikt. Overschakelen op lokale heuristieken om proces te voltooien.`);
+              meta = runFallbackClassification(text, file.filename, file.relativePath, "Dagquotum (250 RPD) bereikt");
+              success = true;
+              break;
+            }
+
+            // Rate Limit (429 RESOURCE_EXHAUSTED / 10 RPM) Handling
             if (err instanceof GeminiQuotaExceededError || err?.name === "GeminiQuotaExceededError") {
               const waitSeconds = err.retryAfterSeconds || 60;
               const resumeDate = new Date(Date.now() + waitSeconds * 1000);
@@ -516,9 +775,9 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
               activeProgress.isPaused = true;
               activeProgress.pauseRemainingSeconds = waitSeconds;
               activeProgress.pauseResumesAt = resumeAt;
-              activeProgress.pauseReason = `Gemini API quota (429 RESOURCE_EXHAUSTED). Pauzeert ${waitSeconds}s tot ${resumeAt}...`;
+              activeProgress.pauseReason = `Gemini API (429 RESOURCE_EXHAUSTED). Limiet van 10 RPM bereikt. Pauzeert ${waitSeconds}s tot ${resumeAt}...`;
 
-              activeProgress.logs.push(`[RATE LIMIT PAUZE] ⏸️ 429 RESOURCE_EXHAUSTED. Wachten tot ${resumeAt}...`);
+              activeProgress.logs.push(`[RATE LIMIT PAUZE] ⏸️ 429 RESOURCE_EXHAUSTED (10 RPM limiet). Wachten tot ${resumeAt}...`);
               if (activeProgress.logs.length > 300) activeProgress.logs.shift();
 
               saveMasterMetadata(reclassifiedMetadata);

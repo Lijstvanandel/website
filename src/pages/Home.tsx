@@ -145,6 +145,8 @@ const Home = () => {
           alt="Luchtfoto van Steenwijk bij zonsondergang"
           width={1920}
           height={1080}
+          fetchpriority="high"
+          decoding="async"
           className="absolute inset-0 w-full h-full object-cover pointer-events-none transition-transform duration-1000 ease-out"
         />
 
@@ -248,7 +250,7 @@ const Home = () => {
           <div className="grid md:grid-cols-[1fr_auto_1fr] gap-6 items-center bg-card border border-accent/20 p-8 md:p-12">
             <div className="text-center">
               <div className="w-20 h-20 mx-auto rounded-full overflow-hidden border-2 border-accent mb-3">
-                <img src={sammyImg} alt="Sammy" className="w-full h-full object-cover" />
+                <img src={sammyImg} alt="Sammy van Andel" width={80} height={80} loading="lazy" decoding="async" className="w-full h-full object-cover" />
               </div>
               <div className="font-display text-2xl">Sammy van Andel</div>
               <div className="text-xs uppercase tracking-widest text-muted-foreground mt-1">Fractievoorzitter</div>
@@ -263,7 +265,7 @@ const Home = () => {
 
             <div className="text-center">
               <div className="w-20 h-20 mx-auto rounded-full overflow-hidden border-2 border-accent mb-3">
-                <img src={lisaImg} alt="Lisa Mars" className="w-full h-full object-cover" />
+                <img src={lisaImg} alt="Lisa Mars" width={80} height={80} loading="lazy" decoding="async" className="w-full h-full object-cover" />
               </div>
               <div className="font-display text-2xl">Lisa Mars</div>
               <div className="text-xs uppercase tracking-widest text-muted-foreground mt-1">Raadslid</div>

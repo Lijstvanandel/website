@@ -23,6 +23,7 @@ import {
   Download,
   Clock,
   PauseCircle,
+  ShieldCheck,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -227,10 +228,16 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
     pauseRemainingSeconds?: number;
     pauseResumesAt?: string;
     ratePerMinute?: number;
+    rpdLimit?: number;
+    dailyRequestsUsed?: number;
+    dailyRequestsRemaining?: number;
+    modelName?: string;
+    privacySanitized?: boolean;
     total: number;
     processed: number;
     newlyClassified: number;
     alreadyProcessed: number;
+    deadLetterCount?: number;
     activeFile: string;
     logs: string[];
   } | null>(null);
@@ -743,8 +750,13 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
                 )}
               </div>
               <div>
-                <h3 className="font-bold text-foreground text-sm sm:text-base flex items-center gap-2">
-                  Dossier Samenbrengingsproces (Taxonomie-AI)
+                <div className="flex items-center flex-wrap gap-2">
+                  <h3 className="font-bold text-foreground text-sm sm:text-base flex items-center gap-2">
+                    Dossier Samenbrengingsproces (Taxonomie-AI)
+                  </h3>
+                  <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-primary/10 text-primary border border-primary/20 rounded-md">
+                    {bulkStatus.modelName || "gemini-2.5-flash"}
+                  </span>
                   {bulkStatus.isPaused ? (
                     <span className="px-2.5 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 rounded-full dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800 animate-pulse">
                       ⏸️ Quotum Pauze ({bulkStatus.pauseRemainingSeconds || 60}s)
@@ -755,15 +767,15 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
                     </span>
                   ) : (
                     <span className="px-2 py-0.5 text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
-                      ~55 docs/min
+                      Max {bulkStatus.ratePerMinute || 10} RPM • {bulkStatus.rpdLimit || 250} RPD
                     </span>
                   )}
-                </h3>
+                </div>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {bulkStatus.isPaused
-                    ? `Gepauzeerd wegens Gemini API rate limit. Het script wacht op quotum-reset en hervat automatisch met de AI...`
+                    ? `Gepauzeerd wegens Gemini API rate limit (10 RPM limiet). Het script wacht op quotum-reset en hervat automatisch...`
                     : bulkStatus.isRunning 
-                    ? `Actief bezig met analyseren en classificeren van bestanden volgens de Steenwijkerlandse datataxonomie (rate-limiting queue actief)...` 
+                    ? `Actief bezig met analyseren en classificeren volgens de Steenwijkerlandse datataxonomie (gemini-2.5-flash, max 10 RPM)...` 
                     : "Alle bestanden zijn geanalyseerd en ingedeeld volgens de ontologische routeringsregels."}
                 </p>
               </div>
@@ -790,6 +802,21 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
             </div>
           </div>
 
+          {/* Privacy & AVG Waarborg Banner */}
+          <div className="bg-blue-500/10 border border-blue-500/20 text-blue-950 dark:text-blue-200 p-3 rounded-2xl flex items-start gap-3 text-xs leading-relaxed">
+            <div className="p-1.5 bg-blue-500/20 text-blue-700 dark:text-blue-300 rounded-lg shrink-0 mt-0.5">
+              <ShieldCheck className="w-4 h-4" />
+            </div>
+            <div className="space-y-0.5">
+              <span className="font-bold text-blue-900 dark:text-blue-200">
+                Privacy- & AVG-waarborg (Gratis Gemini 2.5 Flash Quotum)
+              </span>
+              <p className="text-blue-800/90 dark:text-blue-300/90 text-[11px]">
+                Bij het gratis abonnement mag Google prompts gebruiken om AI-modellen te verbeteren. Daarom worden alle privacygevoelige gegevens (BSN, persoonsnamen, IBAN, contactgegevens en vertrouwelijke passages) vooraf <strong>automatisch geanonimiseerd en gemaskeerd</strong> vóór verzending naar het taalmodel.
+              </p>
+            </div>
+          </div>
+
           {/* Prominent Rate-Limit Pause Banner with Live Countdown */}
           {bulkStatus.isPaused && (
             <div className="bg-amber-500/10 border-2 border-amber-500/40 text-amber-950 dark:text-amber-100 p-4 rounded-2xl flex items-start gap-3.5 shadow-xs animate-in fade-in duration-300">
@@ -800,7 +827,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <span className="font-bold text-sm text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
                     <PauseCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                    Gemini API Quotum Pauze (429 RESOURCE_EXHAUSTED)
+                    Gemini API Quotum Pauze (429 RESOURCE_EXHAUSTED / 10 RPM)
                   </span>
                   {bulkStatus.pauseRemainingSeconds !== undefined && bulkStatus.pauseRemainingSeconds > 0 && (
                     <span className="px-2.5 py-1 rounded-lg bg-amber-200/90 dark:bg-amber-950 text-amber-950 dark:text-amber-100 font-mono font-bold text-xs tracking-wider border border-amber-400/50 shadow-2xs">
@@ -809,7 +836,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
                   )}
                 </div>
                 <p className="text-amber-800 dark:text-amber-300 leading-relaxed text-xs">
-                  {bulkStatus.pauseReason || "De Gemini API heeft het aantal toegestane verzoeken bereikt. Het proces pauzeert en wacht tot het quotum is gereset (vaak na 1 minuut). De data wordt NIET overgeslagen of gedegradeerd naar trefwoordherkenning, maar zuiver verwerkt met de daadwerkelijke AI."}
+                  {bulkStatus.pauseReason || "De Gemini API heeft de 10 RPM limiet bereikt. Het proces pauzeert en hervat automatisch zodra het venster vrij is. De data wordt niet overgeslagen."}
                 </p>
                 {bulkStatus.pauseResumesAt && (
                   <div className="flex items-center gap-3 text-[11px] text-amber-700 dark:text-amber-400 font-mono pt-1.5 border-t border-amber-500/20">
@@ -837,9 +864,9 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
               </span>
             </div>
             <div className="text-center p-2 border-l border-border">
-              <span className="block text-[11px] text-muted-foreground font-medium">Reeds Verwerkt</span>
-              <span className="text-lg font-bold text-muted-foreground">
-                {bulkStatus.alreadyProcessed}
+              <span className="block text-[11px] text-muted-foreground font-medium">Dagquotum (250 RPD)</span>
+              <span className="text-base font-bold text-foreground">
+                {bulkStatus.dailyRequestsUsed ?? 0} <span className="text-xs text-muted-foreground font-normal">/ {bulkStatus.rpdLimit || 250}</span>
               </span>
             </div>
             <div className="text-center p-2 border-l border-border">

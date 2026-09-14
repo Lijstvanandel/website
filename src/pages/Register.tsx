@@ -15,10 +15,13 @@ import {
   EyeOff,
   Check,
   Shield,
+  HelpCircle,
+  Banknote,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { safeJson } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { MembershipHelpModal } from "@/components/MembershipHelpModal";
 import {
   Form,
   FormControl,
@@ -69,6 +72,13 @@ interface MembershipConfig {
   description: string;
   requirePaymentAtRegistration: boolean;
   isStripeConfigured: boolean;
+  bankIban?: string;
+  bankAccountName?: string;
+  manualPaymentAmount?: number;
+  popupEnabled?: boolean;
+  popupDelaySeconds?: number;
+  popupTitle?: string;
+  popupText?: string;
 }
 
 function calculatePasswordStrength(pwd: string) {
@@ -157,6 +167,7 @@ export default function Register() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [membershipConfig, setMembershipConfig] = useState<MembershipConfig | null>(null);
   const [registeredPaymentInfo, setRegisteredPaymentInfo] = useState<{ checkoutUrl: string; sessionId?: string } | null>(null);
+  const [showHelpModal, setShowHelpModal] = useState(false);
 
   // Verification states when returning from Stripe Checkout
   const isPaymentSuccess = searchParams.get("payment_success") === "true";
@@ -187,9 +198,39 @@ export default function Register() {
           description: "Jaarlijkse contributie voor partijleden",
           requirePaymentAtRegistration: true,
           isStripeConfigured: false,
+          bankIban: "NL91 RBRB 0823 4192 11",
+          bankAccountName: "Lijst van Andel",
+          manualPaymentAmount: 25.0,
+          popupEnabled: true,
+          popupDelaySeconds: 90,
+          popupTitle: "Lukt het lid worden niet?",
+          popupText: "U kunt ook €25,00 overmaken naar ons rekeningnummer {iban} en in de omschrijving uw e-mailadres en telefoonnummer zetten. Wij nemen dan contact met u op.",
         });
       });
   }, []);
+
+  // Pop-up na 1,5 minuut (90 seconden) als de bezoeker op de Word Lid pagina is
+  useEffect(() => {
+    if (isPaymentSuccess || verificationSuccess || registeredPaymentInfo) {
+      return;
+    }
+
+    const isEnabled = membershipConfig?.popupEnabled !== false;
+    if (!isEnabled) return;
+
+    const delaySeconds =
+      membershipConfig?.popupDelaySeconds !== undefined ? membershipConfig.popupDelaySeconds : 90;
+
+    // Check of de gebruiker deze sessie de pop-up al handmatig heeft weggeklikt
+    const hasDismissed = sessionStorage.getItem("membership_help_popup_dismissed") === "true";
+    if (hasDismissed) return;
+
+    const timer = setTimeout(() => {
+      setShowHelpModal(true);
+    }, delaySeconds * 1000);
+
+    return () => clearTimeout(timer);
+  }, [isPaymentSuccess, verificationSuccess, registeredPaymentInfo, membershipConfig]);
 
   // Handle return from Stripe Checkout
   useEffect(() => {
@@ -831,6 +872,31 @@ export default function Register() {
               )}
             </Button>
 
+            {/* Handmatige Overboeking Hulp Banner */}
+            <div className="mt-6 p-4 rounded-xl bg-muted/40 border border-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                  <Banknote className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="font-semibold text-foreground block">Lukt het lid worden niet via het formulier?</span>
+                  <span className="text-muted-foreground block">
+                    U kunt de contributie ook direct per bank overmaken naar ons rekeningnummer.
+                  </span>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowHelpModal(true)}
+                className="shrink-0 text-xs h-8 gap-1.5 border-primary/30 text-primary hover:bg-primary/10 font-semibold"
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+                Bekijk bankgegevens
+              </Button>
+            </div>
+
             <div className="mt-4 text-center text-xs text-muted-foreground">
               Al lid van Lijst van Andel?{" "}
               <Link
@@ -843,6 +909,33 @@ export default function Register() {
           </form>
         </Form>
       </div>
+
+      {/* Floating Hulpknop voor snelle toegang */}
+      <div className="fixed bottom-6 right-6 z-40">
+        <Button
+          type="button"
+          onClick={() => setShowHelpModal(true)}
+          className="shadow-xl bg-card text-foreground hover:bg-muted border border-border rounded-full px-4 py-2.5 h-auto text-xs font-semibold flex items-center gap-2 transition-all hover:scale-105 active:scale-95"
+        >
+          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <HelpCircle className="w-4 h-4 text-primary" />
+          <span>Hulp bij lid worden?</span>
+        </Button>
+      </div>
+
+      {/* Pop-up Modal (opent automatisch na 1,5 minuut of handmatig via knop) */}
+      <MembershipHelpModal
+        isOpen={showHelpModal}
+        onClose={() => {
+          setShowHelpModal(false);
+          sessionStorage.setItem("membership_help_popup_dismissed", "true");
+        }}
+        bankIban={membershipConfig?.bankIban}
+        bankAccountName={membershipConfig?.bankAccountName}
+        amount={membershipConfig?.manualPaymentAmount ?? 25.0}
+        customTitle={membershipConfig?.popupTitle}
+        customText={membershipConfig?.popupText}
+      />
     </div>
   );
 }
