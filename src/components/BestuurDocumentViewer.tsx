@@ -42,12 +42,8 @@ export const BestuurDocumentViewer: React.FC<BestuurDocumentViewerProps> = ({
   if (!isOpen || !document) return null;
 
   let resolvedUrl = getSafeDocumentUrl(document.fileUrl, document.fileName, document.href);
-  if (!resolvedUrl) {
-    if (document.fileName) {
-      resolvedUrl = `/api/document/view?file=${encodeURIComponent(document.fileName)}`;
-    } else if (document.id === "doc-statuten" || document.titel?.toLowerCase().includes("statut")) {
-      resolvedUrl = "/api/document/view?file=statuten_lijstvanandel.pdf";
-    }
+  if (!resolvedUrl && document.fileName) {
+    resolvedUrl = `/api/document/view?file=${encodeURIComponent(document.fileName)}`;
   }
 
   const isPdf =

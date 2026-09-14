@@ -432,6 +432,13 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ token: propToken
         body: JSON.stringify({ ...formData, organisatieDocs: updatedDocs })
       });
       if (res.ok) {
+        const resData = await safeJson(res, null);
+        if (resData?.dailyBoard?.organisatieDocs) {
+          setFormData((prev) => ({
+            ...prev,
+            organisatieDocs: resData.dailyBoard.organisatieDocs
+          }));
+        }
         toast.success(editingDocIndex !== null ? `Document '${sanitizedDoc.titel}' opgeslagen!` : `Document '${sanitizedDoc.titel}' toegevoegd en opgeslagen!`);
         if (onUpdated) onUpdated();
       } else {

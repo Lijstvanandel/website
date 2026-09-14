@@ -1608,14 +1608,6 @@ function getDb() {
     } else {
       // Normalize existing documents to ensure safe streaming URLs and correct filenames
       for (const d of db.chairmanDailyBoard.organisatieDocs) {
-        if (d.id === "doc-statuten" || d.titel === "Statuten") {
-          if (d.fileName?.includes("gevaarlijke stoffen") || d.fileName?.includes("RAADSVOORSTEL")) {
-            d.fileName = "statuten_lijstvanandel.pdf";
-            d.fileUrl = "/api/document/view?file=statuten_lijstvanandel.pdf";
-            d.titel = "Statuten";
-            updated = true;
-          }
-        }
         if (d.fileUrl && typeof d.fileUrl === "string" && d.fileUrl.startsWith("/uploads/")) {
           const bname = path.basename(d.fileUrl);
           d.fileUrl = `/api/document/view?file=${encodeURIComponent(bname)}`;
@@ -4272,14 +4264,6 @@ async function startServer() {
         if ((!fileUrl || fileUrl === "#") && d.fileName) {
           fileUrl = `/api/document/view?file=${encodeURIComponent(path.basename(d.fileName))}`;
         }
-        if (d.id === "doc-statuten" && (d.fileName?.includes("gevaarlijke stoffen") || d.fileName?.includes("RAADSVOORSTEL"))) {
-          return {
-            ...d,
-            titel: "Statuten",
-            fileName: "statuten_lijstvanandel.pdf",
-            fileUrl: "/api/document/view?file=statuten_lijstvanandel.pdf"
-          };
-        }
         return { ...d, fileUrl };
       });
     }
@@ -4300,14 +4284,6 @@ async function startServer() {
         }
         if ((!fileUrl || fileUrl === "#") && d.fileName) {
           fileUrl = `/api/document/view?file=${encodeURIComponent(path.basename(d.fileName))}`;
-        }
-        if (d.id === "doc-statuten" && (d.fileName?.includes("gevaarlijke stoffen") || d.fileName?.includes("RAADSVOORSTEL"))) {
-          return {
-            ...d,
-            titel: "Statuten",
-            fileName: "statuten_lijstvanandel.pdf",
-            fileUrl: "/api/document/view?file=statuten_lijstvanandel.pdf"
-          };
         }
         return { ...d, fileUrl };
       });

@@ -296,15 +296,15 @@ export async function ensureBestuurDocumentPdf(
     const lower = safeFilename.toLowerCase();
     let template = OFFICIAL_DOC_TEMPLATES[lower];
     if (!template) {
-      if (lower.includes("statut")) {
+      if (lower === "statuten_lijstvanandel.pdf" || lower === "statuten.pdf") {
         template = OFFICIAL_DOC_TEMPLATES["statuten_lijstvanandel.pdf"];
-      } else if (lower.includes("huishoudelijk")) {
+      } else if (lower === "huishoudelijk_reglement.pdf" || lower === "huishoudelijk.pdf") {
         template = OFFICIAL_DOC_TEMPLATES["huishoudelijk_reglement.pdf"];
-      } else if (lower.includes("integriteit")) {
+      } else if (lower === "integriteitscode_lijstvanandel.pdf" || lower === "integriteitscode.pdf" || lower === "integriteit.pdf") {
         template = OFFICIAL_DOC_TEMPLATES["integriteitscode_lijstvanandel.pdf"];
-      } else if (lower.includes("bestuur")) {
+      } else if (lower === "bestuursreglement.pdf") {
         template = OFFICIAL_DOC_TEMPLATES["bestuursreglement.pdf"];
-      } else if (lower.includes("kandidaat")) {
+      } else if (lower === "kandidaatstellingsreglement.pdf") {
         template = OFFICIAL_DOC_TEMPLATES["kandidaatstellingsreglement.pdf"];
       }
     }

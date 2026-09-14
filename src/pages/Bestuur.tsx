@@ -163,9 +163,6 @@ const Bestuur = () => {
     if (!resolvedUrl && doc.fileName) {
       resolvedUrl = `/api/document/view?file=${encodeURIComponent(doc.fileName)}`;
     }
-    if (!resolvedUrl && (doc.id === "doc-statuten" || doc.titel?.toLowerCase().includes("statut"))) {
-      resolvedUrl = "/api/document/view?file=statuten_lijstvanandel.pdf";
-    }
 
     setSelectedViewerDoc({
       id: doc.id,
