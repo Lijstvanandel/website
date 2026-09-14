@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { 
   Mail, 
   Instagram, 
@@ -22,6 +22,7 @@ import stefImg from "@/assets/stef-mars.jpg";
 import { useAuth } from "@/context/AuthContext";
 import { safeJson } from "@/lib/api";
 import { BestuurDocumentViewer, BestuurDocViewerItem } from "@/components/BestuurDocumentViewer";
+import { getSafeDocumentUrl } from "@/lib/documentUrl";
 
 export interface BestuurslidItem {
   id: string;
@@ -102,6 +103,8 @@ const defaultDocs: OrganisatieDoc[] = [
     titel: "Statuten", 
     beschrijving: "Officiële verenigingsstatuten conform de Wet bestuur en toezicht rechtspersonen (WBTR).",
     category: "Statutair",
+    fileName: "statuten_lijstvanandel.pdf",
+    fileUrl: "/api/document/view?file=statuten_lijstvanandel.pdf",
     fileSize: "1.2 MB",
     datum: "2026-01-15"
   },
@@ -110,6 +113,8 @@ const defaultDocs: OrganisatieDoc[] = [
     titel: "Huishoudelijk Reglement", 
     beschrijving: "Interne werkwijzen, rechten van leden, contributiebepalingen en vergaderordes.",
     category: "Reglement",
+    fileName: "huishoudelijk_reglement.pdf",
+    fileUrl: "/api/document/view?file=huishoudelijk_reglement.pdf",
     fileSize: "850 KB",
     datum: "2026-02-01"
   },
@@ -118,6 +123,8 @@ const defaultDocs: OrganisatieDoc[] = [
     titel: "Integriteitscode", 
     beschrijving: "Gedragscode en integriteitsprotocol voor bestuursleden, fractieleden en kandidaten.",
     category: "Integriteit",
+    fileName: "integriteitscode_lijstvanandel.pdf",
+    fileUrl: "/api/document/view?file=integriteitscode_lijstvanandel.pdf",
     fileSize: "420 KB",
     datum: "2026-02-20"
   },
@@ -126,6 +133,8 @@ const defaultDocs: OrganisatieDoc[] = [
     titel: "Bestuursreglement", 
     beschrijving: "Bevoegdhedenverdeling, besluitvorming, volmachten en protocol tegenstrijdig belang.",
     category: "Bestuurlijk",
+    fileName: "bestuursreglement.pdf",
+    fileUrl: "/api/document/view?file=bestuursreglement.pdf",
     fileSize: "620 KB",
     datum: "2026-03-05"
   },
@@ -134,6 +143,8 @@ const defaultDocs: OrganisatieDoc[] = [
     titel: "Kandidaatstellingsreglement", 
     beschrijving: "Procedure, selectiecriteria en profielschetsen voor de kieslijst gemeenteraadsverkiezingen.",
     category: "Verkiezingen",
+    fileName: "kandidaatstellingsreglement.pdf",
+    fileUrl: "/api/document/view?file=kandidaatstellingsreglement.pdf",
     fileSize: "510 KB",
     datum: "2026-04-10"
   },
@@ -141,19 +152,28 @@ const defaultDocs: OrganisatieDoc[] = [
 
 const Bestuur = () => {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const [boardData, setBoardData] = useState<BestuurData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedViewerDoc, setSelectedViewerDoc] = useState<BestuurDocViewerItem | null>(null);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
 
   const handleOpenDocViewer = (doc: OrganisatieDoc) => {
+    let resolvedUrl = getSafeDocumentUrl(doc.fileUrl, doc.fileName, doc.href);
+    if (!resolvedUrl && doc.fileName) {
+      resolvedUrl = `/api/document/view?file=${encodeURIComponent(doc.fileName)}`;
+    }
+    if (!resolvedUrl && (doc.id === "doc-statuten" || doc.titel?.toLowerCase().includes("statut"))) {
+      resolvedUrl = "/api/document/view?file=statuten_lijstvanandel.pdf";
+    }
+
     setSelectedViewerDoc({
       id: doc.id,
       titel: doc.titel,
       beschrijving: doc.beschrijving,
       category: doc.category,
-      fileUrl: doc.fileUrl,
-      fileName: doc.fileName,
+      fileUrl: resolvedUrl || doc.fileUrl,
+      fileName: doc.fileName || (doc.titel ? `${doc.titel.toLowerCase().replace(/\s+/g, "_")}.pdf` : "document.pdf"),
       fileSize: doc.fileSize,
       datum: doc.datum,
       href: doc.href,
@@ -173,7 +193,24 @@ const Bestuur = () => {
         const res = await fetch("/api/public/bestuur");
         if (res.ok) {
           const data = await safeJson(res, null);
-          if (data) setBoardData(data);
+          if (data) {
+            setBoardData(data);
+
+            const docParam = searchParams.get("doc");
+            if (docParam) {
+              const allDocs = (data.organisatieDocs && data.organisatieDocs.length > 0)
+                ? data.organisatieDocs
+                : defaultDocs;
+              const matched = allDocs.find((d: OrganisatieDoc) => 
+                d.id === docParam || 
+                d.titel.toLowerCase().includes(docParam.toLowerCase()) ||
+                (docParam.toLowerCase().includes("statut") && d.titel.toLowerCase().includes("statut"))
+              );
+              if (matched) {
+                handleOpenDocViewer(matched);
+              }
+            }
+          }
         }
       } catch (err) {
         console.error("Fout bij ophalen bestuursgegevens:", err);
@@ -182,7 +219,7 @@ const Bestuur = () => {
       }
     };
     fetchBoardData();
-  }, []);
+  }, [searchParams]);
 
   // Build members list dynamically
   const members: BestuurslidItem[] = [];
@@ -436,8 +473,12 @@ const Bestuur = () => {
 
           <div className="space-y-2.5">
             {docs.map((doc) => {
-              const hasDownload = !!doc.fileUrl || (doc.href && doc.href !== "#");
-              const targetUrl = doc.fileUrl || doc.href || "#";
+              const targetUrl = getSafeDocumentUrl(doc.fileUrl, doc.fileName, doc.href);
+              const hasDownload = Boolean(
+                doc.fileUrl ||
+                (doc.fileName && doc.fileName.toLowerCase().endsWith(".pdf")) ||
+                (doc.href && doc.href !== "#")
+              );
 
               return (
                 <div
@@ -489,20 +530,16 @@ const Bestuur = () => {
                         <Eye className="w-4 h-4" />
                       </button>
 
-                      {hasDownload ? (
+                      {hasDownload && targetUrl ? (
                         <a
                           href={targetUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          download={!!doc.fileUrl}
+                          download={doc.fileName || `${doc.titel}.pdf`}
                           className="p-2 rounded-md bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-all"
                           title={`Download ${doc.titel}`}
                         >
-                          {doc.fileUrl ? (
-                            <Download className="w-4 h-4" />
-                          ) : (
-                            <ExternalLink className="w-4 h-4" />
-                          )}
+                          <Download className="w-4 h-4" />
                         </a>
                       ) : (
                         <span className="text-[10px] text-muted-foreground px-2 py-1 rounded bg-muted/60">

@@ -486,6 +486,14 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
               archivedAt: existing?.archivedAt || null,
               sourceUrl: meeting.url,
               scrapedAt: new Date().toISOString(),
+              // Status & Geparkeerd state
+              isParked: existing?.isParked || false,
+              parkedReason: existing?.parkedReason,
+              parkedAt: existing?.parkedAt || null,
+              parkedBy: existing?.parkedBy || null,
+              previousCategory: existing?.previousCategory || null,
+              category: existing?.isParked ? (existing.category || topicCategory) : topicCategory,
+
               // CRITICAL: Always preserve compiled support dossier and contributions
               compiledDossier: existing?.compiledDossier || null,
               linkedDossierSlug: existing?.linkedDossierSlug || null,

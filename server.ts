@@ -101,6 +101,10 @@ import {
   ensureVerifiablePdfFile,
 } from "./src/server/supportDossierService.js";
 import {
+  ensureBestuurDocumentPdf,
+  initDefaultOrganizationDocs,
+} from "./src/server/organizationDocService.js";
+import {
   runBulkClassification,
   startBulkClassificationInBackground,
   getBulkClassificationStatus,
@@ -1549,7 +1553,7 @@ function getDb() {
           titel: "Statuten",
           beschrijving: "Officiële verenigingsstatuten conform de Wet bestuur en toezicht rechtspersonen (WBTR).",
           category: "Statutair",
-          fileUrl: "",
+          fileUrl: "/api/document/view?file=statuten_lijstvanandel.pdf",
           fileName: "statuten_lijstvanandel.pdf",
           fileSize: "1.2 MB",
           datum: "2026-01-15",
@@ -1560,7 +1564,7 @@ function getDb() {
           titel: "Huishoudelijk Reglement",
           beschrijving: "Interne werkwijzen, rechten van leden, contributiebepalingen en vergaderordes.",
           category: "Reglement",
-          fileUrl: "",
+          fileUrl: "/api/document/view?file=huishoudelijk_reglement.pdf",
           fileName: "huishoudelijk_reglement.pdf",
           fileSize: "850 KB",
           datum: "2026-02-01",
@@ -1571,7 +1575,7 @@ function getDb() {
           titel: "Integriteitscode",
           beschrijving: "Gedragscode en integriteitsprotocol voor bestuursleden, fractieleden en kandidaten.",
           category: "Integriteit",
-          fileUrl: "",
+          fileUrl: "/api/document/view?file=integriteitscode_lijstvanandel.pdf",
           fileName: "integriteitscode_lijstvanandel.pdf",
           fileSize: "420 KB",
           datum: "2026-02-20",
@@ -1582,7 +1586,7 @@ function getDb() {
           titel: "Bestuursreglement",
           beschrijving: "Bevoegdhedenverdeling, besluitvorming, volmachten en protocol tegenstrijdig belang.",
           category: "Bestuurlijk",
-          fileUrl: "",
+          fileUrl: "/api/document/view?file=bestuursreglement.pdf",
           fileName: "bestuursreglement.pdf",
           fileSize: "620 KB",
           datum: "2026-03-05",
@@ -1593,7 +1597,7 @@ function getDb() {
           titel: "Kandidaatstellingsreglement",
           beschrijving: "Procedure, selectiecriteria en profielschetsen voor de kieslijst gemeenteraadsverkiezingen.",
           category: "Verkiezingen",
-          fileUrl: "",
+          fileUrl: "/api/document/view?file=kandidaatstellingsreglement.pdf",
           fileName: "kandidaatstellingsreglement.pdf",
           fileSize: "510 KB",
           datum: "2026-04-10",
@@ -1601,7 +1605,43 @@ function getDb() {
         }
       ];
       updated = true;
+    } else {
+      // Normalize existing documents to ensure safe streaming URLs and correct filenames
+      for (const d of db.chairmanDailyBoard.organisatieDocs) {
+        if (d.id === "doc-statuten" || d.titel === "Statuten") {
+          if (!d.fileName || d.fileName.includes("gevaarlijke stoffen") || d.fileName.includes("RAADSVOORSTEL")) {
+            d.fileName = "statuten_lijstvanandel.pdf";
+            d.fileUrl = "/api/document/view?file=statuten_lijstvanandel.pdf";
+            d.titel = "Statuten";
+            updated = true;
+          }
+        }
+        if (d.fileUrl && typeof d.fileUrl === "string" && d.fileUrl.startsWith("/uploads/")) {
+          const bname = path.basename(d.fileUrl);
+          d.fileUrl = `/api/document/view?file=${encodeURIComponent(bname)}`;
+          updated = true;
+        }
+        if ((!d.fileUrl || d.fileUrl === "#") && d.fileName) {
+          d.fileUrl = `/api/document/view?file=${encodeURIComponent(path.basename(d.fileName))}`;
+          updated = true;
+        }
+        if (d.fileName && d.fileName.toLowerCase().endsWith(".pdf")) {
+          ensureBestuurDocumentPdf(d.fileName).catch(() => {});
+        }
+      }
     }
+
+    // Pre-generate all 5 official verifiable documents on disk
+    [
+      "statuten_lijstvanandel.pdf",
+      "huishoudelijk_reglement.pdf",
+      "integriteitscode_lijstvanandel.pdf",
+      "bestuursreglement.pdf",
+      "kandidaatstellingsreglement.pdf"
+    ].forEach((fn) => {
+      ensureBestuurDocumentPdf(fn).catch((e) => console.warn(`[STARTUP] Kon ${fn} niet genereren:`, e));
+    });
+
     if (updated) {
       saveDb(db);
     }
@@ -1765,7 +1805,15 @@ const storage = multer.diskStorage({
       subfolder = 'public/uploads/wijken';
     } else if (url.includes('/stemgedrag') || url.includes('/moties')) {
       subfolder = 'public/uploads/stemgedrag';
-    } else if (url.includes('/documents') || file.fieldname === 'document' || file.fieldname === 'pdf') {
+    } else if (
+      url.includes('/documents') ||
+      url.includes('/organization-docs') ||
+      url.includes('/bestuur') ||
+      file.fieldname === 'document' ||
+      file.fieldname === 'doc' ||
+      file.fieldname === 'pdf' ||
+      (file.originalname.toLowerCase().endsWith('.pdf') && !url.includes('/stemgedrag') && !url.includes('/moties'))
+    ) {
       subfolder = 'public/uploads/documents';
     } else if (url.includes('/stellingen') || file.fieldname === 'stellingImage' || file.fieldname === 'image') {
       subfolder = 'public/uploads/stellingen';
@@ -1917,6 +1965,13 @@ async function startServer() {
   // Initialize robust SQLite storage and run migrations from db.json if first time
   await initDatabase();
   console.log("[STORAGE] SQLite database geïnitialiseerd (WAL & atomic persistence geactiveerd).");
+
+  try {
+    await initDefaultOrganizationDocs();
+    console.log("[DOCUMENTS] Bestuurs- en organisatiedocumenten geverifieerd op schijf.");
+  } catch (initDocErr) {
+    console.warn("[DOCUMENTS] Kon standaard bestuursdocumenten niet voor-initialiseren:", initDocErr);
+  }
 
   const app = express();
   const PORT = 3000;
@@ -2081,41 +2136,62 @@ async function startServer() {
     next();
   });
 
-  app.get("/uploads/documents/:filename", (req, res, next) => {
-    const filePath = path.join(uploadsPath, "documents", req.params.filename);
-    if (fs.existsSync(filePath)) {
-      if (filePath.endsWith('.pdf')) {
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', 'inline');
+  app.get("/uploads/documents/:filename", async (req, res, next) => {
+    const safeFilename = path.basename(req.params.filename.trim());
+    const candidatePaths = [
+      path.join(uploadsPath, "documents", safeFilename),
+      path.join(distUploadsPath, "documents", safeFilename),
+      path.join(uploadsPath, safeFilename),
+      path.join(distUploadsPath, safeFilename),
+      path.join(uploadsPath, "stemgedrag", safeFilename),
+      path.join(uploadsPath, "fractiestukken", safeFilename),
+      path.join(process.cwd(), "public", "uploads", "documents", safeFilename),
+      path.join(process.cwd(), "dist", "uploads", "documents", safeFilename),
+      path.join(process.cwd(), "public", "uploads", safeFilename)
+    ];
+
+    for (const filePath of candidatePaths) {
+      if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+        if (filePath.endsWith('.pdf')) {
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', `inline; filename="${safeFilename}"`);
+        }
+        try {
+          recordCouncilDocumentView({
+            filename: safeFilename,
+            title: safeFilename,
+            dossierName: "Bestuurs- en Organisatie Documenten",
+            documentId: null,
+            userId: null,
+            userName: "Anoniem",
+            userEmail: null,
+            userRole: "Gast / Bezoeker",
+            isAnonymous: true,
+            source: "direct_access",
+            ip: String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || req.ip || "Onbekend").split(",")[0].trim(),
+            userAgent: req.headers["user-agent"] || "",
+          });
+        } catch (_e) {
+          // Ignore audit logging error on direct file access
+        }
+        return res.sendFile(filePath);
       }
+    }
+
+    // If PDF does not exist yet on disk, synthesize official verifiable PDF on-demand
+    if (safeFilename.toLowerCase().endsWith(".pdf")) {
       try {
-        recordCouncilDocumentView({
-          filename: req.params.filename,
-          title: req.params.filename,
-          dossierName: "Dossier Documenten",
-          documentId: null,
-          userId: null,
-          userName: "Anoniem",
-          userEmail: null,
-          userRole: "Gast / Bezoeker",
-          isAnonymous: true,
-          source: "direct_access",
-          ip: String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || req.ip || "Onbekend").split(",")[0].trim(),
-          userAgent: req.headers["user-agent"] || "",
-        });
-      } catch (_e) {
-        // Ignore audit logging error on direct file access
+        const genPath = await ensureBestuurDocumentPdf(safeFilename);
+        if (genPath && fs.existsSync(genPath)) {
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader("Content-Disposition", `inline; filename="${safeFilename}"`);
+          return res.sendFile(genPath);
+        }
+      } catch (err) {
+        console.warn(`[DOC VIEW] Kon bestuursdocument niet on-demand genereren voor ${safeFilename}:`, err);
       }
-      return res.sendFile(filePath);
     }
-    const fallbackPath = path.join(uploadsPath, "stemgedrag", req.params.filename);
-    if (fs.existsSync(fallbackPath)) {
-      if (fallbackPath.endsWith('.pdf')) {
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', 'inline');
-      }
-      return res.sendFile(fallbackPath);
-    }
+
     next();
   });
 
@@ -2166,7 +2242,7 @@ async function startServer() {
 
 
   // Guaranteed document streaming endpoint that Nginx static regex will NEVER intercept (bypasses .pdf static regex)
-  app.get("/api/document/view", (req: any, res: any) => {
+  app.get("/api/document/view", async (req: any, res: any) => {
     const rawFile = req.query.file || req.query.path || "";
     if (!rawFile || typeof rawFile !== "string") {
       return res.status(400).json({ error: "Geen bestandspad opgegeven" });
@@ -2174,16 +2250,20 @@ async function startServer() {
 
     const cleanPath = rawFile.replace(/^\/+/, "").replace(/\.\./g, "");
     const baseName = path.basename(cleanPath);
+    const relClean = cleanPath.replace(/^public\//, "").replace(/^dist\//, "");
 
     const candidatePaths = [
-      path.join(process.cwd(), "public", cleanPath),
-      path.join(process.cwd(), cleanPath),
-      path.join(process.cwd(), "public", "uploads", "stemgedrag", baseName),
+      path.join(process.cwd(), "public", relClean),
+      path.join(process.cwd(), "dist", relClean),
       path.join(process.cwd(), "public", "uploads", "documents", baseName),
+      path.join(process.cwd(), "dist", "uploads", "documents", baseName),
       path.join(process.cwd(), "public", "uploads", baseName),
-      path.join(process.cwd(), "dist", cleanPath),
+      path.join(process.cwd(), "dist", "uploads", baseName),
+      path.join(process.cwd(), "public", "uploads", "stemgedrag", baseName),
       path.join(process.cwd(), "dist", "uploads", "stemgedrag", baseName),
-      path.join(process.cwd(), "dist", "uploads", "documents", baseName)
+      path.join(process.cwd(), "public", "uploads", "fractiestukken", baseName),
+      path.join(process.cwd(), "dist", "uploads", "fractiestukken", baseName),
+      path.join(process.cwd(), cleanPath),
     ];
 
     for (const p of candidatePaths) {
@@ -2201,7 +2281,104 @@ async function startServer() {
       }
     }
 
+    // If PDF does not exist yet on disk, synthesize official verifiable PDF on-demand
+    let targetPdfName = baseName;
+    if (!targetPdfName.toLowerCase().endsWith(".pdf")) {
+      targetPdfName = `${targetPdfName}.pdf`;
+    }
+
+    const lowerTarget = targetPdfName.toLowerCase();
+    if (lowerTarget.includes("statut")) {
+      targetPdfName = "statuten_lijstvanandel.pdf";
+    } else if (lowerTarget.includes("huishoudelijk")) {
+      targetPdfName = "huishoudelijk_reglement.pdf";
+    } else if (lowerTarget.includes("integriteit")) {
+      targetPdfName = "integriteitscode_lijstvanandel.pdf";
+    } else if (lowerTarget.includes("bestuur")) {
+      targetPdfName = "bestuursreglement.pdf";
+    } else if (lowerTarget.includes("kandidaat")) {
+      targetPdfName = "kandidaatstellingsreglement.pdf";
+    }
+
+    try {
+      const genPath = await ensureBestuurDocumentPdf(targetPdfName);
+      if (genPath && fs.existsSync(genPath)) {
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `inline; filename="${targetPdfName}"`);
+        return res.sendFile(genPath);
+      }
+    } catch (genErr) {
+      console.warn(`[DOC VIEW] Kon PDF niet on-demand genereren voor ${targetPdfName}:`, genErr);
+    }
+
     return res.status(404).json({ error: `Document '${baseName}' kon niet worden gevonden op de server.` });
+  });
+
+  // Dedicated direct routes for core party documents
+  app.get(["/statuten", "/statuten.pdf", "/api/statuten"], async (req: any, res: any) => {
+    try {
+      const genPath = await ensureBestuurDocumentPdf("statuten_lijstvanandel.pdf");
+      if (genPath && fs.existsSync(genPath)) {
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", 'inline; filename="statuten_lijstvanandel.pdf"');
+        return res.sendFile(genPath);
+      }
+    } catch (_e) {}
+    res.redirect("/api/document/view?file=statuten_lijstvanandel.pdf");
+  });
+
+  app.get(["/huishoudelijk-reglement", "/huishoudelijk-reglement.pdf", "/api/huishoudelijk-reglement"], async (req: any, res: any) => {
+    try {
+      const genPath = await ensureBestuurDocumentPdf("huishoudelijk_reglement.pdf");
+      if (genPath && fs.existsSync(genPath)) {
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", 'inline; filename="huishoudelijk_reglement.pdf"');
+        return res.sendFile(genPath);
+      }
+    } catch (_e) {}
+    res.redirect("/api/document/view?file=huishoudelijk_reglement.pdf");
+  });
+
+  app.get(["/integriteitscode", "/integriteitscode.pdf", "/api/integriteitscode"], async (req: any, res: any) => {
+    try {
+      const genPath = await ensureBestuurDocumentPdf("integriteitscode_lijstvanandel.pdf");
+      if (genPath && fs.existsSync(genPath)) {
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", 'inline; filename="integriteitscode_lijstvanandel.pdf"');
+        return res.sendFile(genPath);
+      }
+    } catch (_e) {}
+    res.redirect("/api/document/view?file=integriteitscode_lijstvanandel.pdf");
+  });
+
+  app.get(["/bestuursreglement", "/bestuursreglement.pdf", "/api/bestuursreglement"], async (req: any, res: any) => {
+    try {
+      const genPath = await ensureBestuurDocumentPdf("bestuursreglement.pdf");
+      if (genPath && fs.existsSync(genPath)) {
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", 'inline; filename="bestuursreglement.pdf"');
+        return res.sendFile(genPath);
+      }
+    } catch (_e) {}
+    res.redirect("/api/document/view?file=bestuursreglement.pdf");
+  });
+
+  app.get(["/kandidaatstellingsreglement", "/kandidaatstellingsreglement.pdf", "/api/kandidaatstellingsreglement"], async (req: any, res: any) => {
+    try {
+      const genPath = await ensureBestuurDocumentPdf("kandidaatstellingsreglement.pdf");
+      if (genPath && fs.existsSync(genPath)) {
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", 'inline; filename="kandidaatstellingsreglement.pdf"');
+        return res.sendFile(genPath);
+      }
+    } catch (_e) {}
+    res.redirect("/api/document/view?file=kandidaatstellingsreglement.pdf");
+  });
+
+  // Dedicated alias for organization docs
+  app.get("/api/organization-docs/view", (req: any, res: any) => {
+    const file = req.query.file || req.query.path || "";
+    res.redirect(`/api/document/view?file=${encodeURIComponent(file)}`);
   });
 
   // Guaranteed endpoint for viewing and embedding interactive .html dataproducts (Folium kaarten, Plotly etc.)
@@ -4067,6 +4244,26 @@ async function startServer() {
     if (!board.boardTitle || board.boardTitle === "Dagelijks Bestuur Lijst van Andel") {
       board.boardTitle = "Bestuur";
     }
+    if (board.organisatieDocs && Array.isArray(board.organisatieDocs)) {
+      board.organisatieDocs = board.organisatieDocs.map((d: any) => {
+        let fileUrl = d.fileUrl || "";
+        if (fileUrl.startsWith("/uploads/")) {
+          fileUrl = `/api/document/view?file=${encodeURIComponent(path.basename(fileUrl))}`;
+        }
+        if ((!fileUrl || fileUrl === "#") && d.fileName) {
+          fileUrl = `/api/document/view?file=${encodeURIComponent(path.basename(d.fileName))}`;
+        }
+        if (d.id === "doc-statuten" && (!d.fileName || d.fileName.includes("gevaarlijke stoffen") || d.fileName.includes("RAADSVOORSTEL"))) {
+          return {
+            ...d,
+            titel: "Statuten",
+            fileName: "statuten_lijstvanandel.pdf",
+            fileUrl: "/api/document/view?file=statuten_lijstvanandel.pdf"
+          };
+        }
+        return { ...d, fileUrl };
+      });
+    }
     res.json(board);
   });
 
@@ -4075,6 +4272,26 @@ async function startServer() {
     const board = db.chairmanDailyBoard || {};
     if (!board.boardTitle || board.boardTitle === "Dagelijks Bestuur Lijst van Andel") {
       board.boardTitle = "Bestuur";
+    }
+    if (board.organisatieDocs && Array.isArray(board.organisatieDocs)) {
+      board.organisatieDocs = board.organisatieDocs.map((d: any) => {
+        let fileUrl = d.fileUrl || "";
+        if (fileUrl.startsWith("/uploads/")) {
+          fileUrl = `/api/document/view?file=${encodeURIComponent(path.basename(fileUrl))}`;
+        }
+        if ((!fileUrl || fileUrl === "#") && d.fileName) {
+          fileUrl = `/api/document/view?file=${encodeURIComponent(path.basename(d.fileName))}`;
+        }
+        if (d.id === "doc-statuten" && (!d.fileName || d.fileName.includes("gevaarlijke stoffen") || d.fileName.includes("RAADSVOORSTEL"))) {
+          return {
+            ...d,
+            titel: "Statuten",
+            fileName: "statuten_lijstvanandel.pdf",
+            fileUrl: "/api/document/view?file=statuten_lijstvanandel.pdf"
+          };
+        }
+        return { ...d, fileUrl };
+      });
     }
     res.json(board);
   });
@@ -4101,14 +4318,57 @@ async function startServer() {
     if (!req.file) {
       return res.status(400).json({ error: "Geen bestand geüpload" });
     }
-    const fileUrl = `/uploads/documents/${req.file.filename}`;
+
+    const filename = req.file.filename;
+    const targetDocPath = path.join(process.cwd(), "public", "uploads", "documents", filename);
+    const targetDistDocPath = path.join(process.cwd(), "dist", "uploads", "documents", filename);
+    const targetUploadsPath = path.join(process.cwd(), "public", "uploads", filename);
+
+    // Ensure all target folders exist
+    [
+      path.dirname(targetDocPath),
+      path.dirname(targetDistDocPath),
+      path.dirname(targetUploadsPath)
+    ].forEach((d) => {
+      if (!fs.existsSync(d)) {
+        try {
+          fs.mkdirSync(d, { recursive: true });
+        } catch (_e) {
+          // ignore directory creation error if already exists
+        }
+      }
+    });
+
+    // Mirror file across all storage locations to prevent any path mismatch
+    if (req.file.path && fs.existsSync(req.file.path)) {
+      if (req.file.path !== targetDocPath) {
+        try {
+          fs.copyFileSync(req.file.path, targetDocPath);
+        } catch (_e) {
+          // ignore copy error
+        }
+      }
+      try {
+        fs.copyFileSync(req.file.path, targetDistDocPath);
+        if (req.file.path !== targetUploadsPath) {
+          fs.copyFileSync(req.file.path, targetUploadsPath);
+        }
+      } catch (_e) {
+        // ignore copy error
+      }
+    }
+
+    const viewUrl = `/api/document/view?file=${encodeURIComponent(filename)}`;
+    const directFileUrl = `/uploads/documents/${filename}`;
     const fileSize = req.file.size > 1024 * 1024 
       ? `${(req.file.size / (1024 * 1024)).toFixed(1)} MB` 
       : `${Math.round(req.file.size / 1024)} KB`;
     
     res.json({
       success: true,
-      fileUrl,
+      fileUrl: viewUrl, // Primary safe streaming URL that bypasses Nginx static rules
+      rawFileUrl: directFileUrl,
+      viewUrl,
       fileName: req.file.originalname,
       fileSize
     });
@@ -4130,12 +4390,19 @@ async function startServer() {
     if (!db.chairmanDailyBoard) db.chairmanDailyBoard = {};
     if (!db.chairmanDailyBoard.organisatieDocs) db.chairmanDailyBoard.organisatieDocs = [];
 
+    let safeFileUrl = fileUrl || "";
+    if (safeFileUrl.startsWith("/uploads/")) {
+      safeFileUrl = `/api/document/view?file=${encodeURIComponent(path.basename(safeFileUrl))}`;
+    } else if ((!safeFileUrl || safeFileUrl === "#") && fileName) {
+      safeFileUrl = `/api/document/view?file=${encodeURIComponent(path.basename(fileName))}`;
+    }
+
     const newDoc = {
       id: "doc-" + Date.now(),
       titel: titel.trim(),
       beschrijving: beschrijving ? beschrijving.trim() : "",
       category: category ? category.trim() : "Organisatie",
-      fileUrl: fileUrl || "",
+      fileUrl: safeFileUrl,
       fileName: fileName || "",
       fileSize: fileSize || "",
       href: href || "",
@@ -4163,12 +4430,19 @@ async function startServer() {
     }
 
     const existing = db.chairmanDailyBoard.organisatieDocs[docIndex];
+    let safeFileUrl = fileUrl !== undefined ? fileUrl : existing.fileUrl;
+    if (typeof safeFileUrl === "string" && safeFileUrl.startsWith("/uploads/")) {
+      safeFileUrl = `/api/document/view?file=${encodeURIComponent(path.basename(safeFileUrl))}`;
+    } else if ((!safeFileUrl || safeFileUrl === "#") && (fileName || existing.fileName)) {
+      safeFileUrl = `/api/document/view?file=${encodeURIComponent(path.basename(fileName || existing.fileName))}`;
+    }
+
     db.chairmanDailyBoard.organisatieDocs[docIndex] = {
       ...existing,
       titel: titel !== undefined ? titel.trim() : existing.titel,
       beschrijving: beschrijving !== undefined ? beschrijving.trim() : existing.beschrijving,
       category: category !== undefined ? category.trim() : existing.category,
-      fileUrl: fileUrl !== undefined ? fileUrl : existing.fileUrl,
+      fileUrl: safeFileUrl,
       fileName: fileName !== undefined ? fileName : existing.fileName,
       fileSize: fileSize !== undefined ? fileSize : existing.fileSize,
       href: href !== undefined ? href : existing.href,
@@ -4230,7 +4504,21 @@ async function startServer() {
     if (secretary !== undefined) db.chairmanDailyBoard.secretary = { ...(db.chairmanDailyBoard.secretary || {}), ...secretary };
     if (treasurer !== undefined) db.chairmanDailyBoard.treasurer = { ...(db.chairmanDailyBoard.treasurer || {}), ...treasurer };
     if (additionalMembers !== undefined) db.chairmanDailyBoard.additionalMembers = additionalMembers;
-    if (organisatieDocs !== undefined) db.chairmanDailyBoard.organisatieDocs = organisatieDocs;
+    if (organisatieDocs !== undefined && Array.isArray(organisatieDocs)) {
+      db.chairmanDailyBoard.organisatieDocs = organisatieDocs.map((d: any) => {
+        let fileUrl = d.fileUrl || "";
+        if (typeof fileUrl === "string" && fileUrl.startsWith("/uploads/")) {
+          fileUrl = `/api/document/view?file=${encodeURIComponent(path.basename(fileUrl))}`;
+        }
+        if ((!fileUrl || fileUrl === "#") && d.fileName) {
+          fileUrl = `/api/document/view?file=${encodeURIComponent(path.basename(d.fileName))}`;
+        }
+        if (d.fileName && d.fileName.toLowerCase().endsWith(".pdf")) {
+          ensureBestuurDocumentPdf(d.fileName).catch(() => {});
+        }
+        return { ...d, fileUrl };
+      });
+    }
 
     db.chairmanDailyBoard.updatedAt = new Date().toISOString();
     saveDb(db);
@@ -4265,7 +4553,21 @@ async function startServer() {
     if (secretary !== undefined) db.chairmanDailyBoard.secretary = { ...(db.chairmanDailyBoard.secretary || {}), ...secretary };
     if (treasurer !== undefined) db.chairmanDailyBoard.treasurer = { ...(db.chairmanDailyBoard.treasurer || {}), ...treasurer };
     if (additionalMembers !== undefined) db.chairmanDailyBoard.additionalMembers = additionalMembers;
-    if (organisatieDocs !== undefined) db.chairmanDailyBoard.organisatieDocs = organisatieDocs;
+    if (organisatieDocs !== undefined && Array.isArray(organisatieDocs)) {
+      db.chairmanDailyBoard.organisatieDocs = organisatieDocs.map((d: any) => {
+        let fileUrl = d.fileUrl || "";
+        if (typeof fileUrl === "string" && fileUrl.startsWith("/uploads/")) {
+          fileUrl = `/api/document/view?file=${encodeURIComponent(path.basename(fileUrl))}`;
+        }
+        if ((!fileUrl || fileUrl === "#") && d.fileName) {
+          fileUrl = `/api/document/view?file=${encodeURIComponent(path.basename(d.fileName))}`;
+        }
+        if (d.fileName && d.fileName.toLowerCase().endsWith(".pdf")) {
+          ensureBestuurDocumentPdf(d.fileName).catch(() => {});
+        }
+        return { ...d, fileUrl };
+      });
+    }
 
     db.chairmanDailyBoard.updatedAt = new Date().toISOString();
     saveDb(db);
@@ -9908,6 +10210,103 @@ Sitemap: ${baseUrl}/sitemap.xml
       success: true,
       topic,
       message: assignedTo ? `Onderwerp succesvol toegewezen aan ${assignedMemberName}.` : "Toewijzing verwijderd."
+    });
+  });
+
+  // 3b. Park topic with mandatory reason
+  app.post("/api/council/topics/:topicId/park", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
+    const { topicId } = req.params;
+    const { reason } = req.body;
+
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ error: "Een reden voor het parkeren is verplicht." });
+    }
+
+    const db = getDb();
+    if (!Array.isArray(db.councilAgendaTopics)) {
+      db.councilAgendaTopics = [];
+    }
+
+    const topic = db.councilAgendaTopics.find((t: any) => t.id === topicId);
+    if (!topic) {
+      return res.status(404).json({ error: "Onderwerp niet gevonden" });
+    }
+
+    const trimmedReason = reason.trim();
+    const actorName = req.user?.fullName || req.user?.username || "Fractielid";
+
+    topic.isParked = true;
+    topic.parkedReason = trimmedReason;
+    topic.parkedAt = new Date().toISOString();
+    topic.parkedBy = actorName;
+    topic.status = "geparkeerd";
+    if (!topic.previousCategory) {
+      topic.previousCategory = topic.category || "Oordeelvorming - bespreekstukken";
+    }
+
+    if (!Array.isArray(topic.notes)) {
+      topic.notes = [];
+    }
+    topic.notes.push({
+      id: "note-" + Date.now(),
+      author: actorName,
+      note: `📌 Onderwerp geparkeerd: "${trimmedReason}"`,
+      source: "fractie",
+      createdAt: new Date().toISOString()
+    });
+
+    saveDb(db);
+
+    const enriched = enrichTopicWithStandpunten(enrichTopicWithMemberData(topic, db));
+    return res.json({
+      success: true,
+      topic: enriched,
+      message: `Onderwerp '${topic.title}' is succesvol geparkeerd met als reden: "${trimmedReason}".`
+    });
+  });
+
+  // 3c. Unpark topic and return it to 'Oordeelvorming - bespreekstukken'
+  app.post("/api/council/topics/:topicId/unpark", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
+    const { topicId } = req.params;
+    const db = getDb();
+    if (!Array.isArray(db.councilAgendaTopics)) {
+      db.councilAgendaTopics = [];
+    }
+
+    const topic = db.councilAgendaTopics.find((t: any) => t.id === topicId);
+    if (!topic) {
+      return res.status(404).json({ error: "Onderwerp niet gevonden" });
+    }
+
+    const actorName = req.user?.fullName || req.user?.username || "Fractielid";
+    const previousReason = topic.parkedReason || "";
+
+    topic.isParked = false;
+    topic.parkedReason = undefined;
+    topic.parkedAt = null;
+    topic.parkedBy = null;
+    topic.status = "bespreekstuk";
+    // Always return to "Oordeelvorming - bespreekstukken" as requested
+    topic.category = "Oordeelvorming - bespreekstukken";
+
+    if (!Array.isArray(topic.notes)) {
+      topic.notes = [];
+    }
+    topic.notes.push({
+      id: "note-" + Date.now(),
+      author: actorName,
+      note: `▶️ Parkering opgeheven${previousReason ? ` (voorheen geparkeerd met reden: "${previousReason}")` : ""}. Onderwerp teruggeplaatst naar Oordeelvorming - Bespreekstukken.`,
+      source: "fractie",
+      createdAt: new Date().toISOString()
+    });
+
+    saveDb(db);
+
+    const enriched = enrichTopicWithStandpunten(enrichTopicWithMemberData(topic, db));
+    return res.json({
+      success: true,
+      topic: enriched,
+      message: `Onderwerp '${topic.title}' is succesvol teruggeplaatst naar Oordeelvorming - Bespreekstukken.`
     });
   });
 

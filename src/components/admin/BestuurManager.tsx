@@ -33,6 +33,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { fetchWithAuth, safeJson } from "@/lib/api";
 import placeholder from "@/assets/silhouette.png";
+import { getSafeDocumentUrl } from "@/lib/documentUrl";
 import sammyImg from "@/assets/sammy.png";
 import stefImg from "@/assets/stef-mars.jpg";
 
@@ -363,13 +364,14 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ headers = {}, on
 
       if (res.ok) {
         const data = await safeJson(res, {});
+        const safeUrl = data.viewUrl || data.fileUrl;
         setDocForm((prev) => ({
           ...prev,
-          fileUrl: data.fileUrl,
+          fileUrl: safeUrl,
           fileName: data.fileName,
           fileSize: data.fileSize
         }));
-        toast.success(`Bestand '${data.fileName}' succesvol geüpload!`);
+        toast.success(`Bestand '${data.fileName}' succesvol geüpload en gekoppeld!`);
       } else {
         toast.error("Fout bij uploaden van document");
       }
@@ -381,33 +383,65 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ headers = {}, on
     }
   };
 
-  const handleSaveDoc = (e: React.FormEvent) => {
+  const handleSaveDoc = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!docForm.titel.trim()) {
       toast.error("Documenttitel is verplicht");
       return;
     }
 
-    setFormData((prev) => {
-      const updatedDocs = [...prev.organisatieDocs];
-      if (editingDocIndex !== null && editingDocIndex >= 0) {
-        updatedDocs[editingDocIndex] = docForm;
-      } else {
-        updatedDocs.push(docForm);
-      }
-      return { ...prev, organisatieDocs: updatedDocs };
-    });
+    const sanitizedDoc: OrganisatieDocItem = {
+      ...docForm,
+      fileUrl: getSafeDocumentUrl(docForm.fileUrl, docForm.fileName, docForm.href) || docForm.fileUrl
+    };
 
+    const updatedDocs = [...formData.organisatieDocs];
+    if (editingDocIndex !== null && editingDocIndex >= 0) {
+      updatedDocs[editingDocIndex] = sanitizedDoc;
+    } else {
+      updatedDocs.push(sanitizedDoc);
+    }
+
+    setFormData((prev) => ({ ...prev, organisatieDocs: updatedDocs }));
     setIsDocModalOpen(false);
-    toast.success(editingDocIndex !== null ? "Document bijgewerkt in lijst" : "Document toegevoegd aan lijst");
+
+    try {
+      await fetchWithAuth("/api/chairman/daily-board", {
+        method: "PATCH",
+        headers: {
+          ...headers,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ ...formData, organisatieDocs: updatedDocs })
+      });
+      toast.success(editingDocIndex !== null ? "Document bijgewerkt en direct opgeslagen!" : "Document toegevoegd en direct opgeslagen!");
+      if (onUpdated) onUpdated();
+    } catch (err) {
+      console.error(err);
+      toast.info("Document toegevoegd aan lijst. Klik op 'Wijzigingen Opslaan' om definitief vast te leggen.");
+    }
   };
 
-  const handleDeleteDoc = (index: number) => {
+  const handleDeleteDoc = async (index: number) => {
+    const updatedDocs = formData.organisatieDocs.filter((_, i) => i !== index);
     setFormData((prev) => ({
       ...prev,
-      organisatieDocs: prev.organisatieDocs.filter((_, i) => i !== index)
+      organisatieDocs: updatedDocs
     }));
-    toast.success("Document verwijderd");
+    try {
+      await fetchWithAuth("/api/chairman/daily-board", {
+        method: "PATCH",
+        headers: {
+          ...headers,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ ...formData, organisatieDocs: updatedDocs })
+      });
+      toast.success("Document verwijderd en direct opgeslagen");
+      if (onUpdated) onUpdated();
+    } catch (err) {
+      toast.success("Document verwijderd");
+    }
   };
 
   if (loading) {
@@ -1392,10 +1426,9 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ headers = {}, on
 
                       {(hasFile || hasLink) && (
                         <a
-                          href={doc.fileUrl || doc.href}
+                          href={getSafeDocumentUrl(doc.fileUrl, doc.fileName, doc.href)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          download={hasFile}
                           className="px-2.5 py-1 rounded bg-accent/10 hover:bg-accent hover:text-accent-foreground text-accent text-[11px] font-semibold flex items-center gap-1 transition-colors shrink-0"
                         >
                           {hasFile ? <Download className="w-3 h-3" /> : <ExternalLink className="w-3 h-3" />}

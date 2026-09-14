@@ -118,9 +118,16 @@ export interface CouncilAgendaTopic {
   bijdrageRaadsvergaderingUpdatedAt?: string;
 
   // Status & Hamerstuk handling
-  status?: "in_behandeling" | "hamerstuk_afgehandeld" | "bespreekstuk" | "afgerond" | string;
+  status?: "in_behandeling" | "hamerstuk_afgehandeld" | "bespreekstuk" | "afgerond" | "geparkeerd" | string;
   hamerstukAfgehandeldAt?: string | null;
   hamerstukAfgehandeldBy?: string | null;
+
+  // Geparkeerd status & reden
+  isParked?: boolean;
+  parkedReason?: string;
+  parkedAt?: string | null;
+  parkedBy?: string | null;
+  previousCategory?: string | null;
 
   // Ondersteuningsdossier & Dossiersysteem koppeling
   compiledDossier?: SupportDossier | null;

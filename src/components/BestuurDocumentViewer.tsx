@@ -12,6 +12,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { getSafeDocumentUrl } from "@/lib/documentUrl";
 
 export interface BestuurDocViewerItem {
   id?: string;
@@ -40,11 +41,19 @@ export const BestuurDocumentViewer: React.FC<BestuurDocumentViewerProps> = ({
 
   if (!isOpen || !document) return null;
 
-  const resolvedUrl = document.fileUrl || document.href || "";
+  let resolvedUrl = getSafeDocumentUrl(document.fileUrl, document.fileName, document.href);
+  if (!resolvedUrl) {
+    if (document.fileName) {
+      resolvedUrl = `/api/document/view?file=${encodeURIComponent(document.fileName)}`;
+    } else if (document.id === "doc-statuten" || document.titel?.toLowerCase().includes("statut")) {
+      resolvedUrl = "/api/document/view?file=statuten_lijstvanandel.pdf";
+    }
+  }
+
   const isPdf =
-    resolvedUrl.toLowerCase().endsWith(".pdf") ||
-    resolvedUrl.toLowerCase().includes(".pdf?") ||
+    resolvedUrl.toLowerCase().includes(".pdf") ||
     (document.fileName && document.fileName.toLowerCase().endsWith(".pdf")) ||
+    resolvedUrl.includes("/api/document/view") ||
     resolvedUrl.includes("blob:") ||
     resolvedUrl.startsWith("/uploads/");
 

@@ -28,6 +28,7 @@ import {
   X,
   Plus,
   RotateCcw,
+  PauseCircle,
   AlertTriangle,
   FolderArchive,
   ThumbsUp,
@@ -287,6 +288,12 @@ export default function Raadspaneel() {
   const [secureViewerDoc, setSecureViewerDoc] = useState<MemberDocument | null>(null);
   const [secureViewerPage, setSecureViewerPage] = useState<number>(1);
 
+  // Park topic modal state
+  const [isParkModalOpen, setIsParkModalOpen] = useState(false);
+  const [parkTargetTopic, setParkTargetTopic] = useState<CouncilAgendaTopic | null>(null);
+  const [parkReason, setParkReason] = useState("");
+  const [isParking, setIsParking] = useState(false);
+
 
   // Safe JSON parser for API responses to prevent HTML syntax errors
   const parseApiResponse = async (res: Response) => {
@@ -324,7 +331,7 @@ export default function Raadspaneel() {
         if (foundPreferred) {
           setSelectedTopicId(foundPreferred.id);
         } else if (!selectedTopicId || !data.topics.some((t: CouncilAgendaTopic) => t.id === selectedTopicId)) {
-          const firstBespreek = data.topics.find((t: CouncilAgendaTopic) => !t.isArchived && t.category.includes("Oordeelvorming"));
+          const firstBespreek = data.topics.find((t: CouncilAgendaTopic) => !t.isArchived && !t.isParked && t.category.includes("Oordeelvorming"));
           const fallback = firstBespreek ? firstBespreek.id : data.topics[0].id;
           setSelectedTopicId(fallback);
         }
@@ -521,6 +528,64 @@ export default function Raadspaneel() {
       toast.error(err.message || "Fout bij opslaan");
     } finally {
       setIsSavingContribution(false);
+    }
+  };
+
+  // Park topic handlers
+  const handleOpenParkModal = (topic: CouncilAgendaTopic) => {
+    setParkTargetTopic(topic);
+    setParkReason(topic.parkedReason || "");
+    setIsParkModalOpen(true);
+  };
+
+  const handleConfirmPark = async () => {
+    if (!token || !parkTargetTopic) return;
+    if (!parkReason.trim()) {
+      toast.error("Geef een reden op voor het parkeren van dit onderwerp.");
+      return;
+    }
+
+    setIsParking(true);
+    try {
+      const res = await fetch(`/api/council/topics/${parkTargetTopic.id}/park`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ reason: parkReason.trim() }),
+      });
+      const data = await parseApiResponse(res);
+      if (!res.ok) throw new Error(data.error || "Kon onderwerp niet parkeren");
+
+      setTopics((prev) => prev.map((t) => (t.id === parkTargetTopic.id ? data.topic : t)));
+      setIsParkModalOpen(false);
+      setParkTargetTopic(null);
+      setParkReason("");
+      toast.success(data.message || "Onderwerp succesvol op 'geparkeerd' gezet!");
+    } catch (err: any) {
+      toast.error(err.message || "Fout bij parkeren");
+    } finally {
+      setIsParking(false);
+    }
+  };
+
+  const handleUnparkTopic = async (topicId: string) => {
+    if (!token) return;
+    try {
+      const res = await fetch(`/api/council/topics/${topicId}/unpark`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await parseApiResponse(res);
+      if (!res.ok) throw new Error(data.error || "Kon parkering niet opheffen");
+
+      setTopics((prev) => prev.map((t) => (t.id === topicId ? data.topic : t)));
+      toast.success(data.message || "Onderwerp teruggezet naar Oordeelvorming - Bespreekstukken!");
+    } catch (err: any) {
+      toast.error(err.message || "Fout bij terugzetten");
     }
   };
 
@@ -760,6 +825,13 @@ export default function Raadspaneel() {
     );
   }, [topics]);
 
+  // Parked topics
+  const parkedTopics = useMemo(() => {
+    return topics.filter(
+      (t) => !isInvalidOrJunkTopic(t.title) && !t.isArchived && t.isParked
+    );
+  }, [topics]);
+
   // Filtered topics (excluding procedural items & section headers)
   const filteredTopics = useMemo(() => {
     return topics.filter((t) => {
@@ -817,19 +889,22 @@ export default function Raadspaneel() {
         return !t.isArchived && (t.hasRecentDump || t.hasDocumentDiff || t.hasNewDocumentsSinceCompile);
       }
       if (categoryFilter === "oordeelvorming") {
-        return !t.isArchived && t.category === "Oordeelvorming - bespreekstukken";
+        return !t.isArchived && !t.isParked && t.category === "Oordeelvorming - bespreekstukken";
       }
       if (categoryFilter === "mine") {
-        return !t.isArchived && t.assignedTo === user?.username;
+        return !t.isArchived && !t.isParked && t.assignedTo === user?.username;
+      }
+      if (categoryFilter === "parked") {
+        return !t.isArchived && t.isParked;
       }
       if (categoryFilter === "unassigned") {
-        return !t.isArchived && !t.assignedTo;
+        return !t.isArchived && !t.isParked && !t.assignedTo;
       }
       if (categoryFilter === "archived") {
         return t.isArchived;
       }
       if (categoryFilter === "all_active") {
-        return !t.isArchived;
+        return !t.isArchived && !t.isParked;
       }
 
       return true;
@@ -1060,59 +1135,97 @@ export default function Raadspaneel() {
             </div>
 
             {/* KPI / Status Bar */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
-          <div className="p-4 rounded-2xl bg-card border border-border shadow-xs">
-            <div className="flex items-center justify-between text-muted-foreground mb-1">
-              <span className="text-xs font-semibold">Bespreekstukken</span>
-              <AlertCircle className="w-4 h-4 text-amber-500" />
-            </div>
-            <div className="text-2xl font-bold text-foreground">
-              {topics.filter((t) => !isInvalidOrJunkTopic(t.title) && t.category === "Oordeelvorming - bespreekstukken" && !t.isArchived).length}
-            </div>
-            <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
-              Oordeelsvorming
-            </span>
-          </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-8">
+              <div
+                onClick={() => setCategoryFilter("oordeelvorming")}
+                className={`p-4 rounded-2xl bg-card border border-border shadow-xs cursor-pointer transition-all hover:border-amber-500/40 ${
+                  categoryFilter === "oordeelvorming" ? "ring-2 ring-accent border-accent/40" : ""
+                }`}
+              >
+                <div className="flex items-center justify-between text-muted-foreground mb-1">
+                  <span className="text-xs font-semibold">Bespreekstukken</span>
+                  <AlertCircle className="w-4 h-4 text-amber-500" />
+                </div>
+                <div className="text-2xl font-bold text-foreground">
+                  {topics.filter((t) => !isInvalidOrJunkTopic(t.title) && t.category === "Oordeelvorming - bespreekstukken" && !t.isArchived && !t.isParked).length}
+                </div>
+                <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                  Oordeelsvorming
+                </span>
+              </div>
 
-          <div className="p-4 rounded-2xl bg-card border border-border shadow-xs">
-            <div className="flex items-center justify-between text-muted-foreground mb-1">
-              <span className="text-xs font-semibold">Aan Mij Toegewezen</span>
-              <UserCheck className="w-4 h-4 text-accent" />
-            </div>
-            <div className="text-2xl font-bold text-accent">
-              {topics.filter((t) => !isInvalidOrJunkTopic(t.title) && !t.isArchived && t.assignedTo === user?.username).length}
-            </div>
-            <span className="text-[11px] text-muted-foreground">
-              Jouw agendapunten
-            </span>
-          </div>
+              <div
+                onClick={() => setCategoryFilter("mine")}
+                className={`p-4 rounded-2xl bg-card border border-border shadow-xs cursor-pointer transition-all hover:border-accent/40 ${
+                  categoryFilter === "mine" ? "ring-2 ring-accent border-accent/40" : ""
+                }`}
+              >
+                <div className="flex items-center justify-between text-muted-foreground mb-1">
+                  <span className="text-xs font-semibold">Aan Mij Toegewezen</span>
+                  <UserCheck className="w-4 h-4 text-accent" />
+                </div>
+                <div className="text-2xl font-bold text-accent">
+                  {topics.filter((t) => !isInvalidOrJunkTopic(t.title) && !t.isArchived && !t.isParked && t.assignedTo === user?.username).length}
+                </div>
+                <span className="text-[11px] text-muted-foreground">
+                  Jouw agendapunten
+                </span>
+              </div>
 
-          <div className="p-4 rounded-2xl bg-card border border-border shadow-xs">
-            <div className="flex items-center justify-between text-muted-foreground mb-1">
-              <span className="text-xs font-semibold">Nog Onverdeeld</span>
-              <Layers className="w-4 h-4 text-sky-500" />
-            </div>
-            <div className="text-2xl font-bold text-foreground">
-              {topics.filter((t) => !isInvalidOrJunkTopic(t.title) && !t.isArchived && !t.assignedTo).length}
-            </div>
-            <span className="text-[11px] text-muted-foreground">
-              Kies een fractielid
-            </span>
-          </div>
+              <div
+                onClick={() => setCategoryFilter("parked")}
+                className={`p-4 rounded-2xl bg-card border border-border shadow-xs cursor-pointer transition-all hover:border-amber-500/50 ${
+                  categoryFilter === "parked" ? "ring-2 ring-amber-500 border-amber-500/50 bg-amber-500/5" : ""
+                }`}
+              >
+                <div className="flex items-center justify-between text-muted-foreground mb-1">
+                  <span className="text-xs font-semibold text-amber-800 dark:text-amber-300">Geparkeerd</span>
+                  <PauseCircle className="w-4 h-4 text-amber-500" />
+                </div>
+                <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+                  {parkedTopics.length}
+                </div>
+                <span className="text-[11px] text-muted-foreground">
+                  Tijdelijk on hold
+                </span>
+              </div>
 
-          <div className="p-4 rounded-2xl bg-card border border-border shadow-xs">
-            <div className="flex items-center justify-between text-muted-foreground mb-1">
-              <span className="text-xs font-semibold">Gearchiveerd</span>
-              <Archive className="w-4 h-4 text-muted-foreground" />
+              <div
+                onClick={() => setCategoryFilter("unassigned")}
+                className={`p-4 rounded-2xl bg-card border border-border shadow-xs cursor-pointer transition-all hover:border-accent/40 ${
+                  categoryFilter === "unassigned" ? "ring-2 ring-accent border-accent/40" : ""
+                }`}
+              >
+                <div className="flex items-center justify-between text-muted-foreground mb-1">
+                  <span className="text-xs font-semibold">Nog Onverdeeld</span>
+                  <Layers className="w-4 h-4 text-sky-500" />
+                </div>
+                <div className="text-2xl font-bold text-foreground">
+                  {topics.filter((t) => !isInvalidOrJunkTopic(t.title) && !t.isArchived && !t.isParked && !t.assignedTo).length}
+                </div>
+                <span className="text-[11px] text-muted-foreground">
+                  Kies een fractielid
+                </span>
+              </div>
+
+              <div
+                onClick={() => setCategoryFilter("archived")}
+                className={`p-4 rounded-2xl bg-card border border-border shadow-xs cursor-pointer transition-all hover:border-accent/40 ${
+                  categoryFilter === "archived" ? "ring-2 ring-accent border-accent/40" : ""
+                }`}
+              >
+                <div className="flex items-center justify-between text-muted-foreground mb-1">
+                  <span className="text-xs font-semibold">Gearchiveerd</span>
+                  <Archive className="w-4 h-4 text-muted-foreground" />
+                </div>
+                <div className="text-2xl font-bold text-foreground">
+                  {topics.filter((t) => !isInvalidOrJunkTopic(t.title) && t.isArchived).length}
+                </div>
+                <span className="text-[11px] text-muted-foreground">
+                  &gt; 7 dagen na vergadering
+                </span>
+              </div>
             </div>
-            <div className="text-2xl font-bold text-foreground">
-              {topics.filter((t) => !isInvalidOrJunkTopic(t.title) && t.isArchived).length}
-            </div>
-            <span className="text-[11px] text-muted-foreground">
-              &gt; 7 dagen na vergadering
-            </span>
-          </div>
-        </div>
 
         {/* Filters & Search */}
         <div className="bg-card rounded-2xl border border-border p-4 shadow-sm mb-6 space-y-3">
@@ -1166,6 +1279,12 @@ export default function Raadspaneel() {
                 highlight: topicsWithDumps.length > 0,
               },
               { id: "mine", label: "Aan Mij Toegewezen", icon: UserCheck },
+              {
+                id: "parked",
+                label: `Geparkeerd (${parkedTopics.length})`,
+                icon: PauseCircle,
+                badge: parkedTopics.length > 0 ? parkedTopics.length : undefined,
+              },
               { id: "unassigned", label: "Onverdeeld", icon: Layers },
               { id: "all_active", label: "Alle Actieve Punten", icon: FileCheck },
               { id: "archived", label: "Archief (> 7 dagen)", icon: Archive },
@@ -1323,7 +1442,12 @@ export default function Raadspaneel() {
                               Update na compilatie
                             </span>
                           )}
-                          {isBespreek ? (
+                          {topic.isParked ? (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/40 flex items-center gap-1">
+                              <PauseCircle className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                              Geparkeerd
+                            </span>
+                          ) : isBespreek ? (
                             <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
                               Bespreekstuk
                             </span>
@@ -1354,6 +1478,13 @@ export default function Raadspaneel() {
                       <h3 className="font-normal text-sm text-foreground mb-2 line-clamp-2 leading-snug">
                         {topic.title}
                       </h3>
+
+                      {/* Parked reason callout if parked */}
+                      {topic.isParked && topic.parkedReason && (
+                        <div className="text-[11px] text-amber-800 dark:text-amber-300 bg-amber-500/10 border border-amber-500/25 px-2 py-1 rounded-md mb-2 italic line-clamp-2">
+                          Reden: "{topic.parkedReason}"
+                        </div>
+                      )}
 
                       {/* Standpunt badges preview */}
                       {topic.standpuntSummary && topic.standpuntSummary.total > 0 && (
@@ -1448,9 +1579,13 @@ export default function Raadspaneel() {
                 {/* Header & Category info */}
                 <div className="border-b border-border/80 pb-5">
                   <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-accent/15 text-accent border border-accent/30">
-                        {selectedTopic.category}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
+                        selectedTopic.isParked
+                          ? "bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30"
+                          : "bg-accent/15 text-accent border border-accent/30"
+                      }`}>
+                        {selectedTopic.isParked ? "Geparkeerd" : selectedTopic.category}
                       </span>
                       {selectedTopic.meetingType && (
                         <span className="text-xs text-muted-foreground">
@@ -1458,7 +1593,7 @@ export default function Raadspaneel() {
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
                       <span className="text-xs text-muted-foreground flex items-center gap-1">
                         <Calendar className="w-3.5 h-3.5 text-accent" />
                         {selectedTopic.meetingDateDisplay || selectedTopic.meetingDate}
@@ -1475,6 +1610,33 @@ export default function Raadspaneel() {
                           <Download className={`w-3.5 h-3.5 ${exportingTopicZipId === selectedTopic.id ? "animate-bounce" : ""}`} />
                           <span>{exportingTopicZipId === selectedTopic.id ? "Exporteren..." : "Export ZIP"}</span>
                         </Button>
+                      )}
+
+                      {/* Park / Unpark Action Button */}
+                      {isCouncilOrAdmin && (
+                        selectedTopic.isParked ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleUnparkTopic(selectedTopic.id)}
+                            className="h-7 px-2.5 text-xs rounded-lg border-emerald-500/50 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 font-semibold flex items-center gap-1.5 transition-all shadow-2xs"
+                            title="Parkering opheffen en terugzetten naar Oordeelvorming - Bespreekstukken"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                            <span>Parkering Opheffen</span>
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleOpenParkModal(selectedTopic)}
+                            className="h-7 px-2.5 text-xs rounded-lg border-amber-500/50 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 font-semibold flex items-center gap-1.5 transition-all shadow-2xs"
+                            title="Parkeer dit onderwerp (reden verplicht)"
+                          >
+                            <PauseCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                            <span>Parkeren</span>
+                          </Button>
+                        )
                       )}
                     </div>
                   </div>
@@ -1497,6 +1659,45 @@ export default function Raadspaneel() {
                     )}
                   </div>
                 </div>
+
+                {/* 📌 Geparkeerd Status Banner */}
+                {selectedTopic.isParked && (
+                  <div className="p-4 rounded-xl bg-amber-500/10 border-2 border-amber-500/40 text-xs space-y-2.5 animate-fade-in">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 font-bold text-amber-800 dark:text-amber-300 text-sm">
+                        <PauseCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                        <span>GEPARKEERD ONDERWERP</span>
+                      </div>
+                      {isCouncilOrAdmin && (
+                        <Button
+                          size="sm"
+                          onClick={() => handleUnparkTopic(selectedTopic.id)}
+                          className="h-7 text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 shadow-xs"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Parkering Opheffen & Terugzetten naar Bespreekstukken</span>
+                        </Button>
+                      )}
+                    </div>
+                    <div className="bg-card/90 rounded-lg p-3 border border-amber-500/20 space-y-1">
+                      <div className="text-[10.5px] font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wide">
+                        Opgegeven reden voor parkeren:
+                      </div>
+                      <p className="text-xs text-foreground font-medium italic">
+                        "{selectedTopic.parkedReason || "Geen toelichting opgegeven."}"
+                      </p>
+                    </div>
+                    {(selectedTopic.parkedBy || selectedTopic.parkedAt) && (
+                      <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 pt-0.5">
+                        <Clock className="w-3.5 h-3.5 text-amber-600" />
+                        <span>
+                          Geparkeerd door <strong>{selectedTopic.parkedBy || "Fractielid"}</strong>
+                          {selectedTopic.parkedAt && ` op ${new Date(selectedTopic.parkedAt).toLocaleString("nl-NL", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* 🚨 Topic-Specifieke Vrijdagmiddag-Dump Alert Box */}
                 {(selectedTopic.hasRecentDump || selectedTopic.hasDocumentDiff || (selectedTopic.diffAlerts && selectedTopic.diffAlerts.some((a) => !a.dismissed))) && (
@@ -2500,6 +2701,87 @@ export default function Raadspaneel() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Parkeer Onderwerp Dialog (met verplichte reden) */}
+      <Dialog
+        open={isParkModalOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setIsParkModalOpen(false);
+            setParkTargetTopic(null);
+            setParkReason("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-md flex flex-col">
+          <DialogHeader>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                <PauseCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                Onderwerp Parkeren
+              </span>
+            </div>
+            <DialogTitle className="text-lg font-display font-bold leading-snug">
+              Onderwerp parkeren
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              {parkTargetTopic?.title ? `"${parkTargetTopic.title}"` : "Geef een reden op voor het tijdelijk parkeren van dit onderwerp."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground flex items-center justify-between">
+                <span>Reden van parkeren <span className="text-destructive">*</span></span>
+                <span className="text-[10.5px] text-muted-foreground font-normal">Verplicht veld</span>
+              </label>
+              <Textarea
+                rows={4}
+                value={parkReason}
+                onChange={(e) => setParkReason(e.target.value)}
+                placeholder="Bijv. Wachten op nader collegevoorstel; geen fractie-actie benodigd; voorlopig hamerstuk..."
+                className="text-xs bg-muted/20"
+                autoFocus
+              />
+            </div>
+            <div className="p-3 rounded-lg bg-muted/40 border border-border text-[11.5px] text-muted-foreground space-y-1">
+              <p>
+                Het onderwerp wordt verplaatst naar het tabblad <strong>Geparkeerd</strong> (tussen <em>'Aan mij toegewezen'</em> en <em>'Onverdeeld'</em>).
+              </p>
+              <p className="text-[11px] text-foreground/80">
+                U of een ander fractielid kan de status op elk moment weer opheffen, waarna het onderwerp direct terugkeert bij <strong>Oordeelvorming - Bespreekstukken</strong>.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="flex items-center justify-between gap-2 pt-3 border-t border-border">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setIsParkModalOpen(false);
+                setParkTargetTopic(null);
+                setParkReason("");
+              }}
+              disabled={isParking}
+              className="text-xs"
+            >
+              Annuleren
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={isParking || !parkReason.trim()}
+              onClick={handleConfirmPark}
+              className="text-xs bg-amber-600 hover:bg-amber-700 text-white font-semibold flex items-center gap-1.5"
+            >
+              <PauseCircle className="w-3.5 h-3.5" />
+              <span>{isParking ? "Bezig met parkeren..." : "Onderwerp Parkeren"}</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Secure Document Viewer voor Click-to-Verify & Pagina-Archief */}
       <SecureDocumentViewer
