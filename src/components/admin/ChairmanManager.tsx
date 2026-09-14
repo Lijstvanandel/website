@@ -1335,7 +1335,7 @@ export function ChairmanManager({ token, currentUser, headers }: Props) {
           }`}
         >
           <Users className="w-3.5 h-3.5" />
-          <span>Bestuur & Documenten (/bestuur)</span>
+          <span>Bestuursbeheer</span>
         </button>
       </div>
 
@@ -1374,7 +1374,7 @@ export function ChairmanManager({ token, currentUser, headers }: Props) {
                   className="h-8 text-xs gap-1.5 border-amber-500/30 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 cursor-pointer"
                 >
                   <Pencil className="w-3.5 h-3.5 text-amber-600" />
-                  <span>Bestuur & Documenten Beheren</span>
+                  <span>Bestuursbeheer Openen</span>
                 </Button>
               </div>
             </div>

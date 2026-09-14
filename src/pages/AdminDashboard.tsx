@@ -1326,7 +1326,7 @@ export default function AdminDashboard() {
             <CreditCard className="w-4 h-4 text-emerald-600 data-[state=active]:text-white" /> Penningmeesterpaneel
           </TabsTrigger>
           <TabsTrigger value="bestuur" className="gap-2 text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-500/10 data-[state=active]:bg-amber-600 data-[state=active]:text-white">
-            <Users className="w-4 h-4 text-amber-600 data-[state=active]:text-white" /> Bestuur & Documenten (/bestuur)
+            <Users className="w-4 h-4 text-amber-600 data-[state=active]:text-white" /> Bestuursbeheer
           </TabsTrigger>
           <TabsTrigger value="messages" className="gap-2 text-xs relative">
             <Inbox className="w-4 h-4" /> Berichten
