@@ -10,6 +10,13 @@ cleanupOutdatedCaches();
 // Precaches all assets injected by VitePWA
 precacheAndRoute(self.__WB_MANIFEST || []);
 
+// Listen for SKIP_WAITING message from frontend
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
+
 // Web Push Notification Handler
 self.addEventListener("push", (event: PushEvent) => {
   let data = {

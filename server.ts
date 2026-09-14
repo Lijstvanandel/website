@@ -12482,7 +12482,12 @@ Sitemap: ${baseUrl}/sitemap.xml
       index: false,
       maxAge: '30d',
       setHeaders: (res, filePath) => {
-        if (filePath.includes('/assets/')) {
+        const lower = filePath.toLowerCase();
+        if (lower.endsWith('sw.js') || lower.endsWith('registersw.js') || lower.endsWith('manifest.webmanifest') || lower.endsWith('manifest.json')) {
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          res.setHeader('Pragma', 'no-cache');
+          res.setHeader('Expires', '0');
+        } else if (filePath.includes('/assets/')) {
           res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
         } else if (/\.(jpg|jpeg|png|webp|svg|ico|woff2?)$/i.test(filePath)) {
           res.setHeader('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400');

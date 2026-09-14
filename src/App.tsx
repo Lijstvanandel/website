@@ -9,6 +9,7 @@ import { ThemeProvider } from "./hooks/use-theme";
 import { AuthProvider } from "./context/AuthContext";
 import { AccessibilityProvider } from "./context/AccessibilityContext";
 import { PWARedirectHandler } from "./components/PWARedirectHandler";
+import { PwaUpdatePrompt } from "./components/PwaUpdatePrompt";
 import { ScrollToTop } from "./components/ScrollToTop";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 
@@ -61,6 +62,7 @@ const App = () => (
               <BrowserRouter>
                 <ScrollToTop />
                 <PWARedirectHandler />
+                <PwaUpdatePrompt />
                 <Suspense fallback={<PageLoadingFallback />}>
                   <Routes>
                     <Route element={<Layout />}>
