@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Users, Phone, Home as HomeIcon, TreePine, Tractor, Coins, Landmark, Calendar as CalIcon, MapPin } from "lucide-react";
+import { ArrowRight, Users, Phone, Video, Home as HomeIcon, TreePine, Tractor, Coins, Landmark, Calendar as CalIcon, MapPin } from "lucide-react";
 import { useEffect, useState, useRef } from "react";
 import heroBanner from "@/assets/steenwijk-aerial.jpg";
 import sammyImg from "@/assets/sammy.png";
@@ -32,10 +32,18 @@ const normalizeSlug = (s: string): string => {
   return LEGACY_SLUG_MAP[clean] || clean;
 };
 
+const DEFAULT_FRACTIELEDEN = [
+  { id: "1", name: "Sammy van Andel", role: "Fractievoorzitter", type: "Raadslid", imgUrl: sammyImg },
+  { id: "2", name: "Lisa Mars", role: "Raadslid", type: "Raadslid", imgUrl: lisaImg },
+  { id: "3", name: "Nathan ten Wolde", role: "Burgerraadslid", type: "Burgerraadslid", imgUrl: "/assets/nathan.png" },
+  { id: "4", name: "Chris van Andel", role: "Burgerraadslid", type: "Burgerraadslid", imgUrl: "/assets/chris.jpg" },
+];
+
 const Home = () => {
   const [belOpen, setBelOpen] = useState(false);
   const [homeNews, setHomeNews] = useState<any[]>(() => news.filter((n: any) => !n.wijkSlug));
   const [wijken, setWijken] = useState<WijkItem[]>([]);
+  const [fractieleden, setFractieleden] = useState<any[]>(DEFAULT_FRACTIELEDEN);
   const [hoveredWijkSlug, setHoveredWijkSlug] = useState<string | null>(null);
   const [bgLayerA, setBgLayerA] = useState<{ url: string; visible: boolean }>({ url: "", visible: false });
   const [bgLayerB, setBgLayerB] = useState<{ url: string; visible: boolean }>({ url: "", visible: false });
@@ -60,6 +68,15 @@ const Home = () => {
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) {
           setWijken(data);
+        }
+      })
+      .catch(() => {});
+
+    fetch("/api/fractieleden")
+      .then((res) => (res.ok ? res.json().catch(() => []) : []))
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setFractieleden(data);
         }
       })
       .catch(() => {});
@@ -241,80 +258,106 @@ const Home = () => {
         </div>
       </section>
 
-      {/* PERSOONLIJK GESPREK CTA */}
-      <section className="container py-20">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-xs uppercase tracking-[0.3em] text-accent mb-3">Direct contact</div>
-          <h2 className="font-display text-5xl md:text-6xl mb-10 border-gold-line pb-4">Plan een belafspraak</h2>
+      {/* FRACTIE & PERSOONLIJK GESPREK CTA */}
+      <section className="container pt-8 sm:pt-10 pb-6 sm:pb-8">
+        <div className="text-xs uppercase tracking-[0.3em] text-accent mb-2">Direct contact</div>
+        <h2 className="font-display text-4xl sm:text-5xl md:text-6xl mb-6 sm:mb-8 border-gold-line pb-4">De fractie</h2>
 
-          <div className="grid md:grid-cols-[1fr_auto_1fr] gap-6 items-center bg-card border border-accent/20 p-8 md:p-12">
-            <div className="text-center">
-              <div className="w-20 h-20 mx-auto rounded-full overflow-hidden border-2 border-accent mb-3">
-                <img src={sammyImg} alt="Sammy van Andel" width={80} height={80} loading="lazy" decoding="async" className="w-full h-full object-cover" />
-              </div>
-              <div className="font-display text-2xl">Sammy van Andel</div>
-              <div className="text-xs uppercase tracking-widest text-muted-foreground mt-1">Fractievoorzitter</div>
+        <div className="bg-card border border-accent/20 p-6 md:p-8 rounded-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 md:gap-6">
+              {fractieleden.map((lid: any) => (
+                <Link
+                  key={lid.id}
+                  to={`/fractie/${lid.id}/videos`}
+                  className="group flex flex-col bg-muted/20 border border-border/60 hover:border-accent/80 rounded-sm overflow-hidden transition-all hover-lift"
+                >
+                  <div className="relative aspect-[4/5] w-full bg-muted overflow-hidden border-b border-border/50">
+                    {lid.imgUrl ? (
+                      <img
+                        src={lid.imgUrl}
+                        alt={lid.name}
+                        loading="lazy"
+                        decoding="async"
+                        className="w-full h-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
+                        Geen foto
+                      </div>
+                    )}
+                    <div className="absolute top-2.5 left-2.5 px-2.5 py-0.5 bg-black/80 backdrop-blur border border-accent/50 text-[10px] uppercase tracking-widest text-accent font-semibold rounded-xs">
+                      {lid.role || lid.type}
+                    </div>
+                  </div>
+                  <div className="p-4 flex flex-col flex-1 justify-between text-center bg-card">
+                    <div>
+                      <div className="font-display text-lg sm:text-xl font-bold group-hover:text-accent transition-colors leading-snug">
+                        {lid.name}
+                      </div>
+                    </div>
+                    <div className="mt-3 pt-2.5 border-t border-border/40 text-[11px] uppercase tracking-widest text-accent font-semibold flex items-center justify-center gap-1.5 opacity-90 group-hover:opacity-100 transition-opacity">
+                      <Video className="w-3.5 h-3.5" /> Bekijk video's
+                    </div>
+                  </div>
+                </Link>
+              ))}
             </div>
 
-            <div className="text-center px-4">
-              <Phone className="w-12 h-12 mx-auto text-accent mb-2" />
-              <div className="text-xs uppercase tracking-widest text-accent">Wo · Do · Vrij</div>
-              <div className="font-display text-3xl text-gradient-gold mt-1">19:00–21:00</div>
-              <div className="text-xs text-muted-foreground mt-1">max. 30 minuten</div>
-            </div>
-
-            <div className="text-center">
-              <div className="w-20 h-20 mx-auto rounded-full overflow-hidden border-2 border-accent mb-3">
-                <img src={lisaImg} alt="Lisa Mars" width={80} height={80} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+            <div className="mt-6 pt-5 border-t border-border/60 flex flex-col md:flex-row items-center justify-between gap-4 text-center md:text-left px-2">
+              <div className="space-y-1">
+                <div className="flex items-center justify-center md:justify-start gap-2 text-xs sm:text-sm text-muted-foreground">
+                  <Phone className="w-4 h-4 text-accent shrink-0" />
+                  <span>
+                    Spreek een raadslid of burgerraadslid op <strong className="text-foreground">woensdag, donderdag of vrijdag (19:00–21:00)</strong>
+                  </span>
+                </div>
+                <div className="text-[11px] text-accent font-semibold tracking-wider uppercase md:pl-6">
+                  Max. 30 minuten per gesprek
+                </div>
               </div>
-              <div className="font-display text-2xl">Lisa Mars</div>
-              <div className="text-xs uppercase tracking-widest text-muted-foreground mt-1">Raadslid</div>
+              <Button
+                onClick={() => setBelOpen(true)}
+                size="default"
+                className="bg-primary hover:bg-primary/90 uppercase tracking-wider font-semibold shrink-0"
+              >
+                <Phone className="w-4 h-4 mr-1.5" /> Plan uw belafspraak
+              </Button>
             </div>
           </div>
-          <div className="text-center mt-6">
-            <Button
-              onClick={() => setBelOpen(true)}
-              size="lg"
-              className="bg-primary hover:bg-primary/90 uppercase tracking-wider font-semibold"
-            >
-              <Phone className="w-4 h-4" /> Plan uw belafspraak
-            </Button>
-          </div>
-        </div>
-      </section>
+        </section>
 
       {/* FEATURE GRID / SPEERPUNTEN */}
-      <section className="container py-14 sm:py-16">
+      <section className="container pt-2 sm:pt-4 pb-6 sm:pb-8">
         <div className="text-xs uppercase tracking-[0.3em] text-accent mb-2.5">Waar wij voor staan</div>
         <h2 className="font-display text-4xl sm:text-5xl md:text-6xl mb-6 sm:mb-8 border-gold-line pb-4">Speerpunten</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 sm:gap-4">
           {[
             {
-              icon: HomeIcon,
+              image: "/assets/speerpunt-voorrang.jpg",
               title: "Voorrang voor inwoners",
               text: "Lokale binding telt bij woningtoewijzing. Onze eigen jongeren en starters verdienen een eerlijke kans op een betaalbaar thuis.",
               to: "/standpunten",
             },
             {
-              icon: TreePine,
+              image: "/assets/speerpunt-natuur.jpg",
               title: "Behoud van natuur",
               text: "Bescherming van Nationaal Park Weerribben-Wieden en onze kenmerkende landschappen als groen erfgoed.",
               to: "/standpunten",
             },
             {
-              icon: Tractor,
+              image: "/assets/speerpunt-boeren.jpg",
               title: "Boer terug in beleid",
               text: "Een gemeente die als betrouwbare bondgenoot náást de agrariërs en lokale ondernemers staat, niet ertegenover.",
               to: "/standpunten",
             },
             {
-              icon: Coins,
+              image: "/assets/speerpunt-lasten.jpg",
               title: "Geen lastenverhoging",
               text: "Zuinig huishoudboekje en een lage OZB. De gemeente moet eerst op eigen apparaat besparen voordat lasten stijgen.",
               to: "/standpunten",
             },
             {
-              icon: Landmark,
+              image: "/assets/speerpunt-kernen.jpg",
               title: "Leefbare kernen",
               text: "Behoud van dorpshuizen, scholen, veilige fietspaden en directe inspraak voor alle 43 wijken en kernen.",
               to: "/standpunten",
@@ -323,20 +366,28 @@ const Home = () => {
             <Link
               key={f.title}
               to={f.to}
-              className="group flex flex-col justify-between bg-card border border-border/80 hover:border-accent/60 p-4 sm:p-5 rounded-xs hover-lift transition-all"
+              className="group flex flex-col justify-between bg-card border border-border/80 hover:border-accent/60 rounded-xs overflow-hidden hover-lift transition-all"
             >
               <div>
-                <div className="w-10 h-10 rounded-xs bg-accent/10 border border-accent/30 flex items-center justify-center mb-3.5 text-accent group-hover:scale-105 transition-transform">
-                  <f.icon className="w-5 h-5" />
+                <div className="relative h-40 w-full overflow-hidden bg-black/20 border-b border-border/50">
+                  <img
+                    src={f.image}
+                    alt={f.title}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-75 group-hover:opacity-40 transition-opacity" />
                 </div>
-                <h3 className="font-display text-lg sm:text-xl font-bold mb-2 text-foreground group-hover:text-accent transition-colors leading-snug">
-                  {f.title}
-                </h3>
-                <p className="text-xs sm:text-[13px] text-muted-foreground leading-relaxed">
-                  {f.text}
-                </p>
+                <div className="p-4 sm:p-5">
+                  <h3 className="font-display text-lg sm:text-xl font-bold mb-2 text-foreground group-hover:text-accent transition-colors leading-snug">
+                    {f.title}
+                  </h3>
+                  <p className="text-xs sm:text-[13px] text-muted-foreground leading-relaxed">
+                    {f.text}
+                  </p>
+                </div>
               </div>
-              <div className="mt-4 pt-3 border-t border-border/50 text-[11px] uppercase tracking-widest text-accent font-semibold flex items-center gap-1.5 group-hover:gap-2.5 transition-all">
+              <div className="px-4 pb-4 sm:px-5 sm:pb-5 pt-0 text-[11px] uppercase tracking-widest text-accent font-semibold flex items-center gap-1.5 group-hover:gap-2.5 transition-all">
                 Lees meer <ArrowRight className="w-3 h-3" />
               </div>
             </Link>
@@ -345,7 +396,7 @@ const Home = () => {
       </section>
 
       {/* NIEUWS */}
-      <section className="container py-20">
+      <section className="container pt-2 sm:pt-4 pb-10 sm:pb-12">
         <div className="flex items-end justify-between gap-6 mb-10">
           <div>
             <div className="text-xs uppercase tracking-[0.3em] text-accent mb-3">Laatste berichten</div>
