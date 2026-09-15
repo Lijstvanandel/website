@@ -12970,6 +12970,12 @@ Sitemap: ${baseUrl}/sitemap.xml
 
     // All page routes get dynamic server-side OpenGraph / SEO injection
     app.get('*all', (req, res) => {
+      const pathname = (req.path || req.originalUrl.split("?")[0] || "").toLowerCase();
+      const isStaticAsset = /\.(js|mjs|cjs|css|png|jpg|jpeg|gif|svg|ico|webp|woff2?|map|json|txt|pdf|mp4)$/i.test(pathname);
+      if (pathname.startsWith("/api") || pathname.startsWith("/uploads") || pathname.startsWith("/assets") || isStaticAsset) {
+        return res.status(404).send("Bestand niet gevonden");
+      }
+
       // Reload template if not cached or read fresh
       let html = cachedIndexHtml;
       if (!html && fs.existsSync(indexHtmlPath)) {
