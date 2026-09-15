@@ -336,7 +336,7 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
                   id: docId,
                   title: docTitle,
                   url: fullDocUrl,
-                  fileType: fullDocUrl.toLowerCase().endsWith(".pdf") || docTitle.toLowerCase().includes("pdf") ? "PDF" : "DOC",
+                  fileType: fullDocUrl.toLowerCase().endsWith(".xlsx") || docTitle.toLowerCase().includes("excel") || docTitle.toLowerCase().includes(".xlsx") ? "XLS" : (fullDocUrl.toLowerCase().endsWith(".docx") || fullDocUrl.toLowerCase().endsWith(".doc")) ? "DOC" : "PDF",
                   viewedBy: [],
                 });
               }

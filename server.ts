@@ -10692,15 +10692,14 @@ Sitemap: ${baseUrl}/sitemap.xml
             .replace(/\s+/g, " ")
             .trim();
 
-          const ext = doc.fileType === "DOC" || cleanDocTitle.toLowerCase().endsWith(".docx")
-            ? ".docx"
-            : doc.fileType === "XLS" || cleanDocTitle.toLowerCase().endsWith(".xlsx")
+          // Remove existing extensions like .pdf, .docx, .doc to normalize
+          cleanDocTitle = cleanDocTitle.replace(/\.(pdf|docx|doc)$/i, "").trim();
+
+          const ext = (doc.fileType === "XLS" || cleanDocTitle.toLowerCase().endsWith(".xlsx"))
             ? ".xlsx"
             : ".pdf";
 
-          if (!cleanDocTitle.toLowerCase().endsWith(ext)) {
-            cleanDocTitle += ext;
-          }
+          cleanDocTitle += ext;
 
           // Avoid duplicate filename collision inside zip
           let finalEntryName = cleanDocTitle;

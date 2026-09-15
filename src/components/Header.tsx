@@ -99,10 +99,11 @@ export const Header = () => {
 
   // Determine current active subtitle based on route
   const currentSubtitle = useMemo(() => {
-    const pathname = location.pathname;
+    const rawPath = (location.pathname || "").split("?")[0].split("#")[0].toLowerCase().trim();
+    const cleanPath = rawPath.replace(/\/+$/, "") || "/";
 
-    // Check for single wijk/kern detail page: e.g. /wijken-en-kernen/:slug or /wijken-en/kernen/:slug
-    const detailMatch = pathname.match(/^\/wijken-en(?:-|\/)kernen\/([^/?#]+)/);
+    // 1. Check for single wijk/kern detail page: e.g. /wijken-en-kernen/:slug or /wijken-en/kernen/:slug
+    const detailMatch = cleanPath.match(/^\/wijken-en(?:-|\/)kernen\/([^/?#]+)/);
     if (detailMatch && detailMatch[1]) {
       const rawSlug = decodeURIComponent(detailMatch[1]).toLowerCase();
       const mappedSlug = LEGACY_SLUG_MAP[rawSlug] || rawSlug;
@@ -124,12 +125,12 @@ export const Header = () => {
         .join(" ");
     }
 
-    // Overview page
-    if (pathname === "/wijken-en-kernen" || pathname === "/wijken-en/kernen") {
+    // 2. Overview page for Wijken & Kernen
+    if (cleanPath === "/wijken-en-kernen" || cleanPath === "/wijken-en/kernen") {
       return "Wijken & Kernen";
     }
 
-    // Default for all general pages
+    // 3. Strict default for home and all other non-wijk pages
     return "Steenwijkerland";
   }, [location.pathname, apiWijkenMap]);
 
