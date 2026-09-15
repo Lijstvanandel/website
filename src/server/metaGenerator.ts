@@ -8,6 +8,10 @@ export interface PageMetadata {
   ogTitle: string;
   ogDescription: string;
   ogImage: string;
+  ogImageType?: string;
+  ogImageWidth?: number;
+  ogImageHeight?: number;
+  ogImageAlt?: string;
   ogType: string;
   canonicalUrl: string;
   keywords?: string;
@@ -42,12 +46,18 @@ function truncate(text: string, maxLen = 150): string {
 }
 
 function resolveImageUrl(baseUrl: string, imgPath?: string): string {
-  if (!imgPath) return DEFAULT_IMAGE;
-  if (imgPath.startsWith("http://") || imgPath.startsWith("https://")) {
-    return imgPath;
+  if (!imgPath) {
+    return `${baseUrl}/api/og-image?url=${encodeURIComponent(DEFAULT_IMAGE)}`;
   }
-  const cleanPath = imgPath.startsWith("/") ? imgPath : `/${imgPath}`;
-  return `${baseUrl}${cleanPath}`;
+  if (imgPath.includes("/api/og-image")) {
+    if (imgPath.startsWith("http://") || imgPath.startsWith("https://")) {
+      return imgPath;
+    }
+    const cleanPath = imgPath.startsWith("/") ? imgPath : `/${imgPath}`;
+    return `${baseUrl}${cleanPath}`;
+  }
+  // Automatically route through /api/og-image so sharp crops, compresses (<150KB), and formats it to 1200x630 JPEG for WhatsApp & Facebook
+  return `${baseUrl}/api/og-image?url=${encodeURIComponent(imgPath)}`;
 }
 
 function extractYouTubeThumb(videoUrl?: string): string | null {
@@ -58,8 +68,12 @@ function extractYouTubeThumb(videoUrl?: string): string | null {
 }
 
 export function getPageMetadata(urlPath: string, host: string, db: Record<string, any>): PageMetadata {
-  const protocol = host.includes("localhost") || host.includes("127.0.0.1") ? "http" : "https";
-  const baseUrl = `${protocol}://${host}`;
+  const isLocal = host.includes("localhost") || host.includes("127.0.0.1") || host.includes("0.0.0.0");
+  const protocol = isLocal && process.env.NODE_ENV !== "production" ? "http" : "https";
+  const effectiveHost = isLocal && process.env.NODE_ENV !== "production"
+    ? host
+    : (host && !isLocal ? host : "lijstvanandel.nl");
+  const baseUrl = `${protocol}://${effectiveHost}`;
   const pathParts = urlPath.split("?");
   const cleanPath = pathParts[0].split("#")[0];
   const queryString = pathParts[1] ? pathParts[1].split("#")[0] : "";
@@ -144,11 +158,12 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
   const nieuwsMatch = cleanPath.match(/^\/nieuws\/([a-zA-Z0-9_-]+)$/);
   if (nieuwsMatch) {
     const articleId = nieuwsMatch[1];
-    const article = (db?.news || []).find((n: any) => n.id === articleId || n.slug === articleId);
+    const article = (db?.news || []).find((n: any) => String(n.id) === String(articleId) || n.slug === articleId);
 
     if (article) {
       const cleanDesc = truncate(stripHtml(article.excerpt || article.description || article.content || ""), 160);
-      const articleImage = resolveImageUrl(baseUrl, article.headerUrl || article.thumbnailUrl || article.image);
+      const rawImage = article.thumbnailUrl || article.headerUrl || article.image || article.imageUrl;
+      const articleImage = resolveImageUrl(baseUrl, rawImage);
       const title = `${article.title} | Lijst van Andel`;
 
       return {
@@ -157,6 +172,10 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
         ogTitle: article.title,
         ogDescription: cleanDesc,
         ogImage: articleImage,
+        ogImageType: "image/jpeg",
+        ogImageWidth: 1200,
+        ogImageHeight: 630,
+        ogImageAlt: article.title,
         ogType: "article",
         canonicalUrl,
         author: article.author || "Lijst van Andel",
@@ -340,11 +359,12 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
   const agendaMatch = cleanPath.match(/^\/agenda\/([a-zA-Z0-9_-]+)$/);
   if (agendaMatch) {
     const eventId = agendaMatch[1];
-    const event = (db?.events || []).find((e: any) => e.id === eventId);
+    const event = (db?.events || []).find((e: any) => String(e.id) === String(eventId) || e.slug === eventId);
 
     if (event) {
       const cleanDesc = truncate(stripHtml(event.shortDescription || event.description || ""), 160);
-      const eventImage = resolveImageUrl(baseUrl, event.thumbnailUrl || event.headerUrl);
+      const rawImage = event.thumbnailUrl || event.headerUrl || event.image || event.imageUrl || event.bannerUrl || event.fotoUrl;
+      const eventImage = resolveImageUrl(baseUrl, rawImage);
       const title = `${event.title} | Agenda Lijst van Andel`;
 
       return {
@@ -353,6 +373,10 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
         ogTitle: event.title,
         ogDescription: cleanDesc,
         ogImage: eventImage,
+        ogImageType: "image/jpeg",
+        ogImageWidth: 1200,
+        ogImageHeight: 630,
+        ogImageAlt: event.title,
         ogType: "event",
         canonicalUrl,
         structuredData: {
@@ -893,10 +917,19 @@ export function injectMetadataIntoHtml(html: string, meta: PageMetadata): string
   setMetaProperty("og:title", meta.ogTitle);
   setMetaName("twitter:title", meta.ogTitle);
 
-  // Images
+  // Images (Open Graph, WhatsApp, Facebook, iMessage & Twitter)
   setMetaProperty("og:image", meta.ogImage);
-  setMetaName("twitter:image", meta.ogImage);
   setMetaProperty("og:image:secure_url", meta.ogImage);
+  setMetaProperty("og:image:type", meta.ogImageType || "image/jpeg");
+  setMetaProperty("og:image:width", String(meta.ogImageWidth || 1200));
+  setMetaProperty("og:image:height", String(meta.ogImageHeight || 630));
+  if (meta.ogImageAlt) {
+    setMetaProperty("og:image:alt", meta.ogImageAlt);
+  }
+  setMetaName("twitter:image", meta.ogImage);
+  if (meta.ogImageAlt) {
+    setMetaName("twitter:image:alt", meta.ogImageAlt);
+  }
 
   // Type and URL
   setMetaProperty("og:type", meta.ogType);

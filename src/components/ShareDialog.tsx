@@ -71,7 +71,7 @@ export function ShareDialog({
     {
       name: "WhatsApp",
       icon: MessageCircle,
-      href: `https://api.whatsapp.com/send?text=${encodedTitle}%20${encodedUrl}`,
+      href: `https://api.whatsapp.com/send?text=${encodedTitle}%0A%0A${encodedUrl}`,
       bgColor: "bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 border-[#25D366]/30",
       description: "Direct in chat of status",
     },

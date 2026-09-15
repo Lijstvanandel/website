@@ -22,6 +22,7 @@ import jwt from "jsonwebtoken";
 import multer from "multer";
 import rateLimit from "express-rate-limit";
 import AdmZip from "adm-zip";
+import sharp from "sharp";
 
 const appDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
 import Stripe from "stripe";
@@ -2463,6 +2464,140 @@ async function startServer() {
     }
 
     return res.status(404).json({ error: `Afbeelding '${baseName}' kon niet worden gevonden op de server.` });
+  });
+
+  // Dedicated high-performance Open Graph & WhatsApp Link Preview image optimizer (< 150KB, 1200x630 JPEG)
+  const ogImageCache = new Map<string, { buffer: Buffer; timestamp: number }>();
+
+  app.get("/api/og-image", async (req: any, res: any) => {
+    try {
+      const rawUrl = req.query.url || req.query.path || "";
+      const targetStr = typeof rawUrl === "string" ? rawUrl.trim() : "";
+      const cacheKey = targetStr || "default";
+
+      // 1. Serve from in-memory cache if available (< 5ms response time)
+      const cached = ogImageCache.get(cacheKey);
+      if (cached && (Date.now() - cached.timestamp < 3600 * 1000 * 24)) {
+        res.setHeader("Content-Type", "image/jpeg");
+        res.setHeader("Content-Length", cached.buffer.length);
+        res.setHeader("Cache-Control", "public, max-age=604800, stale-while-revalidate=86400");
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        return res.send(cached.buffer);
+      }
+
+      let inputBuffer: Buffer | null = null;
+
+      // 2. Fetch external image URL (e.g. Cloudflare R2, Unsplash, YouTube)
+      if (targetStr.startsWith("http://") || targetStr.startsWith("https://")) {
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 4000);
+          const response = await fetch(targetStr, {
+            signal: controller.signal,
+            headers: { "User-Agent": "LijstVanAndel-OGBot/1.0" }
+          });
+          clearTimeout(timeout);
+          if (response.ok) {
+            const arr = await response.arrayBuffer();
+            inputBuffer = Buffer.from(arr);
+          }
+        } catch (fetchErr) {
+          console.warn("[OG IMAGE] Kon externe afbeelding niet downloaden:", targetStr, fetchErr);
+        }
+      }
+
+      // 3. Search local filesystem for the file if not loaded from URL
+      if (!inputBuffer && targetStr) {
+        const cleanPath = targetStr.split("?")[0].replace(/^\/+/, "").replace(/\.\./g, "");
+        const baseName = path.basename(cleanPath);
+        const subdirs = ["news", "events", "fractieleden", "wijken", "videos", "documents", "dataproducts"];
+
+        const candidatePaths = [
+          path.join(process.cwd(), "public", cleanPath),
+          path.join(process.cwd(), "dist", cleanPath),
+          path.join(process.cwd(), cleanPath),
+          path.join(process.cwd(), "public", "assets", baseName),
+          path.join(process.cwd(), "dist", "assets", baseName),
+          path.join(process.cwd(), "public", "uploads", baseName),
+          path.join(process.cwd(), "dist", "uploads", baseName),
+        ];
+
+        for (const sub of subdirs) {
+          candidatePaths.push(path.join(process.cwd(), "public", "uploads", sub, baseName));
+          candidatePaths.push(path.join(process.cwd(), "dist", "uploads", sub, baseName));
+        }
+
+        for (const p of candidatePaths) {
+          if (fs.existsSync(p) && fs.statSync(p).isFile()) {
+            inputBuffer = fs.readFileSync(p);
+            break;
+          }
+        }
+      }
+
+      // 4. Default fallback image if target was missing or unreadable
+      if (!inputBuffer) {
+        const defaultCandidates = [
+          path.join(process.cwd(), "public", "assets", "markt-steenwijk.jpg"),
+          path.join(process.cwd(), "dist", "assets", "markt-steenwijk.jpg"),
+          path.join(process.cwd(), "public", "assets", "hero-banner.jpg"),
+          path.join(process.cwd(), "public", "apple-touch-icon.png"),
+        ];
+        for (const p of defaultCandidates) {
+          if (fs.existsSync(p) && fs.statSync(p).isFile()) {
+            inputBuffer = fs.readFileSync(p);
+            break;
+          }
+        }
+      }
+
+      let finalBuffer: Buffer;
+
+      if (inputBuffer) {
+        // Optimize to WhatsApp link preview standards:
+        // 1200x630 (1.91:1 ratio), progressive JPEG, quality 82 (always < 150KB to pass WhatsApp 300KB hard limit)
+        finalBuffer = await sharp(inputBuffer)
+          .resize(1200, 630, {
+            fit: "cover",
+            position: "center",
+          })
+          .flatten({ background: { r: 15, g: 23, b: 42 } }) // Lijst van Andel Navy
+          .jpeg({
+            quality: 82,
+            progressive: true,
+            mozjpeg: true,
+          })
+          .toBuffer();
+      } else {
+        // SVG banner fallback if no files present
+        finalBuffer = await sharp({
+          create: {
+            width: 1200,
+            height: 630,
+            channels: 3,
+            background: { r: 15, g: 23, b: 42 },
+          }
+        })
+          .jpeg({ quality: 82 })
+          .toBuffer();
+      }
+
+      // Cache eviction policy (keep max 200 entries in RAM)
+      if (ogImageCache.size > 200) {
+        const firstKey = ogImageCache.keys().next().value;
+        if (firstKey) ogImageCache.delete(firstKey);
+      }
+      ogImageCache.set(cacheKey, { buffer: finalBuffer, timestamp: Date.now() });
+
+      res.setHeader("Content-Type", "image/jpeg");
+      res.setHeader("Content-Length", finalBuffer.length);
+      res.setHeader("Cache-Control", "public, max-age=604800, stale-while-revalidate=86400");
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      return res.send(finalBuffer);
+    } catch (err) {
+      console.error("[OG IMAGE FOUT]:", err);
+      res.status(500).send("Fout bij genereren van preview afbeelding");
+    }
   });
 
   // Serve static uploads from BOTH public/uploads AND dist/uploads
@@ -12892,7 +13027,9 @@ Sitemap: ${baseUrl}/sitemap.xml
   // Helper function to serve HTML with server-side injected OpenGraph & SEO tags
   const renderHtmlWithSeo = (req: express.Request, res: express.Response, rawHtml: string) => {
     try {
-      const host = req.get("host") || "lijstvanandel.nl";
+      const forwardedHost = req.get("x-forwarded-host");
+      const reqHost = req.get("host");
+      const host = forwardedHost || reqHost || "lijstvanandel.nl";
       const db = getDb();
       const meta = getPageMetadata(req.originalUrl || req.url, host, db);
       const enhancedHtml = injectMetadataIntoHtml(rawHtml, meta);
