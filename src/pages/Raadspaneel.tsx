@@ -37,6 +37,7 @@ import {
   BookOpen,
   Building2,
   Waves,
+  FileQuestion,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -68,6 +69,7 @@ import { SecureDocumentViewer } from "@/components/SecureDocumentViewer";
 import { TopicStandpuntenSection } from "@/components/council/TopicStandpuntenSection";
 import { OverijsselNotubizManager } from "@/components/council/OverijsselNotubizManager";
 import { WaterschapManager } from "@/components/council/WaterschapManager";
+import { VragenFormulatorWizard } from "@/components/council/VragenFormulatorWizard";
 import { MemberDocument } from "@/types/document";
 
 
@@ -192,8 +194,10 @@ export default function Raadspaneel() {
 
   const initialDossierSlug = slug || searchParams.get("dossier") || null;
   const tabParam = searchParams.get("tab");
-  const activePanelTab: "dossiers" | "agenda" | "overijssel" | "waterschap" =
-    tabParam === "waterschap" && isCouncilOrAdmin
+  const activePanelTab: "dossiers" | "agenda" | "vragenformulator" | "overijssel" | "waterschap" =
+    tabParam === "vragenformulator" && isCouncilOrAdmin
+      ? "vragenformulator"
+      : tabParam === "waterschap" && isCouncilOrAdmin
       ? "waterschap"
       : tabParam === "overijssel" && isCouncilOrAdmin
       ? "overijssel"
@@ -201,7 +205,7 @@ export default function Raadspaneel() {
       ? "agenda"
       : "dossiers";
 
-  const setActivePanelTab = (tab: "dossiers" | "agenda" | "overijssel" | "waterschap") => {
+  const setActivePanelTab = (tab: "dossiers" | "agenda" | "vragenformulator" | "overijssel" | "waterschap") => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.set("tab", tab);
@@ -1042,6 +1046,21 @@ export default function Raadspaneel() {
           )}
 
           {isCouncilOrAdmin && (
+            <button
+              id="tab-btn-panel-vragenformulator"
+              onClick={() => setActivePanelTab("vragenformulator")}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all shrink-0 ${
+                activePanelTab === "vragenformulator"
+                  ? "bg-accent text-accent-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-card border border-border/70"
+              }`}
+            >
+              <FileQuestion className="w-4 h-4 text-amber-500" />
+              Vragen Formulator & Dossier (Art. 41)
+            </button>
+          )}
+
+          {isCouncilOrAdmin && (
             <>
               <button
                 id="tab-btn-panel-overijssel"
@@ -1074,6 +1093,12 @@ export default function Raadspaneel() {
 
         {activePanelTab === "dossiers" ? (
           <DossierOverview initialDossierSlug={initialDossierSlug} />
+        ) : activePanelTab === "vragenformulator" && isCouncilOrAdmin ? (
+          <VragenFormulatorWizard
+            token={token || undefined}
+            currentUser={user}
+            initialTopic={selectedTopic ? { id: selectedTopic.id, title: selectedTopic.title, meetingDate: selectedTopic.meetingDate } : null}
+          />
         ) : activePanelTab === "waterschap" && isCouncilOrAdmin ? (
           <WaterschapManager token={token || undefined} />
         ) : activePanelTab === "overijssel" && isCouncilOrAdmin ? (
@@ -1648,6 +1673,21 @@ export default function Raadspaneel() {
                         >
                           <Download className={`w-3.5 h-3.5 ${exportingTopicZipId === selectedTopic.id ? "animate-bounce" : ""}`} />
                           <span>{exportingTopicZipId === selectedTopic.id ? "Exporteren..." : "Export ZIP"}</span>
+                        </Button>
+                      )}
+
+                      {isCouncilOrAdmin && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setActivePanelTab("vragenformulator");
+                          }}
+                          className="h-7 px-2.5 text-xs rounded-lg border-amber-500/50 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 font-semibold flex items-center gap-1.5 transition-all shadow-2xs"
+                          title="Start het opstellen van schriftelijke vragen (Art. 41 RvO) op basis van dit agendapunt"
+                        >
+                          <FileQuestion className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                          <span>Schriftelijke Vragen (Art. 41)</span>
                         </Button>
                       )}
 

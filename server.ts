@@ -10852,6 +10852,79 @@ Sitemap: ${baseUrl}/sitemap.xml
   app.post("/api/council/topics/:topicId/standpunten/ai-analyze", requireAuth, requireCouncilOrAdmin, handleScanTopicStandpunten);
   app.post("/api/council/topics/:topicId/standpunten/scan-documents", requireAuth, requireCouncilOrAdmin, handleScanTopicStandpunten);
 
+  // -------------------------------------------------------------
+  // WRITTEN QUESTIONS & DOSSIER BUILDER (ART. 41 RvO)
+  // -------------------------------------------------------------
+  app.get("/api/council/written-questions", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const dossiers = Array.isArray(db.writtenQuestionDossiers) ? db.writtenQuestionDossiers : [];
+    return res.json({ dossiers });
+  });
+
+  app.post("/api/council/written-questions", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    if (!Array.isArray(db.writtenQuestionDossiers)) {
+      db.writtenQuestionDossiers = [];
+    }
+
+    const payload = req.body;
+    if (!payload || !payload.title) {
+      return res.status(400).json({ error: "Titel is verplicht" });
+    }
+
+    const now = new Date().toISOString();
+    const id = payload.id || `lva-sq-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    const existingIdx = db.writtenQuestionDossiers.findIndex((d: any) => d.id === id);
+
+    const dossierRecord = {
+      ...payload,
+      id,
+      authorId: payload.authorId || req.user?.id || req.user?.username,
+      authorName: payload.authorName || req.user?.fullName || req.user?.username || "Fractielid",
+      createdAt: existingIdx >= 0 ? db.writtenQuestionDossiers[existingIdx].createdAt : (payload.createdAt || now),
+      updatedAt: now,
+    };
+
+    if (existingIdx >= 0) {
+      db.writtenQuestionDossiers[existingIdx] = dossierRecord;
+    } else {
+      db.writtenQuestionDossiers.unshift(dossierRecord);
+    }
+
+    saveDb(db);
+    return res.json({ success: true, dossier: dossierRecord });
+  });
+
+  app.delete("/api/council/written-questions/:id", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    const { id } = req.params;
+    const db = getDb();
+    if (!Array.isArray(db.writtenQuestionDossiers)) {
+      db.writtenQuestionDossiers = [];
+    }
+
+    db.writtenQuestionDossiers = db.writtenQuestionDossiers.filter((d: any) => d.id !== id);
+    saveDb(db);
+    return res.json({ success: true, message: "Dossier verwijderd" });
+  });
+
+  app.post("/api/council/written-questions/upload-attachment", requireAuth, requireCouncilOrAdmin, upload.single("file"), (req: any, res: any) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "Geen bestand ontvangen" });
+    }
+    const publicUrl = `/uploads/documents/${req.file.filename}`;
+    return res.json({
+      success: true,
+      attachment: {
+        id: `att-${Date.now()}`,
+        filename: req.file.originalname,
+        fileUrl: publicUrl,
+        fileSize: req.file.size,
+        uploadedAt: new Date().toISOString(),
+      },
+    });
+  });
+
 
   // 7. Proxy document to avoid iframe/CORS issues and directly deliver pure PDF
   app.get("/api/council/document-proxy", optionalAuth, async (req: any, res: any) => {
