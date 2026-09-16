@@ -6692,62 +6692,191 @@ async function startServer() {
     res.json(videos);
   });
 
-  app.post("/api/admin/videos", requireAuth, requireAdmin, upload.fields([{ name: 'video', maxCount: 1 }, { name: 'thumbnail', maxCount: 1 }]), (req: any, res: any) => {
-    const db = getDb();
-    const { title, category, date, fractieledenIds, wijkSlug, burgerraadslidTitle, description, hoofdstukNr, standpuntNr, standpuntTitel } = req.body;
-    let parsedIds: string[] = [];
-    if (fractieledenIds) {
+  app.post(
+    "/api/admin/videos",
+    requireAuth,
+    requireBoardOrAdmin,
+    (req: any, res: any, next: any) => {
+      upload.fields([{ name: 'video', maxCount: 1 }, { name: 'thumbnail', maxCount: 1 }])(req, res, (err: any) => {
+        if (err) {
+          console.error("[VIDEO UPLOAD MULTER ERROR]", err);
+          if (err.code === "LIMIT_FILE_SIZE") {
+            return res.status(413).json({
+              error: "Het geüploade bestand is te groot (limiet van 100 MB). Gebruik voor grotere video's een YouTube of Vimeo link."
+            });
+          }
+          return res.status(400).json({ error: `Uploadfout: ${err.message || 'Onbekende fout bij verwerken van bestand'}` });
+        }
+        next();
+      });
+    },
+    (req: any, res: any) => {
       try {
-        parsedIds = typeof fractieledenIds === 'string' ? JSON.parse(fractieledenIds) : fractieledenIds;
-      } catch {
-        parsedIds = Array.isArray(fractieledenIds) ? fractieledenIds : [fractieledenIds];
+        const db = getDb();
+        if (!db.videos) db.videos = [];
+        const { title, category, date, fractieledenIds, wijkSlug, burgerraadslidTitle, description, hoofdstukNr, standpuntNr, standpuntTitel } = req.body;
+        let parsedIds: string[] = [];
+        if (fractieledenIds) {
+          try {
+            parsedIds = typeof fractieledenIds === "string" ? JSON.parse(fractieledenIds) : fractieledenIds;
+          } catch {
+            parsedIds = Array.isArray(fractieledenIds) ? fractieledenIds : [fractieledenIds];
+          }
+        }
+        if (!Array.isArray(parsedIds)) {
+          parsedIds = [parsedIds].filter(Boolean);
+        }
+
+        // Controleer of de video aan een burgerraadslid is gekoppeld
+        const linkedMembers = (db.fractieleden || []).filter((f: any) => parsedIds.map(String).includes(String(f.id)));
+        const hasBurgerraadslid = linkedMembers.some((f: any) =>
+          f.type?.toLowerCase() === "burgerraadslid" || f.role?.toLowerCase().includes("burgerraadslid")
+        );
+
+        const effectiveTitle = (title || burgerraadslidTitle || "").trim();
+        if (hasBurgerraadslid && !effectiveTitle) {
+          return res.status(400).json({
+            error: "Een titel is verplicht wanneer de video aan een burgerraadslid is gekoppeld."
+          });
+        }
+
+        const videoFile = req.files?.video?.[0];
+        const thumbFile = req.files?.thumbnail?.[0];
+
+        const videoUrl = videoFile ? `/uploads/videos/${videoFile.filename}` : (req.body.videoUrl ? String(req.body.videoUrl).trim() : "");
+        let thumbnailUrl = thumbFile ? `/uploads/videos/${thumbFile.filename}` : (req.body.thumbnailUrl ? String(req.body.thumbnailUrl).trim() : null);
+
+        if (!videoUrl) {
+          return res.status(400).json({
+            error: "Een video URL (YouTube, Vimeo, directe MP4 link) of een geüpload videobestand is verplicht."
+          });
+        }
+
+        // Automatische YouTube thumbnail genereren als er geen thumbnail is meegegeven
+        if (!thumbnailUrl && videoUrl) {
+          const ytMatch = videoUrl.match(/(?:youtube\.com\/(?:[^/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
+          if (ytMatch && ytMatch[1]) {
+            thumbnailUrl = `https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg`;
+          }
+        }
+
+        const newVideo = {
+          id: Date.now().toString(),
+          title: effectiveTitle || "Videobijdrage",
+          burgerraadslidTitle: burgerraadslidTitle?.trim() || effectiveTitle || "",
+          description: description ? String(description).trim() : "",
+          category: category || "Algemeen",
+          date: date || new Date().toISOString().slice(0, 10),
+          videoUrl,
+          thumbnailUrl,
+          fractieledenIds: parsedIds,
+          wijkSlug: wijkSlug || null,
+          hoofdstukNr: (hoofdstukNr !== undefined && hoofdstukNr !== null && hoofdstukNr !== "") ? parseInt(hoofdstukNr, 10) : null,
+          standpuntNr: (standpuntNr !== undefined && standpuntNr !== null && standpuntNr !== "") ? parseInt(standpuntNr, 10) : null,
+          standpuntTitel: standpuntTitel ? String(standpuntTitel).trim() : null
+        };
+        db.videos.push(newVideo);
+        saveDb(db);
+        return res.status(201).json(newVideo);
+      } catch (err: any) {
+        console.error("[POST /api/admin/videos ERROR]", err);
+        return res.status(500).json({ error: "Fout bij opslaan van video: " + (err?.message || "Serverfout") });
       }
     }
+  );
 
-    // Controleer of de video aan een burgerraadslid is gekoppeld
-    const linkedMembers = (db.fractieleden || []).filter((f: any) => parsedIds.includes(f.id));
-    const hasBurgerraadslid = linkedMembers.some((f: any) =>
-      f.type?.toLowerCase() === "burgerraadslid" || f.role?.toLowerCase() === "burgerraadslid"
-    );
-
-    const effectiveTitle = (title || burgerraadslidTitle || "").trim();
-    if (hasBurgerraadslid && !effectiveTitle) {
-      return res.status(400).json({
-        error: "Een titel is verplicht wanneer de video aan een burgerraadslid is gekoppeld."
+  app.put(
+    "/api/admin/videos/:id",
+    requireAuth,
+    requireBoardOrAdmin,
+    (req: any, res: any, next: any) => {
+      upload.fields([{ name: "video", maxCount: 1 }, { name: "thumbnail", maxCount: 1 }])(req, res, (err: any) => {
+        if (err) {
+          console.error("[VIDEO UPDATE MULTER ERROR]", err);
+          if (err.code === "LIMIT_FILE_SIZE") {
+            return res.status(413).json({
+              error: "Het geüploade bestand is te groot (limiet van 100 MB). Gebruik voor grotere video\x27s een YouTube of Vimeo link."
+            });
+          }
+          return res.status(400).json({ error: `Uploadfout: ${err.message || "Onbekende fout bij verwerken van bestand"}` });
+        }
+        next();
       });
+    },
+    (req: any, res: any) => {
+      try {
+        const db = getDb();
+        if (!db.videos) db.videos = [];
+        const index = db.videos.findIndex((v: any) => String(v.id) === String(req.params.id));
+        if (index === -1) {
+          return res.status(404).json({ error: "Video niet gevonden" });
+        }
+
+        const existingVideo = db.videos[index];
+        const { title, category, date, fractieledenIds, wijkSlug, burgerraadslidTitle, description, hoofdstukNr, standpuntNr, standpuntTitel } = req.body;
+
+        let parsedIds: string[] = existingVideo.fractieledenIds || [];
+        if (fractieledenIds !== undefined) {
+          try {
+            parsedIds = typeof fractieledenIds === "string" ? JSON.parse(fractieledenIds) : fractieledenIds;
+          } catch {
+            parsedIds = Array.isArray(fractieledenIds) ? fractieledenIds : [fractieledenIds];
+          }
+        }
+        if (!Array.isArray(parsedIds)) {
+          parsedIds = [parsedIds].filter(Boolean);
+        }
+
+        const videoFile = req.files?.video?.[0];
+        const thumbFile = req.files?.thumbnail?.[0];
+
+        const videoUrl = videoFile ? `/uploads/videos/${videoFile.filename}` : (req.body.videoUrl !== undefined ? String(req.body.videoUrl).trim() : existingVideo.videoUrl);
+        let thumbnailUrl = thumbFile ? `/uploads/videos/${thumbFile.filename}` : (req.body.thumbnailUrl !== undefined ? String(req.body.thumbnailUrl).trim() : existingVideo.thumbnailUrl);
+
+        if (!thumbnailUrl && videoUrl) {
+          const ytMatch = videoUrl.match(/(?:youtube\.com\/(?:[^/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
+          if (ytMatch && ytMatch[1]) {
+            thumbnailUrl = `https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg`;
+          }
+        }
+
+        const updatedVideo = {
+          ...existingVideo,
+          title: title !== undefined ? String(title).trim() : existingVideo.title,
+          burgerraadslidTitle: burgerraadslidTitle !== undefined ? String(burgerraadslidTitle).trim() : existingVideo.burgerraadslidTitle,
+          description: description !== undefined ? String(description).trim() : existingVideo.description,
+          category: category !== undefined ? category : existingVideo.category,
+          date: date !== undefined ? date : existingVideo.date,
+          videoUrl,
+          thumbnailUrl,
+          fractieledenIds: parsedIds,
+          wijkSlug: wijkSlug !== undefined ? (wijkSlug || null) : existingVideo.wijkSlug,
+          hoofdstukNr: (hoofdstukNr !== undefined && hoofdstukNr !== null && hoofdstukNr !== "") ? parseInt(hoofdstukNr, 10) : (hoofdstukNr === "" ? null : existingVideo.hoofdstukNr),
+          standpuntNr: (standpuntNr !== undefined && standpuntNr !== null && standpuntNr !== "") ? parseInt(standpuntNr, 10) : (standpuntNr === "" ? null : existingVideo.standpuntNr),
+          standpuntTitel: standpuntTitel !== undefined ? (standpuntTitel ? String(standpuntTitel).trim() : null) : existingVideo.standpuntTitel
+        };
+
+        db.videos[index] = updatedVideo;
+        saveDb(db);
+        return res.json(updatedVideo);
+      } catch (err: any) {
+        console.error("[PUT /api/admin/videos ERROR]", err);
+        return res.status(500).json({ error: "Fout bij bijwerken van video: " + (err?.message || "Serverfout") });
+      }
     }
+  );
 
-    const videoFile = req.files?.video?.[0];
-    const thumbFile = req.files?.thumbnail?.[0];
-
-    const videoUrl = videoFile ? `/uploads/videos/${videoFile.filename}` : req.body.videoUrl;
-    const thumbnailUrl = thumbFile ? `/uploads/videos/${thumbFile.filename}` : (req.body.thumbnailUrl || null);
-
-    const newVideo = {
-      id: Date.now().toString(),
-      title: effectiveTitle || "Videobijdrage",
-      burgerraadslidTitle: burgerraadslidTitle?.trim() || effectiveTitle || "",
-      description: description ? String(description).trim() : "",
-      category: category || "Algemeen",
-      date: date || new Date().toISOString().slice(0, 10),
-      videoUrl,
-      thumbnailUrl,
-      fractieledenIds: parsedIds,
-      wijkSlug: wijkSlug || null,
-      hoofdstukNr: hoofdstukNr ? parseInt(hoofdstukNr, 10) : null,
-      standpuntNr: standpuntNr ? parseInt(standpuntNr, 10) : null,
-      standpuntTitel: standpuntTitel ? String(standpuntTitel).trim() : null
-    };
-    db.videos.push(newVideo);
-    saveDb(db);
-    res.status(201).json(newVideo);
-  });
-
-  app.delete("/api/admin/videos/:id", requireAuth, requireAdmin, (req: any, res: any) => {
-    const db = getDb();
-    db.videos = db.videos.filter((v: any) => v.id !== req.params.id);
-    saveDb(db);
-    res.json({ message: "Verwijderd" });
+  app.delete("/api/admin/videos/:id", requireAuth, requireBoardOrAdmin, (req: any, res: any) => {
+    try {
+      const db = getDb();
+      if (!db.videos) db.videos = [];
+      db.videos = db.videos.filter((v: any) => String(v.id) !== String(req.params.id));
+      saveDb(db);
+      res.json({ message: "Verwijderd" });
+    } catch (err: any) {
+      console.error("[DELETE /api/admin/videos ERROR]", err);
+      res.status(500).json({ error: "Fout bij verwijderen: " + (err?.message || "Serverfout") });
+    }
   });
 
   // News Routes

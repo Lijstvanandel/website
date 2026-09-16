@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { fetchWithAuth } from "@/lib/api";
+import { safeLocalStorage, safeSessionStorage } from "@/lib/safeStorage";
 import { Navigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -256,12 +257,12 @@ export default function AdminDashboard() {
   const [newFLinkedin, setNewFLinkedin] = useState("");
   const [newFFile, setNewFFile] = useState<File | null>(null);
 
-  // -- State for new Video --
+  // -- State for new / edit Video --
   const [newVTitle, setNewVTitle] = useState("");
   const [newVBurgerTitle, setNewVBurgerTitle] = useState("");
   const [newVDescription, setNewVDescription] = useState("");
   const [newVCategory, setNewVCategory] = useState("");
-  const [newVDate, setNewVDate] = useState("");
+  const [newVDate, setNewVDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [newVUrl, setNewVUrl] = useState("");
   const [newVFile, setNewVFile] = useState<File | null>(null);
   const [newVThumbnail, setNewVThumbnail] = useState<File | null>(null);
@@ -269,6 +270,8 @@ export default function AdminDashboard() {
   const [newVWijk, setNewVWijk] = useState("");
   const [newVHoofdstuk, setNewVHoofdstuk] = useState<number | "">("");
   const [newVStandpunt, setNewVStandpunt] = useState<number | "">("");
+  const [editingVideoId, setEditingVideoId] = useState<string | null>(null);
+  const [isSubmittingVideo, setIsSubmittingVideo] = useState(false);
 
   // -- State for new News --
   const [nTitle, setNTitle] = useState("");
@@ -314,7 +317,12 @@ export default function AdminDashboard() {
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
   const [showFullAnalyticsLog, setShowFullAnalyticsLog] = useState(false);
 
-  const effectiveToken = token || (typeof window !== "undefined" ? localStorage.getItem("auth_token") : "") || "";
+  const effectiveToken =
+    token ||
+    (typeof window !== "undefined"
+      ? safeLocalStorage.getItem("auth_token") || safeSessionStorage.getItem("auth_token")
+      : "") ||
+    "";
   const headers = useMemo(() => ({ Authorization: `Bearer ${effectiveToken}` }), [effectiveToken]);
 
   // Membership & Stripe settings state
@@ -817,8 +825,55 @@ export default function AdminDashboard() {
     );
   };
 
+  const startEditVideo = (item: VideoItem) => {
+    setEditingVideoId(item.id);
+    setNewVTitle(item.title || "");
+    setNewVBurgerTitle(item.burgerraadslidTitle || "");
+    setNewVDescription(item.description || "");
+    setNewVCategory(item.category || "Algemeen");
+    setNewVDate(item.date || new Date().toISOString().slice(0, 10));
+    setNewVUrl(item.videoUrl && !item.videoUrl.startsWith("/uploads/") ? item.videoUrl : "");
+    setNewVWijk(item.wijkSlug || "");
+    setSelectedFleden(item.fractieledenIds ? item.fractieledenIds.map(String) : []);
+    setNewVHoofdstuk(item.hoofdstukNr !== undefined && item.hoofdstukNr !== null ? item.hoofdstukNr : "");
+    setNewVStandpunt(item.standpuntNr !== undefined && item.standpuntNr !== null ? item.standpuntNr : "");
+    setNewVFile(null);
+    setNewVThumbnail(null);
+  };
+
+  const cancelEditVideo = () => {
+    setEditingVideoId(null);
+    setNewVTitle("");
+    setNewVBurgerTitle("");
+    setNewVDescription("");
+    setNewVCategory("");
+    setNewVDate(new Date().toISOString().slice(0, 10));
+    setNewVUrl("");
+    setNewVFile(null);
+    setNewVThumbnail(null);
+    setSelectedFleden([]);
+    setNewVWijk("");
+    setNewVHoofdstuk("");
+    setNewVStandpunt("");
+  };
+
   const submitVideo = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Client-side file size check (max 100MB)
+    if (newVFile && newVFile.size > 100 * 1024 * 1024) {
+      toast.error(
+        "Het gekozen videobestand is te groot (" +
+          (newVFile.size / (1024 * 1024)).toFixed(1) +
+          " MB). De maximale bestandsgrootte is 100 MB. Gebruik voor langere video's een YouTube of Vimeo link."
+      );
+      return;
+    }
+
+    if (!editingVideoId && !newVUrl && !newVFile) {
+      toast.error("Voer een video URL in (YouTube/Vimeo) of selecteer een videobestand om te uploaden.");
+      return;
+    }
 
     const selectedBurgerraadsleden = fractieleden.filter(
       (f) =>
@@ -837,8 +892,8 @@ export default function AdminDashboard() {
     formData.append("title", effectiveTitle || newVTitle);
     if (newVBurgerTitle) formData.append("burgerraadslidTitle", newVBurgerTitle);
     if (newVDescription) formData.append("description", newVDescription);
-    formData.append("category", newVCategory);
-    formData.append("date", newVDate);
+    formData.append("category", newVCategory || "Algemeen");
+    formData.append("date", newVDate || new Date().toISOString().slice(0, 10));
     formData.append("wijkSlug", newVWijk);
     formData.append("fractieledenIds", JSON.stringify(selectedFleden));
     if (newVUrl) formData.append("videoUrl", newVUrl);
@@ -858,33 +913,37 @@ export default function AdminDashboard() {
       }
     }
 
+    setIsSubmittingVideo(true);
     try {
-      const res = await fetch("/api/admin/videos", {
-        method: "POST",
+      const endpoint = editingVideoId ? `/api/admin/videos/${editingVideoId}` : "/api/admin/videos";
+      const method = editingVideoId ? "PUT" : "POST";
+      const res = await fetch(endpoint, {
+        method,
         headers,
         body: formData,
       });
+
       if (res.ok) {
-        toast.success("Video toegevoegd!");
+        toast.success(editingVideoId ? "Video succesvol bijgewerkt!" : "Video succesvol opgeslagen!");
         fetchVideos();
-        setNewVFile(null);
-        setNewVThumbnail(null);
-        setNewVUrl("");
-        setNewVTitle("");
-        setNewVBurgerTitle("");
-        setNewVDescription("");
-        setNewVCategory("");
-        setNewVDate("");
-        setSelectedFleden([]);
-        setNewVWijk("");
-        setNewVHoofdstuk("");
-        setNewVStandpunt("");
+        cancelEditVideo();
       } else {
+        if (res.status === 413) {
+          toast.error("Het videobestand is te groot voor de server (max 100 MB). Gebruik een YouTube of Vimeo link.");
+          return;
+        }
+        if (res.status === 401 || res.status === 403) {
+          toast.error("U bent niet gemachtigd of uw sessie is verlopen. Log opnieuw in als beheerder.");
+          return;
+        }
         const errData = await res.json().catch(() => ({}));
-        toast.error(errData.error || "Fout bij opslaan");
+        toast.error(errData.error || errData.message || `Fout bij opslaan (HTTP ${res.status})`);
       }
-    } catch (error) {
-      toast.error("Fout bij opslaan");
+    } catch (error: any) {
+      console.error("[SUBMIT VIDEO ERROR]", error);
+      toast.error("Netwerkfout bij opslaan van video: " + (error?.message || "Controleer uw verbinding"));
+    } finally {
+      setIsSubmittingVideo(false);
     }
   };
 
@@ -1974,7 +2033,29 @@ export default function AdminDashboard() {
         <TabsContent value="videos">
           <div className="grid md:grid-cols-2 gap-8">
             <div className="bg-card rounded-lg border border-border p-6">
-              <h2 className="text-2xl font-display mb-6">Nieuwe Video Uploaden</h2>
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-2xl font-display">
+                    {editingVideoId ? "Video Bewerken" : "Nieuwe Video Toevoegen"}
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {editingVideoId
+                      ? "Pas de instellingen, koppelingen of bron van deze video aan."
+                      : "Upload een videobestand (tot 100 MB) of vul een YouTube / Vimeo link in."}
+                  </p>
+                </div>
+                {editingVideoId && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={cancelEditVideo}
+                    className="text-xs"
+                  >
+                    Annuleren
+                  </Button>
+                )}
+              </div>
               <form onSubmit={submitVideo} className="space-y-4">
                 <div>
                   <label className="text-sm font-medium mb-1 block">Titel</label>
@@ -2237,9 +2318,35 @@ export default function AdminDashboard() {
                   );
                 })()}
 
-                <Button type="submit" className="w-full mt-4">
-                  <Upload className="w-4 h-4 mr-2" /> Opslaan
-                </Button>
+                <div className="flex items-center gap-2 mt-4">
+                  {editingVideoId && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={cancelEditVideo}
+                      className="w-1/3"
+                      disabled={isSubmittingVideo}
+                    >
+                      Annuleren
+                    </Button>
+                  )}
+                  <Button
+                    type="submit"
+                    className={editingVideoId ? "w-2/3" : "w-full"}
+                    disabled={isSubmittingVideo}
+                  >
+                    {isSubmittingVideo ? (
+                      <span className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 animate-spin" /> Bezig met opslaan...
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <Upload className="w-4 h-4" />
+                        {editingVideoId ? "Wijzigingen Opslaan" : "Video Opslaan"}
+                      </span>
+                    )}
+                  </Button>
+                </div>
               </form>
             </div>
 
@@ -2331,13 +2438,26 @@ export default function AdminDashboard() {
                           </div>
                         )}
                       </div>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => deleteVideo(v.id)}
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
+                      <div className="flex sm:flex-col gap-1.5 shrink-0">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => startEditVideo(v)}
+                          title="Video bewerken"
+                          className="h-8 w-8 p-0"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => deleteVideo(v.id)}
+                          title="Video verwijderen"
+                          className="h-8 w-8 p-0"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
                     </div>
                   );
                 })}
