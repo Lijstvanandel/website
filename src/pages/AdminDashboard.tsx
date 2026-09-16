@@ -272,6 +272,12 @@ export default function AdminDashboard() {
   const [newVStandpunt, setNewVStandpunt] = useState<number | "">("");
   const [editingVideoId, setEditingVideoId] = useState<string | null>(null);
   const [isSubmittingVideo, setIsSubmittingVideo] = useState(false);
+  const [videoUploadProgress, setVideoUploadProgress] = useState<{
+    percent: number;
+    loadedMb: string;
+    totalMb: string;
+    speedMb: string;
+  } | null>(null);
 
   // -- State for new News --
   const [nTitle, setNTitle] = useState("");
@@ -855,6 +861,111 @@ export default function AdminDashboard() {
     setNewVWijk("");
     setNewVHoofdstuk("");
     setNewVStandpunt("");
+    setVideoUploadProgress(null);
+  };
+
+  const uploadVideoInChunks = async (
+    file: File,
+    onProgress: (percent: number, loadedMb: string, totalMb: string, speedMb: string) => void
+  ): Promise<string> => {
+    // 8MB chunks are well below Cloud Run's 32MB HTTP/1 request payload limit
+    const CHUNK_SIZE = 8 * 1024 * 1024;
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    const uploadId = `video_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const startTime = Date.now();
+
+    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+      const startByte = chunkIndex * CHUNK_SIZE;
+      const endByte = Math.min(file.size, startByte + CHUNK_SIZE);
+      const chunkBlob = file.slice(startByte, endByte);
+
+      let attempts = 0;
+      let success = false;
+      let lastErr: any = null;
+
+      while (attempts < 3 && !success) {
+        attempts++;
+        try {
+          const chunkFormData = new FormData();
+          chunkFormData.append("uploadId", uploadId);
+          chunkFormData.append("chunkIndex", String(chunkIndex));
+          chunkFormData.append("totalChunks", String(totalChunks));
+          chunkFormData.append("fileName", file.name);
+          chunkFormData.append("chunk", chunkBlob, file.name);
+
+          const chunkRes = await new Promise<{ success: boolean; isComplete?: boolean; videoUrl?: string }>((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.upload.onprogress = (evt) => {
+              if (evt.lengthComputable) {
+                const currentLoaded = Math.min(file.size, startByte + evt.loaded);
+                const elapsedSec = (Date.now() - startTime) / 1000;
+                const speed = elapsedSec > 0.2 ? currentLoaded / (1024 * 1024) / elapsedSec : 0;
+                const pct = Math.min(99, Math.round((currentLoaded / file.size) * 100));
+                onProgress(
+                  pct,
+                  (currentLoaded / (1024 * 1024)).toFixed(1),
+                  (file.size / (1024 * 1024)).toFixed(1),
+                  speed.toFixed(1)
+                );
+              }
+            };
+
+            xhr.onload = () => {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                  const data = JSON.parse(xhr.responseText);
+                  resolve(data);
+                } catch {
+                  resolve({ success: true });
+                }
+              } else {
+                let msg = `Upload mislukt (HTTP ${xhr.status})`;
+                try {
+                  const data = JSON.parse(xhr.responseText);
+                  if (data.error) msg = data.error;
+                } catch (_parseErr) {
+                  // ignore JSON parse error and use default message
+                }
+                reject(new Error(msg));
+              }
+            };
+
+            xhr.onerror = () => reject(new Error("Netwerkfout tijdens uploaden van videodeel."));
+            xhr.ontimeout = () => reject(new Error("Time-out tijdens uploaden van videodeel."));
+            xhr.timeout = 300000; // 5 minuten per 8MB chunk
+
+            xhr.open("POST", "/api/admin/videos/chunk-upload");
+            if (effectiveToken) {
+              xhr.setRequestHeader("Authorization", `Bearer ${effectiveToken}`);
+            }
+            xhr.setRequestHeader("X-Upload-Id", uploadId);
+            xhr.setRequestHeader("X-Chunk-Index", String(chunkIndex));
+            xhr.setRequestHeader("X-Total-Chunks", String(totalChunks));
+            xhr.setRequestHeader("X-File-Name", encodeURIComponent(file.name));
+            xhr.send(chunkFormData);
+          });
+
+          if (chunkIndex === totalChunks - 1 && chunkRes.videoUrl) {
+            onProgress(100, (file.size / (1024 * 1024)).toFixed(1), (file.size / (1024 * 1024)).toFixed(1), "0");
+            return chunkRes.videoUrl;
+          }
+
+          success = true;
+        } catch (err: any) {
+          lastErr = err;
+          console.warn(`[CHUNK RETRY ${attempts}/3] chunk ${chunkIndex + 1}/${totalChunks}:`, err);
+          if (attempts < 3) {
+            await new Promise((r) => setTimeout(r, 1000 * attempts));
+          }
+        }
+      }
+
+      if (!success) {
+        throw new Error(lastErr?.message || `Fout bij uploaden van videodeel ${chunkIndex + 1}/${totalChunks}`);
+      }
+    }
+
+    throw new Error("Geen video URL ontvangen na afronden van upload");
   };
 
   const submitVideo = async (e: React.FormEvent) => {
@@ -888,33 +999,50 @@ export default function AdminDashboard() {
       return;
     }
 
-    const formData = new FormData();
-    formData.append("title", effectiveTitle || newVTitle);
-    if (newVBurgerTitle) formData.append("burgerraadslidTitle", newVBurgerTitle);
-    if (newVDescription) formData.append("description", newVDescription);
-    formData.append("category", newVCategory || "Algemeen");
-    formData.append("date", newVDate || new Date().toISOString().slice(0, 10));
-    formData.append("wijkSlug", newVWijk);
-    formData.append("fractieledenIds", JSON.stringify(selectedFleden));
-    if (newVUrl) formData.append("videoUrl", newVUrl);
-    if (newVFile) formData.append("video", newVFile);
-    if (newVThumbnail) formData.append("thumbnail", newVThumbnail);
-
-    // Optionele koppeling met hoofdstuk & standpunt
-    if (newVHoofdstuk !== "") {
-      formData.append("hoofdstukNr", String(newVHoofdstuk));
-    }
-    if (newVStandpunt !== "") {
-      formData.append("standpuntNr", String(newVStandpunt));
-      const selH = hoofdstukken.find((h) => h.nr === Number(newVHoofdstuk));
-      const selS = selH?.standpunten.find((s) => s.nr === Number(newVStandpunt));
-      if (selS?.titel) {
-        formData.append("standpuntTitel", selS.titel);
-      }
-    }
-
     setIsSubmittingVideo(true);
+    setVideoUploadProgress(null);
+
     try {
+      let finalVideoUrl = newVUrl;
+
+      // Als de gebruiker een lokaal videobestand heeft gekozen, upload dit via 8MB chunks.
+      // Hierdoor wordt Google Cloud Run's 32MB HTTP/1 limiet omzeild en werken uploads tot 600MB vlekkeloos!
+      if (newVFile) {
+        setVideoUploadProgress({
+          percent: 0,
+          loadedMb: "0.0",
+          totalMb: (newVFile.size / (1024 * 1024)).toFixed(1),
+          speedMb: "0.0",
+        });
+        finalVideoUrl = await uploadVideoInChunks(newVFile, (percent, loadedMb, totalMb, speedMb) => {
+          setVideoUploadProgress({ percent, loadedMb, totalMb, speedMb });
+        });
+      }
+
+      const formData = new FormData();
+      formData.append("title", effectiveTitle || newVTitle);
+      if (newVBurgerTitle) formData.append("burgerraadslidTitle", newVBurgerTitle);
+      if (newVDescription) formData.append("description", newVDescription);
+      formData.append("category", newVCategory || "Algemeen");
+      formData.append("date", newVDate || new Date().toISOString().slice(0, 10));
+      formData.append("wijkSlug", newVWijk);
+      formData.append("fractieledenIds", JSON.stringify(selectedFleden));
+      if (finalVideoUrl) formData.append("videoUrl", finalVideoUrl);
+      if (newVThumbnail) formData.append("thumbnail", newVThumbnail);
+
+      // Optionele koppeling met hoofdstuk & standpunt
+      if (newVHoofdstuk !== "") {
+        formData.append("hoofdstukNr", String(newVHoofdstuk));
+      }
+      if (newVStandpunt !== "") {
+        formData.append("standpuntNr", String(newVStandpunt));
+        const selH = hoofdstukken.find((h) => h.nr === Number(newVHoofdstuk));
+        const selS = selH?.standpunten.find((s) => s.nr === Number(newVStandpunt));
+        if (selS?.titel) {
+          formData.append("standpuntTitel", selS.titel);
+        }
+      }
+
       const endpoint = editingVideoId ? `/api/admin/videos/${editingVideoId}` : "/api/admin/videos";
       const method = editingVideoId ? "PUT" : "POST";
       const res = await fetch(endpoint, {
@@ -941,9 +1069,10 @@ export default function AdminDashboard() {
       }
     } catch (error: any) {
       console.error("[SUBMIT VIDEO ERROR]", error);
-      toast.error("Netwerkfout bij opslaan van video: " + (error?.message || "Controleer uw verbinding"));
+      toast.error(error?.message || "Netwerkfout bij opslaan van video");
     } finally {
       setIsSubmittingVideo(false);
+      setVideoUploadProgress(null);
     }
   };
 
@@ -2123,8 +2252,37 @@ export default function AdminDashboard() {
                   <Input
                     type="file"
                     accept="video/*"
+                    disabled={isSubmittingVideo}
                     onChange={(e) => setNewVFile(e.target.files?.[0] || null)}
                   />
+                  {newVFile && (
+                    <div className="mt-2 text-xs space-y-1">
+                      <div className="flex items-center justify-between text-muted-foreground">
+                        <span className="truncate max-w-[260px] font-medium text-foreground">{newVFile.name}</span>
+                        <span>{(newVFile.size / (1024 * 1024)).toFixed(1)} MB (tot 600 MB)</span>
+                      </div>
+                      {videoUploadProgress && (
+                        <div className="p-2.5 rounded-lg border border-accent/30 bg-accent/5 space-y-1.5 animate-in fade-in-50">
+                          <div className="flex items-center justify-between font-semibold text-[11px] text-accent">
+                            <span>Uploaden in veilige delen ({videoUploadProgress.percent}%)</span>
+                            <span>
+                              {videoUploadProgress.loadedMb} / {videoUploadProgress.totalMb} MB
+                              {Number(videoUploadProgress.speedMb) > 0 ? ` • ${videoUploadProgress.speedMb} MB/s` : ""}
+                            </span>
+                          </div>
+                          <div className="w-full h-2 bg-accent/20 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-accent rounded-full transition-all duration-200 ease-out"
+                              style={{ width: `${Math.max(2, videoUploadProgress.percent)}%` }}
+                            />
+                          </div>
+                          <p className="text-[10px] text-muted-foreground">
+                            Upload wordt automatisch in 8 MB chunks verzonden om proxy-limieten te omzeilen.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="text-sm font-medium mb-1 block">
@@ -2337,7 +2495,10 @@ export default function AdminDashboard() {
                   >
                     {isSubmittingVideo ? (
                       <span className="flex items-center gap-2">
-                        <Clock className="w-4 h-4 animate-spin" /> Bezig met opslaan...
+                        <Clock className="w-4 h-4 animate-spin" />
+                        {videoUploadProgress
+                          ? `Uploaden... ${videoUploadProgress.percent}%`
+                          : "Bezig met opslaan..."}
                       </span>
                     ) : (
                       <span className="flex items-center gap-2">

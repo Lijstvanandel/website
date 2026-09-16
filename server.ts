@@ -6692,6 +6692,122 @@ async function startServer() {
     res.json(videos);
   });
 
+  // Chunked upload for large video files (supports up to 600 MB reliably across Cloud Run / proxies)
+  app.post(
+    "/api/admin/videos/chunk-upload",
+    requireAuth,
+    requireBoardOrAdmin,
+    (req: any, res: any, next: any) => {
+      uploadChunkMulter.single("chunk")(req, res, (err: any) => {
+        if (err) {
+          console.error("[VIDEO CHUNK MULTER ERROR]:", err);
+          return res.status(400).json({ error: "Fout bij uploaden videodeel: " + (err.message || String(err)) });
+        }
+        next();
+      });
+    },
+    async (req: any, res: any) => {
+      try {
+        const uploadId = req.body.uploadId || (req.headers["x-upload-id"] as string);
+        const chunkIndex = parseInt(req.body.chunkIndex || (req.headers["x-chunk-index"] as string) || "0", 10);
+        const totalChunks = parseInt(req.body.totalChunks || (req.headers["x-total-chunks"] as string) || "1", 10);
+        const rawFileName = req.body.fileName || (req.headers["x-file-name"] as string) || "video.mp4";
+
+        if (!uploadId) {
+          return res.status(400).json({ error: "uploadId is verplicht" });
+        }
+
+        const cleanId = String(uploadId).replace(/[^a-zA-Z0-9_-]/g, "_");
+        const tempDir = path.join(process.cwd(), "data/temp_chunks", cleanId);
+
+        if (!fs.existsSync(tempDir)) {
+          return res.status(400).json({ error: "Chunk directory niet gevonden" });
+        }
+
+        // Check how many chunks are present
+        const chunkFiles = fs.readdirSync(tempDir).filter((f) => f.startsWith("chunk_") && f.endsWith(".part"));
+
+        if (chunkFiles.length < totalChunks) {
+          return res.json({
+            success: true,
+            isComplete: false,
+            receivedChunks: chunkFiles.length,
+            totalChunks,
+            chunkIndex,
+          });
+        }
+
+        // Verify all parts from 0 to totalChunks - 1 are present
+        for (let i = 0; i < totalChunks; i++) {
+          const expectedFile = path.join(tempDir, `chunk_${String(i).padStart(6, "0")}.part`);
+          if (!fs.existsSync(expectedFile)) {
+            return res.json({
+              success: true,
+              isComplete: false,
+              receivedChunks: chunkFiles.length,
+              totalChunks,
+              chunkIndex,
+            });
+          }
+        }
+
+        // All chunks are present! Merge them into the videos upload directory
+        const videosDir = path.join(process.cwd(), "public/uploads/videos");
+        if (!fs.existsSync(videosDir)) {
+          fs.mkdirSync(videosDir, { recursive: true, mode: 0o755 });
+        }
+
+        let cleanExt = path.extname(rawFileName) || ".mp4";
+        try {
+          cleanExt = path.extname(decodeURIComponent(rawFileName)) || cleanExt;
+        } catch (_decodeErr) {
+          // ignore decode error and keep fallback cleanExt
+        }
+        if (!cleanExt.startsWith(".")) cleanExt = `.${cleanExt}`;
+
+        const uniqueFilename = `video-${Date.now()}-${Math.round(Math.random() * 1e6)}${cleanExt}`;
+        const finalFilePath = path.join(videosDir, uniqueFilename);
+        const writeStream = fs.createWriteStream(finalFilePath);
+
+        for (let i = 0; i < totalChunks; i++) {
+          const partPath = path.join(tempDir, `chunk_${String(i).padStart(6, "0")}.part`);
+          await new Promise<void>((resolve, reject) => {
+            const readStream = fs.createReadStream(partPath);
+            readStream.pipe(writeStream, { end: false });
+            readStream.on("end", resolve);
+            readStream.on("error", reject);
+          });
+        }
+        await new Promise<void>((resolve, reject) => {
+          writeStream.end();
+          writeStream.on("finish", resolve);
+          writeStream.on("error", reject);
+        });
+
+        // Mirror to dist and enforce permissions
+        syncFileAcrossUploadDirs(`public/uploads/videos/${uniqueFilename}`);
+
+        // Cleanup temp directory
+        try {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        } catch (_cleanupErr) {
+          // ignore cleanup error
+        }
+
+        const videoUrl = `/uploads/videos/${uniqueFilename}`;
+        return res.json({
+          success: true,
+          isComplete: true,
+          videoUrl,
+          filename: uniqueFilename,
+        });
+      } catch (error: any) {
+        console.error("[VIDEO CHUNK MERGE ERROR]:", error);
+        return res.status(500).json({ error: "Fout bij samenvoegen van videobestand: " + (error?.message || String(error)) });
+      }
+    }
+  );
+
   app.post(
     "/api/admin/videos",
     requireAuth,
