@@ -61,6 +61,8 @@ import {
   Save,
   Sparkles,
   Loader2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VideoPlayer } from "@/components/VideoPlayer";
@@ -288,6 +290,7 @@ export default function AdminDashboard() {
   const [nContent, setNContent] = useState("");
   const [nThumb, setNThumb] = useState<File | null>(null);
   const [nHeader, setNHeader] = useState<File | null>(null);
+  const [nIsHidden, setNIsHidden] = useState(false);
   const [editingNewsId, setEditingNewsId] = useState<string | null>(null);
 
   // -- State for Event --
@@ -1092,6 +1095,7 @@ export default function AdminDashboard() {
     setNAuthorId(item.authorId || "");
     setNDesc(item.description || item.excerpt || "");
     setNContent(item.content || "");
+    setNIsHidden(Boolean(item.isHidden));
     setNThumb(null);
     setNHeader(null);
     toast.info(`Bericht '${item.title}' geladen in editor`);
@@ -1105,6 +1109,7 @@ export default function AdminDashboard() {
     setNAuthorId("");
     setNDesc("");
     setNContent("");
+    setNIsHidden(false);
     setNThumb(null);
     setNHeader(null);
   };
@@ -1134,6 +1139,7 @@ export default function AdminDashboard() {
     formData.append("authorAvatar", selectedAuthor ? (selectedAuthor.imageUrl || selectedAuthor.imgUrl || "") : "");
     formData.append("description", nDesc);
     formData.append("content", nContent);
+    formData.append("isHidden", String(nIsHidden));
     if (nThumb) formData.append("thumbnail", nThumb);
     if (nHeader) formData.append("header", nHeader);
 
@@ -1154,7 +1160,13 @@ export default function AdminDashboard() {
       }
 
       if (res.ok) {
-        toast.success(editingNewsId ? "Nieuwsbericht succesvol bijgewerkt!" : "Nieuwsbericht gepubliceerd!");
+        toast.success(
+          editingNewsId
+            ? "Nieuwsbericht succesvol bijgewerkt!"
+            : nIsHidden
+            ? "Nieuwsbericht opgeslagen als onzichtbaar concept!"
+            : "Nieuwsbericht gepubliceerd!"
+        );
         fetchNews();
         cancelEditNews();
       } else {
@@ -1162,6 +1174,29 @@ export default function AdminDashboard() {
       }
     } catch (error) {
       toast.error("Fout bij opslaan");
+    }
+  };
+
+  const toggleNewsVisibility = async (id: string, currentIsHidden?: boolean) => {
+    try {
+      const targetIsHidden = !currentIsHidden;
+      const res = await fetchWithAuth(`/api/admin/news/${id}/toggle-visibility`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isHidden: targetIsHidden }),
+      });
+      if (res.ok) {
+        toast.success(
+          targetIsHidden
+            ? "Nieuwsbericht op 'onzichtbaar' gezet (verborgen op /nieuws)"
+            : "Nieuwsbericht op 'zichtbaar' gezet (openbaar op /nieuws)"
+        );
+        fetchNews();
+      } else {
+        toast.error("Kon zichtbaarheid niet wijzigen");
+      }
+    } catch (_err) {
+      toast.error("Fout bij wijzigen van zichtbaarheid");
     }
   };
 
@@ -2853,6 +2888,54 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
+                {/* Zichtbaarheid op website (Zichtbaar / Onzichtbaar) */}
+                <div className="p-3.5 rounded-xl border border-border/80 bg-muted/30 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium flex items-center gap-2">
+                      {nIsHidden ? (
+                        <EyeOff className="w-4 h-4 text-amber-500" />
+                      ) : (
+                        <Eye className="w-4 h-4 text-emerald-500" />
+                      )}
+                      Zichtbaarheid van nieuwsbericht
+                    </label>
+                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                      nIsHidden ? "bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30" : "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
+                    }`}>
+                      {nIsHidden ? "Onzichtbaar (Verborgen)" : "Zichtbaar (Gepubliceerd)"}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Zet op 'onzichtbaar' als u het bericht wilt opslaan als concept of wilt verbergen op /nieuws.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setNIsHidden(false)}
+                      className={`flex items-center justify-center gap-2 p-2.5 rounded-lg border text-xs font-semibold transition-all ${
+                        !nIsHidden
+                          ? "border-emerald-500 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500"
+                          : "border-border/60 bg-background text-muted-foreground hover:bg-muted"
+                      }`}
+                    >
+                      <Eye className="w-3.5 h-3.5 text-emerald-500" />
+                      Zichtbaar op /nieuws
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNIsHidden(true)}
+                      className={`flex items-center justify-center gap-2 p-2.5 rounded-lg border text-xs font-semibold transition-all ${
+                        nIsHidden
+                          ? "border-amber-500 bg-amber-500/15 text-amber-700 dark:text-amber-300 ring-1 ring-amber-500"
+                          : "border-border/60 bg-background text-muted-foreground hover:bg-muted"
+                      }`}
+                    >
+                      <EyeOff className="w-3.5 h-3.5 text-amber-500" />
+                      Onzichtbaar (Verborgen)
+                    </button>
+                  </div>
+                </div>
+
                 <div className="flex items-center gap-3 mt-4">
                   <Button
                     type="submit"
@@ -2861,6 +2944,10 @@ export default function AdminDashboard() {
                     {editingNewsId ? (
                       <>
                         <Check className="w-4 h-4 mr-2" /> Wijzigingen Opslaan
+                      </>
+                    ) : nIsHidden ? (
+                      <>
+                        <EyeOff className="w-4 h-4 mr-2" /> Opslaan als Onzichtbaar Concept
                       </>
                     ) : (
                       <>
@@ -2909,6 +2996,15 @@ export default function AdminDashboard() {
                         {n.title}
                       </div>
                       <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                        {n.isHidden ? (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 flex items-center gap-1 border border-amber-500/30">
+                            <EyeOff className="w-2.5 h-2.5" /> Onzichtbaar
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 flex items-center gap-1 border border-emerald-500/30">
+                            <Eye className="w-2.5 h-2.5" /> Zichtbaar
+                          </span>
+                        )}
                         <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-accent/15 text-accent font-semibold">
                           {n.category || "Algemeen"}
                         </span>
@@ -2933,6 +3029,20 @@ export default function AdminDashboard() {
                       )}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => toggleNewsVisibility(n.id, n.isHidden)}
+                        className={`h-8 w-8 p-0 transition-colors ${
+                          n.isHidden
+                            ? "text-amber-600 border-amber-500/40 hover:bg-amber-500/10 dark:text-amber-400"
+                            : "text-emerald-600 border-emerald-500/40 hover:bg-emerald-500/10 dark:text-emerald-400"
+                        }`}
+                        title={n.isHidden ? "Maak openbaar zichtbaar op /nieuws" : "Zet op 'onzichtbaar' (verberg op /nieuws)"}
+                      >
+                        {n.isHidden ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </Button>
                       <a
                         href={`/nieuws/${n.id}`}
                         target="_blank"

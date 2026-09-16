@@ -6999,7 +6999,12 @@ async function startServer() {
   app.get("/api/news", (req, res) => {
     const db = getDb();
     let newsList = db.news || [];
-    const { wijkSlug, category, includeAll } = req.query;
+    const { wijkSlug, category, includeAll, includeHidden } = req.query;
+
+    // By default, hide onzichtbaar/hidden news unless requested with includeHidden=true or includeAll=true
+    if (includeHidden !== "true" && includeAll !== "true") {
+      newsList = newsList.filter((n: any) => !n.isHidden && n.isHidden !== "true");
+    }
 
     if (wijkSlug) {
       const ws = String(wijkSlug).toLowerCase().trim();
@@ -7026,12 +7031,15 @@ async function startServer() {
     const db = getDb();
     const article = db.news.find((n: any) => n.id === req.params.id);
     if (!article) return res.status(404).json({ error: "Nieuws niet gevonden" });
+    if ((article.isHidden || article.isHidden === "true") && req.query.includeHidden !== "true") {
+      return res.status(404).json({ error: "Nieuwsbericht is onzichtbaar of niet gevonden" });
+    }
     res.json(article);
   });
 
   app.post("/api/admin/news", requireAuth, requireAdmin, upload.fields([{ name: 'thumbnail', maxCount: 1 }, { name: 'header', maxCount: 1 }]), (req: any, res: any) => {
     const db = getDb();
-    const { title, category, description, content, wijkSlug, wijkNaam, authorId, authorName, authorRole, authorAvatar } = req.body;
+    const { title, category, description, content, wijkSlug, wijkNaam, authorId, authorName, authorRole, authorAvatar, isHidden } = req.body;
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     const thumbnailUrl = files?.['thumbnail']?.[0] ? `/uploads/news/${files['thumbnail'][0].filename}` : '';
     const headerUrl = files?.['header']?.[0] ? `/uploads/news/${files['header'][0].filename}` : '';
@@ -7051,6 +7059,7 @@ async function startServer() {
       authorAvatar: authorAvatar || "",
       thumbnailUrl,
       headerUrl,
+      isHidden: isHidden === "true" || isHidden === true,
       createdAt: new Date().toISOString()
     };
     db.news.push(newArticle);
@@ -7063,12 +7072,14 @@ async function startServer() {
     const index = db.news.findIndex((n: any) => n.id === req.params.id);
     if (index === -1) return res.status(404).json({ error: "Nieuws niet gevonden" });
 
-    const { title, category, description, content, wijkSlug, wijkNaam, authorId, authorName, authorRole, authorAvatar } = req.body;
+    const { title, category, description, content, wijkSlug, wijkNaam, authorId, authorName, authorRole, authorAvatar, isHidden } = req.body;
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     const current = db.news[index];
 
     const thumbnailUrl = files?.['thumbnail']?.[0] ? `/uploads/news/${files['thumbnail'][0].filename}` : current.thumbnailUrl;
     const headerUrl = files?.['header']?.[0] ? `/uploads/news/${files['header'][0].filename}` : current.headerUrl;
+
+    const parsedIsHidden = isHidden !== undefined ? (isHidden === "true" || isHidden === true) : Boolean(current.isHidden);
 
     db.news[index] = {
       ...current,
@@ -7085,6 +7096,26 @@ async function startServer() {
       authorAvatar: authorAvatar !== undefined ? authorAvatar : current.authorAvatar,
       thumbnailUrl,
       headerUrl,
+      isHidden: parsedIsHidden,
+      updatedAt: new Date().toISOString()
+    };
+    saveDb(db);
+    res.json(db.news[index]);
+  });
+
+  app.patch("/api/admin/news/:id/toggle-visibility", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const index = db.news.findIndex((n: any) => n.id === req.params.id);
+    if (index === -1) return res.status(404).json({ error: "Nieuws niet gevonden" });
+
+    const current = db.news[index];
+    const newIsHidden = req.body.isHidden !== undefined
+      ? (req.body.isHidden === "true" || req.body.isHidden === true)
+      : !current.isHidden;
+
+    db.news[index] = {
+      ...current,
+      isHidden: newIsHidden,
       updatedAt: new Date().toISOString()
     };
     saveDb(db);

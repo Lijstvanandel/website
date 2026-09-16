@@ -155,7 +155,7 @@ export default function NewsletterManager({ token: propToken }: NewsletterManage
     try {
       const headers = getAuthHeaders();
       const [newsRes, videosRes, eventsRes, historyRes, subsRes] = await Promise.all([
-        fetch("/api/news").then((r) => (r.ok ? r.json() : [])),
+        fetch("/api/news?includeAll=true").then((r) => (r.ok ? r.json() : [])),
         fetch("/api/videos").then((r) => (r.ok ? r.json() : [])),
         fetch("/api/events").then((r) => (r.ok ? r.json() : [])),
         fetchWithAuth("/api/admin/newsletter/history", { headers }).then((r) => (r.ok ? r.json() : [])),

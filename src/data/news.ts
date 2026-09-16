@@ -20,6 +20,7 @@ export interface NewsItem {
   category: string;
   wijkSlug?: string;
   wijkNaam?: string;
+  isHidden?: boolean;
 }
 
 export const news: NewsItem[] = [
