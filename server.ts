@@ -10516,7 +10516,9 @@ Sitemap: ${baseUrl}/sitemap.xml
     if (!updated) {
       return res.status(404).json({ error: "Onderwerp niet gevonden" });
     }
-    return res.json({ success: true, topic: updated });
+    const db = getDb();
+    const enriched = enrichTopicWithStandpunten(enrichTopicWithMemberData(updated, db));
+    return res.json({ success: true, topic: enriched });
   });
 
   // 2a-4. Dismiss all diff alerts
@@ -10524,7 +10526,12 @@ Sitemap: ${baseUrl}/sitemap.xml
     res.setHeader("Content-Type", "application/json");
     const count = dismissAllDiffAlerts(req.user?.username || req.user?.fullName);
     const db = getDb();
-    return res.json({ success: true, updatedCount: count, topics: db.councilAgendaTopics || [] });
+    const rawTopics = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
+    const topics = rawTopics.map((t: any) => {
+      const withMember = enrichTopicWithMemberData(t, db);
+      return enrichTopicWithStandpunten(withMember);
+    });
+    return res.json({ success: true, updatedCount: count, topics });
   });
 
   // 2b. Clear unassigned scraper topics (preserves assigned topics & notes)

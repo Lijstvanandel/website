@@ -38,7 +38,9 @@ import {
   Building2,
   Waves,
   FileQuestion,
+  Loader2,
 } from "lucide-react";
+import { safeLocalStorage, safeSessionStorage } from "@/lib/safeStorage";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -225,6 +227,8 @@ export default function Raadspaneel() {
   const [isDiffChecking, setIsDiffChecking] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [isDismissingAllDiffs, setIsDismissingAllDiffs] = useState(false);
+  const [dismissingTopicId, setDismissingTopicId] = useState<string | null>(null);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -421,43 +425,124 @@ export default function Raadspaneel() {
 
   // Dismiss diff alerts on a specific topic
   const handleDismissTopicDiff = async (topicId: string) => {
-    if (!token) return;
+    const effectiveToken =
+      token ||
+      safeLocalStorage.getItem("auth_token") ||
+      safeSessionStorage.getItem("auth_token");
+
+    if (!effectiveToken) {
+      toast.error("U bent niet ingelogd.");
+      return;
+    }
+
+    setDismissingTopicId(topicId);
+
+    // Optimistic UI update: immediately clear indicators on this topic
+    setTopics((prev) =>
+      prev.map((t) => {
+        if (t.id !== topicId) return t;
+        return {
+          ...t,
+          hasRecentDump: false,
+          hasDocumentDiff: false,
+          hasNewDocumentsSinceCompile: false,
+          newDocumentsCountSinceCompile: 0,
+          diffAlerts: Array.isArray(t.diffAlerts)
+            ? t.diffAlerts.map((a) => ({ ...a, dismissed: true }))
+            : [],
+          documents: Array.isArray(t.documents)
+            ? t.documents.map((d) => ({ ...d, isLateDump: false, isNewAfterCompile: false }))
+            : [],
+        };
+      })
+    );
+
     try {
       const res = await fetch(`/api/council/topics/${encodeURIComponent(topicId)}/dismiss-diff`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${effectiveToken}`,
         },
       });
       const data = await parseApiResponse(res);
       if (res.ok && data.topic) {
         setTopics((prev) => prev.map((t) => (t.id === topicId ? data.topic : t)));
         toast.success("Melding gemarkeerd als gecontroleerd");
+      } else {
+        throw new Error(data.error || "Kon melding niet markeren");
       }
     } catch (err: any) {
-      toast.error("Kon melding niet markeren");
+      console.error("[DISMISS TOPIC DIFF ERROR]", err);
+      toast.error(err.message || "Kon melding niet markeren");
+      fetchCouncilData(true);
+    } finally {
+      setDismissingTopicId(null);
     }
   };
 
   // Dismiss all diff alerts across all topics
   const handleDismissAllDiffs = async () => {
-    if (!token) return;
+    const effectiveToken =
+      token ||
+      safeLocalStorage.getItem("auth_token") ||
+      safeSessionStorage.getItem("auth_token");
+
+    if (!effectiveToken) {
+      toast.error("U bent niet ingelogd.");
+      return;
+    }
+
+    setIsDismissingAllDiffs(true);
+
+    // Optimistic UI update: immediately clear all dump/diff indicators across all topics
+    setTopics((prev) =>
+      prev.map((t) => ({
+        ...t,
+        hasRecentDump: false,
+        hasDocumentDiff: false,
+        hasNewDocumentsSinceCompile: false,
+        newDocumentsCountSinceCompile: 0,
+        diffAlerts: Array.isArray(t.diffAlerts)
+          ? t.diffAlerts.map((a) => ({ ...a, dismissed: true }))
+          : [],
+        documents: Array.isArray(t.documents)
+          ? t.documents.map((d) => ({ ...d, isLateDump: false, isNewAfterCompile: false }))
+          : [],
+      }))
+    );
+
+    if (categoryFilter === "dumps") {
+      setCategoryFilter("oordeelvorming");
+    }
+
     try {
       const res = await fetch("/api/council/dismiss-all-diffs", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${effectiveToken}`,
         },
       });
       const data = await parseApiResponse(res);
       if (res.ok) {
-        toast.success(`${data.updatedCount || 0} melding(en) gemarkeerd als gecontroleerd`);
-        if (data.topics) setTopics(data.topics);
+        toast.success(
+          data.updatedCount > 0
+            ? `${data.updatedCount} melding(en) gemarkeerd als gecontroleerd`
+            : "Alle agendapunten gemarkeerd als gecontroleerd"
+        );
+        if (Array.isArray(data.topics) && data.topics.length > 0) {
+          setTopics(data.topics);
+        }
+      } else {
+        throw new Error(data.error || "Kon meldingen niet wissen");
       }
     } catch (err: any) {
-      toast.error("Kon meldingen niet wissen");
+      console.error("[DISMISS ALL DIFFS ERROR]", err);
+      toast.error(err.message || "Kon meldingen niet wissen");
+      fetchCouncilData(true);
+    } finally {
+      setIsDismissingAllDiffs(false);
     }
   };
 
@@ -1136,9 +1221,17 @@ export default function Raadspaneel() {
                     size="sm"
                     variant="ghost"
                     onClick={handleDismissAllDiffs}
+                    disabled={isDismissingAllDiffs}
                     className="h-8 text-xs text-muted-foreground hover:text-foreground rounded-xl"
                   >
-                    Alles Markeren
+                    {isDismissingAllDiffs ? (
+                      <span className="flex items-center gap-1.5">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        Markeren...
+                      </span>
+                    ) : (
+                      "Alles Markeren"
+                    )}
                   </Button>
                 </div>
               </div>
@@ -1794,9 +1887,17 @@ export default function Raadspaneel() {
                         size="sm"
                         variant="outline"
                         onClick={() => handleDismissTopicDiff(selectedTopic.id)}
+                        disabled={dismissingTopicId === selectedTopic.id}
                         className="h-7 text-[11px] font-semibold border-rose-500/40 text-rose-700 dark:text-rose-300 hover:bg-rose-500/20"
                       >
-                        Markeer als Gecontroleerd
+                        {dismissingTopicId === selectedTopic.id ? (
+                          <span className="flex items-center gap-1.5">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            Bezig...
+                          </span>
+                        ) : (
+                          "Markeer als Gecontroleerd"
+                        )}
                       </Button>
                     </div>
                     <p className="text-xs text-muted-foreground">

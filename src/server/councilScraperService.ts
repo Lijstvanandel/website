@@ -1,6 +1,6 @@
 import * as cheerio from "cheerio";
 import { CouncilAgendaTopic, CouncilDocument, CouncilTopicDiffAlert } from "../types/council.js";
-import { getDbFromSqlite, saveDbToSqlite, initDatabase } from "./sqliteDatabase.js";
+import { getDbFromSqlite, saveDbToSqlite, initDatabase, persistSqlite } from "./sqliteDatabase.js";
 import { notifyDocumentDiffDetected } from "./pushService.js";
 import { enrichTopicWithStandpunten } from "../lib/standpuntMatcher.js";
 
@@ -697,6 +697,8 @@ export function dismissTopicDiffAlert(topicId: string, username?: string): Counc
 
   topic.hasDocumentDiff = false;
   topic.hasRecentDump = false;
+  topic.hasNewDocumentsSinceCompile = false;
+  topic.newDocumentsCountSinceCompile = 0;
 
   if (Array.isArray(topic.diffAlerts)) {
     for (const alert of topic.diffAlerts) {
@@ -706,7 +708,19 @@ export function dismissTopicDiffAlert(topicId: string, username?: string): Counc
     }
   }
 
+  if (Array.isArray(topic.documents)) {
+    for (const doc of topic.documents) {
+      doc.isLateDump = false;
+      doc.isNewAfterCompile = false;
+    }
+  }
+
   saveDbToSqlite(db);
+  try {
+    persistSqlite();
+  } catch (_pErr) {
+    // Ignore persist errors
+  }
   return topic;
 }
 
@@ -719,9 +733,19 @@ export function dismissAllDiffAlerts(username?: string): number {
   let updatedCount = 0;
 
   for (const topic of topics) {
-    if (topic.hasDocumentDiff || topic.hasRecentDump) {
+    const hasAnyAlertOrDump =
+      topic.hasDocumentDiff ||
+      topic.hasRecentDump ||
+      topic.hasNewDocumentsSinceCompile ||
+      (Array.isArray(topic.diffAlerts) && topic.diffAlerts.some((a) => !a.dismissed)) ||
+      (Array.isArray(topic.documents) && topic.documents.some((d) => d.isLateDump || d.isNewAfterCompile));
+
+    if (hasAnyAlertOrDump) {
       topic.hasDocumentDiff = false;
       topic.hasRecentDump = false;
+      topic.hasNewDocumentsSinceCompile = false;
+      topic.newDocumentsCountSinceCompile = 0;
+
       if (Array.isArray(topic.diffAlerts)) {
         for (const alert of topic.diffAlerts) {
           alert.dismissed = true;
@@ -729,12 +753,43 @@ export function dismissAllDiffAlerts(username?: string): number {
           if (username) alert.dismissedBy = username;
         }
       }
+
+      if (Array.isArray(topic.documents)) {
+        for (const doc of topic.documents) {
+          doc.isLateDump = false;
+          doc.isNewAfterCompile = false;
+        }
+      }
+
       updatedCount++;
     }
   }
 
-  if (updatedCount > 0) {
-    saveDbToSqlite(db);
+  // Safety pass: ensure all topics and documents are completely reset
+  for (const topic of topics) {
+    topic.hasDocumentDiff = false;
+    topic.hasRecentDump = false;
+    topic.hasNewDocumentsSinceCompile = false;
+    topic.newDocumentsCountSinceCompile = 0;
+    if (Array.isArray(topic.diffAlerts)) {
+      for (const alert of topic.diffAlerts) {
+        alert.dismissed = true;
+      }
+    }
+    if (Array.isArray(topic.documents)) {
+      for (const doc of topic.documents) {
+        doc.isLateDump = false;
+        doc.isNewAfterCompile = false;
+      }
+    }
+  }
+
+  db.councilAgendaTopics = topics;
+  saveDbToSqlite(db);
+  try {
+    persistSqlite();
+  } catch (_pErr) {
+    // Ignore persist errors
   }
   return updatedCount;
 }
