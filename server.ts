@@ -1826,7 +1826,7 @@ const storage = multer.diskStorage({
     cb(null, uniqueSuffix + path.extname(file.originalname));
   }
 });
-const upload = multer({ storage: storage });
+const upload = multer({ storage: storage, limits: { fileSize: 600 * 1024 * 1024 } });
 
 const dossierDocStorage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -1884,7 +1884,7 @@ const chunkStorage = multer.diskStorage({
     cb(null, `chunk_${cleanIndex}.part`);
   }
 });
-const uploadChunkMulter = multer({ storage: chunkStorage, limits: { fileSize: 100 * 1024 * 1024 } });
+const uploadChunkMulter = multer({ storage: chunkStorage, limits: { fileSize: 600 * 1024 * 1024 } });
 
 function syncFileAcrossUploadDirs(relPathOrAbsPath: string) {
   try {
@@ -6702,7 +6702,7 @@ async function startServer() {
           console.error("[VIDEO UPLOAD MULTER ERROR]", err);
           if (err.code === "LIMIT_FILE_SIZE") {
             return res.status(413).json({
-              error: "Het geüploade bestand is te groot (limiet van 100 MB). Gebruik voor grotere video's een YouTube of Vimeo link."
+              error: "Het geüploade bestand is te groot (limiet van 600 MB). Gebruik voor grotere video's een YouTube of Vimeo link."
             });
           }
           return res.status(400).json({ error: `Uploadfout: ${err.message || 'Onbekende fout bij verwerken van bestand'}` });
@@ -6795,7 +6795,7 @@ async function startServer() {
           console.error("[VIDEO UPDATE MULTER ERROR]", err);
           if (err.code === "LIMIT_FILE_SIZE") {
             return res.status(413).json({
-              error: "Het geüploade bestand is te groot (limiet van 100 MB). Gebruik voor grotere video\x27s een YouTube of Vimeo link."
+              error: "Het geüploade bestand is te groot (limiet van 600 MB). Gebruik voor grotere video\x27s een YouTube of Vimeo link."
             });
           }
           return res.status(400).json({ error: `Uploadfout: ${err.message || "Onbekende fout bij verwerken van bestand"}` });
@@ -12195,7 +12195,7 @@ Sitemap: ${baseUrl}/sitemap.xml
         if (err) {
           console.error("[COUNCIL DOSSIER MULTER ERROR]:", err);
           if (err.code === "LIMIT_FILE_SIZE") {
-            return res.status(413).json({ error: "Eén of meer bestanden overschrijden de maximale bestandsgrootte van 100 MB." });
+            return res.status(413).json({ error: "Eén of meer bestanden overschrijden de maximale bestandsgrootte van 600 MB." });
           }
           return res.status(400).json({ error: "Fout bij inlezen van upload: " + (err.message || String(err)) });
         }

@@ -255,7 +255,7 @@ server {
     server_name jouwdomein.nl www.jouwdomein.nl;
 
     # Maximale uploadgrootte voor video's en documenten
-    client_max_body_size 100M;
+    client_max_body_size 600M;
 
     # Gzip compressie voor optimale laadtijden
     gzip on;

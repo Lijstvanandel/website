@@ -860,12 +860,12 @@ export default function AdminDashboard() {
   const submitVideo = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Client-side file size check (max 100MB)
-    if (newVFile && newVFile.size > 100 * 1024 * 1024) {
+    // Client-side file size check (max 600MB)
+    if (newVFile && newVFile.size > 600 * 1024 * 1024) {
       toast.error(
         "Het gekozen videobestand is te groot (" +
           (newVFile.size / (1024 * 1024)).toFixed(1) +
-          " MB). De maximale bestandsgrootte is 100 MB. Gebruik voor langere video's een YouTube of Vimeo link."
+          " MB). De maximale bestandsgrootte is 600 MB. Gebruik voor langere video's een YouTube of Vimeo link."
       );
       return;
     }
@@ -929,7 +929,7 @@ export default function AdminDashboard() {
         cancelEditVideo();
       } else {
         if (res.status === 413) {
-          toast.error("Het videobestand is te groot voor de server (max 100 MB). Gebruik een YouTube of Vimeo link.");
+          toast.error("Het videobestand is te groot voor de server (max 600 MB). Gebruik een YouTube of Vimeo link.");
           return;
         }
         if (res.status === 401 || res.status === 403) {
@@ -2041,7 +2041,7 @@ export default function AdminDashboard() {
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {editingVideoId
                       ? "Pas de instellingen, koppelingen of bron van deze video aan."
-                      : "Upload een videobestand (tot 100 MB) of vul een YouTube / Vimeo link in."}
+                      : "Upload een videobestand (tot 600 MB) of vul een YouTube / Vimeo link in."}
                   </p>
                 </div>
                 {editingVideoId && (
