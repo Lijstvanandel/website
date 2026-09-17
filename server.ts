@@ -11699,6 +11699,26 @@ Sitemap: ${baseUrl}/sitemap.xml
         // Ignore audit logging error on proxy viewer
       }
 
+      // Handle local uploaded files (e.g. /uploads/research/..., /uploads/documents/...)
+      if (
+        targetUrl.startsWith("/uploads/") ||
+        targetUrl.includes("/uploads/") ||
+        targetUrl.startsWith("/public/uploads/")
+      ) {
+        const cleanPath = targetUrl.split("?")[0].split("#")[0];
+        const normalized = cleanPath.replace(/^\/(public\/)?/, "");
+        const localPath = path.join(process.cwd(), "public", normalized);
+        if (fs.existsSync(localPath)) {
+          const stats = fs.statSync(localPath);
+          const safeFilename = (docFilename || "document.pdf").replace(/["\r\n]/g, "");
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader("Content-Length", stats.size);
+          res.setHeader("Content-Disposition", `inline; filename="${safeFilename}"`);
+          res.setHeader("X-Content-Type-Options", "nosniff");
+          return fs.createReadStream(localPath).pipe(res);
+        }
+      }
+
       if (targetUrl.startsWith("/")) {
         targetUrl = `${BASE_STEENWIJK}${targetUrl}`;
       }
@@ -11715,17 +11735,22 @@ Sitemap: ${baseUrl}/sitemap.xml
         // Fallback to targetUrl as-is
       }
 
-      let response = await fetch(targetUrl, {
+      const response = await fetch(targetUrl, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/1.0",
           "Accept": "application/pdf,text/html,application/xhtml+xml,*/*",
         },
       });
 
+      if (!response.ok) {
+        return res.status(response.status).send(`Fout bij ophalen document: ${response.statusText}`);
+      }
+
       let contentType = response.headers.get("content-type") || "";
+      let bufferToSend: Buffer;
 
       // If initial response returned HTML wrapper instead of direct PDF, extract the embedded document endpoint
-      if (response.ok && contentType.includes("text/html")) {
+      if (contentType.includes("text/html")) {
         const htmlText = await response.text();
         const cheerio = await import("cheerio");
         const $ = cheerio.load(htmlText);
@@ -11746,23 +11771,27 @@ Sitemap: ${baseUrl}/sitemap.xml
             },
           });
           if (pdfResponse.ok) {
-            response = pdfResponse;
             contentType = pdfResponse.headers.get("content-type") || "application/pdf";
+            const ab = await pdfResponse.arrayBuffer();
+            bufferToSend = Buffer.from(ab);
+          } else {
+            return res.status(pdfResponse.status).send(`Fout bij ophalen document: ${pdfResponse.statusText}`);
           }
+        } else {
+          return res.status(404).send("Geen ingebed PDF-document gevonden op deze pagina");
         }
-      }
-
-      if (!response.ok) {
-        return res.status(response.status).send(`Fout bij ophalen document: ${response.statusText}`);
+      } else {
+        const ab = await response.arrayBuffer();
+        bufferToSend = Buffer.from(ab);
       }
 
       const finalContentType = contentType.includes("pdf") ? "application/pdf" : (contentType || "application/pdf");
+      const safeFilename = (docFilename || "raadstuk.pdf").replace(/["\r\n]/g, "");
       res.setHeader("Content-Type", finalContentType);
-      res.setHeader("Content-Disposition", 'inline; filename="raadstuk.pdf"');
+      res.setHeader("Content-Disposition", `inline; filename="${safeFilename}"`);
       res.setHeader("X-Content-Type-Options", "nosniff");
 
-      const arrayBuffer = await response.arrayBuffer();
-      return res.send(Buffer.from(arrayBuffer));
+      return res.send(bufferToSend);
     } catch (err: any) {
       console.error("[DOCUMENT PROXY FOUT]:", err.message);
       return res.status(500).json({ error: "Kon document niet downloaden: " + err.message });

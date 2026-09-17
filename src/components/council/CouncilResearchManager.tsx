@@ -769,10 +769,15 @@ export const CouncilResearchManager: React.FC<CouncilResearchManagerProps> = ({ 
 
       {/* MODAL 2: PDF Viewer met Geïntegreerd Opmerkingenveld */}
       {activeViewerItem && (() => {
-        const docUrl = activeViewerItem.fileUrl || "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf";
-        const proxyUrl = docUrl.startsWith("/uploads/")
-          ? `/api/council/document-proxy?url=${encodeURIComponent(docUrl)}${token ? `&token=${encodeURIComponent(token)}` : ""}`
-          : docUrl;
+        const rawFileUrl = activeViewerItem.fileUrl;
+        const docUrl = (!rawFileUrl || rawFileUrl.includes("dummy.pdf"))
+          ? "/uploads/research/voorbeeld_onderzoek.pdf"
+          : rawFileUrl;
+
+        const isLocalUpload = docUrl.startsWith("/uploads/") || docUrl.startsWith("/public/uploads/");
+        const proxyUrl = isLocalUpload
+          ? docUrl
+          : `/api/council/document-proxy?url=${encodeURIComponent(docUrl)}&title=${encodeURIComponent(activeViewerItem.title || "")}&filename=${encodeURIComponent(activeViewerItem.fileName || "Onderzoek.pdf")}${token ? `&token=${encodeURIComponent(token)}` : ""}`;
 
         const comments = activeViewerItem.comments || [];
 
