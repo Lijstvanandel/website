@@ -324,7 +324,8 @@ function getDb() {
   if (!db.eventCancellations) db.eventCancellations = [];
   if (!db.councilAgendaTopics) db.councilAgendaTopics = [];
   if (!db.customDossiers) db.customDossiers = [];
-  if (!db.councilResearchItems || !Array.isArray(db.councilResearchItems) || db.councilResearchItems.length === 0) {
+  if (!db.councilResearchItems) db.councilResearchItems = [];
+  if (!db.councilResearchSeeded && db.councilResearchItems.length === 0) {
     db.councilResearchItems = [
       {
         id: "res-001",
@@ -407,6 +408,11 @@ function getDb() {
         createdAt: "2026-03-01T08:30:00.000Z"
       }
     ];
+    db.councilResearchSeeded = true;
+    saveDb(db);
+  } else if (!db.councilResearchSeeded) {
+    db.councilResearchSeeded = true;
+    saveDb(db);
   }
   if (!db.news || !Array.isArray(db.news) || db.news.length === 0) {
     db.news = [
@@ -11579,6 +11585,18 @@ Sitemap: ${baseUrl}/sitemap.xml
     const db = getDb();
     if (!Array.isArray(db.councilResearchItems)) {
       db.councilResearchItems = [];
+    }
+
+    const itemToDelete = db.councilResearchItems.find((item: any) => item.id === id);
+    if (itemToDelete?.fileUrl && typeof itemToDelete.fileUrl === "string" && itemToDelete.fileUrl.startsWith("/uploads/research/")) {
+      try {
+        const filePath = path.join(process.cwd(), "public", itemToDelete.fileUrl);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (_e) {
+        // Ignore file delete errors
+      }
     }
 
     db.councilResearchItems = db.councilResearchItems.filter((item: any) => item.id !== id);

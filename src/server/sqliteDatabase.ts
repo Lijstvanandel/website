@@ -247,6 +247,7 @@ export function getDbFromSqlite(): any {
     treasurerBudget: [],
     treasurerKascommissie: null,
     treasurerSettings: null,
+    councilResearchItems: [],
   };
 
   // Load list tables
@@ -279,6 +280,7 @@ export function getDbFromSqlite(): any {
     "councilSearchLogs",
     "councilDocumentViews",
     "customDossiers",
+    "councilResearchItems",
     "treasurerAccounts",
     "treasurerInvoices",
     "treasurerAfdrachten",

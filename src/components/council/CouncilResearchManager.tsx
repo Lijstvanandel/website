@@ -21,6 +21,8 @@ import {
   Maximize2,
   Filter,
   Info,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -79,6 +81,37 @@ export const CouncilResearchManager: React.FC<CouncilResearchManagerProps> = ({ 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("Alle");
 
+  // Dynamic category slider state & ref
+  const categoryScrollRef = React.useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const updateScrollButtons = useCallback(() => {
+    const el = categoryScrollRef.current;
+    if (!el) return;
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    setCanScrollLeft(scrollLeft > 6);
+    setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 6);
+  }, []);
+
+  const scrollCategories = (direction: "left" | "right") => {
+    const el = categoryScrollRef.current;
+    if (!el) return;
+    const offset = direction === "left" ? -190 : 190;
+    el.scrollBy({ left: offset, behavior: "smooth" });
+    setTimeout(updateScrollButtons, 320);
+  };
+
+  const availableCategories = useMemo(() => {
+    const list = [...CATEGORIES];
+    items.forEach((it) => {
+      if (it.category && it.category.trim() && !list.includes(it.category.trim())) {
+        list.push(it.category.trim());
+      }
+    });
+    return list;
+  }, [items]);
+
   // Modal states
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<CouncilResearchItem | null>(null);
@@ -121,6 +154,19 @@ export const CouncilResearchManager: React.FC<CouncilResearchManagerProps> = ({ 
   useEffect(() => {
     fetchResearchItems();
   }, [fetchResearchItems]);
+
+  useEffect(() => {
+    updateScrollButtons();
+    const el = categoryScrollRef.current;
+    if (el) {
+      el.addEventListener("scroll", updateScrollButtons, { passive: true });
+      window.addEventListener("resize", updateScrollButtons);
+    }
+    return () => {
+      if (el) el.removeEventListener("scroll", updateScrollButtons);
+      window.removeEventListener("resize", updateScrollButtons);
+    };
+  }, [updateScrollButtons, items]);
 
   // Open add modal
   const handleOpenAddModal = () => {
@@ -201,6 +247,12 @@ export const CouncilResearchManager: React.FC<CouncilResearchManagerProps> = ({ 
   const handleDeleteItem = async (id: string, title: string) => {
     if (!confirm(`Weet u zeker dat u het onderzoek "${title}" wilt verwijderen?`)) return;
 
+    // Optimistically remove from state so user immediately sees it disappear
+    setItems((prev) => prev.filter((it) => it.id !== id));
+    if (activeViewerItem?.id === id) {
+      setActiveViewerItem(null);
+    }
+
     try {
       const res = await fetch(`/api/council/research/${id}`, {
         method: "DELETE",
@@ -209,13 +261,11 @@ export const CouncilResearchManager: React.FC<CouncilResearchManagerProps> = ({ 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Verwijderen mislukt");
 
-      toast.success("Onderzoek verwijderd");
-      if (activeViewerItem?.id === id) {
-        setActiveViewerItem(null);
-      }
+      toast.success("Onderzoek succesvol verwijderd");
       fetchResearchItems();
     } catch (err: any) {
       toast.error(err.message || "Fout bij verwijderen");
+      fetchResearchItems();
     }
   };
 
@@ -354,25 +404,76 @@ export const CouncilResearchManager: React.FC<CouncilResearchManagerProps> = ({ 
           </div>
         </div>
 
-        {/* Categorie Filter Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-          <span className="text-xs text-muted-foreground font-semibold flex items-center gap-1 mr-1 shrink-0">
-            <Filter className="w-3 h-3" /> Categorie:
+        {/* Categorieën met dynamische navigatie-pijltjes (geen scrollbalk meer, tekst schuift soepel op) */}
+        <div className="relative flex items-center gap-1.5 select-none py-1">
+          <span className="text-xs text-muted-foreground font-semibold flex items-center gap-1 shrink-0 mr-1">
+            <Filter className="w-3.5 h-3.5 text-muted-foreground" />
+            <span className="hidden sm:inline">Categorie:</span>
           </span>
-          {CATEGORIES.map((cat) => (
+
+          {/* Dynamisch linker pijltje */}
+          {canScrollLeft && (
             <button
-              key={cat}
               type="button"
-              onClick={() => setSelectedCategory(cat)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border shrink-0 ${
-                selectedCategory === cat
-                  ? "bg-accent text-accent-foreground border-accent shadow-2xs"
-                  : "bg-card text-muted-foreground border-border/80 hover:bg-muted hover:text-foreground"
-              }`}
+              onClick={() => scrollCategories("left")}
+              aria-label="Schuif categorieën naar links"
+              className="z-10 p-1.5 rounded-full bg-card hover:bg-accent hover:text-accent-foreground text-foreground border border-border shadow-xs transition-all shrink-0 hover:scale-105 active:scale-95"
             >
-              {cat}
+              <ChevronLeft className="w-3.5 h-3.5" />
             </button>
-          ))}
+          )}
+
+          {/* Container met zachte fade-maskers en soepel opschuivende categorie-teksten */}
+          <div className="relative flex-1 overflow-hidden min-w-0">
+            {canScrollLeft && (
+              <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-background via-background/80 to-transparent z-5" />
+            )}
+            {canScrollRight && (
+              <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-background via-background/80 to-transparent z-5" />
+            )}
+
+            <div
+              ref={categoryScrollRef}
+              className="flex items-center gap-1.5 overflow-x-auto scroll-smooth scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden py-1 px-0.5"
+            >
+              {availableCategories.map((cat) => {
+                const isSelected = selectedCategory === cat;
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={(e) => {
+                      setSelectedCategory(cat);
+                      (e.currentTarget as HTMLElement).scrollIntoView({
+                        behavior: "smooth",
+                        block: "nearest",
+                        inline: "center",
+                      });
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border shrink-0 ${
+                      isSelected
+                        ? "bg-accent text-accent-foreground border-accent shadow-xs scale-[1.02]"
+                        : "bg-card text-muted-foreground border-border/80 hover:bg-muted/80 hover:text-foreground hover:border-border"
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Dynamisch rechter pijltje */}
+          {canScrollRight && (
+            <button
+              type="button"
+              onClick={() => scrollCategories("right")}
+              aria-label="Schuif categorieën naar rechts"
+              className="z-10 p-1.5 rounded-full bg-card hover:bg-accent hover:text-accent-foreground text-foreground border border-border shadow-xs transition-all shrink-0 hover:scale-105 active:scale-95"
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
