@@ -39,6 +39,7 @@ import {
   Waves,
   FileQuestion,
   Loader2,
+  FileSearch,
 } from "lucide-react";
 import { safeLocalStorage, safeSessionStorage } from "@/lib/safeStorage";
 import { toast } from "sonner";
@@ -73,6 +74,7 @@ import { OverijsselNotubizManager } from "@/components/council/OverijsselNotubiz
 import { WaterschapManager } from "@/components/council/WaterschapManager";
 import { VragenFormulatorWizard } from "@/components/council/VragenFormulatorWizard";
 import { MemberDocument } from "@/types/document";
+import { CouncilResearchManager } from "@/components/council/CouncilResearchManager";
 
 
 const PROCEDURAL_KEYWORDS = [
@@ -196,8 +198,10 @@ export default function Raadspaneel() {
 
   const initialDossierSlug = slug || searchParams.get("dossier") || null;
   const tabParam = searchParams.get("tab");
-  const activePanelTab: "dossiers" | "agenda" | "vragenformulator" | "overijssel" | "waterschap" =
-    tabParam === "vragenformulator" && isCouncilOrAdmin
+  const activePanelTab: "dossiers" | "agenda" | "vragenformulator" | "overijssel" | "waterschap" | "onderzoeken" =
+    tabParam === "onderzoeken" && isCouncilOrAdmin
+      ? "onderzoeken"
+      : tabParam === "vragenformulator" && isCouncilOrAdmin
       ? "vragenformulator"
       : tabParam === "waterschap" && isCouncilOrAdmin
       ? "waterschap"
@@ -207,7 +211,7 @@ export default function Raadspaneel() {
       ? "agenda"
       : "dossiers";
 
-  const setActivePanelTab = (tab: "dossiers" | "agenda" | "vragenformulator" | "overijssel" | "waterschap") => {
+  const setActivePanelTab = (tab: "dossiers" | "agenda" | "vragenformulator" | "overijssel" | "waterschap" | "onderzoeken") => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.set("tab", tab);
@@ -1132,6 +1136,21 @@ export default function Raadspaneel() {
 
           {isCouncilOrAdmin && (
             <button
+              id="tab-btn-panel-onderzoeken"
+              onClick={() => setActivePanelTab("onderzoeken")}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all shrink-0 ${
+                activePanelTab === "onderzoeken"
+                  ? "bg-accent text-accent-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-card border border-border/70"
+              }`}
+            >
+              <FileSearch className="w-4 h-4 text-accent" />
+              Onderzoeken
+            </button>
+          )}
+
+          {isCouncilOrAdmin && (
+            <button
               id="tab-btn-panel-vragenformulator"
               onClick={() => setActivePanelTab("vragenformulator")}
               className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all shrink-0 ${
@@ -1178,6 +1197,8 @@ export default function Raadspaneel() {
 
         {activePanelTab === "dossiers" ? (
           <DossierOverview initialDossierSlug={initialDossierSlug} />
+        ) : activePanelTab === "onderzoeken" && isCouncilOrAdmin ? (
+          <CouncilResearchManager token={token || undefined} />
         ) : activePanelTab === "vragenformulator" && isCouncilOrAdmin ? (
           <VragenFormulatorWizard
             token={token || undefined}

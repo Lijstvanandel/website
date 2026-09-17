@@ -324,6 +324,90 @@ function getDb() {
   if (!db.eventCancellations) db.eventCancellations = [];
   if (!db.councilAgendaTopics) db.councilAgendaTopics = [];
   if (!db.customDossiers) db.customDossiers = [];
+  if (!db.councilResearchItems || !Array.isArray(db.councilResearchItems) || db.councilResearchItems.length === 0) {
+    db.councilResearchItems = [
+      {
+        id: "res-001",
+        title: "Rekenkameronderzoek Woningbouw en Vergunningverlening 2025/2026",
+        description: "Onderzoek door de Rekenkamer naar de doorlooptijden, efficiency en transparantie van woningbouwvergunningen in de gemeente Steenwijkerland.",
+        category: "Ruimtelijke Ordening",
+        tags: ["Woningbouw", "Vergunningen", "Rekenkamer"],
+        date: "2026-02-15",
+        authorName: "Rekenkamer Steenwijkerland",
+        createdByName: "Sammy van Andel",
+        createdByUsername: "sammy",
+        fileUrl: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+        fileName: "Rekenkamer_Woningbouw_Steenwijkerland_2026.pdf",
+        fileSize: 1420000,
+        comments: [
+          {
+            id: "cm-001",
+            authorUsername: "sammy",
+            authorName: "Sammy van Andel",
+            note: "Belangrijk rapport om aan te halen bij de komende commissievergadering Ruimte over verkorting van vergunningstermijnen voor starters.",
+            createdAt: "2026-02-16T10:30:00.000Z"
+          }
+        ],
+        createdAt: "2026-02-15T09:00:00.000Z"
+      },
+      {
+        id: "res-002",
+        title: "Onderzoek Effectiviteit Subsidiebeleid Culturele & Sociale Voorzieningen",
+        description: "Evaluatierapport over de maatschappelijke impact van lokale subsidies aan verenigingen, dorpshuizen en cultuurpodia in de kernen.",
+        category: "Sociaal Domein",
+        tags: ["Subsidies", "Dorpshuizen", "Leefbaarheid"],
+        date: "2026-01-20",
+        authorName: "Onderzoeksbureau Sociaal Domein",
+        createdByName: "Raadslid Fractie LVA",
+        createdByUsername: "raadslid",
+        fileUrl: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+        fileName: "Evaluatie_Subsidies_Sociaal_Domein_2026.pdf",
+        fileSize: 2150000,
+        comments: [],
+        createdAt: "2026-01-20T14:15:00.000Z"
+      },
+      {
+        id: "res-003",
+        title: "Evaluatie Verkeersveiligheid en Fietsinfrastructuur Kernen Steenwijkerland",
+        description: "Nulmeting en knelpuntenanalyse van schoolroutes, fietsstraten en rotondes in Steenwijk, Vollenhove en Oldemarkt.",
+        category: "Verkeer & Mobiliteit",
+        tags: ["Verkeer", "Fietsveiligheid", "Infrastructuur"],
+        date: "2025-11-10",
+        authorName: "Raadscommissie Ruimte & Mobiliteit",
+        createdByName: "Sammy van Andel",
+        createdByUsername: "sammy",
+        fileUrl: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+        fileName: "Rapport_Verkeersveiligheid_Kernen_2025.pdf",
+        fileSize: 3400000,
+        comments: [],
+        createdAt: "2025-11-10T11:00:00.000Z"
+      },
+      {
+        id: "res-004",
+        title: "Gids Competenties & Raadskwaliteit: Debatteren, Amenderen en Instrumenten 2026",
+        description: "Praktische handreiking en naslagwerk voor raadsleden om effectiever te agenderen, amenderen en debatteren tijdens raads- en commissievergaderingen.",
+        category: "Competenties",
+        tags: ["Raadskwaliteit", "Debatteren", "Vaardigheden", "Instrumenten"],
+        date: "2026-03-01",
+        authorName: "Nederlandse Vereniging voor Raadsleden",
+        createdByName: "Sammy van Andel",
+        createdByUsername: "sammy",
+        fileUrl: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+        fileName: "Gids_Competenties_Raadslidmaatschap_2026.pdf",
+        fileSize: 1850000,
+        comments: [
+          {
+            id: "cm-002",
+            authorUsername: "sammy",
+            authorName: "Sammy van Andel",
+            note: "Aanrader voor alle fractieleden om door te nemen met name het hoofdstuk over doeltreffende moties en schriftelijke vragen.",
+            createdAt: "2026-03-02T14:20:00.000Z"
+          }
+        ],
+        createdAt: "2026-03-01T08:30:00.000Z"
+      }
+    ];
+  }
   if (!db.news || !Array.isArray(db.news) || db.news.length === 0) {
     db.news = [
       {
@@ -1867,6 +1951,30 @@ const dossierThumbnailStorage = multer.diskStorage({
   },
 });
 const uploadDossierThumbnail = multer({ storage: dossierThumbnailStorage, limits: { fileSize: 15 * 1024 * 1024 } });
+
+const researchStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const fullDir = path.join(process.cwd(), "public/uploads/research");
+    if (!fs.existsSync(fullDir)) {
+      fs.mkdirSync(fullDir, { recursive: true });
+    }
+    cb(null, fullDir);
+  },
+  filename: function (req, file, cb) {
+    let name = path.basename(file.originalname);
+    try {
+      const fixed = Buffer.from(name, "latin1").toString("utf8");
+      if (fixed && !fixed.includes("\ufffd")) {
+        name = fixed;
+      }
+    } catch (_e) {
+      // Fallback
+    }
+    const clean = name.replace(/[^a-zA-Z0-9.-]/g, "_");
+    cb(null, `${Date.now()}_${clean}`);
+  },
+});
+const uploadResearchFile = multer({ storage: researchStorage, limits: { fileSize: 100 * 1024 * 1024 } });
 
 const chunkStorage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -11341,6 +11449,202 @@ Sitemap: ${baseUrl}/sitemap.xml
         uploadedAt: new Date().toISOString(),
       },
     });
+  });
+
+  // -------------------------------------------------------------
+  // COUNCIL RESEARCH & INVESTIGATIONS ("ONDERZOEKEN")
+  // -------------------------------------------------------------
+  app.get("/api/council/research", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const items = Array.isArray(db.councilResearchItems) ? db.councilResearchItems : [];
+    return res.json({ items });
+  });
+
+  app.post("/api/council/research", requireAuth, requireCouncilOrAdmin, uploadResearchFile.single("file"), (req: any, res: any) => {
+    const db = getDb();
+    if (!Array.isArray(db.councilResearchItems)) {
+      db.councilResearchItems = [];
+    }
+
+    const { title, description, category, tags, date, authorName, fileUrl: customFileUrl } = req.body || {};
+
+    if (!title || !String(title).trim()) {
+      return res.status(400).json({ error: "Titel is verplicht" });
+    }
+
+    let fileUrl = "";
+    let fileName = "";
+    let fileSize = 0;
+
+    if (req.file) {
+      fileUrl = `/uploads/research/${req.file.filename}`;
+      fileName = req.file.originalname;
+      fileSize = req.file.size;
+    } else if (customFileUrl) {
+      fileUrl = String(customFileUrl).trim();
+      fileName = fileUrl.split("/").pop() || "Onderzoek.pdf";
+    }
+
+    let parsedTags: string[] = [];
+    if (Array.isArray(tags)) {
+      parsedTags = tags;
+    } else if (typeof tags === "string" && tags.trim()) {
+      parsedTags = tags.split(",").map((t: string) => t.trim()).filter(Boolean);
+    }
+
+    const newItem = {
+      id: `res-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      title: String(title).trim(),
+      description: description ? String(description).trim() : "",
+      category: category ? String(category).trim() : "Overig",
+      tags: parsedTags,
+      date: date ? String(date).trim() : new Date().toISOString().split("T")[0],
+      authorName: authorName ? String(authorName).trim() : "Gemeenteraad",
+      createdByName: req.user?.fullName || req.user?.username || "Raadslid",
+      createdByUsername: req.user?.username || "",
+      fileUrl,
+      fileName,
+      fileSize,
+      comments: [],
+      createdAt: new Date().toISOString(),
+    };
+
+    db.councilResearchItems.unshift(newItem);
+    saveDb(db);
+
+    return res.json({ success: true, item: newItem });
+  });
+
+  app.put("/api/council/research/:id", requireAuth, requireCouncilOrAdmin, uploadResearchFile.single("file"), (req: any, res: any) => {
+    const { id } = req.params;
+    const db = getDb();
+    if (!Array.isArray(db.councilResearchItems)) {
+      db.councilResearchItems = [];
+    }
+
+    const index = db.councilResearchItems.findIndex((item: any) => item.id === id);
+    if (index < 0) {
+      return res.status(404).json({ error: "Onderzoek niet gevonden" });
+    }
+
+    const current = db.councilResearchItems[index];
+    const { title, description, category, tags, date, authorName, fileUrl: customFileUrl } = req.body || {};
+
+    if (title !== undefined && !String(title).trim()) {
+      return res.status(400).json({ error: "Titel mag niet leeg zijn" });
+    }
+
+    let fileUrl = current.fileUrl || "";
+    let fileName = current.fileName || "";
+    let fileSize = current.fileSize || 0;
+
+    if (req.file) {
+      fileUrl = `/uploads/research/${req.file.filename}`;
+      fileName = req.file.originalname;
+      fileSize = req.file.size;
+    } else if (customFileUrl) {
+      fileUrl = String(customFileUrl).trim();
+      fileName = fileUrl.split("/").pop() || "Onderzoek.pdf";
+    }
+
+    let parsedTags = current.tags || [];
+    if (Array.isArray(tags)) {
+      parsedTags = tags;
+    } else if (typeof tags === "string" && tags.trim()) {
+      parsedTags = tags.split(",").map((t: string) => t.trim()).filter(Boolean);
+    }
+
+    const updatedItem = {
+      ...current,
+      title: title !== undefined ? String(title).trim() : current.title,
+      description: description !== undefined ? String(description).trim() : current.description,
+      category: category !== undefined ? String(category).trim() : current.category,
+      tags: parsedTags,
+      date: date !== undefined ? String(date).trim() : current.date,
+      authorName: authorName !== undefined ? String(authorName).trim() : current.authorName,
+      fileUrl,
+      fileName,
+      fileSize,
+      updatedAt: new Date().toISOString(),
+    };
+
+    db.councilResearchItems[index] = updatedItem;
+    saveDb(db);
+
+    return res.json({ success: true, item: updatedItem });
+  });
+
+  app.delete("/api/council/research/:id", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    const { id } = req.params;
+    const db = getDb();
+    if (!Array.isArray(db.councilResearchItems)) {
+      db.councilResearchItems = [];
+    }
+
+    db.councilResearchItems = db.councilResearchItems.filter((item: any) => item.id !== id);
+    saveDb(db);
+
+    return res.json({ success: true, message: "Onderzoek verwijderd" });
+  });
+
+  app.post("/api/council/research/:id/comments", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    const { id } = req.params;
+    const { note } = req.body || {};
+    if (!note || !String(note).trim()) {
+      return res.status(400).json({ error: "Opmerking mag niet leeg zijn" });
+    }
+
+    const db = getDb();
+    if (!Array.isArray(db.councilResearchItems)) {
+      db.councilResearchItems = [];
+    }
+
+    const index = db.councilResearchItems.findIndex((item: any) => item.id === id);
+    if (index < 0) {
+      return res.status(404).json({ error: "Onderzoek niet gevonden" });
+    }
+
+    const item = db.councilResearchItems[index];
+    if (!Array.isArray(item.comments)) {
+      item.comments = [];
+    }
+
+    const newComment = {
+      id: `cm-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      authorUsername: req.user?.username || "raadslid",
+      authorName: req.user?.fullName || req.user?.username || "Raadslid",
+      note: String(note).trim(),
+      createdAt: new Date().toISOString(),
+    };
+
+    item.comments.push(newComment);
+    db.councilResearchItems[index] = item;
+    saveDb(db);
+
+    return res.json({ success: true, comment: newComment, item });
+  });
+
+  app.delete("/api/council/research/:id/comments/:commentId", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    const { id, commentId } = req.params;
+    const db = getDb();
+    if (!Array.isArray(db.councilResearchItems)) {
+      db.councilResearchItems = [];
+    }
+
+    const index = db.councilResearchItems.findIndex((item: any) => item.id === id);
+    if (index < 0) {
+      return res.status(404).json({ error: "Onderzoek niet gevonden" });
+    }
+
+    const item = db.councilResearchItems[index];
+    if (Array.isArray(item.comments)) {
+      item.comments = item.comments.filter((c: any) => c.id !== commentId);
+    }
+
+    db.councilResearchItems[index] = item;
+    saveDb(db);
+
+    return res.json({ success: true, item });
   });
 
 
