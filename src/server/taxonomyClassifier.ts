@@ -891,6 +891,7 @@ export function extractSkosTags(
   if (corpus.includes("wmo") || corpus.includes("ggd") || corpus.includes("huishoudelijke hulp") || corpus.includes("van rijn")) tags.add("Zorg_Wmo_GGD");
   if (corpus.includes("mantelzorg")) tags.add("Mantelzorg");
   if (corpus.includes("begroting") || corpus.includes("jaarstukken")) tags.add("Financien_Begroting");
+  if (corpus.includes("sport") || corpus.includes("voetbalvereniging") || corpus.includes("noc*nsf") || corpus.includes("sportaccommodatie")) tags.add("Sport_Accommodaties");
   if (corpus.includes("unesco") || corpus.includes("weldadigheid")) tags.add("UNESCO_Werelderfgoed");
   if (corpus.includes("giethoorn") || corpus.includes("vaarverordening")) tags.add("Toerisme_Regulering");
 
