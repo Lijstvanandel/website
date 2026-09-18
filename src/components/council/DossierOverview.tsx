@@ -1168,11 +1168,11 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
             <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
           </div>
           <div className="text-2xl font-extrabold text-emerald-700 dark:text-emerald-300 flex items-baseline gap-1.5">
-            <span>{(stats.classifiedSuccessCount !== undefined ? stats.classifiedSuccessCount : stats.totalDocuments).toLocaleString('nl-NL')}</span>
+            <span>{(stats.classifiedSuccessCount || 0).toLocaleString('nl-NL')}</span>
             <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
               {stats.totalDocuments > 0 
-                ? `${Math.round(((stats.classifiedSuccessCount ?? stats.totalDocuments) / stats.totalDocuments) * 100)}%`
-                : "100%"}
+                ? `${Math.round(((stats.classifiedSuccessCount ?? 0) / stats.totalDocuments) * 100)}%`
+                : "0%"}
             </span>
           </div>
           <div className="flex items-center justify-between mt-0.5">

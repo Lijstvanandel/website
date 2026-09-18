@@ -11819,15 +11819,15 @@ Sitemap: ${baseUrl}/sitemap.xml
       // Count physical files on disk for transparent server reporting
       const diskStats = countPhysicalFilesOnDisk();
 
-      // Telt hoeveel bestanden een geldige AI-classificatie hebben gekregen
+      // Telt hoeveel bestanden daadwerkelijk door Gemini AI zijn verwerkt
       const masterMetadataList = getRawMetadata();
-      let classifiedSuccessCount = 0;
+      let aiProcessedCount = 0;
       let unclassifiedFailCount = 0;
       masterMetadataList.forEach((m) => {
         if (m.dossier === "ONGECLASSIFICEERD_FALEN" || m.subdossier === "Audit & Retry Vereist (DLQ)") {
           unclassifiedFailCount++;
-        } else if (m.dossier && m.subdossier) {
-          classifiedSuccessCount++;
+        } else if (m.ai_geclassificeerd === true) {
+          aiProcessedCount++;
         }
       });
 
@@ -12000,7 +12000,7 @@ Sitemap: ${baseUrl}/sitemap.xml
           totalUploadedFiles: uniqueUploadedSet.size,
           physicalFilesOnDisk: diskStats.totalFiles,
           missingFilesCount: Math.max(0, uniqueDocsSet.size - uniqueUploadedSet.size),
-          classifiedSuccessCount,
+          classifiedSuccessCount: aiProcessedCount,
           unclassifiedFailCount,
           totalDocumentLinks,
         },
