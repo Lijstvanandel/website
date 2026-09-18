@@ -11821,7 +11821,11 @@ Sitemap: ${baseUrl}/sitemap.xml
 
       // Telt hoeveel bestanden daadwerkelijk door Gemini AI zijn verwerkt
       const masterMetadataList = getRawMetadata();
-      const aiProcessedCount = masterMetadataList.filter(m => m.ai_geclassificeerd === true).length;
+      const aiProcessedCount = masterMetadataList.filter(m => 
+        m.ai_geclassificeerd === true || 
+        (m.relaties && m.relaties.length > 0) || 
+        (m.entiteiten && m.entiteiten.length > 40)
+      ).length;
       const unclassifiedFailCount = masterMetadataList.filter(m => m.dossier === "ONGECLASSIFICEERD_FALEN" || m.subdossier === "Audit & Retry Vereist (DLQ)").length;
 
       // Extract unique categories and deduplicated document counts
