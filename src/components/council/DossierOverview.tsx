@@ -24,6 +24,8 @@ import {
   Clock,
   PauseCircle,
   ShieldCheck,
+  Copy,
+  Check,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -240,8 +242,25 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
     deadLetterCount?: number;
     activeFile: string;
     logs: string[];
+    limit?: number;
+    lastResults?: Array<{
+      filename: string;
+      source: "gemini" | "fallback";
+      modelUsed: string;
+      timestamp: string;
+      originalRawResponse: string;
+      dossier: string;
+      subdossier: string;
+      titel: string;
+      wijk_of_kern?: string;
+      entiteiten?: string;
+      relaties?: string;
+      skos_tags?: string[];
+    }>;
   } | null>(null);
   const [isBulkStatusDismissed, setIsBulkStatusDismissed] = useState(false);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [copiedAllLogs, setCopiedAllLogs] = useState(false);
 
   const fetchBulkStatus = useCallback(async () => {
     const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
@@ -286,7 +305,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
     return () => clearInterval(interval);
   }, [fetchBulkStatus, bulkStatus?.isRunning, isClassifying]);
 
-  const handleBulkClassify = async () => {
+  const handleBulkClassify = async (limit?: number) => {
     isClassifyingRef.current = true;
     setIsClassifying(true);
     const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
@@ -297,13 +316,13 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
           "Content-Type": "application/json",
           Authorization: token ? `Bearer ${token}` : "",
         },
-        body: JSON.stringify({ force: true }),
+        body: JSON.stringify({ force: true, limit: limit && limit > 0 ? limit : undefined }),
       });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || "Fout bij volledige data-herstructurering");
       }
-      toast.info("Volledige data-herstructurering en taxonomie-classificatie gestart in de achtergrond.");
+      toast.info(limit ? `Herstructurering gestart voor maximaal ${limit} documenten.` : "Volledige data-herstructurering en taxonomie-classificatie gestart in de achtergrond.");
       fetchBulkStatus();
     } catch (err: any) {
       toast.error(err.message || "Fout bij uitvoeren herstructurering");
@@ -671,14 +690,26 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
             </Button>
 
             <Button
-              id="btn-run-bulk-classify"
-              onClick={handleBulkClassify}
+              id="btn-run-bulk-classify-50"
+              onClick={() => handleBulkClassify(50)}
               disabled={isClassifying}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold h-8 rounded-xl shadow-2xs"
-              title="Herstructureer alle data en breng documenten samen in dossiers op basis van taxonomie, MDTO en graph-principes"
+              className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold h-8 rounded-xl shadow-2xs"
+              title="Test & herstructureer maximaal 50 bestanden om kosten te beheersen en Gemini-output direct te inspecteren"
             >
               <Sparkles className={`w-3.5 h-3.5 mr-1.5 ${isClassifying ? 'animate-spin' : ''}`} />
-              {isClassifying ? "Herstructureren..." : "Herstructureer & Breng Samen"}
+              {isClassifying ? "Verwerken..." : "Herstructureer 50 bestanden (Kostenbeheersing)"}
+            </Button>
+
+            <Button
+              id="btn-run-bulk-classify"
+              onClick={() => handleBulkClassify()}
+              disabled={isClassifying}
+              variant="outline"
+              className="border-emerald-600/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 text-xs font-semibold h-8 rounded-xl shadow-2xs"
+              title="Herstructureer alle data en breng alle documenten samen in dossiers op basis van taxonomie, MDTO en graph-principes"
+            >
+              <Sparkles className={`w-3.5 h-3.5 mr-1.5 ${isClassifying ? 'animate-spin' : ''}`} />
+              {isClassifying ? "Herstructureren..." : "Alles Herstructureren"}
             </Button>
 
             <a
@@ -757,6 +788,11 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
                   <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-primary/10 text-primary border border-primary/20 rounded-md">
                     {bulkStatus.modelName || "gemini-2.5-flash"}
                   </span>
+                  {bulkStatus.limit && (
+                    <span className="px-2 py-0.5 text-[10px] font-bold bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30 rounded-full">
+                      Batch-limiet: max {bulkStatus.limit} bestanden
+                    </span>
+                  )}
                   {bulkStatus.isPaused ? (
                     <span className="px-2.5 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 rounded-full dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800 animate-pulse">
                       ⏸️ Quotum Pauze ({bulkStatus.pauseRemainingSeconds || 60}s)
@@ -918,13 +954,42 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
             </div>
           )}
 
-          {/* Realtime Terminal Log */}
+          {/* Realtime Terminal Log with Copy Feature */}
           <div className="space-y-1.5">
-            <span className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 bg-foreground rounded-full" />
-              Activiteitenlog (Realtime)
-            </span>
-            <div className="bg-neutral-900 text-neutral-100 font-mono text-[11px] p-4 rounded-xl h-44 overflow-y-auto space-y-1 border border-neutral-800 shadow-inner scrollbar-thin scrollbar-thumb-neutral-800">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 bg-foreground rounded-full" />
+                Activiteitenlog & Gemini API Output (Realtime)
+              </span>
+              {bulkStatus.logs && bulkStatus.logs.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const textToCopy = bulkStatus.logs.join("\n");
+                    navigator.clipboard.writeText(textToCopy);
+                    setCopiedAllLogs(true);
+                    toast.success("Volledige activiteitenlog gekopieerd naar klembord!");
+                    setTimeout(() => setCopiedAllLogs(false), 2000);
+                  }}
+                  className="h-6 px-2.5 text-[10px] font-semibold rounded-lg text-muted-foreground hover:text-foreground"
+                  title="Kopieer alle logregels inclusief Gemini-output naar het klembord om hier in de chat te plakken"
+                >
+                  {copiedAllLogs ? (
+                    <>
+                      <Check className="w-3 h-3 mr-1 text-emerald-500" />
+                      Gekopieerd!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3 mr-1" />
+                      Kopieer Log voor Prompt-Beoordeling
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+            <div className="bg-neutral-900 text-neutral-100 font-mono text-[11px] p-4 rounded-xl h-48 overflow-y-auto space-y-1 border border-neutral-800 shadow-inner scrollbar-thin scrollbar-thumb-neutral-800">
               {bulkStatus.logs && bulkStatus.logs.length > 0 ? (
                 bulkStatus.logs.map((log, index) => (
                   <div key={index} className="leading-relaxed whitespace-pre-wrap select-text selection:bg-emerald-600/50">
@@ -938,6 +1003,104 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
               <div ref={(el) => el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })} />
             </div>
           </div>
+
+          {/* Detailed Gemini Output Cards & Inspector for Prompt Review */}
+          {bulkStatus.lastResults && bulkStatus.lastResults.length > 0 && (
+            <div className="space-y-3 pt-2 border-t border-border">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                    Gemini Output Inspectie ({bulkStatus.lastResults.length} recentste resultaten)
+                  </h4>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Controleer of de Gemini API goed heeft gepakt. Kopieer de output en plak hem in de chat voor beoordeling.
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const allOutputs = bulkStatus.lastResults?.map((r, i) => `=== DOCUMENT ${i + 1}: ${r.filename} (${r.modelUsed}) ===\nIndeling: ${r.dossier} / ${r.subdossier}\nRaw Gemini Output:\n${r.originalRawResponse}`).join("\n\n") || "";
+                    navigator.clipboard.writeText(allOutputs);
+                    toast.success("Alle geclassificeerde Gemini resultaten gekopieerd!");
+                  }}
+                  className="h-6 px-2.5 text-[10px] font-semibold rounded-lg"
+                >
+                  <Copy className="w-3 h-3 mr-1" />
+                  Kopieer Alle {bulkStatus.lastResults.length} Gemini Resultaten
+                </Button>
+              </div>
+
+              <div className="space-y-2 max-h-60 overflow-y-auto pr-1 scrollbar-thin">
+                {bulkStatus.lastResults.map((result, idx) => (
+                  <div 
+                    key={idx} 
+                    className="p-3 bg-muted/40 rounded-xl border border-border text-xs space-y-1.5 transition-colors hover:border-emerald-500/40"
+                  >
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2 max-w-[75%]">
+                        <span className="font-bold text-foreground truncate" title={result.filename}>
+                          {result.filename}
+                        </span>
+                        <span className={`px-2 py-0.2 rounded-md text-[10px] font-mono font-bold ${result.source === 'gemini' ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30' : 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30'}`}>
+                          {result.source === 'gemini' ? 'Gemini API Actief' : 'Heuristisch'}
+                        </span>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          navigator.clipboard.writeText(result.originalRawResponse);
+                          setCopiedIndex(idx);
+                          toast.success(`Gemini output voor ${result.filename} gekopieerd!`);
+                          setTimeout(() => setCopiedIndex(null), 2000);
+                        }}
+                        className="h-6 px-2 text-[10px] font-medium"
+                      >
+                        {copiedIndex === idx ? (
+                          <>
+                            <Check className="w-3 h-3 mr-1 text-emerald-500" />
+                            Gekopieerd
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3 mr-1" />
+                            Kopieer JSON
+                          </>
+                        )}
+                      </Button>
+                    </div>
+
+                    <div className="flex items-center flex-wrap gap-2 text-[11px] text-muted-foreground">
+                      <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                        {result.dossier}
+                      </span>
+                      <span>➔</span>
+                      <span className="font-medium text-foreground">
+                        {result.subdossier || "Geen subdossier"}
+                      </span>
+                      {result.wijk_of_kern && (
+                        <>
+                          <span>•</span>
+                          <span>Kern: <strong>{result.wijk_of_kern}</strong></span>
+                        </>
+                      )}
+                    </div>
+
+                    <details className="mt-1">
+                      <summary className="text-[10px] font-mono font-bold text-primary cursor-pointer hover:underline select-none">
+                        Bekijk Ruwe Gemini Output (JSON)
+                      </summary>
+                      <pre className="mt-1.5 p-2 rounded-lg bg-neutral-900 text-neutral-200 text-[10px] font-mono overflow-x-auto whitespace-pre-wrap select-text">
+                        {result.originalRawResponse}
+                      </pre>
+                    </details>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
       

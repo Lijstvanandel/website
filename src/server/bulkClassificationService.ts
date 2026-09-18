@@ -544,7 +544,7 @@ async function classifyWithGemini(
   text: string,
   filename: string,
   relativePath: string
-): Promise<Partial<RaadsstukMetadata>> {
+): Promise<{ meta: Partial<RaadsstukMetadata>; rawResponseText: string }> {
   const ai = getGemini();
   if (!ai) {
     throw new Error("Gemini client is not initialized.");
@@ -691,8 +691,24 @@ async function classifyWithGemini(
     throw err;
   }
 
-  const parsed = JSON.parse(response?.text || "{}");
-  return parsed;
+  const rawResponseText = response?.text || "{}";
+  const parsed = JSON.parse(rawResponseText);
+  return { meta: parsed, rawResponseText };
+}
+
+export interface ClassificationResult {
+  filename: string;
+  source: "gemini" | "fallback";
+  modelUsed?: string;
+  timestamp: string;
+  originalRawResponse?: string;
+  dossier: string;
+  subdossier: string;
+  titel: string;
+  wijk_of_kern?: string;
+  entiteiten?: string;
+  relaties?: string;
+  skos_tags?: string[];
 }
 
 export interface ClassificationProgress {
@@ -713,6 +729,8 @@ export interface ClassificationProgress {
   alreadyProcessed: number;
   deadLetterCount: number;
   activeFile: string;
+  limit?: number;
+  lastResults: ClassificationResult[];
   logs: string[];
 }
 
@@ -734,6 +752,8 @@ let activeProgress: ClassificationProgress = {
   alreadyProcessed: 0,
   deadLetterCount: 0,
   activeFile: "",
+  limit: undefined,
+  lastResults: [],
   logs: []
 };
 
@@ -760,12 +780,13 @@ export function cancelBulkClassification(): void {
   }
 }
 
-export function startBulkClassificationInBackground(options: { force?: boolean } = {}): void {
+export function startBulkClassificationInBackground(options: { force?: boolean; limit?: number } = {}): void {
   if (activeProgress.isRunning) {
     return;
   }
 
   const daily = getDailyQuotaUsage();
+  const maxLimit = typeof options.limit === "number" && options.limit > 0 ? options.limit : undefined;
 
   activeProgress = {
     isRunning: true,
@@ -785,8 +806,10 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
     alreadyProcessed: 0,
     deadLetterCount: getTotalDeadLetterCount(),
     activeFile: "",
+    limit: maxLimit,
+    lastResults: [],
     logs: [
-      `Initialisatie gestart met model ${CLASSIFIER_MODEL} (Veiligheidslimiet: ~${EFFECTIVE_RPM_LIMIT} RPM, ${FREE_TIER_RPD_LIMIT} RPD). Privacy-sanitizing geactiveerd.`
+      `Initialisatie gestart met model ${CLASSIFIER_MODEL} (Veiligheidslimiet: ~${EFFECTIVE_RPM_LIMIT} RPM, ${FREE_TIER_RPD_LIMIT} RPD).${maxLimit ? ` [BATCH LIMIET: MAX ${maxLimit} BESTANDEN]` : ""} Privacy-sanitizing geactiveerd.`
     ]
   };
 
@@ -795,9 +818,9 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
     try {
       const currentMetadata = getRawMetadata();
       const allFiles = await scanPdfFilesAsync();
-      const totalToProcess = currentMetadata.length + allFiles.length;
+      const totalToProcess = maxLimit ? Math.min(maxLimit, currentMetadata.length + allFiles.length) : (currentMetadata.length + allFiles.length);
       activeProgress.total = totalToProcess;
-      activeProgress.logs.push(`Sanering & Classificatie gestart: ${currentMetadata.length} geregistreerde raadsstukken en ${allFiles.length} fysieke documenten.`);
+      activeProgress.logs.push(`Sanering & Classificatie gestart: ${currentMetadata.length} geregistreerde raadsstukken en ${allFiles.length} fysieke documenten.${maxLimit ? ` (Batchlimiet ingesteld op: ${maxLimit})` : ""}`);
 
       // 1. Saneren & normaliseren van alle bestaande documenten naar de 7 canonieke dossiers
       const processedFilenames = new Set<string>();
@@ -806,6 +829,11 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
       for (let i = 0; i < currentMetadata.length; i++) {
         if (!activeProgress.isRunning) {
           activeProgress.logs.push("Classificatie handmatig gestopt.");
+          break;
+        }
+
+        if (maxLimit && activeProgress.processed >= maxLimit) {
+          activeProgress.logs.push(`[BATCH LIMIET BEREIKT] 🛑 Gestopt na verwerken van ${activeProgress.processed} items (ingestelde limiet: ${maxLimit}).`);
           break;
         }
 
@@ -852,6 +880,11 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
           break;
         }
 
+        if (maxLimit && activeProgress.processed >= maxLimit) {
+          activeProgress.logs.push(`[BATCH LIMIET BEREIKT] 🛑 Gestopt na verwerken van ${activeProgress.processed} items (ingestelde limiet: ${maxLimit}). Kosten beheerst!`);
+          break;
+        }
+
         await new Promise((resolve) => setTimeout(resolve, 15));
 
         const fnLower = file.filename.toLowerCase().trim();
@@ -889,6 +922,8 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
         }
 
         let meta: Partial<RaadsstukMetadata> = {};
+        let rawAiOutput = "";
+        let usedSource: "gemini" | "fallback" = "gemini";
         let success = false;
         let attempts = 0;
         const maxNonQuotaRetries = 3;
@@ -896,13 +931,18 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
         // If no API key configured, use DLQ fallback
         if (!process.env.GEMINI_API_KEY) {
           meta = runFallbackClassification(text, file.filename, file.relativePath, "Geen GEMINI_API_KEY geconfigureerd");
+          usedSource = "fallback";
+          rawAiOutput = JSON.stringify(meta, null, 2);
           success = true;
         }
 
         while (!success && activeProgress.isRunning) {
           attempts++;
           try {
-            meta = await classifyWithGemini(text, file.filename, file.relativePath);
+            const geminiResult = await classifyWithGemini(text, file.filename, file.relativePath);
+            meta = geminiResult.meta;
+            rawAiOutput = geminiResult.rawResponseText;
+            usedSource = "gemini";
             success = true;
             consecutiveQuotaErrors = 0; // Reset consecutive quota error counter on success
           } catch (err: any) {
@@ -910,6 +950,8 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
             if (err instanceof GeminiDailyQuotaExceededError || err?.name === "GeminiDailyQuotaExceededError") {
               activeProgress.logs.push(`[DAGQUOTUM BEREIKT] ⚠️ 250 verzoeken/dag limiet voor ${CLASSIFIER_MODEL} bereikt. Overschakelen op lokale heuristieken om proces te voltooien.`);
               meta = runFallbackClassification(text, file.filename, file.relativePath, "Dagquotum (250 RPD) bereikt");
+              usedSource = "fallback";
+              rawAiOutput = JSON.stringify(meta, null, 2);
               success = true;
               break;
             }
@@ -967,6 +1009,8 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
             // Other unrecoverable error: route to DLQ
             activeProgress.logs.push(`  ↳ [DLQ] AI-analyse mislukt voor "${file.filename}" (${err?.message || "fout"}). Geplaatst in Dead Letter Queue.`);
             meta = runFallbackClassification(text, file.filename, file.relativePath, err?.message || "Classificatiefout");
+            usedSource = "fallback";
+            rawAiOutput = JSON.stringify(meta, null, 2);
             success = true;
           }
         }
@@ -1000,9 +1044,43 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
 
         processedFilenames.add(fnLower);
         activeProgress.newlyClassified++;
-        activeProgress.logs.push(`  ↳ Succes! Indeling: "${record.dossier}" ➔ Subdossier: "${record.subdossier}"`);
+
+        // Detailed output logging so user can verify Gemini API response directly
+        const formattedGeminiJson = rawAiOutput ? rawAiOutput.trim() : JSON.stringify({
+          titel: record.titel,
+          dossier: record.dossier,
+          subdossier: record.subdossier,
+          wijk_of_kern: record.wijk_of_kern,
+          entiteiten: record.entiteiten,
+          relaties: record.relaties,
+          skos_tags: record.skos_tags
+        }, null, 2);
+
+        activeProgress.logs.push(`  ↳ [${usedSource.toUpperCase()}] Indeling: "${record.dossier}" ➔ Subdossier: "${record.subdossier}"`);
+        activeProgress.logs.push(`  ↳ [GEMINI OUTPUT ${file.filename}]:\n${formattedGeminiJson}`);
+
+        // Store structured result for UI inspection
+        const classificationResult: ClassificationResult = {
+          filename: file.filename,
+          source: usedSource,
+          modelUsed: usedSource === "gemini" ? CLASSIFIER_MODEL : "heuristische fallback",
+          timestamp: new Date().toLocaleTimeString(),
+          originalRawResponse: formattedGeminiJson,
+          dossier: record.dossier,
+          subdossier: record.subdossier,
+          titel: record.titel,
+          wijk_of_kern: record.wijk_of_kern,
+          entiteiten: record.entiteiten,
+          relaties: record.relaties,
+          skos_tags: record.skos_tags
+        };
+
+        activeProgress.lastResults.unshift(classificationResult);
+        if (activeProgress.lastResults.length > 50) {
+          activeProgress.lastResults.pop();
+        }
         
-        if (activeProgress.logs.length > 300) {
+        if (activeProgress.logs.length > 500) {
           activeProgress.logs.shift();
         }
 

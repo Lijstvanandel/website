@@ -12437,18 +12437,19 @@ Sitemap: ${baseUrl}/sitemap.xml
   // 5B. Bulk classify documents into dossiers according to PDFs' taxonomy principles (Background processing)
   app.post("/api/council/classify-bulk-documents", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
     try {
-      const { force } = req.body || {};
+      const { force, limit } = req.body || {};
       
       const currentStatus = getBulkClassificationStatus();
       if (currentStatus.isRunning) {
         return res.status(400).json({ error: "Er is al een bulk-classificatieproces actief." });
       }
 
-      startBulkClassificationInBackground({ force: !!force });
+      const parsedLimit = typeof limit === "number" && limit > 0 ? limit : (limit ? parseInt(limit, 10) : undefined);
+      startBulkClassificationInBackground({ force: !!force, limit: parsedLimit && parsedLimit > 0 ? parsedLimit : undefined });
       
       res.json({
         success: true,
-        message: "Bulk-classificatie gestart in de achtergrond"
+        message: parsedLimit ? `Bulk-classificatie gestart voor maximaal ${parsedLimit} documenten in de achtergrond` : "Bulk-classificatie gestart in de achtergrond"
       });
     } catch (err: any) {
       console.error("[COUNCIL BULK CLASSIFY ERROR]:", err);
