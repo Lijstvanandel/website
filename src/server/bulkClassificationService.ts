@@ -1171,7 +1171,9 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
           wijk_of_kern: record.wijk_of_kern,
           entiteiten: record.entiteiten,
           relaties: record.relaties,
-          skos_tags: record.skos_tags
+          skos_tags: record.skos_tags,
+          ai_geclassificeerd: true,
+          ai_model: usedSource === "gemini" ? CLASSIFIER_MODEL : undefined
         };
 
         activeProgress.lastResults.unshift(classificationResult);
