@@ -11816,17 +11816,24 @@ Sitemap: ${baseUrl}/sitemap.xml
       const page = Math.max(1, parseInt(req.query.page || "1", 10));
       const limit = Math.max(1, parseInt(req.query.limit || "12", 10));
 
-      // Extract unique categories
+      // Extract unique categories and deduplicated document counts
       const categoriesSet = new Set<string>();
-      let totalDocuments = 0;
-      let totalUploadedFiles = 0;
+      const uniqueDocsSet = new Set<string>();
+      const uniqueUploadedSet = new Set<string>();
       let totalSubdossiers = 0;
+      let totalDocumentLinks = 0;
 
       allDossiers.forEach((d) => {
         if (d.category) categoriesSet.add(d.category);
-        totalDocuments += d.documentCount;
-        totalUploadedFiles += d.uploadedCount;
+        totalDocumentLinks += d.documentCount;
         totalSubdossiers += (d.subdossiers ? d.subdossiers.length : 0);
+        (d.documents || []).forEach((doc) => {
+          const key = (doc.bestandsnaam || doc.titel || doc.id).toLowerCase().trim();
+          uniqueDocsSet.add(key);
+          if (doc.fileExists) {
+            uniqueUploadedSet.add(key);
+          }
+        });
       });
 
       // Filter & Wijk tailor
@@ -11974,8 +11981,9 @@ Sitemap: ${baseUrl}/sitemap.xml
         stats: {
           totalDossiers: allDossiers.length,
           totalSubdossiers,
-          totalDocuments,
-          totalUploadedFiles,
+          totalDocuments: uniqueDocsSet.size,
+          totalUploadedFiles: uniqueUploadedSet.size,
+          totalDocumentLinks,
         },
       });
     } catch (err: any) {

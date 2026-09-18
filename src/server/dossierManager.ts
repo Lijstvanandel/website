@@ -2624,20 +2624,22 @@ export interface MissingDocumentsReport {
 export function getMissingCouncilDocuments(db: any): MissingDocumentsReport {
   const allDossiers = getAllDossiers(db?.customDossiers || [], db?.deletedDossierSlugs || []);
 
-  let totalDocuments = 0;
-  let totalUploadedFiles = 0;
+  const uniqueDocsSet = new Set<string>();
+  const uniqueUploadedSet = new Set<string>();
 
   const missingDocs: MissingDocumentDetail[] = [];
   const uniqueMap = new Map<string, UniqueMissingFile>();
 
   allDossiers.forEach((dossier) => {
-    totalDocuments += dossier.documentCount;
-    totalUploadedFiles += dossier.uploadedCount;
-
     dossier.documents.forEach((doc) => {
+      const cleanName = (doc.bestandsnaam || "").trim();
+      const key = cleanName.toLowerCase();
+      uniqueDocsSet.add(key || doc.id);
+      if (doc.fileExists) {
+        uniqueUploadedSet.add(key || doc.id);
+      }
+
       if (!doc.fileExists) {
-        const cleanName = (doc.bestandsnaam || "").trim();
-        const key = cleanName.toLowerCase();
 
         missingDocs.push({
           id: doc.id,
@@ -2706,9 +2708,9 @@ export function getMissingCouncilDocuments(db: any): MissingDocumentsReport {
 
   return {
     totalDossiers: allDossiers.length,
-    totalDocuments,
-    totalUploadedFiles,
-    totalMissingLinks: totalDocuments - totalUploadedFiles,
+    totalDocuments: uniqueDocsSet.size,
+    totalUploadedFiles: uniqueUploadedSet.size,
+    totalMissingLinks: Math.max(0, uniqueDocsSet.size - uniqueUploadedSet.size),
     uniqueMissingFilesCount: uniqueMissingFiles.length,
     missingDocuments: missingDocs,
     uniqueMissingFiles,
