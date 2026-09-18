@@ -46,6 +46,7 @@ export default defineConfig(({ mode }) => ({
       ],
       injectManifest: {
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+        globIgnores: ["**/node_modules/**/*", "**/uploads/**", "**/data/**", "sw.js", "sw.mjs"],
       },
       manifest: {
         id: "/",
@@ -162,6 +163,7 @@ export default defineConfig(({ mode }) => ({
     target: "es2020",
     cssCodeSplit: true,
     chunkSizeWarningLimit: 800,
+    emptyOutDir: false,
     rollupOptions: {
       output: {
         manualChunks(id) {

@@ -474,7 +474,6 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
               meetingTitle: pageTitle,
               meetingType: pageTitle.includes("Oordeel") ? "Oordeelsvormend" : "Raadsvergadering",
               agendaItemNumber: itemNumber,
-              category: topicCategory,
               title: rawTitle,
               description: existing?.description || bodyDescription.slice(0, 800),
               assignedTo: existing?.assignedTo || null,
