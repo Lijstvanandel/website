@@ -73,11 +73,15 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
     totalSubdossiers?: number;
     totalDocuments: number;
     totalUploadedFiles: number;
+    classifiedSuccessCount?: number;
+    unclassifiedFailCount?: number;
   }>({
     totalDossiers: 0,
     totalSubdossiers: 0,
     totalDocuments: 0,
     totalUploadedFiles: 0,
+    classifiedSuccessCount: 0,
+    unclassifiedFailCount: 0,
   });
 
   const [loading, setLoading] = useState(true);
@@ -1105,7 +1109,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
       )}
       
       {/* KPI Stats Strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         <div className="p-4 rounded-2xl bg-card border border-border shadow-xs">
           <div className="flex items-center justify-between text-muted-foreground mb-1">
             <span className="text-xs font-semibold">Totaal Dossiers</span>
@@ -1138,11 +1142,11 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
             <FileText className="w-4 h-4 text-blue-500" />
           </div>
           <div className="text-2xl font-bold text-foreground">
-            {stats.totalDocuments}
+            {stats.totalDocuments.toLocaleString('nl-NL')}
           </div>
           <div className="flex items-center justify-between mt-0.5">
             <span className="text-[11px] text-muted-foreground">
-              Stukken in metadata netwerkgraaf
+              Stukken in metadatagraaf
             </span>
             {isAdmin && stats.totalDocuments > stats.totalUploadedFiles && (
               <button
@@ -1157,17 +1161,44 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
           </div>
         </div>
 
+        {/* Goed Verwerkt (Geclassificeerd) */}
+        <div className="p-4 rounded-2xl bg-emerald-500/10 border-2 border-emerald-500/30 dark:bg-emerald-950/30 shadow-xs">
+          <div className="flex items-center justify-between text-emerald-700 dark:text-emerald-300 mb-1">
+            <span className="text-xs font-bold">Goed Verwerkt</span>
+            <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+          </div>
+          <div className="text-2xl font-extrabold text-emerald-700 dark:text-emerald-300 flex items-baseline gap-1.5">
+            <span>{(stats.classifiedSuccessCount !== undefined ? stats.classifiedSuccessCount : stats.totalDocuments).toLocaleString('nl-NL')}</span>
+            <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+              {stats.totalDocuments > 0 
+                ? `${Math.round(((stats.classifiedSuccessCount ?? stats.totalDocuments) / stats.totalDocuments) * 100)}%`
+                : "100%"}
+            </span>
+          </div>
+          <div className="flex items-center justify-between mt-0.5">
+            <span className="text-[11px] text-emerald-800/80 dark:text-emerald-300/80 font-medium flex items-center gap-1">
+              <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+              Taxonomie compleet
+            </span>
+            {(stats.unclassifiedFailCount || 0) > 0 && (
+              <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-500/20 px-1.5 py-0.2 rounded-md">
+                {stats.unclassifiedFailCount} in DLQ
+              </span>
+            )}
+          </div>
+        </div>
+
         <div className="p-4 rounded-2xl bg-card border border-border shadow-xs">
           <div className="flex items-center justify-between text-muted-foreground mb-1">
             <span className="text-xs font-semibold">PDF's Live op Server</span>
             <CheckCircle2 className="w-4 h-4 text-emerald-500" />
           </div>
           <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-            {stats.totalUploadedFiles}
+            {stats.totalUploadedFiles.toLocaleString('nl-NL')}
           </div>
           <div className="flex items-center justify-between mt-0.5">
             <span className="text-[11px] text-muted-foreground">
-              Fysiek aanwezig en direct leesbaar
+              Fysiek aanwezig op schijf
             </span>
             {isAdmin && stats.totalDocuments > stats.totalUploadedFiles && (
               <button

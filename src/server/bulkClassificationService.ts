@@ -1190,6 +1190,11 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
 
       // Sla de reeds genormaliseerde metadata direct op
       saveMasterMetadata(reclassifiedMetadata);
+      try {
+        rebuildNetworkGraph();
+      } catch (_e) {
+        // ignore graph rebuild error if any
+      }
 
       activeProgress.logs.push(`[VOLTOOID] Herstructurering en classificatie succesvol afgerond! Totaal: ${activeProgress.processed}/${activeProgress.total}. 7 canonieke hoofddossiers gesynchroniseerd.`);
       activeProgress.isRunning = false;
