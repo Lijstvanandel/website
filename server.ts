@@ -111,6 +111,7 @@ import {
   getBulkClassificationStatus,
   cancelBulkClassification,
   getDeadLetterQueue,
+  getTotalDeadLetterCount,
   clearDeadLetterQueue
 } from "./src/server/bulkClassificationService.js";
 import { enrichTopicWithStandpunten } from "./src/lib/standpuntMatcher.js";
@@ -12477,7 +12478,8 @@ Sitemap: ${baseUrl}/sitemap.xml
   app.get("/api/council/classify-dlq", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
     try {
       const items = getDeadLetterQueue();
-      res.json({ success: true, count: items.length, items });
+      const totalCount = getTotalDeadLetterCount();
+      res.json({ success: true, count: totalCount, inMemoryCount: items.length, items });
     } catch (err: any) {
       res.status(500).json({ error: "Fout bij ophalen DLQ: " + err.message });
     }
@@ -13044,9 +13046,9 @@ Sitemap: ${baseUrl}/sitemap.xml
     "/api/council/sync-filesystem-documents",
     requireAuth,
     requireCouncilOrAdmin,
-    (req: any, res: any) => {
+    async (req: any, res: any) => {
       try {
-        const syncResult = syncPhysicalFilesystemDocuments();
+        const syncResult = await syncPhysicalFilesystemDocuments();
         res.json(syncResult);
       } catch (err: any) {
         console.error("[FILESYSTEM SYNC ERROR]:", err);
@@ -13790,20 +13792,22 @@ Sitemap: ${baseUrl}/sitemap.xml
     // Start automated 24-hour council agenda scraper
     startDailyCouncilScraper();
 
-    // Auto-verify and sync server documents if disk contains more files than metadata
-    try {
-      const diskStats = countPhysicalFilesOnDisk();
-      const currentMeta = getRawMetadata();
-      if (diskStats.totalFiles > currentMeta.length) {
-        console.log(`[DOCUMENTS AUTO-SYNC] Server heeft ${diskStats.totalFiles} bestanden op schijf, maar metadata heeft ${currentMeta.length} items. Automatische synchronisatie wordt gestart...`);
-        const syncRes = syncPhysicalFilesystemDocuments();
-        console.log(`[DOCUMENTS AUTO-SYNC VOLTOOID]: ${syncRes.message}`);
-      } else {
-        console.log(`[DOCUMENTS STATUS] ${diskStats.totalFiles} bestanden op schijf, ${currentMeta.length} documenten in actieve metadata catalogus.`);
+    // Auto-verify and sync server documents if disk contains more files than metadata asynchronously
+    (async () => {
+      try {
+        const diskStats = countPhysicalFilesOnDisk();
+        const currentMeta = getRawMetadata();
+        if (diskStats.totalFiles > currentMeta.length) {
+          console.log(`[DOCUMENTS AUTO-SYNC] Server heeft ${diskStats.totalFiles} bestanden op schijf, maar metadata heeft ${currentMeta.length} items. Automatische synchronisatie wordt gestart...`);
+          const syncRes = await syncPhysicalFilesystemDocuments();
+          console.log(`[DOCUMENTS AUTO-SYNC VOLTOOID]: ${syncRes.message}`);
+        } else {
+          console.log(`[DOCUMENTS STATUS] ${diskStats.totalFiles} bestanden op schijf, ${currentMeta.length} documenten in actieve metadata catalogus.`);
+        }
+      } catch (syncBootErr) {
+        console.warn("[DOCUMENTS AUTO-SYNC WARNING]:", syncBootErr);
       }
-    } catch (syncBootErr) {
-      console.warn("[DOCUMENTS AUTO-SYNC WARNING]:", syncBootErr);
-    }
+    })();
   });
 }
 

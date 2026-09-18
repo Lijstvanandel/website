@@ -13,6 +13,7 @@ import { slugify, createCustomDossier, updateDossier, getAllDossiers } from "./d
 import { getDbFromSqlite, saveDbToSqlite, persistSqlite } from "./sqliteDatabase.js";
 import { getDocumentContent, normalizeForSearch } from "./documentTextExtractor.js";
 import { scanTopicDocumentsAndMatchStandpunten } from "./standpuntScannerService.js";
+import { sanitizeTextForGemini } from "./bulkClassificationService.js";
 
 const METADATA_PATH = path.join(process.cwd(), "public", "data", "raadsstukken_metadata_tussentijds.json");
 const UPLOADS_DOCS_DIR = path.join(process.cwd(), "public", "uploads", "documents");
@@ -517,7 +518,8 @@ export async function compileEvidenceAndAnalysis(
       const fullText = await getCouncilDocumentContent(doc);
       if (fullText && fullText.trim().length > 0) {
         const cleaned = fullText.replace(/\s+/g, " ").trim();
-        const excerpt = cleaned.length > 5000 ? cleaned.slice(0, 5000) + "... [vervolg weggelaten]" : cleaned;
+        const rawExcerpt = cleaned.length > 5000 ? cleaned.slice(0, 5000) + "... [vervolg weggelaten]" : cleaned;
+        const { sanitizedText: excerpt } = sanitizeTextForGemini(rawExcerpt);
         originalDocContents.push({
           title: doc.title,
           filename: `${slugify(doc.title)}.pdf`,

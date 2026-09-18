@@ -21,11 +21,13 @@ export const OFFICIAL_DOSSIERS = [...CANONICAL_HOOFDDOSSIERS];
 
 // Gemini model configuration & strict Free Tier rate limit constants
 export const CLASSIFIER_MODEL = "gemini-2.5-flash";
-export const FREE_TIER_RPM_LIMIT = 10; // Max 10 Requests Per Minute
+export const FREE_TIER_RPM_LIMIT = 10; // Hard max 10 Requests Per Minute (Google Free Tier)
+export const EFFECTIVE_RPM_LIMIT = 8;  // Safe 8 RPM target (~25% safety margin against sliding-window/burst edge cases)
 export const FREE_TIER_RPD_LIMIT = 250; // Max 250 Requests Per Day
-export const RATE_LIMIT_DELAY_MS = 6200; // ~9.6 requests per minute (guarantees staying below 10 RPM)
+export const RATE_LIMIT_DELAY_MS = 7500; // 7.5s nominal interval + jitter = ~7.5-8 requests per minute
 
 const QUOTA_TRACKER_PATH = path.join(process.cwd(), "public", "data", "gemini_quota_tracker.json");
+const DLQ_LOG_PATH = path.join(process.cwd(), "public", "data", "gemini_dead_letter_queue.jsonl");
 
 // Lazy Gemini client
 let geminiClient: GoogleGenAI | null = null;
@@ -45,52 +47,82 @@ export interface QuotaTrackerState {
   lastRequestTime?: string;
 }
 
+// In-Memory Quota State Cache (Fix 1: Eliminates race conditions & file read contention)
+let inMemoryQuotaTracker: QuotaTrackerState | null = null;
+
 /**
- * Laadt en initialiseert de dagelijkse quotumtracker van schijf.
- * Resets automatisch op UTC middernacht.
+ * Laadt en initialiseert de dagelijkse quotumtracker met in-memory caching.
+ * Voorkomt gelijktijdige fs.readFileSync operaties en race conditions (Fix 1).
  */
 function loadQuotaTracker(): QuotaTrackerState {
   const today = new Date().toISOString().split("T")[0];
+
+  if (inMemoryQuotaTracker && inMemoryQuotaTracker.date === today) {
+    return inMemoryQuotaTracker;
+  }
+
   try {
     if (fs.existsSync(QUOTA_TRACKER_PATH)) {
-      const raw = fs.readFileSync(QUOTA_TRACKER_PATH, "utf-8");
-      const data = JSON.parse(raw);
-      if (data && data.date === today) {
-        return {
-          date: today,
-          requestsToday: Number(data.requestsToday) || 0,
-          dailyLimit: FREE_TIER_RPD_LIMIT,
-          rpmLimit: FREE_TIER_RPM_LIMIT,
-          model: CLASSIFIER_MODEL,
-          lastRequestTime: data.lastRequestTime
-        };
+      const raw = fs.readFileSync(QUOTA_TRACKER_PATH, "utf-8").trim();
+      if (raw) {
+        const data = JSON.parse(raw);
+        if (data && data.date === today) {
+          inMemoryQuotaTracker = {
+            date: today,
+            requestsToday: Number(data.requestsToday) || 0,
+            dailyLimit: FREE_TIER_RPD_LIMIT,
+            rpmLimit: FREE_TIER_RPM_LIMIT,
+            model: CLASSIFIER_MODEL,
+            lastRequestTime: data.lastRequestTime
+          };
+          return inMemoryQuotaTracker;
+        }
       }
     }
   } catch (err) {
     console.warn("[QUOTA TRACKER] Kon quotumbestand niet lezen, initialiseert nieuw:", err);
   }
 
-  const newState: QuotaTrackerState = {
+  inMemoryQuotaTracker = {
     date: today,
     requestsToday: 0,
     dailyLimit: FREE_TIER_RPD_LIMIT,
     rpmLimit: FREE_TIER_RPM_LIMIT,
     model: CLASSIFIER_MODEL,
   };
-  saveQuotaTracker(newState);
-  return newState;
+  saveQuotaTracker(inMemoryQuotaTracker);
+  return inMemoryQuotaTracker;
 }
 
+/**
+ * Atomaire bestandsoverschrijving (Fix 1):
+ * Schrijft eerst naar een uniek .tmp bestand en gebruikt daarna fs.renameSync.
+ * Hierdoor kan een parallel proces of crash nóóit een half-geschreven JSON-bestand achterlaten.
+ */
 function saveQuotaTracker(state: QuotaTrackerState): void {
+  inMemoryQuotaTracker = state;
   try {
     const dir = path.dirname(QUOTA_TRACKER_PATH);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    fs.writeFileSync(QUOTA_TRACKER_PATH, JSON.stringify(state, null, 2), "utf-8");
+    const tempPath = `${QUOTA_TRACKER_PATH}.tmp.${process.pid}.${Date.now()}.${Math.random().toString(36).substring(2, 6)}`;
+    fs.writeFileSync(tempPath, JSON.stringify(state, null, 2), "utf-8");
+    fs.renameSync(tempPath, QUOTA_TRACKER_PATH);
   } catch (err) {
-    console.warn("[QUOTA TRACKER] Kon quotumbestand niet opslaan:", err);
+    console.warn("[QUOTA TRACKER] Kon quotumbestand niet atomair opslaan:", err);
   }
+}
+
+/**
+ * Registreert veilig en atomair één API-aanvraag in-memory en op schijf.
+ */
+function incrementDailyQuotaUsage(): QuotaTrackerState {
+  const tracker = loadQuotaTracker();
+  tracker.requestsToday += 1;
+  tracker.lastRequestTime = new Date().toISOString();
+  saveQuotaTracker(tracker);
+  return tracker;
 }
 
 export function getDailyQuotaUsage(): {
@@ -133,36 +165,40 @@ export class GeminiDailyQuotaExceededError extends Error {
 }
 
 /**
- * Sliding-window rate limiter die ervoor zorgt dat we NOOIT meer dan 10 RPM aanvragen
- * en een veilige tussenpauze handhaven.
+ * Sliding-window rate limiter met jitter en sliding window check (Fix 3).
+ * Houdt een veilige marge aan van ~8 RPM (ipv 10 RPM) met willekeurige 0-350ms jitter om
+ * window grenzen en burst quotas van Gemini 2.5 Flash te ontzien.
  */
 async function waitForRateLimitSlot(): Promise<void> {
   const now = Date.now();
 
-  // 1. Minimaal interval sinds vorig verzoek (min. 6.2s)
+  // 1. Minimaal interval sinds vorig verzoek (7500ms + random jitter)
+  const jitter = Math.floor(Math.random() * 350);
+  const targetDelay = RATE_LIMIT_DELAY_MS + jitter;
   const elapsedSinceLast = now - lastRequestTime;
-  if (elapsedSinceLast < RATE_LIMIT_DELAY_MS) {
-    const sleepNeeded = RATE_LIMIT_DELAY_MS - elapsedSinceLast;
+  if (elapsedSinceLast < targetDelay) {
+    const sleepNeeded = targetDelay - elapsedSinceLast;
     await new Promise((r) => setTimeout(r, sleepNeeded));
   }
 
-  // 2. Sliding window voor maximaal 10 requests per 60 seconden
+  // 2. Sliding window voor maximaal EFFECTIVE_RPM_LIMIT (8) requests per 60 seconden
+  const windowSpan = 60000;
   const currentNow = Date.now();
-  const windowStart = currentNow - 60000;
+  const windowStart = currentNow - windowSpan;
   
   // Verwijder verzoeken ouder dan 60 seconden
   while (requestTimestamps.length > 0 && requestTimestamps[0] < windowStart) {
     requestTimestamps.shift();
   }
 
-  if (requestTimestamps.length >= FREE_TIER_RPM_LIMIT) {
+  if (requestTimestamps.length >= EFFECTIVE_RPM_LIMIT) {
     const oldest = requestTimestamps[0];
-    const waitTime = Math.max(100, oldest + 60100 - currentNow);
+    const waitTime = Math.max(200, oldest + windowSpan + 500 + Math.floor(Math.random() * 400) - currentNow);
     await new Promise((r) => setTimeout(r, waitTime));
     
-    // Na wachten opnieuw opschonen
+    // Na wachten venster opnieuw opschonen
     const afterWaitNow = Date.now();
-    while (requestTimestamps.length > 0 && requestTimestamps[0] < (afterWaitNow - 60000)) {
+    while (requestTimestamps.length > 0 && requestTimestamps[0] < (afterWaitNow - windowSpan)) {
       requestTimestamps.shift();
     }
   }
@@ -170,6 +206,14 @@ async function waitForRateLimitSlot(): Promise<void> {
   const execTime = Date.now();
   requestTimestamps.push(execTime);
   lastRequestTime = execTime;
+}
+
+/**
+ * Reset de rate limit window na een lange 429 pauze om schone hervatting te waarborgen.
+ */
+export function resetRateLimitWindow(): void {
+  requestTimestamps.length = 0;
+  lastRequestTime = Date.now();
 }
 
 /**
@@ -211,29 +255,66 @@ export function sanitizeTextForGemini(text: string): { sanitizedText: string; an
     return "[EMAIL_GEANONIMISEERD]";
   });
 
-  // 4. Telefoonnummers (NL mobiel en vaste netnummers)
-  const phoneRegex = /(?:\+31\s?\(0\)\s?|\+31\s?|0031\s?|0)[1-9](?:[0-9\s-]{7,10})\b/g;
+  // 4. Telefoonnummers (NL mobiel 06 en vaste netnummers, met of zonder landcode; sluit data zoals 03-02-2015 uit)
+  const phoneRegex = /(?:\+31\s?\(0\)\s?|\+31\s?|0031\s?)[1-9](?:[0-9\s-]{7,10})\b|\b06[-\s]?[0-9]{8}\b|\b0[1-9][0-9]{1,2}[-\s]?[0-9]{6,7}\b/g;
   sanitized = sanitized.replace(phoneRegex, () => {
     anonymizedCount++;
     return "[TELEFOON_GEANONIMISEERD]";
   });
 
-  // 5. Postcode + Huisnummer van particulieren (bijv. 8331 AA 12 of 8332 BC 45a)
-  const addressRegex = /\b([1-9][0-9]{3}\s?[A-Za-z]{2})\s+([0-9]+[a-zA-Z0-9\-_/]*)\b/g;
-  sanitized = sanitized.replace(addressRegex, (_m, pc) => {
+  // 5. Burger- en persoonsnamen met aanspreektitel (bijv. "Dhr. J. Jansen", "Mevr. De Vries-Bakker")
+  const salutationRegex = /\b(?:Dhr\.|Mevr\.|De heer|Mevrouw)\s+([A-Z][a-zA-Zà-ÿ.-]+(?:\s+(?:van|der|de|den|ten|ter|te|van\s+de|van\s+der))?\s+[A-Z][a-zA-Zà-ÿ-]+)/g;
+  sanitized = sanitized.replace(salutationRegex, () => {
     anonymizedCount++;
-    return `${pc} [HUISNUMMER_GEANONIMISEERD]`;
+    return "[PERSOONSNAAM_GEANONIMISEERD]";
   });
 
-  // 6. Geboortedata
+  // 6. Straatnamen met Huisnummer (bijv. "Vendelweg 1", "Kerkstraat 14a", "Markt 5 B")
+  const streetCompoundRegex = /\b([A-Z][a-zà-ÿ]*(?:straat|weg|laan|kade|gracht|steeg|plein|dijk|singel|pad|hof|park|ring|dreef|plantsoen|zoom|akker|veld|hoek|haven|wal|drift|brink|kamp|weide|passage|steegje|dijkje))\s+([0-9]+[a-zA-Z0-9\-_/]*)\b/gi;
+  sanitized = sanitized.replace(streetCompoundRegex, () => {
+    anonymizedCount++;
+    return "[ADRES_GEANONIMISEERD]";
+  });
+
+  const streetMultiWordRegex = /\b([A-Z][a-zà-ÿ]+(?:\s+[A-Z][a-zà-ÿ]+)*\s+(?:straat|weg|laan|kade|gracht|steeg|plein|dijk|singel|pad|hof|park|ring|dreef|plantsoen|zoom|akker|veld|hoek|haven|wal|drift|brink|kamp|weide))\s+([0-9]+[a-zA-Z0-9\-_/]*)\b/gi;
+  sanitized = sanitized.replace(streetMultiWordRegex, () => {
+    anonymizedCount++;
+    return "[ADRES_GEANONIMISEERD]";
+  });
+
+  // 7. Postcode + Huisnummer van particulieren (bijv. 8331 AA 12 of 8332 BC 45a)
+  const addressRegex = /\b([1-9][0-9]{3}\s?[A-Za-z]{2})\s+([0-9]+[a-zA-Z0-9\-_/]*)\b/g;
+  sanitized = sanitized.replace(addressRegex, () => {
+    anonymizedCount++;
+    return "[POSTCODE_GEANONIMISEERD] [HUISNUMMER_GEANONIMISEERD]";
+  });
+
+  // 8. Postcode + Woonplaats (bijv. 8331 XE Steenwijk, 8332 AB Steenwijkerwold)
+  const pcTownRegex = /\b([1-9][0-9]{3}\s?[A-Za-z]{2})\s+([A-Z][a-zà-ÿ]+(?:\s+[A-Z][a-zà-ÿ]+)?)\b/g;
+  sanitized = sanitized.replace(pcTownRegex, (_m, _pc, town) => {
+    anonymizedCount++;
+    return `[POSTCODE_GEANONIMISEERD] ${town}`;
+  });
+
+  // 9. Alle overige losse Nederlandse postcodes (bijv. "8331 XE", "1234AB")
+  const pcStandaloneRegex = /\b[1-9][0-9]{3}\s?[A-Za-z]{2}\b/g;
+  sanitized = sanitized.replace(pcStandaloneRegex, () => {
+    anonymizedCount++;
+    return "[POSTCODE_GEANONIMISEERD]";
+  });
+
+  // 10. Geboortedata
   const dobRegex = /\b(?:geboren(?:\s+op)?|geboortedatum)[\s:]*([0-9]{1,2}[-/.][0-9]{1,2}[-/.][0-9]{2,4})\b/gi;
   sanitized = sanitized.replace(dobRegex, () => {
     anonymizedCount++;
     return "geboortedatum: [GEBOORTEDATUM_GEANONIMISEERD]";
   });
 
-  // 7. Vertrouwelijkheids- en geheimhoudingsmarkeringen
-  sanitized = sanitized.replace(/\b(?:STRIKT\s+)?(?:GEHEIM|CONFIDENTIEEL|NIET\s+OPENBAAR|PERSOONLIJKE\s+GEGEVENS)\b/gi, "[VERTROUWELIJK_GEMASKEERD]");
+  // 11. Vertrouwelijkheids- en geheimhoudingsmarkeringen
+  sanitized = sanitized.replace(/\b(?:STRIKT\s+)?(?:VERTROUWELIJK|GEHEIM|CONFIDENTIEEL|NIET\s+OPENBAAR|PERSOONLIJKE\s+GEGEVENS)\b/gi, () => {
+    anonymizedCount++;
+    return "[VERTROUWELIJK_GEMASKEERD]";
+  });
 
   return { sanitizedText: sanitized, anonymizedCount };
 }
@@ -343,15 +424,80 @@ export interface DeadLetterItem {
   timestamp: string;
 }
 
-// Dead Letter Queue (DLQ) voor documenten die falen in AI-classificatie
+// Fix 2: Bounded in-memory queue + append-only JSONL persistence to eliminate memory leaks.
+// Maximale in-memory buffer van 250 items voorkomt heap bloat bij 10.000+ historische bestanden.
+const MAX_IN_MEMORY_DLQ = 250;
 const deadLetterQueue: DeadLetterItem[] = [];
+let totalDeadLetterCount = 0;
+
+function initDlqState(): void {
+  try {
+    if (fs.existsSync(DLQ_LOG_PATH)) {
+      const content = fs.readFileSync(DLQ_LOG_PATH, "utf-8").trim();
+      if (content) {
+        const lines = content.split("\n").filter(Boolean);
+        totalDeadLetterCount = lines.length;
+        const tail = lines.slice(-MAX_IN_MEMORY_DLQ);
+        deadLetterQueue.length = 0;
+        for (const line of tail) {
+          try {
+            deadLetterQueue.push(JSON.parse(line));
+          } catch {
+            // negeer ongeldige regel
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[DLQ INIT] Kon DLQ bestand niet initialiseren:", err);
+  }
+}
+initDlqState();
 
 export function getDeadLetterQueue(): DeadLetterItem[] {
   return [...deadLetterQueue];
 }
 
+export function getTotalDeadLetterCount(): number {
+  return totalDeadLetterCount;
+}
+
 export function clearDeadLetterQueue(): void {
   deadLetterQueue.length = 0;
+  totalDeadLetterCount = 0;
+  try {
+    const dir = path.dirname(DLQ_LOG_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(DLQ_LOG_PATH, "", "utf-8");
+  } catch (err) {
+    console.warn("[DLQ CLEAR] Kon DLQ bestand niet leegmaken:", err);
+  }
+}
+
+/**
+ * Registreert een mislukt bestand in de Dead Letter Queue:
+ * 1. Bounded FIFO in-memory array (max 250 items, voorkomt heap bloat)
+ * 2. Append-only persistente streaming naar schijf (geen dataverlies bij tienduizenden fouten)
+ */
+export function recordDeadLetter(item: DeadLetterItem): void {
+  totalDeadLetterCount++;
+
+  deadLetterQueue.push(item);
+  if (deadLetterQueue.length > MAX_IN_MEMORY_DLQ) {
+    deadLetterQueue.shift(); // Verwijder oudste item uit RAM
+  }
+
+  try {
+    const dir = path.dirname(DLQ_LOG_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.appendFileSync(DLQ_LOG_PATH, JSON.stringify(item) + "\n", "utf-8");
+  } catch (err) {
+    console.warn("[DLQ APPEND] Kon DLQ fout niet wegschrijven:", err);
+  }
 }
 
 /**
@@ -367,8 +513,8 @@ export function runFallbackClassification(
   const cleanTitle = cleanPublicTitle(filename);
   const detectedWijken = detectWijkenKernen(cleanTitle, "", text);
 
-  // Registreer in DLQ
-  deadLetterQueue.push({
+  // Registreer via gecontroleerde bounded/persistent DLQ (Fix 2)
+  recordDeadLetter({
     filename,
     relativePath,
     error: failureReason,
@@ -437,9 +583,9 @@ async function classifyWithGemini(
      - Peilbesluiten, waterpeil, OGOR, veenoxidatie en bodemdaling (ook van WDODelta) gaan ALTIJD naar "Landbouw, Natuur & Waterbeheer".
      - Smart Energy Hub Groot Verlaat, netcongestie, zonneparken, bedrijventerreinen, toerismeregulering Giethoorn en UNESCO Weldaad gaan ALTIJD naar "Lokale Economie, Toerisme & Energie-infrastructuur".
      - Provinciale N-wegen (N761, N334, N762, N333), bruggen (Ronduitebrug, Meenthebrug, Scheerbrug), pontje Jonen en fietspaden gaan ALTIJD naar "Verkeer, Wegen & Fysieke Bereikbaarheid".
-     - Asielopvang (COA/Spreidingswet), Jeugdzorg (RSJ), Wmo, publieke gezondheid (GGD) en armoedebeleid gaan ALTIJD naar "Sociaal Domein, Asiel & Leefbaarheid".
+     - Hulp bij het Huishouden (Van Rijngelden), Mantelzorgers, Wmo, Jeugdzorg (RSJ), publieke gezondheid (GGD), asielopvang (COA/Spreidingswet) en armoedebeleid gaan ALTIJD naar "Sociaal Domein, Asiel & Leefbaarheid".
      - Gaswinning (Vermilion, Eesveen) en seismische monitoring gaan ALTIJD naar "Mijnbouw & Ondergrondse Opgaven".
-     - Financiën (Programmabegroting, Jaarrekening, OZB), APV, politie/brandweer (VRIJ) en raadsvoorstellen gaan ALTIJD naar "Bestuur, Financiën & Juridische Zaken".
+     - Algemene Planning & Control (Programmabegroting, Jaarrekening, OZB, Kadernota), APV, politie/brandweer (VRIJ), algemene raadsreglementen en zuivere procedurele voorstellen gaan naar "Bestuur, Financiën & Juridische Zaken". LET OP: een raadsvoorstel over een specifiek beleidsonderwerp (zoals huishoudelijke hulp/Wmo, bestemmingsplan, provinciale weg, brug of waterpeil) hoort ALTIJD bij het inhoudelijke beleidsdomein, NOOIT bij Bestuur/Financiën!
 
   === DE 7 CANONIEKE HOOFDDOSSIERS (Kies EXACT ÉÉN) ===
   1. "Ruimtelijke Ordening, Wonen & Omgevingswet"
@@ -517,11 +663,8 @@ async function classifyWithGemini(
       }
     });
 
-    // Registreer succesvol verzoek in dagtracker
-    const currentQuota = loadQuotaTracker();
-    currentQuota.requestsToday += 1;
-    currentQuota.lastRequestTime = new Date().toISOString();
-    saveQuotaTracker(currentQuota);
+    // Registreer succesvol verzoek in dagtracker (in-memory + atomic save, Fix 1)
+    incrementDailyQuotaUsage();
 
   } catch (err: any) {
     const errMsg = err?.message || String(err);
@@ -537,7 +680,13 @@ async function classifyWithGemini(
 
     if (isQuota) {
       const isPrepayment = errMsg.includes("prepayment") || errMsg.includes("depleted");
-      throw new GeminiQuotaExceededError(errMsg, 60, isPrepayment);
+      let retryWaitSeconds = 60;
+      // Parseer eventuele 'retry after XXs' suggestie uit foutmelding
+      const retryMatch = errMsg.match(/retry(?:ing)?\s+after\s+(\d+)/i) || errMsg.match(/(\d+)\s*s(?:ec(?:onds)?)?\b/i);
+      if (retryMatch && Number(retryMatch[1]) >= 10 && Number(retryMatch[1]) <= 300) {
+        retryWaitSeconds = Number(retryMatch[1]);
+      }
+      throw new GeminiQuotaExceededError(errMsg, retryWaitSeconds, isPrepayment);
     }
     throw err;
   }
@@ -573,7 +722,7 @@ let activeProgress: ClassificationProgress = {
   pauseReason: undefined,
   pauseRemainingSeconds: 0,
   pauseResumesAt: undefined,
-  ratePerMinute: FREE_TIER_RPM_LIMIT,
+  ratePerMinute: EFFECTIVE_RPM_LIMIT,
   rpdLimit: FREE_TIER_RPD_LIMIT,
   dailyRequestsUsed: 0,
   dailyRequestsRemaining: FREE_TIER_RPD_LIMIT,
@@ -590,13 +739,13 @@ let activeProgress: ClassificationProgress = {
 
 export function getBulkClassificationStatus(): ClassificationProgress {
   const daily = getDailyQuotaUsage();
-  activeProgress.ratePerMinute = FREE_TIER_RPM_LIMIT;
+  activeProgress.ratePerMinute = EFFECTIVE_RPM_LIMIT;
   activeProgress.rpdLimit = FREE_TIER_RPD_LIMIT;
   activeProgress.dailyRequestsUsed = daily.requestsToday;
   activeProgress.dailyRequestsRemaining = daily.remainingToday;
   activeProgress.modelName = CLASSIFIER_MODEL;
   activeProgress.privacySanitized = true;
-  activeProgress.deadLetterCount = deadLetterQueue.length;
+  activeProgress.deadLetterCount = getTotalDeadLetterCount();
   return activeProgress;
 }
 
@@ -624,7 +773,7 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
     pauseReason: undefined,
     pauseRemainingSeconds: 0,
     pauseResumesAt: undefined,
-    ratePerMinute: FREE_TIER_RPM_LIMIT,
+    ratePerMinute: EFFECTIVE_RPM_LIMIT,
     rpdLimit: FREE_TIER_RPD_LIMIT,
     dailyRequestsUsed: daily.requestsToday,
     dailyRequestsRemaining: daily.remainingToday,
@@ -634,10 +783,10 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
     processed: 0,
     newlyClassified: 0,
     alreadyProcessed: 0,
-    deadLetterCount: deadLetterQueue.length,
+    deadLetterCount: getTotalDeadLetterCount(),
     activeFile: "",
     logs: [
-      `Initialisatie gestart met model ${CLASSIFIER_MODEL} (Gratis limiet: max ${FREE_TIER_RPM_LIMIT} RPM, ${FREE_TIER_RPD_LIMIT} RPD). Privacy-sanitizing geactiveerd.`
+      `Initialisatie gestart met model ${CLASSIFIER_MODEL} (Veiligheidslimiet: ~${EFFECTIVE_RPM_LIMIT} RPM, ${FREE_TIER_RPD_LIMIT} RPD). Privacy-sanitizing geactiveerd.`
     ]
   };
 
@@ -695,6 +844,8 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
       }
 
       // 2. Scan and classify new physical files with Gemini and Kop-Staart extraction
+      let consecutiveQuotaErrors = 0;
+
       for (const file of allFiles) {
         if (!activeProgress.isRunning) {
           activeProgress.logs.push("Classificatie handmatig gestopt.");
@@ -753,6 +904,7 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
           try {
             meta = await classifyWithGemini(text, file.filename, file.relativePath);
             success = true;
+            consecutiveQuotaErrors = 0; // Reset consecutive quota error counter on success
           } catch (err: any) {
             // Daily Quota (250 RPD) Exceeded Handling
             if (err instanceof GeminiDailyQuotaExceededError || err?.name === "GeminiDailyQuotaExceededError") {
@@ -762,9 +914,15 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
               break;
             }
 
-            // Rate Limit (429 RESOURCE_EXHAUSTED / 10 RPM) Handling
+            // Rate Limit (429 RESOURCE_EXHAUSTED / 8-10 RPM) Handling met Exponential Backoff & Jitter (Fix 3)
             if (err instanceof GeminiQuotaExceededError || err?.name === "GeminiQuotaExceededError") {
-              const waitSeconds = err.retryAfterSeconds || 60;
+              consecutiveQuotaErrors++;
+              const baseWait = err.retryAfterSeconds || 60;
+              // Exponential backoff multiplier (1x, 1.5x, 2x, max 3x) + willekeurige jitter (1-5 sec)
+              const multiplier = Math.min(3, 1 + (consecutiveQuotaErrors - 1) * 0.5);
+              const jitterSec = Math.floor(Math.random() * 5) + 1;
+              const waitSeconds = Math.round(baseWait * multiplier) + jitterSec;
+
               const resumeDate = new Date(Date.now() + waitSeconds * 1000);
               const resumeAt = resumeDate.toLocaleTimeString("nl-NL", {
                 hour: "2-digit",
@@ -775,9 +933,9 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
               activeProgress.isPaused = true;
               activeProgress.pauseRemainingSeconds = waitSeconds;
               activeProgress.pauseResumesAt = resumeAt;
-              activeProgress.pauseReason = `Gemini API (429 RESOURCE_EXHAUSTED). Limiet van 10 RPM bereikt. Pauzeert ${waitSeconds}s tot ${resumeAt}...`;
+              activeProgress.pauseReason = `Gemini API (429 RESOURCE_EXHAUSTED). Rate limit sliding window bereikt (poging ${consecutiveQuotaErrors}). Pauzeert ${waitSeconds}s met backoff & jitter tot ${resumeAt}...`;
 
-              activeProgress.logs.push(`[RATE LIMIT PAUZE] ⏸️ 429 RESOURCE_EXHAUSTED (10 RPM limiet). Wachten tot ${resumeAt}...`);
+              activeProgress.logs.push(`[RATE LIMIT PAUZE] ⏸️ 429 RESOURCE_EXHAUSTED (poging ${consecutiveQuotaErrors}). Backoff-pauze van ${waitSeconds}s (incl. ${jitterSec}s jitter) tot ${resumeAt}...`);
               if (activeProgress.logs.length > 300) activeProgress.logs.shift();
 
               saveMasterMetadata(reclassifiedMetadata);
@@ -789,6 +947,9 @@ export function startBulkClassificationInBackground(options: { force?: boolean }
               }
 
               if (!activeProgress.isRunning) break;
+
+              // Reset sliding window na pauze zodat we niet direct weer blokkeren (Fix 3)
+              resetRateLimitWindow();
 
               activeProgress.isPaused = false;
               activeProgress.pauseReason = undefined;

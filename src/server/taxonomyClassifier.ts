@@ -110,16 +110,11 @@ export function normalizeHoofddossier(
     return "ONGECLASSIFICEERD_FALEN" as any;
   }
 
-  const searchCorpus = `${rawDossier || ""} ${title || ""} ${entities || ""} ${text || ""}`.toLowerCase();
+  // Substantieve inhoudscorpus (inhoud van het document heeft altijd absolute voorrang op AI-labels)
+  const contentCorpus = `${title || ""} ${entities || ""} ${text || ""}`.toLowerCase();
+  const searchCorpus = `${rawDossier || ""} ${contentCorpus}`.toLowerCase();
 
-  // 1. Direct canonical string match if clean
-  for (const canon of CANONICAL_HOOFDDOSSIERS) {
-    if (d === canon.toLowerCase()) {
-      return canon;
-    }
-  }
-
-  // 2. Ontologische routeringsregels op basis van inhoud (Substantive routing):
+  // 1. Ontologische routeringsregels op basis van inhoud (Substantive routing):
 
   // === 6. MIJNBOUW & ONDERGRONDSE OPGAVEN (Hoge prioriteit voor specifieke mijnbouw/gaswinning dossiers) ===
   if (
@@ -294,8 +289,21 @@ export function normalizeHoofddossier(
   }
 
   // === 5. SOCIAAL DOMEIN, ASIEL & LEEFBAARHEID ===
-  // Jeugdzorg, RSJ, Wmo, GGD IJsselland, GALA, Participatiewet, Asiel, COA, Spreidingswet, IHP Scholen
+  // Hulp bij Huishouden, Van Rijngelden, Wmo, Mantelzorgers, Jeugdzorg, RSJ, GGD IJsselland, GALA, Participatiewet, Asiel, COA, Spreidingswet, IHP Scholen
   if (
+    searchCorpus.includes("hulp bij het huishouden") ||
+    searchCorpus.includes("huishoudelijke hulp") ||
+    searchCorpus.includes("van rijn") ||
+    searchCorpus.includes("van rijngelden") ||
+    searchCorpus.includes("van rijn-gelden") ||
+    searchCorpus.includes("hht") ||
+    searchCorpus.includes("huishoudelijke hulp toelage") ||
+    searchCorpus.includes("schoonmaakondersteuning") ||
+    searchCorpus.includes("zonl") ||
+    searchCorpus.includes("zorggroep oude en nieuwe land") ||
+    searchCorpus.includes("maatwerkvoorziening") ||
+    searchCorpus.includes("algemene voorziening") ||
+    searchCorpus.includes("cak") ||
     searchCorpus.includes("kindcentrum") ||
     searchCorpus.includes("basisschool") ||
     searchCorpus.includes("scholen") ||
@@ -310,6 +318,7 @@ export function normalizeHoofddossier(
     searchCorpus.includes("leerling") ||
     searchCorpus.includes("wmo") ||
     searchCorpus.includes("thuiszorg") ||
+    searchCorpus.includes("wijkverpleging") ||
     searchCorpus.includes("ggd") ||
     searchCorpus.includes("publieke gezondheid") ||
     searchCorpus.includes("gala") ||
@@ -338,6 +347,17 @@ export function normalizeHoofddossier(
     searchCorpus.includes("leefbaarheid")
   ) {
     return "Sociaal Domein, Asiel & Leefbaarheid";
+  }
+
+  // =========================================================================
+  // 2. CANONIEKE STRING MATCH UIT GEMINI / INVOER
+  // Alleen van kracht als de substantieve inhoudsregels 1 t/m 6 hierboven géén
+  // specifieke beleidsopgave hebben gedetecteerd.
+  // =========================================================================
+  for (const canon of CANONICAL_HOOFDDOSSIERS) {
+    if (d === canon.toLowerCase()) {
+      return canon;
+    }
   }
 
   // === 7. BESTUUR, FINANCIËN & JURIDISCHE ZAKEN ===
@@ -706,6 +726,17 @@ export function normalizeSubdossier(
         combined.includes("wmo") ||
         combined.includes("thuiszorg") ||
         combined.includes("huishoudelijke hulp") ||
+        combined.includes("hulp bij het huishouden") ||
+        combined.includes("van rijn") ||
+        combined.includes("van rijngelden") ||
+        combined.includes("hht") ||
+        combined.includes("schoonmaakondersteuning") ||
+        combined.includes("mantelzorg") ||
+        combined.includes("ouderenzorg") ||
+        combined.includes("beschermd wonen") ||
+        combined.includes("wijkverpleging") ||
+        combined.includes("zonl") ||
+        combined.includes("zorggroep oude en nieuwe land") ||
         combined.includes("preventie")
       ) {
         return "Wmo & Publieke Gezondheid (GGD)";
@@ -857,7 +888,8 @@ export function extractSkosTags(
   if (corpus.includes("n761") || corpus.includes("n334") || corpus.includes("n762") || corpus.includes("n333")) tags.add("Provinciale_Wegen");
   if (corpus.includes("brug") || corpus.includes("sluis")) tags.add("Bruggen_Infrastructuur");
   if (corpus.includes("jeugdzorg") || corpus.includes("rsj")) tags.add("Jeugdzorg_RSJ");
-  if (corpus.includes("wmo") || corpus.includes("ggd")) tags.add("Zorg_Wmo_GGD");
+  if (corpus.includes("wmo") || corpus.includes("ggd") || corpus.includes("huishoudelijke hulp") || corpus.includes("van rijn")) tags.add("Zorg_Wmo_GGD");
+  if (corpus.includes("mantelzorg")) tags.add("Mantelzorg");
   if (corpus.includes("begroting") || corpus.includes("jaarstukken")) tags.add("Financien_Begroting");
   if (corpus.includes("unesco") || corpus.includes("weldadigheid")) tags.add("UNESCO_Werelderfgoed");
   if (corpus.includes("giethoorn") || corpus.includes("vaarverordening")) tags.add("Toerisme_Regulering");

@@ -1,4 +1,5 @@
 import fs from "fs";
+import fsp from "fs/promises";
 import path from "path";
 import { execSync, spawn } from "child_process";
 import AdmZip from "adm-zip";
@@ -260,66 +261,170 @@ const DOSSIER_PRESETS: Record<
 
 const DEFAULT_THUMBNAIL = "https://images.unsplash.com/photo-1497366216548-37526070297c?w=800&auto=format&fit=crop&q=80";
 
-// Read raw metadata from persistent master, sqlite, or file
+// In-Memory Master Cache (Single Source of Truth powered by SQLite)
+let inMemoryMasterMetadata: RaadsstukMetadata[] | null = null;
+let metadataVersion: number = 1;
+let cachedAllDossiers: Dossier[] | null = null;
+let cachedDossiersKey: string = "";
+let inMemoryNetworkGraph: NetworkGraphData | null = null;
+
+// Debounced background disk writer
+let masterDiskSaveTimeout: NodeJS.Timeout | null = null;
+let pendingCsvContent: string | undefined = undefined;
+
+// Physical file existence in-memory index
+export interface PhysicalFileInfo {
+  exists: boolean;
+  fileUrl?: string;
+  fileSize?: number;
+}
+const physicalFilesCache = new Map<string, PhysicalFileInfo>();
+let physicalFilesScanPromise: Promise<void> | null = null;
+
+const isDocFile = (fn: string) => {
+  const l = fn.toLowerCase();
+  return (
+    !l.endsWith(".json") &&
+    !l.endsWith(".csv") &&
+    !l.endsWith(".log") &&
+    !l.endsWith(".sqlite") &&
+    !l.startsWith(".") &&
+    !l.endsWith(".tmp")
+  );
+};
+
+// Asynchronous scanner for all documents on disk - populates in-memory lookup index
+export async function populatePhysicalFilesCacheAsync(): Promise<void> {
+  try {
+    if (!fs.existsSync(DOCUMENTS_DIR)) return;
+
+    const rootEntries = await fsp.readdir(DOCUMENTS_DIR, { withFileTypes: true });
+    for (const entry of rootEntries) {
+      if (entry.isFile() && isDocFile(entry.name)) {
+        const fullPath = path.join(DOCUMENTS_DIR, entry.name);
+        try {
+          const st = await fsp.stat(fullPath);
+          const info: PhysicalFileInfo = {
+            exists: true,
+            fileUrl: `/uploads/documents/${encodeURIComponent(entry.name)}`,
+            fileSize: st.size,
+          };
+          physicalFilesCache.set(entry.name.toLowerCase().trim(), info);
+          physicalFilesCache.set(path.basename(entry.name).toLowerCase().trim(), info);
+        } catch (_e) {
+          // ignore stat error
+        }
+      } else if (entry.isDirectory()) {
+        const subDirName = entry.name.toLowerCase();
+        const subDirPath = path.join(DOCUMENTS_DIR, entry.name);
+        try {
+          const subEntries = await fsp.readdir(subDirPath, { withFileTypes: true });
+          for (const sub of subEntries) {
+            if (sub.isFile() && isDocFile(sub.name)) {
+              const subFullPath = path.join(subDirPath, sub.name);
+              try {
+                const subSt = await fsp.stat(subFullPath);
+                const relPath = `${subDirName}/${sub.name}`;
+                const info: PhysicalFileInfo = {
+                  exists: true,
+                  fileUrl: `/uploads/documents/${subDirName}/${encodeURIComponent(sub.name)}`,
+                  fileSize: subSt.size,
+                };
+                physicalFilesCache.set(relPath.toLowerCase().trim(), info);
+                physicalFilesCache.set(sub.name.toLowerCase().trim(), info);
+              } catch (_e) {
+                // ignore stat error
+              }
+            }
+          }
+        } catch (_e) {
+          // ignore readdir error
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[dossierManager] Fout bij scannen fysieke bestanden:", err);
+  }
+}
+
+// Kick off initial non-blocking scan immediately
+setImmediate(() => {
+  physicalFilesScanPromise = populatePhysicalFilesCacheAsync();
+});
+
+// Explicit cache invalidation
+export function invalidateDossierCache(): void {
+  cachedAllDossiers = null;
+  cachedDossiersKey = "";
+}
+
+// Read raw metadata - Single Source of Truth from SQLite / in-memory cache
 export function getRawMetadata(): RaadsstukMetadata[] {
-  // 1. Check standard METADATA_PATH (updated by bulk classification and reorganize scripts)
-  try {
-    if (fs.existsSync(METADATA_PATH)) {
-      const data = fs.readFileSync(METADATA_PATH, "utf-8");
-      const parsed = JSON.parse(data);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
-      }
-    }
-  } catch (err) {
-    console.warn("Could not read METADATA_PATH:", err);
+  // 1. In-memory fast path (0.001 ms)
+  if (inMemoryMasterMetadata && inMemoryMasterMetadata.length > 0) {
+    return inMemoryMasterMetadata;
   }
 
-  // 2. Check persistent master file in data/ (gitignored, survives git pull)
-  try {
-    if (fs.existsSync(MASTER_METADATA_PATH)) {
-      const data = fs.readFileSync(MASTER_METADATA_PATH, "utf-8");
-      const parsed = JSON.parse(data);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
-      }
-    }
-  } catch (err) {
-    console.warn("Could not read MASTER_METADATA_PATH:", err);
-  }
-
-  // 3. Check SQLite kv_store (gitignored, persistent in database.sqlite)
+  // 2. Single Source of Truth: SQLite kv_store
   try {
     const kvMaster = getKv("raadsstukken_metadata_master");
     if (Array.isArray(kvMaster) && kvMaster.length > 0) {
-      return kvMaster;
+      inMemoryMasterMetadata = kvMaster;
+      return inMemoryMasterMetadata;
     }
-  } catch (_e) {
-    // ignore kv store read error
+  } catch (e) {
+    console.warn("[dossierManager] SQLite raadsstukken_metadata_master kon niet worden gelezen:", e);
   }
 
-  // 4. Check documents backup path
+  // 3. Initial Boot Bootstrap (only if SQLite has not been initialized with metadata yet)
   try {
-    if (fs.existsSync(MASTER_METADATA_BACKUP_PATH)) {
-      const data = fs.readFileSync(MASTER_METADATA_BACKUP_PATH, "utf-8");
-      const parsed = JSON.parse(data);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+    const candidatePaths = [MASTER_METADATA_PATH, METADATA_PATH, MASTER_METADATA_BACKUP_PATH];
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        const raw = fs.readFileSync(p, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          console.log(`[dossierManager] Initial bootstrap: ${parsed.length} metadata records gemigreerd naar SQLite.`);
+          inMemoryMasterMetadata = parsed;
+          setKv("raadsstukken_metadata_master", parsed);
+          return inMemoryMasterMetadata;
+        }
       }
     }
-  } catch (_e) {
-    // ignore backup read error
+  } catch (err) {
+    console.warn("[dossierManager] Bootstrap migratie fout:", err);
   }
 
-  return [];
+  inMemoryMasterMetadata = [];
+  return inMemoryMasterMetadata;
 }
 
-// Read raw network graph from file
+// Read raw network graph
 export function getRawNetworkGraph(): NetworkGraphData {
+  if (inMemoryNetworkGraph) {
+    return inMemoryNetworkGraph;
+  }
+
+  try {
+    const sqliteGraph = getKv("network_graph");
+    if (sqliteGraph && Array.isArray(sqliteGraph.nodes) && Array.isArray(sqliteGraph.edges)) {
+      inMemoryNetworkGraph = sqliteGraph;
+      return inMemoryNetworkGraph!;
+    }
+  } catch (_e) {
+    // ignore kv lookup error
+  }
+
   try {
     if (fs.existsSync(GRAPH_PATH)) {
       const data = fs.readFileSync(GRAPH_PATH, "utf-8");
-      return JSON.parse(data);
+      inMemoryNetworkGraph = JSON.parse(data);
+      try {
+        setKv("network_graph", inMemoryNetworkGraph);
+      } catch (_e) {
+        // ignore kv set error
+      }
+      return inMemoryNetworkGraph!;
     }
   } catch (err) {
     console.error("Error reading graph file:", err);
@@ -327,34 +432,39 @@ export function getRawNetworkGraph(): NetworkGraphData {
   return { nodes: [], edges: [] };
 }
 
-// Check if a physical document exists in the uploads directory or subdirectories (waterschap, overijssel, etc.)
+// Check if a physical document exists - uses O(1) in-memory cache to prevent event-loop-blocking disk checks
 export function checkFileExists(filename: string): { exists: boolean; fileUrl?: string; fileSize?: number } {
   if (!filename) return { exists: false };
-  const cleanFilename = path.basename(filename);
+  const cleanFilename = path.basename(filename).trim();
+  const lowerBase = cleanFilename.toLowerCase();
+  const lowerRel = filename.toLowerCase().trim();
 
-  // Locations to check in order of priority
+  // 1. Fast in-memory cache check (0.0001 ms)
+  if (physicalFilesCache.has(lowerRel)) {
+    return physicalFilesCache.get(lowerRel)!;
+  }
+  if (physicalFilesCache.has(lowerBase)) {
+    return physicalFilesCache.get(lowerBase)!;
+  }
+
+  // 2. Candidate paths (order of priority) for files added on the fly
   const candidates: Array<{ path: string; url: string }> = [
-    // 1. Exact path relative to DOCUMENTS_DIR (handles e.g. "waterschap/doc.pdf" or "overijssel/doc.pdf")
     {
       path: path.join(DOCUMENTS_DIR, filename),
       url: `/uploads/documents/${filename.split("/").map(encodeURIComponent).join("/")}`,
     },
-    // 2. Direct root in public/uploads/documents/
     {
       path: path.join(DOCUMENTS_DIR, cleanFilename),
       url: `/uploads/documents/${encodeURIComponent(cleanFilename)}`,
     },
-    // 3. Waterschap subfolder
     {
       path: path.join(DOCUMENTS_DIR, "waterschap", cleanFilename),
       url: `/uploads/documents/waterschap/${encodeURIComponent(cleanFilename)}`,
     },
-    // 4. Overijssel subfolder
     {
       path: path.join(DOCUMENTS_DIR, "overijssel", cleanFilename),
       url: `/uploads/documents/overijssel/${encodeURIComponent(cleanFilename)}`,
     },
-    // 5. Dist mirrors
     {
       path: path.join(DIST_DOCUMENTS_DIR, filename),
       url: `/uploads/documents/${filename.split("/").map(encodeURIComponent).join("/")}`,
@@ -363,14 +473,6 @@ export function checkFileExists(filename: string): { exists: boolean; fileUrl?: 
       path: path.join(DIST_DOCUMENTS_DIR, cleanFilename),
       url: `/uploads/documents/${encodeURIComponent(cleanFilename)}`,
     },
-    {
-      path: path.join(DIST_DOCUMENTS_DIR, "waterschap", cleanFilename),
-      url: `/uploads/documents/waterschap/${encodeURIComponent(cleanFilename)}`,
-    },
-    {
-      path: path.join(DIST_DOCUMENTS_DIR, "overijssel", cleanFilename),
-      url: `/uploads/documents/overijssel/${encodeURIComponent(cleanFilename)}`,
-    },
   ];
 
   for (const cand of candidates) {
@@ -378,22 +480,51 @@ export function checkFileExists(filename: string): { exists: boolean; fileUrl?: 
       try {
         const stat = fs.statSync(cand.path);
         if (stat.isFile()) {
-          return {
+          const res: PhysicalFileInfo = {
             exists: true,
             fileUrl: cand.url,
             fileSize: stat.size,
           };
+          physicalFilesCache.set(lowerRel, res);
+          physicalFilesCache.set(lowerBase, res);
+          return res;
         }
       } catch (_e) {
-        return { exists: true, fileUrl: cand.url };
+        const res: PhysicalFileInfo = { exists: true, fileUrl: cand.url };
+        physicalFilesCache.set(lowerRel, res);
+        physicalFilesCache.set(lowerBase, res);
+        return res;
       }
     }
   }
 
-  return { exists: false };
+  // Negative lookup cache so subsequent calls never touch the disk again
+  const negative: PhysicalFileInfo = { exists: false };
+  physicalFilesCache.set(lowerRel, negative);
+  physicalFilesCache.set(lowerBase, negative);
+  return negative;
 }
 
-// Count physical document files residing on the server's disk
+// Register a newly saved or downloaded physical file into the cache
+export function registerPhysicalFileInCache(relOrBasename: string, fullPath: string, fileSize?: number): void {
+  const clean = path.basename(relOrBasename).trim();
+  const lowerBase = clean.toLowerCase();
+  const lowerRel = relOrBasename.toLowerCase().trim();
+  const subFolder = relOrBasename.includes("/") ? relOrBasename.split("/")[0] : "";
+  const fileUrl = subFolder
+    ? `/uploads/documents/${subFolder}/${encodeURIComponent(clean)}`
+    : `/uploads/documents/${encodeURIComponent(clean)}`;
+
+  const info: PhysicalFileInfo = {
+    exists: true,
+    fileUrl,
+    fileSize,
+  };
+  physicalFilesCache.set(lowerRel, info);
+  physicalFilesCache.set(lowerBase, info);
+}
+
+// Count physical document files - instant calculation from in-memory cache
 export function countPhysicalFilesOnDisk(): {
   rootCount: number;
   waterschapCount: number;
@@ -401,22 +532,40 @@ export function countPhysicalFilesOnDisk(): {
   otherSubdirsCount: number;
   totalFiles: number;
 } {
+  // 1. If physical files cache is populated, compute in 0.001 ms without disk operations
+  if (physicalFilesCache.size > 0) {
+    let rootCount = 0;
+    let waterschapCount = 0;
+    let overijsselCount = 0;
+    let otherSubdirsCount = 0;
+    const countedBaseNames = new Set<string>();
+
+    for (const [key, info] of physicalFilesCache.entries()) {
+      if (!info.exists) continue;
+      const base = path.basename(key);
+      if (countedBaseNames.has(base)) continue;
+      countedBaseNames.add(base);
+
+      if (key.includes("/")) {
+        if (key.startsWith("waterschap/")) waterschapCount++;
+        else if (key.startsWith("overijssel/")) overijsselCount++;
+        else otherSubdirsCount++;
+      } else {
+        rootCount++;
+      }
+    }
+
+    const totalFiles = rootCount + waterschapCount + overijsselCount + otherSubdirsCount;
+    if (totalFiles > 0) {
+      return { rootCount, waterschapCount, overijsselCount, otherSubdirsCount, totalFiles };
+    }
+  }
+
+  // 2. Fallback read if cache is not yet warmed up
   let rootCount = 0;
   let waterschapCount = 0;
   let overijsselCount = 0;
   let otherSubdirsCount = 0;
-
-  const isDocFile = (fn: string) => {
-    const l = fn.toLowerCase();
-    return (
-      !l.endsWith(".json") &&
-      !l.endsWith(".csv") &&
-      !l.endsWith(".log") &&
-      !l.endsWith(".sqlite") &&
-      !l.startsWith(".") &&
-      !l.endsWith(".tmp")
-    );
-  };
 
   try {
     if (fs.existsSync(DOCUMENTS_DIR)) {
@@ -430,15 +579,11 @@ export function countPhysicalFilesOnDisk(): {
           try {
             const subEntries = fs.readdirSync(subDirPath, { withFileTypes: true });
             const subCount = subEntries.filter((s) => s.isFile() && isDocFile(s.name)).length;
-            if (subDirName === "waterschap") {
-              waterschapCount += subCount;
-            } else if (subDirName === "overijssel") {
-              overijsselCount += subCount;
-            } else {
-              otherSubdirsCount += subCount;
-            }
+            if (subDirName === "waterschap") waterschapCount += subCount;
+            else if (subDirName === "overijssel") overijsselCount += subCount;
+            else otherSubdirsCount += subCount;
           } catch (_e) {
-            // ignore subDir read error
+            // ignore subDir readdir error
           }
         }
       }
@@ -451,58 +596,72 @@ export function countPhysicalFilesOnDisk(): {
   return { rootCount, waterschapCount, overijsselCount, otherSubdirsCount, totalFiles };
 }
 
-// Save master metadata safely across persistent storage, SQLite, dist and public directories
-export function saveMasterMetadata(items: RaadsstukMetadata[], csvContent?: string): void {
-  ensureMasterDirs();
-
-  // 1. Save to master JSON in data/ (gitignored)
+// Asynchronous background disk sync function for JSON, CSV, and graph files
+async function flushMasterMetadataToDiskAsync(items: RaadsstukMetadata[], csvContent?: string): Promise<void> {
   try {
-    fs.writeFileSync(MASTER_METADATA_PATH, JSON.stringify(items, null, 2), "utf-8");
+    await ensureMasterDirsAsync();
+    const jsonStr = JSON.stringify(items, null, 2);
+
+    // Save master file in data/
+    await fsp.writeFile(MASTER_METADATA_PATH, jsonStr, "utf-8").catch((err) => {
+      console.warn("[dossierManager] Async write error MASTER_METADATA_PATH:", err?.message || err);
+    });
+
+    // Save backup in uploads/documents/
+    await fsp.writeFile(MASTER_METADATA_BACKUP_PATH, jsonStr, "utf-8").catch(() => {});
+
+    // Save public and dist JSON files
+    await Promise.all([
+      fsp.writeFile(METADATA_PATH, jsonStr, "utf-8").catch(() => {}),
+      fsp.writeFile(DIST_METADATA_PATH, jsonStr, "utf-8").catch(() => {}),
+    ]);
+
+    // Save CSV
+    const csv = csvContent || generateMasterMetadataCsv(items);
+    await Promise.all([
+      fsp.writeFile(METADATA_CSV_PATH, csv, "utf-8").catch(() => {}),
+      fsp.writeFile(path.join(DIST_DATA_DIR, path.basename(METADATA_CSV_PATH)), csv, "utf-8").catch(() => {}),
+    ]);
+
+    // Rebuild and save network graph
+    rebuildNetworkGraph(items);
   } catch (err) {
-    console.error("Error saving MASTER_METADATA_PATH:", err);
+    console.error("[dossierManager] Fout in async flushMasterMetadataToDiskAsync:", err);
   }
+}
 
-  // 2. Save to master backup in uploads/documents (gitignored)
-  try {
-    fs.writeFileSync(MASTER_METADATA_BACKUP_PATH, JSON.stringify(items, null, 2), "utf-8");
-  } catch (_e) {
-    // ignore backup write error
-  }
+// Debounced background scheduler so batch updates (e.g. classifier) don't trigger redundant disk writes
+export function scheduleMasterMetadataDiskSync(items: RaadsstukMetadata[], csvContent?: string): void {
+  if (csvContent) pendingCsvContent = csvContent;
+  if (masterDiskSaveTimeout) clearTimeout(masterDiskSaveTimeout);
 
-  // 3. Save to SQLite kv_store (gitignored & persistent in database.sqlite)
+  masterDiskSaveTimeout = setTimeout(() => {
+    const csv = pendingCsvContent;
+    pendingCsvContent = undefined;
+    flushMasterMetadataToDiskAsync(items, csv);
+  }, 300);
+}
+
+// Save master metadata safely: SQLite is the immediate Single Source of Truth; disk files sync asynchronously
+export function saveMasterMetadata(items: RaadsstukMetadata[], csvContent?: string): void {
+  // 1. Update in-memory master copy
+  inMemoryMasterMetadata = items;
+  metadataVersion++;
+
+  // 2. Persist to SQLite as the Single Source of Truth
   try {
     setKv("raadsstukken_metadata_master", items);
   } catch (err) {
-    console.error("Error saving to sqlite kv_store:", err);
+    console.error("[dossierManager] Error saving to sqlite kv_store:", err);
   }
 
-  // 4. Save to public/data/ and dist/data/
-  try {
-    fs.writeFileSync(METADATA_PATH, JSON.stringify(items, null, 2), "utf-8");
-    if (!fs.existsSync(DIST_DATA_DIR)) {
-      fs.mkdirSync(DIST_DATA_DIR, { recursive: true });
-    }
-    fs.writeFileSync(DIST_METADATA_PATH, JSON.stringify(items, null, 2), "utf-8");
-  } catch (err) {
-    console.warn("Error saving to public/data metadata path:", err);
-  }
+  // 3. Invalidate compiled dossier cache immediately
+  invalidateDossierCache();
 
-  // 5. Save CSV with all master records
-  try {
-    const csv = csvContent || generateMasterMetadataCsv(items);
-    fs.writeFileSync(METADATA_CSV_PATH, csv, "utf-8");
-    fs.writeFileSync(path.join(DIST_DATA_DIR, path.basename(METADATA_CSV_PATH)), csv, "utf-8");
-  } catch (err) {
-    console.warn("Error saving metadata CSV:", err);
-  }
-
-  // 6. Rebuild network graph with all nodes & relationships
-  try {
-    rebuildNetworkGraph(items);
-  } catch (err) {
-    console.warn("Error rebuilding network graph:", err);
-  }
+  // 4. Non-blocking debounced disk sync (CSV, JSON, Network Graph)
+  scheduleMasterMetadataDiskSync(items, csvContent);
 }
+
 
 // Clean document titles for auto-indexed files
 export function cleanDocumentTitle(fileName: string): string {
@@ -616,7 +775,7 @@ export function generateMasterMetadataCsv(items: RaadsstukMetadata[]): string {
 }
 
 // Scan the physical filesystem and synchronize all 5000+ files into master metadata catalog
-export function syncPhysicalFilesystemDocuments(): {
+export async function syncPhysicalFilesystemDocuments(): Promise<{
   success: boolean;
   totalFilesOnDisk: number;
   rootFilesCount: number;
@@ -626,7 +785,7 @@ export function syncPhysicalFilesystemDocuments(): {
   newlyIndexedCount: number;
   totalMasterDocuments: number;
   message: string;
-} {
+}> {
   ensureMasterDirs();
   const counts = countPhysicalFilesOnDisk();
 
@@ -652,56 +811,61 @@ export function syncPhysicalFilesystemDocuments(): {
     );
   };
 
-  if (fs.existsSync(DOCUMENTS_DIR)) {
-    try {
-      const rootEntries = fs.readdirSync(DOCUMENTS_DIR, { withFileTypes: true });
-      for (const entry of rootEntries) {
-        if (entry.isFile() && isDocFile(entry.name)) {
-          const fullPath = path.join(DOCUMENTS_DIR, entry.name);
-          try {
-            const st = fs.statSync(fullPath);
-            diskFiles.push({
-              fileName: entry.name,
-              subFolder: "",
-              relPath: entry.name,
-              fullPath,
-              fileSize: st.size,
-              mtime: st.mtime,
-            });
-          } catch (_e) {
-            // ignore stat error
-          }
-        } else if (entry.isDirectory()) {
-          const subDirName = entry.name;
-          const subDirPath = path.join(DOCUMENTS_DIR, subDirName);
-          try {
-            const subEntries = fs.readdirSync(subDirPath, { withFileTypes: true });
-            for (const sub of subEntries) {
-              if (sub.isFile() && isDocFile(sub.name)) {
-                const subFullPath = path.join(subDirPath, sub.name);
-                try {
-                  const subSt = fs.statSync(subFullPath);
-                  diskFiles.push({
-                    fileName: sub.name,
-                    subFolder: subDirName,
-                    relPath: `${subDirName}/${sub.name}`,
-                    fullPath: subFullPath,
-                    fileSize: subSt.size,
-                    mtime: subSt.mtime,
-                  });
-                } catch (_e) {
-                  // ignore subSt error
-                }
+  try {
+    const rootEntries = await fsp.readdir(DOCUMENTS_DIR, { withFileTypes: true }).catch(() => [] as any[]);
+    let processedEntries = 0;
+
+    for (const entry of rootEntries) {
+      processedEntries++;
+      if (processedEntries % 100 === 0) {
+        await new Promise((r) => setImmediate(r));
+      }
+
+      if (entry.isFile && entry.isFile() && isDocFile(entry.name)) {
+        const fullPath = path.join(DOCUMENTS_DIR, entry.name);
+        try {
+          const st = await fsp.stat(fullPath);
+          diskFiles.push({
+            fileName: entry.name,
+            subFolder: "",
+            relPath: entry.name,
+            fullPath,
+            fileSize: st.size,
+            mtime: st.mtime,
+          });
+        } catch (_e) {
+          // ignore stat error
+        }
+      } else if (entry.isDirectory && entry.isDirectory()) {
+        const subDirName = entry.name;
+        const subDirPath = path.join(DOCUMENTS_DIR, subDirName);
+        try {
+          const subEntries = await fsp.readdir(subDirPath, { withFileTypes: true }).catch(() => [] as any[]);
+          for (const sub of subEntries) {
+            if (sub.isFile && sub.isFile() && isDocFile(sub.name)) {
+              const subFullPath = path.join(subDirPath, sub.name);
+              try {
+                const subSt = await fsp.stat(subFullPath);
+                diskFiles.push({
+                  fileName: sub.name,
+                  subFolder: subDirName,
+                  relPath: `${subDirName}/${sub.name}`,
+                  fullPath: subFullPath,
+                  fileSize: subSt.size,
+                  mtime: subSt.mtime,
+                });
+              } catch (_e) {
+                // ignore subSt error
               }
             }
-          } catch (_e) {
-            // ignore subDir readdir error
           }
+        } catch (_e) {
+          // ignore subDir readdir error
         }
       }
-    } catch (err) {
-      console.error("Error reading DOCUMENTS_DIR:", err);
     }
+  } catch (err) {
+    console.error("Error reading DOCUMENTS_DIR:", err);
   }
 
   // Load existing metadata
@@ -721,78 +885,74 @@ export function syncPhysicalFilesystemDocuments(): {
 
   // Check specialized Waterschap metadata JSON
   const waterschapJsonPath = path.join(DOCUMENTS_DIR, "raadsstukken_metadata_waterschap.json");
-  if (fs.existsSync(waterschapJsonPath)) {
-    try {
-      const raw = fs.readFileSync(waterschapJsonPath, "utf-8");
-      const wsDocs = JSON.parse(raw);
-      if (Array.isArray(wsDocs)) {
-        for (const ws of wsDocs) {
-          const fn = ws.bestandsnaam || ws.filename || (ws.document_id ? `waterschap_${ws.document_id}.pdf` : "");
-          if (!fn) continue;
-          const wsKey = fn.toLowerCase().trim();
-          const wsBase = path.basename(fn).toLowerCase().trim();
-          if (!itemMap.has(wsKey) && !baseNameMap.has(wsBase)) {
-            const docTitle = ws.titel || cleanDocumentTitle(fn);
-            const docEntities = ws.entiteiten || "Waterschap Drents Overijsselse Delta, Waterbeheer, Dijken, Peilbesluit";
-            const canonicalHoofd = normalizeHoofddossier(ws.dossier || "Klimaat, Water & Natuur", docTitle, docEntities, "");
-            const canonicalSub = normalizeSubdossier(canonicalHoofd, ws.subdossier, docTitle, docEntities, "");
+  try {
+    const raw = await fsp.readFile(waterschapJsonPath, "utf-8");
+    const wsDocs = JSON.parse(raw);
+    if (Array.isArray(wsDocs)) {
+      for (const ws of wsDocs) {
+        const fn = ws.bestandsnaam || ws.filename || (ws.document_id ? `waterschap_${ws.document_id}.pdf` : "");
+        if (!fn) continue;
+        const wsKey = fn.toLowerCase().trim();
+        const wsBase = path.basename(fn).toLowerCase().trim();
+        if (!itemMap.has(wsKey) && !baseNameMap.has(wsBase)) {
+          const docTitle = ws.titel || cleanDocumentTitle(fn);
+          const docEntities = ws.entiteiten || "Waterschap Drents Overijsselse Delta, Waterbeheer, Dijken, Peilbesluit";
+          const canonicalHoofd = normalizeHoofddossier(ws.dossier || "Klimaat, Water & Natuur", docTitle, docEntities, "");
+          const canonicalSub = normalizeSubdossier(canonicalHoofd, ws.subdossier, docTitle, docEntities, "");
 
-            const wsItem: RaadsstukMetadata = {
-              bestandsnaam: fn.includes("/") ? fn : `waterschap/${fn}`,
-              titel: docTitle,
-              dossier: canonicalHoofd,
-              subdossier: canonicalSub,
-              wijk_of_kern: ws.wijk_of_kern || detectWijkOrKern(docTitle) || "",
-              datum: ws.datum || extractDateFromFilename(fn),
-              entiteiten: docEntities,
-              relaties: ws.relaties || "",
-            };
-            itemMap.set(wsKey, wsItem);
-            baseNameMap.set(wsBase, wsItem);
-          }
+          const wsItem: RaadsstukMetadata = {
+            bestandsnaam: fn.includes("/") ? fn : `waterschap/${fn}`,
+            titel: docTitle,
+            dossier: canonicalHoofd,
+            subdossier: canonicalSub,
+            wijk_of_kern: ws.wijk_of_kern || detectWijkOrKern(docTitle) || "",
+            datum: ws.datum || extractDateFromFilename(fn),
+            entiteiten: docEntities,
+            relaties: ws.relaties || "",
+          };
+          itemMap.set(wsKey, wsItem);
+          baseNameMap.set(wsBase, wsItem);
         }
       }
-    } catch (_e) {
-      // ignore waterschap json read error
     }
+  } catch (_e) {
+    // ignore waterschap json read error
   }
 
   // Check specialized Overijssel metadata JSON
   const overijsselJsonPath = path.join(DOCUMENTS_DIR, "raadsstukken_metadata_overijssel.json");
-  if (fs.existsSync(overijsselJsonPath)) {
-    try {
-      const raw = fs.readFileSync(overijsselJsonPath, "utf-8");
-      const ovDocs = JSON.parse(raw);
-      if (Array.isArray(ovDocs)) {
-        for (const ov of ovDocs) {
-          const fn = ov.bestandsnaam || ov.filename || (ov.document_id ? `overijssel_${ov.document_id}.pdf` : "");
-          if (!fn) continue;
-          const ovKey = fn.toLowerCase().trim();
-          const ovBase = path.basename(fn).toLowerCase().trim();
-          if (!itemMap.has(ovKey) && !baseNameMap.has(ovBase)) {
-            const docTitle = ov.titel || cleanDocumentTitle(fn);
-            const docEntities = ov.entiteiten || "Provincie Overijssel, Regionaal Beleid";
-            const canonicalHoofd = normalizeHoofddossier(ov.dossier, docTitle, docEntities, "");
-            const canonicalSub = normalizeSubdossier(canonicalHoofd, ov.subdossier, docTitle, docEntities, "");
+  try {
+    const raw = await fsp.readFile(overijsselJsonPath, "utf-8");
+    const ovDocs = JSON.parse(raw);
+    if (Array.isArray(ovDocs)) {
+      for (const ov of ovDocs) {
+        const fn = ov.bestandsnaam || ov.filename || (ov.document_id ? `overijssel_${ov.document_id}.pdf` : "");
+        if (!fn) continue;
+        const ovKey = fn.toLowerCase().trim();
+        const ovBase = path.basename(fn).toLowerCase().trim();
+        if (!itemMap.has(ovKey) && !baseNameMap.has(ovBase)) {
+          const docTitle = ov.titel || cleanDocumentTitle(fn);
+          const docEntities = ov.entiteiten || "Provincie Overijssel, Regionaal Beleid";
+          const canonicalHoofd = normalizeHoofddossier(ov.dossier, docTitle, docEntities, "");
+          const canonicalSub = normalizeSubdossier(canonicalHoofd, ov.subdossier, docTitle, docEntities, "");
 
-            const ovItem: RaadsstukMetadata = {
-              bestandsnaam: fn.includes("/") ? fn : `overijssel/${fn}`,
-              titel: docTitle,
-              dossier: canonicalHoofd,
-              subdossier: canonicalSub,
-              wijk_of_kern: ov.wijk_of_kern || detectWijkOrKern(docTitle) || "",
-              datum: ov.datum || extractDateFromFilename(fn),
-              entiteiten: docEntities,
-              relaties: ov.relaties || "",
-            };
-            itemMap.set(ovKey, ovItem);
-            baseNameMap.set(ovBase, ovItem);
-          }
+          const ovItem: RaadsstukMetadata = {
+            bestandsnaam: fn.includes("/") ? fn : `overijssel/${fn}`,
+            titel: docTitle,
+            dossier: canonicalHoofd,
+            subdossier: canonicalSub,
+            wijk_of_kern: ov.wijk_of_kern || detectWijkOrKern(docTitle) || "",
+            datum: ov.datum || extractDateFromFilename(fn),
+            entiteiten: docEntities,
+            relaties: ov.relaties || "",
+          };
+          itemMap.set(ovKey, ovItem);
+          baseNameMap.set(ovBase, ovItem);
         }
       }
-    } catch (_e) {
-      // ignore overijssel json read error
     }
+  } catch (_e) {
+    // ignore overijssel json read error
   }
 
   // Check all physical disk files and reconcile or add
@@ -829,11 +989,21 @@ export function syncPhysicalFilesystemDocuments(): {
       baseNameMap.set(baseKey, newItem);
       newlyIndexedCount++;
     }
+
+    // Populate physical files cache for O(1) instant lookups
+    const fileUrl = `/uploads/documents/${df.subFolder ? df.subFolder + "/" : ""}${encodeURIComponent(df.fileName)}`;
+    const info: PhysicalFileInfo = {
+      exists: true,
+      fileUrl,
+      fileSize: df.fileSize,
+    };
+    physicalFilesCache.set(df.relPath.toLowerCase().trim(), info);
+    physicalFilesCache.set(df.fileName.toLowerCase().trim(), info);
   }
 
   const masterItems = Array.from(itemMap.values());
 
-  // Save master metadata permanently across data/, sqlite, and public/data/
+  // Save master metadata permanently across SQLite SSOT and scheduled async disk write
   saveMasterMetadata(masterItems);
 
   const msg = `Succesvol gesynchroniseerd: ${counts.totalFiles} bestanden op server schijf gescand (${counts.rootCount} root, ${counts.waterschapCount} waterschap, ${counts.overijsselCount} overijssel). ${newlyIndexedCount} nieuwe documenten geïndexeerd. Totaal catalogus bevat nu ${masterItems.length} documenten.`;
@@ -858,6 +1028,15 @@ export function getAllDossiers(
   deletedSlugs: string[] = [],
   customSubdossiers?: Record<string, any>
 ): Dossier[] {
+  const customLen = Array.isArray(customDossiers) ? customDossiers.length : 0;
+  const delKey = Array.isArray(deletedSlugs) ? deletedSlugs.join(",") : "";
+  const subCount = customSubdossiers ? Object.keys(customSubdossiers).length : 0;
+  const cacheKey = `${metadataVersion}_${customLen}_${delKey}_${subCount}`;
+
+  if (cachedAllDossiers && cachedDossiersKey === cacheKey) {
+    return cachedAllDossiers;
+  }
+
   const metadataList = getRawMetadata();
   const dossierMap = new Map<string, { title: string; docs: DossierDocument[] }>();
 
@@ -1151,6 +1330,9 @@ export function getAllDossiers(
 
   // Sort dossiers by document count descending
   dossiers.sort((a, b) => b.documentCount - a.documentCount);
+
+  cachedAllDossiers = dossiers;
+  cachedDossiersKey = cacheKey;
 
   return dossiers;
 }
@@ -1952,9 +2134,7 @@ export async function processUploadedCouncilDocuments(
     }
 
     try {
-      if (!fs.existsSync(targetDir)) {
-        fs.mkdirSync(targetDir, { recursive: true });
-      }
+      await fsp.mkdir(targetDir, { recursive: true }).catch(() => {});
     } catch (_e) {
       // ignore mkdir error
     }
@@ -1963,12 +2143,20 @@ export async function processUploadedCouncilDocuments(
 
     try {
       if (Buffer.isBuffer(bufferOrSourcePath)) {
-        fs.writeFileSync(targetFilePath, bufferOrSourcePath);
+        await fsp.writeFile(targetFilePath, bufferOrSourcePath);
       } else if (typeof bufferOrSourcePath === "string" && bufferOrSourcePath !== targetFilePath) {
-        if (fs.existsSync(bufferOrSourcePath)) {
-          fs.copyFileSync(bufferOrSourcePath, targetFilePath);
-        }
+        await fsp.copyFile(bufferOrSourcePath, targetFilePath).catch(() => {});
       }
+
+      // Update in-memory physical files cache immediately
+      const relPath = targetDir === DOCUMENTS_DIR ? cleanBasename : `${path.basename(targetDir)}/${cleanBasename}`;
+      const fileUrl = `/uploads/documents/${targetDir === DOCUMENTS_DIR ? "" : path.basename(targetDir) + "/"}${encodeURIComponent(cleanBasename)}`;
+      const info: PhysicalFileInfo = {
+        exists: true,
+        fileUrl,
+      };
+      physicalFilesCache.set(relPath.toLowerCase().trim(), info);
+      physicalFilesCache.set(cleanBasename.toLowerCase().trim(), info);
 
       // Sync to dist
       syncFileFn(targetFilePath);
@@ -2024,18 +2212,18 @@ export async function processUploadedCouncilDocuments(
       const tempExtractDir = path.join(process.cwd(), "data/temp_extract", `zip_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
       let sourceZipPath = file.path;
 
-      if (!sourceZipPath || !fs.existsSync(sourceZipPath)) {
+      if (!sourceZipPath) {
         if (file.buffer && file.buffer.length > 0) {
           const tempZipDir = path.join(process.cwd(), "data/temp_extract");
-          if (!fs.existsSync(tempZipDir)) fs.mkdirSync(tempZipDir, { recursive: true });
+          await fsp.mkdir(tempZipDir, { recursive: true }).catch(() => {});
           sourceZipPath = path.join(tempZipDir, `upload_${Date.now()}.zip`);
-          fs.writeFileSync(sourceZipPath, file.buffer);
+          await fsp.writeFile(sourceZipPath, file.buffer);
         }
       }
 
-      if (sourceZipPath && fs.existsSync(sourceZipPath)) {
+      if (sourceZipPath) {
         try {
-          fs.mkdirSync(tempExtractDir, { recursive: true });
+          await fsp.mkdir(tempExtractDir, { recursive: true }).catch(() => {});
           addLog("info", `Uitpakken met streaming Linux /usr/bin/unzip...`, "UNZIP");
 
           await new Promise<void>((resolve, reject) => {
@@ -2054,26 +2242,29 @@ export async function processUploadedCouncilDocuments(
             });
           });
 
-          // Recursively read all files in tempExtractDir
-          const readAllFiles = (dir: string, base: string): Array<{ full: string; rel: string }> => {
+          // Recursively read all files in tempExtractDir asynchronously
+          const readAllFiles = async (dir: string, base: string): Promise<Array<{ full: string; rel: string }>> => {
             const list: Array<{ full: string; rel: string }> = [];
-            if (!fs.existsSync(dir)) return list;
-            const entries = fs.readdirSync(dir);
-            for (const entry of entries) {
-              if (entry === "__MACOSX" || entry.startsWith("._")) continue;
-              const fullPath = path.join(dir, entry);
-              const stat = fs.statSync(fullPath);
-              if (stat.isDirectory()) {
-                list.push(...readAllFiles(fullPath, base));
-              } else {
-                const rel = path.relative(base, fullPath).replace(/\\/g, "/");
-                list.push({ full: fullPath, rel });
+            try {
+              const entries = await fsp.readdir(dir, { withFileTypes: true });
+              for (const entry of entries) {
+                if (entry.name === "__MACOSX" || entry.name.startsWith("._")) continue;
+                const fullPath = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                  const subFiles = await readAllFiles(fullPath, base);
+                  list.push(...subFiles);
+                } else if (entry.isFile()) {
+                  const rel = path.relative(base, fullPath).replace(/\\/g, "/");
+                  list.push({ full: fullPath, rel });
+                }
               }
+            } catch (_e) {
+              // ignore entry read error
             }
             return list;
           };
 
-          const extractedFiles = readAllFiles(tempExtractDir, tempExtractDir);
+          const extractedFiles = await readAllFiles(tempExtractDir, tempExtractDir);
           addLog("info", `Totaal ${extractedFiles.length} bestand(en) gevonden in het ZIP-archief.`, "UNZIP");
 
           if (extractedFiles.length > 0) {
@@ -2096,11 +2287,9 @@ export async function processUploadedCouncilDocuments(
           console.warn(`[NATIVE UNZIP FAILED, FALLING BACK TO ADMZIP for ${rawName}]:`, unzipCliErr);
           addLog("warn", `Native unzip melding: ${unzipCliErr?.message || unzipCliErr}. Poging met fallback parser...`, "UNZIP");
         } finally {
-          // Clean up temp extraction folder
+          // Clean up temp extraction folder asynchronously
           try {
-            if (fs.existsSync(tempExtractDir)) {
-              fs.rmSync(tempExtractDir, { recursive: true, force: true });
-            }
+            await fsp.rm(tempExtractDir, { recursive: true, force: true }).catch(() => {});
           } catch (_e) {
             // ignore cleanup error
           }
@@ -2111,7 +2300,7 @@ export async function processUploadedCouncilDocuments(
       if (!zipExtractedSuccessfully) {
         try {
           addLog("info", `AdmZip fallback extractor starten voor "${rawName}"...`, "UNZIP");
-          const zip = sourceZipPath && fs.existsSync(sourceZipPath) ? new AdmZip(sourceZipPath) : (file.buffer ? new AdmZip(file.buffer) : null);
+          const zip = sourceZipPath ? new AdmZip(sourceZipPath) : (file.buffer ? new AdmZip(file.buffer) : null);
           if (zip) {
             const zipEntries = zip.getEntries();
             addLog("info", `AdmZip vond ${zipEntries.length} items in het archief.`, "UNZIP");
@@ -2140,10 +2329,10 @@ export async function processUploadedCouncilDocuments(
         }
       }
 
-      // Clean up the uploaded zip file
-      if (sourceZipPath && fs.existsSync(sourceZipPath)) {
+      // Clean up the uploaded zip file asynchronously
+      if (sourceZipPath) {
         try {
-          fs.unlinkSync(sourceZipPath);
+          await fsp.unlink(sourceZipPath).catch(() => {});
         } catch (_e) {
           // ignore unlink error
         }
@@ -2294,16 +2483,25 @@ export function rebuildNetworkGraph(items: RaadsstukMetadata[]): NetworkGraphDat
 
   const graph: NetworkGraphData = { nodes, edges };
 
-  // Write to public/data/network_graph.json
+  inMemoryNetworkGraph = graph;
   try {
-    fs.writeFileSync(GRAPH_PATH, JSON.stringify(graph, null, 2), "utf-8");
-    if (!fs.existsSync(DIST_DATA_DIR)) {
-      fs.mkdirSync(DIST_DATA_DIR, { recursive: true });
-    }
-    fs.writeFileSync(DIST_GRAPH_PATH, JSON.stringify(graph, null, 2), "utf-8");
+    setKv("network_graph", graph);
   } catch (err) {
-    console.error("Error saving updated network graph:", err);
+    console.warn("Could not save graph to SQLite:", err);
   }
+
+  // Non-blocking asynchronous flush to disk
+  (async () => {
+    try {
+      const jsonStr = JSON.stringify(graph, null, 2);
+      await Promise.all([
+        fsp.writeFile(GRAPH_PATH, jsonStr, "utf-8").catch(() => {}),
+        fsp.mkdir(DIST_DATA_DIR, { recursive: true }).then(() => fsp.writeFile(DIST_GRAPH_PATH, jsonStr, "utf-8")).catch(() => {}),
+      ]);
+    } catch (_err) {
+      // ignore async disk flush error
+    }
+  })();
 
   return graph;
 }
@@ -2340,15 +2538,25 @@ export function processMetadataOrGraphUpload(
       throw new Error("Ongeldig network_graph.json formaat: 'nodes' en 'edges' arrays ontbreken.");
     }
 
-    fs.writeFileSync(GRAPH_PATH, JSON.stringify(parsed, null, 2), "utf-8");
-    if (!fs.existsSync(DIST_DATA_DIR)) {
-      fs.mkdirSync(DIST_DATA_DIR, { recursive: true });
-    }
+    inMemoryNetworkGraph = parsed;
     try {
-      fs.writeFileSync(DIST_GRAPH_PATH, JSON.stringify(parsed, null, 2), "utf-8");
+      setKv("network_graph", parsed);
     } catch (e) {
-      console.warn("Could not write graph to dist:", e);
+      console.warn("Could not save graph to SQLite:", e);
     }
+
+    // Non-blocking asynchronous flush to disk
+    (async () => {
+      try {
+        const jsonStr = JSON.stringify(parsed, null, 2);
+        await Promise.all([
+          fsp.writeFile(GRAPH_PATH, jsonStr, "utf-8").catch(() => {}),
+          fsp.mkdir(DIST_DATA_DIR, { recursive: true }).then(() => fsp.writeFile(DIST_GRAPH_PATH, jsonStr, "utf-8")).catch(() => {}),
+        ]);
+      } catch (_e) {
+        // ignore async flush error
+      }
+    })();
 
     return {
       success: true,
