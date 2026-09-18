@@ -851,11 +851,11 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
       const processedFilenames = new Set<string>();
       for (const item of currentMetadata) {
         if (item.bestandsnaam && item.dossier !== "ONGECLASSIFICEERD_FALEN") {
-          processedFilenames.add(item.bestandsnaam.toLowerCase().trim());
+          processedFilenames.add(path.basename(item.bestandsnaam).toLowerCase().trim());
         }
       }
 
-      const newFilesCount = allFiles.filter((f) => !processedFilenames.has(f.filename.toLowerCase().trim())).length;
+      const newFilesCount = allFiles.filter((f) => !processedFilenames.has(path.basename(f.filename).toLowerCase().trim())).length;
       const totalToProcess = dlqItemsCount + newFilesCount;
 
       activeProgress.total = maxLimit ? Math.min(maxLimit, totalToProcess) : (totalToProcess || currentMetadata.length);
@@ -883,7 +883,7 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
           if (maxLimit && aiCallsPerformed >= maxLimit) {
             activeProgress.logs.push(`[BATCH LIMIET BEREIKT] 🛑 Gestopt na verwerken van ${aiCallsPerformed} AI-items (ingestelde limiet: ${maxLimit}).`);
             reclassifiedMetadata.push(norm);
-            if (norm.bestandsnaam) processedFilenamesFinal.add(norm.bestandsnaam.toLowerCase().trim());
+            if (norm.bestandsnaam) processedFilenamesFinal.add(path.basename(norm.bestandsnaam).toLowerCase().trim());
             continue;
           }
 
@@ -891,7 +891,7 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
             activeProgress.activeFile = norm.bestandsnaam || `DLQ Document ${i + 1}`;
             activeProgress.processed++;
 
-            const fnLower = (norm.bestandsnaam || "").toLowerCase().trim();
+            const fnLower = path.basename(norm.bestandsnaam || "").toLowerCase().trim();
             const physicalFile = fileMap.get(fnLower);
             let text = "";
             if (physicalFile) {
@@ -970,7 +970,7 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
 
         reclassifiedMetadata.push(norm);
         if (norm.bestandsnaam) {
-          processedFilenamesFinal.add(norm.bestandsnaam.toLowerCase().trim());
+          processedFilenamesFinal.add(path.basename(norm.bestandsnaam).toLowerCase().trim());
         }
 
         if (i % 100 === 0 && i > 0) {
@@ -994,7 +994,7 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
 
         await new Promise((resolve) => setTimeout(resolve, 15));
 
-        const fnLower = file.filename.toLowerCase().trim();
+        const fnLower = path.basename(file.filename).toLowerCase().trim();
         if (!options.force && processedFilenamesFinal.has(fnLower)) {
           activeProgress.alreadyProcessed++;
           continue;
