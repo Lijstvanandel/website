@@ -45,5 +45,7 @@ public/*.csv
 dist/*.csv
 !src/data/
 !public/data/
+public/data/gemini_quota_tracker.json
+public/data/gemini_dead_letter_queue.jsonl
 *metadata_master*
 
