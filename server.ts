@@ -11823,12 +11823,11 @@ Sitemap: ${baseUrl}/sitemap.xml
       const masterMetadataList = getRawMetadata();
       const aiProcessedCount = masterMetadataList.filter(m => {
         if (!m) return false;
-        // MUST have either an explicit AI flag OR a non-empty relaties field
-        // (Rule-based normalization leaves relaties empty, while AI always generates them)
+        // MUST have either an explicit AI flag OR a Gemini model signature
+        // We no longer rely on 'relaties' length as it can be populated by other heuristic services
         return (
           m.ai_geclassificeerd === true || 
-          (m.ai_model && m.ai_model.toLowerCase().includes("gemini")) ||
-          (typeof m.relaties === "string" && m.relaties.trim().length > 0)
+          (typeof m.ai_model === "string" && m.ai_model.toLowerCase().includes("gemini"))
         );
       }).length;
       const unclassifiedFailCount = masterMetadataList.filter(m => m.dossier === "ONGECLASSIFICEERD_FALEN" || m.subdossier === "Audit & Retry Vereist (DLQ)").length;

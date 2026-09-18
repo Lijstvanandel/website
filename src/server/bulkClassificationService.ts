@@ -20,7 +20,7 @@ const ROOT_DOCS_DIR = path.join(process.cwd(), "public", "uploads", "documents")
 export const OFFICIAL_DOSSIERS = [...CANONICAL_HOOFDDOSSIERS];
 
 // Gemini model configuration & strict Free Tier rate limit constants
-export const CLASSIFIER_MODEL = "gemini-2.5-flash";
+export const CLASSIFIER_MODEL = "gemini-1.5-flash";
 export const FREE_TIER_RPM_LIMIT = 10; // Hard max 10 Requests Per Minute (Google Free Tier)
 export const EFFECTIVE_RPM_LIMIT = 8;  // Safe 8 RPM target (~25% safety margin against sliding-window/burst edge cases)
 export const FREE_TIER_RPD_LIMIT = 250; // Max 250 Requests Per Day
@@ -544,7 +544,7 @@ export function runFallbackClassification(
 }
 
 /**
- * Classify a document using Gemini (model: gemini-2.5-flash) with:
+ * Classify a document using Gemini (model: gemini-1.5-flash) with:
  * 1. Privacy Sanitizing (stripping BSN, IBAN, contact data to prevent sending sensitive data to Google)
  * 2. Sliding window rate limiting (<= 10 RPM, min 6.2s interval)
  * 3. Daily quota tracking (<= 250 RPD in Free Tier)
