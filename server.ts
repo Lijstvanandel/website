@@ -11816,6 +11816,9 @@ Sitemap: ${baseUrl}/sitemap.xml
       const page = Math.max(1, parseInt(req.query.page || "1", 10));
       const limit = Math.max(1, parseInt(req.query.limit || "12", 10));
 
+      // Count physical files on disk for transparent server reporting
+      const diskStats = countPhysicalFilesOnDisk();
+
       // Extract unique categories and deduplicated document counts
       const categoriesSet = new Set<string>();
       const uniqueDocsSet = new Set<string>();
@@ -11983,6 +11986,8 @@ Sitemap: ${baseUrl}/sitemap.xml
           totalSubdossiers,
           totalDocuments: uniqueDocsSet.size,
           totalUploadedFiles: uniqueUploadedSet.size,
+          physicalFilesOnDisk: diskStats.totalFiles,
+          missingFilesCount: Math.max(0, uniqueDocsSet.size - uniqueUploadedSet.size),
           totalDocumentLinks,
         },
       });
