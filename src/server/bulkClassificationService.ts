@@ -332,17 +332,27 @@ export function resetGeminiQuotaStatus(): void {
 }
 
 function getGemini(): GoogleGenAI | null {
-  if (!geminiClient && process.env.GEMINI_API_KEY) {
-    geminiClient = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        }
-      }
-    });
+  if (!process.env.GEMINI_API_KEY) {
+    try {
+      dotenv.config({ override: true });
+    } catch (_e) {
+      // ignore
+    }
   }
-  return geminiClient;
+  if (process.env.GEMINI_API_KEY) {
+    if (!geminiClient) {
+      geminiClient = new GoogleGenAI({
+        apiKey: process.env.GEMINI_API_KEY,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          }
+        }
+      });
+    }
+    return geminiClient;
+  }
+  return null;
 }
 
 /**
@@ -928,7 +938,15 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
         let attempts = 0;
         const maxNonQuotaRetries = 3;
 
-        // If no API key configured, use DLQ fallback
+        // If no API key configured, attempt to reload .env dynamically
+        if (!process.env.GEMINI_API_KEY) {
+          try {
+            dotenv.config({ override: true });
+          } catch (_e) {
+            // ignore
+          }
+        }
+
         if (!process.env.GEMINI_API_KEY) {
           meta = runFallbackClassification(text, file.filename, file.relativePath, "Geen GEMINI_API_KEY geconfigureerd");
           usedSource = "fallback";
