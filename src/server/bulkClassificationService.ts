@@ -826,88 +826,182 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
   // Run asynchronously in the background
   Promise.resolve().then(async () => {
     try {
+      // Reload .env dynamically in case user added or updated GEMINI_API_KEY
+      if (!process.env.GEMINI_API_KEY) {
+        try {
+          dotenv.config({ override: true });
+        } catch (_e) {
+          // ignore
+        }
+      }
+
       const currentMetadata = getRawMetadata();
       const allFiles = await scanPdfFilesAsync();
-      const totalToProcess = maxLimit ? Math.min(maxLimit, currentMetadata.length + allFiles.length) : (currentMetadata.length + allFiles.length);
-      activeProgress.total = totalToProcess;
-      activeProgress.logs.push(`Sanering & Classificatie gestart: ${currentMetadata.length} geregistreerde raadsstukken en ${allFiles.length} fysieke documenten.${maxLimit ? ` (Batchlimiet ingesteld op: ${maxLimit})` : ""}`);
 
-      // 1. Saneren & normaliseren van alle bestaande documenten naar de 7 canonieke dossiers
+      const fileMap = new Map<string, { absolutePath: string; relativePath: string; filename: string }>();
+      for (const f of allFiles) {
+        fileMap.set(f.filename.toLowerCase().trim(), f);
+      }
+
+      // Count DLQ items needing AI classification vs clean valid metadata
+      const dlqItemsCount = currentMetadata.filter(
+        (item) => item.dossier === "ONGECLASSIFICEERD_FALEN" || item.subdossier === "Audit & Retry Vereist (DLQ)"
+      ).length;
+
       const processedFilenames = new Set<string>();
-      const reclassifiedMetadata: RaadsstukMetadata[] = [];
+      for (const item of currentMetadata) {
+        if (item.bestandsnaam && item.dossier !== "ONGECLASSIFICEERD_FALEN") {
+          processedFilenames.add(item.bestandsnaam.toLowerCase().trim());
+        }
+      }
 
+      const newFilesCount = allFiles.filter((f) => !processedFilenames.has(f.filename.toLowerCase().trim())).length;
+      const totalToProcess = dlqItemsCount + newFilesCount;
+
+      activeProgress.total = maxLimit ? Math.min(maxLimit, totalToProcess) : (totalToProcess || currentMetadata.length);
+      activeProgress.logs.push(
+        `Sanering & Classificatie gestart: ${dlqItemsCount} DLQ-herstelpunten, ${currentMetadata.length - dlqItemsCount} actieve raadsstukken en ${newFilesCount} nieuwe bestanden.${maxLimit ? ` (Batchlimiet ingesteld op: ${maxLimit} AI-classificaties)` : ""}`
+      );
+
+      let aiCallsPerformed = 0;
+      let consecutiveQuotaErrors = 0;
+      const reclassifiedMetadata: RaadsstukMetadata[] = [];
+      const processedFilenamesFinal = new Set<string>();
+
+      // 1. Saneren & herclassificeren van bestaande metadata (inclusief DLQ-herstel met Gemini)
       for (let i = 0; i < currentMetadata.length; i++) {
         if (!activeProgress.isRunning) {
           activeProgress.logs.push("Classificatie handmatig gestopt.");
           break;
         }
 
-        if (maxLimit && activeProgress.processed >= maxLimit) {
-          activeProgress.logs.push(`[BATCH LIMIET BEREIKT] 🛑 Gestopt na verwerken van ${activeProgress.processed} items (ingestelde limiet: ${maxLimit}).`);
-          break;
-        }
-
         const rawItem = currentMetadata[i];
-        activeProgress.activeFile = rawItem.bestandsnaam || `Document ${i + 1}`;
-        activeProgress.processed++;
+        let norm = normalizeRecord(rawItem);
+        const isDlq = norm.dossier === "ONGECLASSIFICEERD_FALEN" || norm.subdossier === "Audit & Retry Vereist (DLQ)";
 
-        const norm = normalizeRecord(rawItem);
-        const validation = validateRecordConformity(norm);
+        if (isDlq) {
+          if (maxLimit && aiCallsPerformed >= maxLimit) {
+            activeProgress.logs.push(`[BATCH LIMIET BEREIKT] 🛑 Gestopt na verwerken van ${aiCallsPerformed} AI-items (ingestelde limiet: ${maxLimit}).`);
+            reclassifiedMetadata.push(norm);
+            if (norm.bestandsnaam) processedFilenamesFinal.add(norm.bestandsnaam.toLowerCase().trim());
+            continue;
+          }
 
-        if (!validation.valid) {
-          activeProgress.logs.push(`[VALIDATIE HERSTEL] Document ${norm.bestandsnaam}: ${validation.errors.join(", ")}`);
+          if (process.env.GEMINI_API_KEY) {
+            activeProgress.activeFile = norm.bestandsnaam || `DLQ Document ${i + 1}`;
+            activeProgress.processed++;
+
+            const fnLower = (norm.bestandsnaam || "").toLowerCase().trim();
+            const physicalFile = fileMap.get(fnLower);
+            let text = "";
+            if (physicalFile) {
+              try {
+                text = await extractTextFromFile(physicalFile.absolutePath);
+              } catch (_e) {
+                // ignore
+              }
+            }
+            if (!text) {
+              text = norm.titel || norm.bestandsnaam;
+            }
+
+            let success = false;
+            let attempts = 0;
+            while (!success && activeProgress.isRunning) {
+              attempts++;
+              try {
+                const geminiResult = await classifyWithGemini(text, norm.bestandsnaam || norm.titel, physicalFile?.relativePath || "");
+                norm = normalizeRecord({ ...rawItem, ...geminiResult.meta }, text);
+                aiCallsPerformed++;
+                activeProgress.newlyClassified++;
+                success = true;
+                consecutiveQuotaErrors = 0;
+
+                const formattedGeminiJson = geminiResult.rawResponseText ? geminiResult.rawResponseText.trim() : JSON.stringify(geminiResult.meta, null, 2);
+                activeProgress.logs.push(`[HERKLASSIFICATIE GEMINI SUCCESS] "${norm.bestandsnaam}" ➔ [${norm.dossier}] / [${norm.subdossier}]`);
+                activeProgress.logs.push(`  ↳ [GEMINI OUTPUT ${norm.bestandsnaam}]:\n${formattedGeminiJson}`);
+              } catch (err: any) {
+                if (err instanceof GeminiDailyQuotaExceededError || err?.name === "GeminiDailyQuotaExceededError") {
+                  activeProgress.logs.push(`[DAGQUOTUM BEREIKT] ⚠️ 250 verzoeken/dag limiet bereikt voor ${CLASSIFIER_MODEL}.`);
+                  success = true;
+                  break;
+                }
+
+                if (err instanceof GeminiQuotaExceededError || err?.name === "GeminiQuotaExceededError") {
+                  consecutiveQuotaErrors++;
+                  const baseWait = err.retryAfterSeconds || 60;
+                  const multiplier = Math.min(3, 1 + (consecutiveQuotaErrors - 1) * 0.5);
+                  const jitterSec = Math.floor(Math.random() * 5) + 1;
+                  const waitSeconds = Math.round(baseWait * multiplier) + jitterSec;
+                  const resumeDate = new Date(Date.now() + waitSeconds * 1000);
+                  const resumeAt = resumeDate.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+                  activeProgress.isPaused = true;
+                  activeProgress.pauseRemainingSeconds = waitSeconds;
+                  activeProgress.pauseResumesAt = resumeAt;
+                  activeProgress.pauseReason = `Gemini API (429 RESOURCE_EXHAUSTED). Rate limit bereikt. Pauzeert ${waitSeconds}s tot ${resumeAt}...`;
+                  activeProgress.logs.push(`[RATE LIMIT PAUZE] ⏸️ 429 RESOURCE_EXHAUSTED. Pauze van ${waitSeconds}s tot ${resumeAt}...`);
+
+                  saveMasterMetadata(reclassifiedMetadata);
+
+                  for (let sec = waitSeconds; sec > 0; sec--) {
+                    if (!activeProgress.isRunning) break;
+                    activeProgress.pauseRemainingSeconds = sec;
+                    await new Promise((r) => setTimeout(r, 1000));
+                  }
+
+                  if (!activeProgress.isRunning) break;
+
+                  resetRateLimitWindow();
+                  activeProgress.isPaused = false;
+                  activeProgress.pauseReason = undefined;
+                  activeProgress.pauseRemainingSeconds = 0;
+                  continue;
+                }
+
+                activeProgress.logs.push(`[DLQ HERKANSING MISLUKT] Document "${norm.bestandsnaam}": ${err?.message || "fout"}`);
+                success = true;
+              }
+            }
+          } else {
+            activeProgress.logs.push(`[DLQ] Geen GEMINI_API_KEY geconfigureerd voor "${norm.bestandsnaam}". Blijft in DLQ.`);
+          }
         }
 
         reclassifiedMetadata.push(norm);
         if (norm.bestandsnaam) {
-          processedFilenames.add(norm.bestandsnaam.toLowerCase().trim());
+          processedFilenamesFinal.add(norm.bestandsnaam.toLowerCase().trim());
         }
 
-        activeProgress.newlyClassified++;
-        if (i % 25 === 0 || i === currentMetadata.length - 1) {
-          activeProgress.logs.push(`[${activeProgress.processed}/${activeProgress.total}] Gesaneerd: "${norm.titel.substring(0, 40)}" ➔ [${norm.dossier}] / [${norm.subdossier}]`);
-        }
-
-        if (activeProgress.logs.length > 300) {
-          activeProgress.logs.shift();
-        }
-
-        // Asynchroon pauzeren voor event loop
-        await new Promise((resolve) => setTimeout(resolve, 5));
-
-        // Periodieke opslag
-        if (i > 0 && i % 50 === 0) {
+        if (i % 100 === 0 && i > 0) {
           saveMasterMetadata(reclassifiedMetadata);
         }
       }
 
-      // 2. Scan and classify new physical files with Gemini and Kop-Staart extraction
-      let consecutiveQuotaErrors = 0;
+      saveMasterMetadata(reclassifiedMetadata);
 
+      // 2. Scan and classify new physical files with Gemini and Kop-Staart extraction
       for (const file of allFiles) {
         if (!activeProgress.isRunning) {
           activeProgress.logs.push("Classificatie handmatig gestopt.");
           break;
         }
 
-        if (maxLimit && activeProgress.processed >= maxLimit) {
-          activeProgress.logs.push(`[BATCH LIMIET BEREIKT] 🛑 Gestopt na verwerken van ${activeProgress.processed} items (ingestelde limiet: ${maxLimit}). Kosten beheerst!`);
+        if (maxLimit && aiCallsPerformed >= maxLimit) {
+          activeProgress.logs.push(`[BATCH LIMIET BEREIKT] 🛑 Gestopt na verwerken van ${aiCallsPerformed} AI-items (ingestelde limiet: ${maxLimit}). Kosten beheerst!`);
           break;
         }
 
         await new Promise((resolve) => setTimeout(resolve, 15));
 
         const fnLower = file.filename.toLowerCase().trim();
-        activeProgress.activeFile = file.filename;
-        activeProgress.processed++;
-
-        if (!options.force && processedFilenames.has(fnLower)) {
+        if (!options.force && processedFilenamesFinal.has(fnLower)) {
           activeProgress.alreadyProcessed++;
-          if (activeProgress.processed % 50 === 0 || activeProgress.processed === allFiles.length) {
-            activeProgress.logs.push(`[${activeProgress.processed}/${activeProgress.total}] Reeds verwerkt: ${file.filename}`);
-          }
           continue;
         }
+
+        activeProgress.activeFile = file.filename;
+        activeProgress.processed++;
 
         // Determine origin folder
         let origin = "Gemeente Steenwijkerland";
@@ -919,7 +1013,7 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
 
         const timestamp = new Date().toLocaleTimeString();
         activeProgress.logs.push(`[${timestamp}] [${activeProgress.processed}/${activeProgress.total}] Analyseren: ${file.filename} (${origin})`);
-        
+
         if (activeProgress.logs.length > 300) {
           activeProgress.logs.shift();
         }
@@ -938,15 +1032,6 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
         let attempts = 0;
         const maxNonQuotaRetries = 3;
 
-        // If no API key configured, attempt to reload .env dynamically
-        if (!process.env.GEMINI_API_KEY) {
-          try {
-            dotenv.config({ override: true });
-          } catch (_e) {
-            // ignore
-          }
-        }
-
         if (!process.env.GEMINI_API_KEY) {
           meta = runFallbackClassification(text, file.filename, file.relativePath, "Geen GEMINI_API_KEY geconfigureerd");
           usedSource = "fallback";
@@ -961,8 +1046,9 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
             meta = geminiResult.meta;
             rawAiOutput = geminiResult.rawResponseText;
             usedSource = "gemini";
+            aiCallsPerformed++;
             success = true;
-            consecutiveQuotaErrors = 0; // Reset consecutive quota error counter on success
+            consecutiveQuotaErrors = 0;
           } catch (err: any) {
             // Daily Quota (250 RPD) Exceeded Handling
             if (err instanceof GeminiDailyQuotaExceededError || err?.name === "GeminiDailyQuotaExceededError") {
@@ -974,11 +1060,10 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
               break;
             }
 
-            // Rate Limit (429 RESOURCE_EXHAUSTED / 8-10 RPM) Handling met Exponential Backoff & Jitter (Fix 3)
+            // Rate Limit (429 RESOURCE_EXHAUSTED / 8-10 RPM) Handling
             if (err instanceof GeminiQuotaExceededError || err?.name === "GeminiQuotaExceededError") {
               consecutiveQuotaErrors++;
               const baseWait = err.retryAfterSeconds || 60;
-              // Exponential backoff multiplier (1x, 1.5x, 2x, max 3x) + willekeurige jitter (1-5 sec)
               const multiplier = Math.min(3, 1 + (consecutiveQuotaErrors - 1) * 0.5);
               const jitterSec = Math.floor(Math.random() * 5) + 1;
               const waitSeconds = Math.round(baseWait * multiplier) + jitterSec;
@@ -995,7 +1080,7 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
               activeProgress.pauseResumesAt = resumeAt;
               activeProgress.pauseReason = `Gemini API (429 RESOURCE_EXHAUSTED). Rate limit sliding window bereikt (poging ${consecutiveQuotaErrors}). Pauzeert ${waitSeconds}s met backoff & jitter tot ${resumeAt}...`;
 
-              activeProgress.logs.push(`[RATE LIMIT PAUZE] ⏸️ 429 RESOURCE_EXHAUSTED (poging ${consecutiveQuotaErrors}). Backoff-pauze van ${waitSeconds}s (incl. ${jitterSec}s jitter) tot ${resumeAt}...`);
+              activeProgress.logs.push(`[RATE LIMIT PAUZE] ⏸️ 429 RESOURCE_EXHAUSTED (poging ${consecutiveQuotaErrors}). Backoff-pauze van ${waitSeconds}s tot ${resumeAt}...`);
               if (activeProgress.logs.length > 300) activeProgress.logs.shift();
 
               saveMasterMetadata(reclassifiedMetadata);
@@ -1008,7 +1093,6 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
 
               if (!activeProgress.isRunning) break;
 
-              // Reset sliding window na pauze zodat we niet direct weer blokkeren (Fix 3)
               resetRateLimitWindow();
 
               activeProgress.isPaused = false;
@@ -1035,7 +1119,6 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
 
         if (!activeProgress.isRunning) break;
 
-        // Prepare complete metadata record with strict taxonomy normalization
         const initialRecord: RaadsstukMetadata = {
           bestandsnaam: file.filename,
           titel: meta.titel || file.filename.replace(/\.pdf$/i, "").replace(/[_-]/g, " "),
@@ -1060,10 +1143,9 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
           reclassifiedMetadata.push(record);
         }
 
-        processedFilenames.add(fnLower);
+        processedFilenamesFinal.add(fnLower);
         activeProgress.newlyClassified++;
 
-        // Detailed output logging so user can verify Gemini API response directly
         const formattedGeminiJson = rawAiOutput ? rawAiOutput.trim() : JSON.stringify({
           titel: record.titel,
           dossier: record.dossier,
@@ -1077,7 +1159,6 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
         activeProgress.logs.push(`  ↳ [${usedSource.toUpperCase()}] Indeling: "${record.dossier}" ➔ Subdossier: "${record.subdossier}"`);
         activeProgress.logs.push(`  ↳ [GEMINI OUTPUT ${file.filename}]:\n${formattedGeminiJson}`);
 
-        // Store structured result for UI inspection
         const classificationResult: ClassificationResult = {
           filename: file.filename,
           source: usedSource,
@@ -1097,7 +1178,7 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
         if (activeProgress.lastResults.length > 50) {
           activeProgress.lastResults.pop();
         }
-        
+
         if (activeProgress.logs.length > 500) {
           activeProgress.logs.shift();
         }
