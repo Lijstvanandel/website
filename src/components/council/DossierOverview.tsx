@@ -946,7 +946,12 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
                     : "Bestanden verwerkt"}
                 </span>
                 <span>
-                  {Math.round((bulkStatus.processed / bulkStatus.total) * 100)}%
+                  {bulkStatus.total > 0 ? (function() {
+                    const pct = (bulkStatus.processed / bulkStatus.total) * 100;
+                    if (pct === 0) return "0%";
+                    if (pct === 100) return "100%";
+                    return pct.toFixed(1) + "%";
+                  })() : "0%"}
                 </span>
               </div>
               <div className="w-full bg-muted rounded-full h-2.5 overflow-hidden border border-border">
@@ -1171,7 +1176,12 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
             <span>{(stats.classifiedSuccessCount || 0).toLocaleString('nl-NL')}</span>
             <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
               {stats.totalDocuments > 0 
-                ? `${Math.round(((stats.classifiedSuccessCount ?? 0) / stats.totalDocuments) * 100)}%`
+                ? (function() {
+                    const pct = ((stats.classifiedSuccessCount || 0) / stats.totalDocuments) * 100;
+                    if (pct === 0) return "0%";
+                    if (pct < 1) return pct.toFixed(2) + "%";
+                    return pct.toFixed(1) + "%";
+                  })()
                 : "0%"}
             </span>
           </div>
