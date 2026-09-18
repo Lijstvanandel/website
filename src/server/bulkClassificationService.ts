@@ -911,7 +911,12 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
               attempts++;
               try {
                 const geminiResult = await classifyWithGemini(text, norm.bestandsnaam || norm.titel, physicalFile?.relativePath || "");
-                norm = normalizeRecord({ ...rawItem, ...geminiResult.meta }, text);
+                norm = normalizeRecord({ 
+                  ...rawItem, 
+                  ...geminiResult.meta,
+                  ai_geclassificeerd: true,
+                  ai_model: CLASSIFIER_MODEL
+                }, text);
                 aiCallsPerformed++;
                 activeProgress.newlyClassified++;
                 success = true;
@@ -1043,7 +1048,11 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
           attempts++;
           try {
             const geminiResult = await classifyWithGemini(text, file.filename, file.relativePath);
-            meta = geminiResult.meta;
+            meta = {
+              ...geminiResult.meta,
+              ai_geclassificeerd: true,
+              ai_model: CLASSIFIER_MODEL
+            };
             rawAiOutput = geminiResult.rawResponseText;
             usedSource = "gemini";
             aiCallsPerformed++;

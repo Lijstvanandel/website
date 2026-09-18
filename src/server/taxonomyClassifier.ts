@@ -1101,6 +1101,7 @@ export function normalizeRecord(item: RaadsstukMetadata, text?: string): Raadsst
   );
 
   return {
+    ...item,
     bestandsnaam: item.bestandsnaam,
     titel: cleanPublicTitle(item.bestandsnaam, item.titel),
     dossier: canonicalHoofd,

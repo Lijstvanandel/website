@@ -11823,12 +11823,12 @@ Sitemap: ${baseUrl}/sitemap.xml
       const masterMetadataList = getRawMetadata();
       const aiProcessedCount = masterMetadataList.filter(m => {
         if (!m) return false;
+        // MUST have either an explicit AI flag OR a non-empty relaties field
+        // (Rule-based normalization leaves relaties empty, while AI always generates them)
         return (
           m.ai_geclassificeerd === true || 
           (m.ai_model && m.ai_model.toLowerCase().includes("gemini")) ||
-          (typeof m.relaties === "string" && m.relaties.trim().length > 0) ||
-          (typeof m.entiteiten === "string" && m.entiteiten.trim().length > 5) ||
-          (Array.isArray(m.skos_tags) && m.skos_tags.length > 1)
+          (typeof m.relaties === "string" && m.relaties.trim().length > 0)
         );
       }).length;
       const unclassifiedFailCount = masterMetadataList.filter(m => m.dossier === "ONGECLASSIFICEERD_FALEN" || m.subdossier === "Audit & Retry Vereist (DLQ)").length;

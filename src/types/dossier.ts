@@ -8,6 +8,8 @@ export interface RaadsstukMetadata {
   subdossier?: string;
   wijk_of_kern?: string;
   skos_tags?: string[];
+  ai_geclassificeerd?: boolean;
+  ai_model?: string;
 }
 
 export interface GraphNode {
