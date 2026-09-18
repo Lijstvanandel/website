@@ -11823,7 +11823,8 @@ Sitemap: ${baseUrl}/sitemap.xml
       const masterMetadataList = getRawMetadata();
       const aiProcessedCount = masterMetadataList.filter(m => 
         m.ai_geclassificeerd === true || 
-        (Array.isArray(m.skos_tags) && m.skos_tags.length > 0)
+        (m.ai_model && m.ai_model.includes("gemini")) ||
+        (m.relaties && m.relaties.trim().length > 5)
       ).length;
       const unclassifiedFailCount = masterMetadataList.filter(m => m.dossier === "ONGECLASSIFICEERD_FALEN" || m.subdossier === "Audit & Retry Vereist (DLQ)").length;
 
