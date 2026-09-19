@@ -102,8 +102,8 @@ function loadQuotaTracker(): QuotaTrackerState {
           inMemoryQuotaTracker = {
             date: today,
             requestsToday: Number(data.requestsToday) || 0,
-            dailyLimit: FREE_TIER_RPD_LIMIT,
-            rpmLimit: FREE_TIER_RPM_LIMIT,
+            dailyLimit: getEffectiveRpdLimit(),
+            rpmLimit: getEffectiveRpmLimit(),
             model: CLASSIFIER_MODEL,
             lastRequestTime: data.lastRequestTime
           };
@@ -118,8 +118,8 @@ function loadQuotaTracker(): QuotaTrackerState {
   inMemoryQuotaTracker = {
     date: today,
     requestsToday: 0,
-    dailyLimit: FREE_TIER_RPD_LIMIT,
-    rpmLimit: FREE_TIER_RPM_LIMIT,
+    dailyLimit: getEffectiveRpdLimit(),
+    rpmLimit: getEffectiveRpmLimit(),
     model: CLASSIFIER_MODEL,
   };
   saveQuotaTracker(inMemoryQuotaTracker);
@@ -785,10 +785,10 @@ let activeProgress: ClassificationProgress = {
   pauseReason: undefined,
   pauseRemainingSeconds: 0,
   pauseResumesAt: undefined,
-  ratePerMinute: EFFECTIVE_RPM_LIMIT,
-  rpdLimit: FREE_TIER_RPD_LIMIT,
+  ratePerMinute: getEffectiveRpmLimit(),
+  rpdLimit: getEffectiveRpdLimit(),
   dailyRequestsUsed: 0,
-  dailyRequestsRemaining: FREE_TIER_RPD_LIMIT,
+  dailyRequestsRemaining: getEffectiveRpdLimit(),
   modelName: CLASSIFIER_MODEL,
   privacySanitized: true,
   total: 0,
