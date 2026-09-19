@@ -727,6 +727,17 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
               Complete CSV
             </a>
 
+            <a
+              id="btn-download-execution-log"
+              href="/api/council/classification-log/download"
+              download
+              className="inline-flex items-center justify-center border border-border bg-card hover:bg-muted text-foreground text-xs font-semibold h-8 px-3 rounded-xl shadow-2xs transition-colors"
+              title="Download het volledige uitvoeringslogboek van de herstructurering (met tijdstempels van alle AI-classificaties)"
+            >
+              <FileText className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
+              Uitvoeringslog (.txt)
+            </a>
+
             <Button
               id="btn-export-missing-files"
               onClick={() => setIsMissingFilesModalOpen(true)}

@@ -13118,6 +13118,25 @@ Sitemap: ${baseUrl}/sitemap.xml
     }
   });
 
+  // Download complete restructuring execution log
+  app.get(["/api/council/classification-log/download", "/api/council/classification-log.txt"], optionalAuth, (req: any, res: any) => {
+    try {
+      const logPath = path.join(process.cwd(), "public", "data", "last_restructuring_execution.log");
+      if (!fs.existsSync(logPath)) {
+        res.setHeader("Content-Type", "text/plain; charset=utf-8");
+        return res.send("Nog geen herstructureringslog beschikbaar. Druk op 'Alles Herstructureren' om een sessie te starten.");
+      }
+      const content = fs.readFileSync(logPath, "utf-8");
+      const dateStr = new Date().toISOString().slice(0, 10);
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="herstructurering_uitvoeringslog_${dateStr}.txt"`);
+      res.send(content);
+    } catch (err: any) {
+      console.error("[LOG DOWNLOAD ERROR]:", err);
+      res.status(500).json({ error: "Fout bij downloaden van uitvoeringslog: " + err.message });
+    }
+  });
+
   // 8. Get favorited documents for logged-in user
   app.get("/api/council/documents/favorites", requireAuth, (req: any, res: any) => {
     try {

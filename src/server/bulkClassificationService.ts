@@ -26,8 +26,40 @@ export const EFFECTIVE_RPM_LIMIT = 8;  // Safe 8 RPM target (~25% safety margin 
 export const FREE_TIER_RPD_LIMIT = 250; // Max 250 Requests Per Day
 export const RATE_LIMIT_DELAY_MS = 7500; // 7.5s nominal interval + jitter = ~7.5-8 requests per minute
 
+export function isPayAsYouGoMode(): boolean {
+  const val = (process.env.GEMINI_PAY_AS_YOU_GO || process.env.PAY_AS_YOU_GO || "").trim().toLowerCase();
+  return val === "true" || val === "1" || val === "yes";
+}
+
+export function getEffectiveRpdLimit(): number {
+  return isPayAsYouGoMode() ? 100000 : FREE_TIER_RPD_LIMIT;
+}
+
+export function getEffectiveRpmLimit(): number {
+  return isPayAsYouGoMode() ? 60 : EFFECTIVE_RPM_LIMIT;
+}
+
+export function getRateLimitDelayMs(): number {
+  return isPayAsYouGoMode() ? 1000 : RATE_LIMIT_DELAY_MS;
+}
+
 const QUOTA_TRACKER_PATH = path.join(process.cwd(), "public", "data", "gemini_quota_tracker.json");
 const DLQ_LOG_PATH = path.join(process.cwd(), "public", "data", "gemini_dead_letter_queue.jsonl");
+const EXECUTION_LOG_PATH = path.join(process.cwd(), "public", "data", "last_restructuring_execution.log");
+
+export function addLogLine(msg: string): void {
+  activeProgress.logs.push(msg);
+  if (activeProgress.logs.length > 1000) {
+    activeProgress.logs.shift();
+  }
+  try {
+    const timestamp = new Date().toISOString().slice(11, 19);
+    fs.mkdirSync(path.dirname(EXECUTION_LOG_PATH), { recursive: true });
+    fs.appendFileSync(EXECUTION_LOG_PATH, `[${timestamp}] ${msg}\n`, "utf-8");
+  } catch (_e) {
+    // ignore log write errors
+  }
+}
 
 // Lazy Gemini client
 let geminiClient: GoogleGenAI | null = null;
@@ -171,17 +203,19 @@ export class GeminiDailyQuotaExceededError extends Error {
  */
 async function waitForRateLimitSlot(): Promise<void> {
   const now = Date.now();
+  const baseDelay = getRateLimitDelayMs();
+  const rpmLimit = getEffectiveRpmLimit();
 
-  // 1. Minimaal interval sinds vorig verzoek (7500ms + random jitter)
-  const jitter = Math.floor(Math.random() * 350);
-  const targetDelay = RATE_LIMIT_DELAY_MS + jitter;
+  // 1. Minimaal interval sinds vorig verzoek
+  const jitter = isPayAsYouGoMode() ? Math.floor(Math.random() * 100) : Math.floor(Math.random() * 350);
+  const targetDelay = baseDelay + jitter;
   const elapsedSinceLast = now - lastRequestTime;
   if (elapsedSinceLast < targetDelay) {
     const sleepNeeded = targetDelay - elapsedSinceLast;
     await new Promise((r) => setTimeout(r, sleepNeeded));
   }
 
-  // 2. Sliding window voor maximaal EFFECTIVE_RPM_LIMIT (8) requests per 60 seconden
+  // 2. Sliding window voor maximaal rpmLimit requests per 60 seconden
   const windowSpan = 60000;
   const currentNow = Date.now();
   const windowStart = currentNow - windowSpan;
@@ -191,7 +225,7 @@ async function waitForRateLimitSlot(): Promise<void> {
     requestTimestamps.shift();
   }
 
-  if (requestTimestamps.length >= EFFECTIVE_RPM_LIMIT) {
+  if (requestTimestamps.length >= rpmLimit) {
     const oldest = requestTimestamps[0];
     const waitTime = Math.max(200, oldest + windowSpan + 500 + Math.floor(Math.random() * 400) - currentNow);
     await new Promise((r) => setTimeout(r, waitTime));
@@ -560,10 +594,11 @@ async function classifyWithGemini(
     throw new Error("Gemini client is not initialized.");
   }
 
-  // 1. Check daily quota (max 250 RPD)
+  // 1. Check daily quota
   const quota = loadQuotaTracker();
-  if (quota.requestsToday >= FREE_TIER_RPD_LIMIT) {
-    throw new GeminiDailyQuotaExceededError(quota.requestsToday, FREE_TIER_RPD_LIMIT);
+  const rpdLimit = getEffectiveRpdLimit();
+  if (quota.requestsToday >= rpdLimit) {
+    throw new GeminiDailyQuotaExceededError(quota.requestsToday, rpdLimit);
   }
 
   // 2. Privacy & AVG sanitization: geanonimiseerde tekst vóór prompt-samenstelling
@@ -769,10 +804,12 @@ let activeProgress: ClassificationProgress = {
 
 export function getBulkClassificationStatus(): ClassificationProgress {
   const daily = getDailyQuotaUsage();
-  activeProgress.ratePerMinute = EFFECTIVE_RPM_LIMIT;
-  activeProgress.rpdLimit = FREE_TIER_RPD_LIMIT;
+  const rpmLimit = getEffectiveRpmLimit();
+  const rpdLimit = getEffectiveRpdLimit();
+  activeProgress.ratePerMinute = rpmLimit;
+  activeProgress.rpdLimit = rpdLimit;
   activeProgress.dailyRequestsUsed = daily.requestsToday;
-  activeProgress.dailyRequestsRemaining = daily.remainingToday;
+  activeProgress.dailyRequestsRemaining = isPayAsYouGoMode() ? 100000 : Math.max(0, rpdLimit - daily.requestsToday);
   activeProgress.modelName = CLASSIFIER_MODEL;
   activeProgress.privacySanitized = true;
   activeProgress.deadLetterCount = getTotalDeadLetterCount();
@@ -786,7 +823,7 @@ export function cancelBulkClassification(): void {
     activeProgress.pauseRemainingSeconds = 0;
     activeProgress.pauseReason = undefined;
     activeProgress.pauseResumesAt = undefined;
-    activeProgress.logs.push("Proces geannuleerd door de gebruiker.");
+    addLogLine("Proces geannuleerd door de gebruiker.");
   }
 }
 
@@ -797,6 +834,20 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
 
   const daily = getDailyQuotaUsage();
   const maxLimit = typeof options.limit === "number" && options.limit > 0 ? options.limit : undefined;
+  const rpmLimit = getEffectiveRpmLimit();
+  const rpdLimit = getEffectiveRpdLimit();
+  const payAsYouGo = isPayAsYouGoMode();
+
+  const initLog = `Initialisatie gestart met model ${CLASSIFIER_MODEL} (${payAsYouGo ? "Pay-As-You-Go geactiveerd: ~60 RPM, Onbeperkte RPD" : `Veiligheidslimiet: ~${rpmLimit} RPM, ${rpdLimit} RPD`}).${maxLimit ? ` [BATCH LIMIET: MAX ${maxLimit} BESTANDEN]` : ""} Privacy-sanitizing geactiveerd.`;
+
+  try {
+    fs.mkdirSync(path.dirname(EXECUTION_LOG_PATH), { recursive: true });
+    fs.writeFileSync(
+      EXECUTION_LOG_PATH,
+      `=== HERSTRUCTURERING UITVOERINGSLOG - ${new Date().toISOString()} ===\nModel: ${CLASSIFIER_MODEL}\nModus: ${payAsYouGo ? "Pay-As-You-Go (~60 RPM)" : "Free Tier (~8 RPM, 250 RPD)"}\n=======================================================\n\n[${new Date().toISOString().slice(11, 19)}] ${initLog}\n`,
+      "utf-8"
+    );
+  } catch (_e) {}
 
   activeProgress = {
     isRunning: true,
@@ -804,10 +855,10 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
     pauseReason: undefined,
     pauseRemainingSeconds: 0,
     pauseResumesAt: undefined,
-    ratePerMinute: EFFECTIVE_RPM_LIMIT,
-    rpdLimit: FREE_TIER_RPD_LIMIT,
+    ratePerMinute: rpmLimit,
+    rpdLimit: rpdLimit,
     dailyRequestsUsed: daily.requestsToday,
-    dailyRequestsRemaining: daily.remainingToday,
+    dailyRequestsRemaining: payAsYouGo ? 100000 : Math.max(0, rpdLimit - daily.requestsToday),
     modelName: CLASSIFIER_MODEL,
     privacySanitized: true,
     total: 0,
@@ -818,9 +869,7 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
     activeFile: "",
     limit: maxLimit,
     lastResults: [],
-    logs: [
-      `Initialisatie gestart met model ${CLASSIFIER_MODEL} (Veiligheidslimiet: ~${EFFECTIVE_RPM_LIMIT} RPM, ${FREE_TIER_RPD_LIMIT} RPD).${maxLimit ? ` [BATCH LIMIET: MAX ${maxLimit} BESTANDEN]` : ""} Privacy-sanitizing geactiveerd.`
-    ]
+    logs: [initLog]
   };
 
   // Run asynchronously in the background
@@ -859,7 +908,7 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
       const totalToProcess = dlqItemsCount + newFilesCount;
 
       activeProgress.total = maxLimit ? Math.min(maxLimit, totalToProcess) : (totalToProcess || currentMetadata.length);
-      activeProgress.logs.push(
+      addLogLine(
         `Sanering & Classificatie gestart: ${dlqItemsCount} DLQ-herstelpunten, ${currentMetadata.length - dlqItemsCount} actieve raadsstukken en ${newFilesCount} nieuwe bestanden.${maxLimit ? ` (Batchlimiet ingesteld op: ${maxLimit} AI-classificaties)` : ""}`
       );
 
@@ -871,7 +920,7 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
       // 1. Saneren & herclassificeren van bestaande metadata (inclusief DLQ-herstel met Gemini)
       for (let i = 0; i < currentMetadata.length; i++) {
         if (!activeProgress.isRunning) {
-          activeProgress.logs.push("Classificatie handmatig gestopt.");
+          addLogLine("Classificatie handmatig gestopt.");
           break;
         }
 
@@ -881,7 +930,7 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
 
         if (isDlq) {
           if (maxLimit && aiCallsPerformed >= maxLimit) {
-            activeProgress.logs.push(`[BATCH LIMIET BEREIKT] 🛑 Gestopt na verwerken van ${aiCallsPerformed} AI-items (ingestelde limiet: ${maxLimit}).`);
+            addLogLine(`[BATCH LIMIET BEREIKT] 🛑 Gestopt na verwerken van ${aiCallsPerformed} AI-items (ingestelde limiet: ${maxLimit}).`);
             reclassifiedMetadata.push(norm);
             if (norm.bestandsnaam) processedFilenamesFinal.add(path.basename(norm.bestandsnaam).toLowerCase().trim());
             continue;
@@ -923,11 +972,11 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
                 consecutiveQuotaErrors = 0;
 
                 const formattedGeminiJson = geminiResult.rawResponseText ? geminiResult.rawResponseText.trim() : JSON.stringify(geminiResult.meta, null, 2);
-                activeProgress.logs.push(`[HERKLASSIFICATIE GEMINI SUCCESS] "${norm.bestandsnaam}" ➔ [${norm.dossier}] / [${norm.subdossier}]`);
-                activeProgress.logs.push(`  ↳ [GEMINI OUTPUT ${norm.bestandsnaam}]:\n${formattedGeminiJson}`);
+                addLogLine(`[HERKLASSIFICATIE GEMINI SUCCESS] "${norm.bestandsnaam}" ➔ [${norm.dossier}] / [${norm.subdossier}]`);
+                addLogLine(`  ↳ [GEMINI OUTPUT ${norm.bestandsnaam}]:\n${formattedGeminiJson}`);
               } catch (err: any) {
                 if (err instanceof GeminiDailyQuotaExceededError || err?.name === "GeminiDailyQuotaExceededError") {
-                  activeProgress.logs.push(`[DAGQUOTUM BEREIKT] ⚠️ 250 verzoeken/dag limiet bereikt voor ${CLASSIFIER_MODEL}.`);
+                  addLogLine(`[DAGQUOTUM BEREIKT] ⚠️ 250 verzoeken/dag limiet bereikt voor ${CLASSIFIER_MODEL}.`);
                   success = true;
                   break;
                 }
@@ -945,7 +994,7 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
                   activeProgress.pauseRemainingSeconds = waitSeconds;
                   activeProgress.pauseResumesAt = resumeAt;
                   activeProgress.pauseReason = `Gemini API (429 RESOURCE_EXHAUSTED). Rate limit bereikt. Pauzeert ${waitSeconds}s tot ${resumeAt}...`;
-                  activeProgress.logs.push(`[RATE LIMIT PAUZE] ⏸️ 429 RESOURCE_EXHAUSTED. Pauze van ${waitSeconds}s tot ${resumeAt}...`);
+                  addLogLine(`[RATE LIMIT PAUZE] ⏸️ 429 RESOURCE_EXHAUSTED. Pauze van ${waitSeconds}s tot ${resumeAt}...`);
 
                   saveMasterMetadata(reclassifiedMetadata);
 
@@ -964,12 +1013,12 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
                   continue;
                 }
 
-                activeProgress.logs.push(`[DLQ HERKANSING MISLUKT] Document "${norm.bestandsnaam}": ${err?.message || "fout"}`);
+                addLogLine(`[DLQ HERKANSING MISLUKT] Document "${norm.bestandsnaam}": ${err?.message || "fout"}`);
                 success = true;
               }
             }
           } else {
-            activeProgress.logs.push(`[DLQ] Geen GEMINI_API_KEY geconfigureerd voor "${norm.bestandsnaam}". Blijft in DLQ.`);
+            addLogLine(`[DLQ] Geen GEMINI_API_KEY geconfigureerd voor "${norm.bestandsnaam}". Blijft in DLQ.`);
           }
         }
 
@@ -988,12 +1037,12 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
       // 2. Scan and classify new physical files with Gemini and Kop-Staart extraction
       for (const file of allFiles) {
         if (!activeProgress.isRunning) {
-          activeProgress.logs.push("Classificatie handmatig gestopt.");
+          addLogLine("Classificatie handmatig gestopt.");
           break;
         }
 
         if (maxLimit && aiCallsPerformed >= maxLimit) {
-          activeProgress.logs.push(`[BATCH LIMIET BEREIKT] 🛑 Gestopt na verwerken van ${aiCallsPerformed} AI-items (ingestelde limiet: ${maxLimit}). Kosten beheerst!`);
+          addLogLine(`[BATCH LIMIET BEREIKT] 🛑 Gestopt na verwerken van ${aiCallsPerformed} AI-items (ingestelde limiet: ${maxLimit}). Kosten beheerst!`);
           break;
         }
 
@@ -1017,7 +1066,7 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
         }
 
         const timestamp = new Date().toLocaleTimeString();
-        activeProgress.logs.push(`[${timestamp}] [${activeProgress.processed}/${activeProgress.total}] Analyseren: ${file.filename} (${origin})`);
+        addLogLine(`[${timestamp}] [${activeProgress.processed}/${activeProgress.total}] Analyseren: ${file.filename} (${origin})`);
 
         if (activeProgress.logs.length > 300) {
           activeProgress.logs.shift();
@@ -1061,7 +1110,7 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
           } catch (err: any) {
             // Daily Quota (250 RPD) Exceeded Handling
             if (err instanceof GeminiDailyQuotaExceededError || err?.name === "GeminiDailyQuotaExceededError") {
-              activeProgress.logs.push(`[DAGQUOTUM BEREIKT] ⚠️ 250 verzoeken/dag limiet voor ${CLASSIFIER_MODEL} bereikt. Overschakelen op lokale heuristieken om proces te voltooien.`);
+              addLogLine(`[DAGQUOTUM BEREIKT] ⚠️ 250 verzoeken/dag limiet voor ${CLASSIFIER_MODEL} bereikt. Overschakelen op lokale heuristieken om proces te voltooien.`);
               meta = runFallbackClassification(text, file.filename, file.relativePath, "Dagquotum (250 RPD) bereikt");
               usedSource = "fallback";
               rawAiOutput = JSON.stringify(meta, null, 2);
@@ -1089,7 +1138,7 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
               activeProgress.pauseResumesAt = resumeAt;
               activeProgress.pauseReason = `Gemini API (429 RESOURCE_EXHAUSTED). Rate limit sliding window bereikt (poging ${consecutiveQuotaErrors}). Pauzeert ${waitSeconds}s met backoff & jitter tot ${resumeAt}...`;
 
-              activeProgress.logs.push(`[RATE LIMIT PAUZE] ⏸️ 429 RESOURCE_EXHAUSTED (poging ${consecutiveQuotaErrors}). Backoff-pauze van ${waitSeconds}s tot ${resumeAt}...`);
+              addLogLine(`[RATE LIMIT PAUZE] ⏸️ 429 RESOURCE_EXHAUSTED (poging ${consecutiveQuotaErrors}). Backoff-pauze van ${waitSeconds}s tot ${resumeAt}...`);
               if (activeProgress.logs.length > 300) activeProgress.logs.shift();
 
               saveMasterMetadata(reclassifiedMetadata);
@@ -1112,13 +1161,13 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
 
             // Transient network error (503, 500)
             if (attempts < maxNonQuotaRetries && (err?.message?.includes("503") || err?.message?.includes("500") || err?.message?.includes("ECONNRESET"))) {
-              activeProgress.logs.push(`  ↳ Tijdelijke netwerkfout (${err?.message || 500}). Herkansen over 5s...`);
+              addLogLine(`  ↳ Tijdelijke netwerkfout (${err?.message || 500}). Herkansen over 5s...`);
               await new Promise((r) => setTimeout(r, 5000));
               continue;
             }
 
             // Other unrecoverable error: route to DLQ
-            activeProgress.logs.push(`  ↳ [DLQ] AI-analyse mislukt voor "${file.filename}" (${err?.message || "fout"}). Geplaatst in Dead Letter Queue.`);
+            addLogLine(`  ↳ [DLQ] AI-analyse mislukt voor "${file.filename}" (${err?.message || "fout"}). Geplaatst in Dead Letter Queue.`);
             meta = runFallbackClassification(text, file.filename, file.relativePath, err?.message || "Classificatiefout");
             usedSource = "fallback";
             rawAiOutput = JSON.stringify(meta, null, 2);
@@ -1165,8 +1214,8 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
           skos_tags: record.skos_tags
         }, null, 2);
 
-        activeProgress.logs.push(`  ↳ [${usedSource.toUpperCase()}] Indeling: "${record.dossier}" ➔ Subdossier: "${record.subdossier}"`);
-        activeProgress.logs.push(`  ↳ [GEMINI OUTPUT ${file.filename}]:\n${formattedGeminiJson}`);
+        addLogLine(`  ↳ [${usedSource.toUpperCase()}] Indeling: "${record.dossier}" ➔ Subdossier: "${record.subdossier}"`);
+        addLogLine(`  ↳ [GEMINI OUTPUT ${file.filename}]:\n${formattedGeminiJson}`);
 
         const classificationResult: ClassificationResult = {
           filename: file.filename,
@@ -1207,13 +1256,13 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
         // ignore graph rebuild error if any
       }
 
-      activeProgress.logs.push(`[VOLTOOID] Herstructurering en classificatie succesvol afgerond! Totaal: ${activeProgress.processed}/${activeProgress.total}. 7 canonieke hoofddossiers gesynchroniseerd.`);
+      addLogLine(`[VOLTOOID] Herstructurering en classificatie succesvol afgerond! Totaal: ${activeProgress.processed}/${activeProgress.total}. 7 canonieke hoofddossiers gesynchroniseerd.`);
       activeProgress.isRunning = false;
       activeProgress.activeFile = "";
 
     } catch (err: any) {
       console.error("[BACKGROUND BULK CLASSIFICATION ERROR]:", err);
-      activeProgress.logs.push(`[FOUT] Proces afgebroken wegens kritieke fout: ${err.message || err}`);
+      addLogLine(`[FOUT] Proces afgebroken wegens kritieke fout: ${err.message || err}`);
       activeProgress.isRunning = false;
     }
   });
