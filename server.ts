@@ -12534,24 +12534,39 @@ Sitemap: ${baseUrl}/sitemap.xml
   });
 
   // 5C. Import & Sync external execution log (e.g. herstructurering_uitvoeringslog_*.txt)
-  app.post("/api/council/import-execution-log", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
-    try {
-      const { logText } = req.body || {};
-      if (!logText || typeof logText !== "string") {
-        return res.status(400).json({ error: "Geen logtekst aangeleverd om te importeren." });
-      }
+  app.post(
+    "/api/council/import-execution-log",
+    requireAuth,
+    requireCouncilOrAdmin,
+    upload.single("logFile"),
+    (req: any, res: any) => {
+      try {
+        let textToImport = "";
+        if (req.file && req.file.path) {
+          textToImport = fs.readFileSync(req.file.path, "utf-8");
+          try {
+            fs.unlinkSync(req.file.path);
+          } catch (_e) {}
+        } else if (req.body && req.body.logText) {
+          textToImport = req.body.logText;
+        }
 
-      const result = importExecutionLogText(logText);
-      res.json({
-        success: true,
-        message: `Uitvoeringslog succesvol gesynchroniseerd: ${result.totalInLog} documenten gevonden (${result.imported} nieuw geïmporteerd, ${result.updated} bijgewerkt). Alle wijk-toewijzingen zijn direct gesaneerd.`,
-        ...result
-      });
-    } catch (err: any) {
-      console.error("[IMPORT EXECUTION LOG ERROR]:", err);
-      res.status(500).json({ error: "Fout bij importeren uitvoeringslog: " + err.message });
+        if (!textToImport || typeof textToImport !== "string" || !textToImport.trim()) {
+          return res.status(400).json({ error: "Geen logbestand of logtekst aangeleverd om te importeren." });
+        }
+
+        const result = importExecutionLogText(textToImport);
+        res.json({
+          success: true,
+          message: `Uitvoeringslog succesvol gesynchroniseerd: ${result.totalInLog} documenten gevonden (${result.imported} nieuw geïmporteerd, ${result.updated} bijgewerkt). Alle wijk- en subdossiertoewijzingen zijn hersteld.`,
+          ...result
+        });
+      } catch (err: any) {
+        console.error("[IMPORT EXECUTION LOG ERROR]:", err);
+        res.status(500).json({ error: "Fout bij importeren uitvoeringslog: " + err.message });
+      }
     }
-  });
+  );
 
   // 6. Add a document manually to a dossier (with optional file upload)
   app.post(

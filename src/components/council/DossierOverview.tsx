@@ -216,6 +216,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
   const [isCreateDossierOpen, setIsCreateDossierOpen] = useState(false);
   const [isEditDossierOpen, setIsEditDossierOpen] = useState(false);
   const [isImportLogOpen, setIsImportLogOpen] = useState(false);
+  const [selectedLogFile, setSelectedLogFile] = useState<File | null>(null);
   const [importLogText, setImportLogText] = useState("");
   const [isImportingLog, setIsImportingLog] = useState(false);
   const [editingDossier, setEditingDossier] = useState<Dossier | null>(null);
@@ -344,27 +345,41 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
   };
 
   const handleImportLog = async () => {
-    if (!importLogText.trim()) {
-      toast.error("Voer eerst de inhoud van het uitvoeringslogbestand in.");
+    if (!selectedLogFile && !importLogText.trim()) {
+      toast.error("Selecteer een logbestand van schijf of plak de logtekst.");
       return;
     }
     setIsImportingLog(true);
     const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
     try {
-      const res = await fetch("/api/council/import-execution-log", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: token ? `Bearer ${token}` : "",
-        },
-        body: JSON.stringify({ logText: importLogText }),
-      });
+      let res: Response;
+      if (selectedLogFile) {
+        const formData = new FormData();
+        formData.append("logFile", selectedLogFile);
+        res = await fetch("/api/council/import-execution-log", {
+          method: "POST",
+          headers: {
+            Authorization: token ? `Bearer ${token}` : "",
+          },
+          body: formData,
+        });
+      } else {
+        res = await fetch("/api/council/import-execution-log", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: token ? `Bearer ${token}` : "",
+          },
+          body: JSON.stringify({ logText: importLogText }),
+        });
+      }
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || "Fout bij synchroniseren van het uitvoeringslog");
       }
       toast.success(data.message || "Uitvoeringslog succesvol gesynchroniseerd!");
       setIsImportLogOpen(false);
+      setSelectedLogFile(null);
       setImportLogText("");
       fetchDossiers();
     } catch (err: any) {
@@ -912,9 +927,9 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {bulkStatus.isPaused
-                    ? `Gepauzeerd wegens Gemini API rate limit (10 RPM limiet). Het script wacht op quotum-reset en hervat automatisch...`
+                    ? `Gepauzeerd wegens Gemini API rate limit (${bulkStatus.ratePerMinute || 60} RPM limiet). Het script wacht op quotum-reset en hervat automatisch...`
                     : bulkStatus.isRunning 
-                    ? `Actief bezig met analyseren en classificeren volgens de Steenwijkerlandse datataxonomie (gemini-2.5-flash, max 10 RPM)...` 
+                    ? `Actief bezig met analyseren en classificeren volgens de Steenwijkerlandse datataxonomie (${bulkStatus.modelName || "gemini-2.5-flash"}, max ${bulkStatus.ratePerMinute || 60} RPM)...` 
                     : "Alle bestanden zijn geanalyseerd en ingedeeld volgens de ontologische routeringsregels."}
                 </p>
               </div>
@@ -948,10 +963,14 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
             </div>
             <div className="space-y-0.5">
               <span className="font-bold text-blue-900 dark:text-blue-200">
-                Privacy- & AVG-waarborg (Gratis Gemini 2.5 Flash Quotum)
+                {bulkStatus.rpdLimit && bulkStatus.rpdLimit >= 10000 
+                  ? "Privacy- & AVG-waarborg (Pay-As-You-Go Zakelijk)" 
+                  : "Privacy- & AVG-waarborg (Gratis Gemini 2.5 Flash Quotum)"}
               </span>
               <p className="text-blue-800/90 dark:text-blue-300/90 text-[11px]">
-                Bij het gratis abonnement mag Google prompts gebruiken om AI-modellen te verbeteren. Daarom worden alle privacygevoelige gegevens (BSN, persoonsnamen, IBAN, contactgegevens en vertrouwelijke passages) vooraf <strong>automatisch geanonimiseerd en gemaskeerd</strong> vóór verzending naar het taalmodel.
+                {bulkStatus.rpdLimit && bulkStatus.rpdLimit >= 10000
+                  ? "In Pay-As-You-Go modus worden prompts niet gebruikt voor modeltraining door Google. Voor maximale AVG- en Wob/Woo-conformiteit worden alle privacygevoelige gegevens (BSN, persoonsnamen, IBAN, contactgegevens) alsnog vooraf automatisch geanonimiseerd en gemaskeerd vóór verzending naar het taalmodel."
+                  : "Bij het gratis abonnement mag Google prompts gebruiken om AI-modellen te verbeteren. Daarom worden alle privacygevoelige gegevens (BSN, persoonsnamen, IBAN, contactgegevens en vertrouwelijke passages) vooraf automatisch geanonimiseerd en gemaskeerd vóór verzending naar het taalmodel."}
               </p>
             </div>
           </div>
@@ -966,7 +985,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <span className="font-bold text-sm text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
                     <PauseCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                    Gemini API Quotum Pauze (429 RESOURCE_EXHAUSTED / 10 RPM)
+                    Gemini API Quotum Pauze (429 RESOURCE_EXHAUSTED / {bulkStatus.ratePerMinute || 60} RPM)
                   </span>
                   {bulkStatus.pauseRemainingSeconds !== undefined && bulkStatus.pauseRemainingSeconds > 0 && (
                     <span className="px-2.5 py-1 rounded-lg bg-amber-200/90 dark:bg-amber-950 text-amber-950 dark:text-amber-100 font-mono font-bold text-xs tracking-wider border border-amber-400/50 shadow-2xs">
@@ -975,7 +994,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
                   )}
                 </div>
                 <p className="text-amber-800 dark:text-amber-300 leading-relaxed text-xs">
-                  {bulkStatus.pauseReason || "De Gemini API heeft de 10 RPM limiet bereikt. Het proces pauzeert en hervat automatisch zodra het venster vrij is. De data wordt niet overgeslagen."}
+                  {bulkStatus.pauseReason || `De Gemini API heeft de ${bulkStatus.ratePerMinute || 60} RPM limiet bereikt. Het proces pauzeert en hervat automatisch zodra het venster vrij is. De data wordt niet overgeslagen.`}
                 </p>
                 {bulkStatus.pauseResumesAt && (
                   <div className="flex items-center gap-3 text-[11px] text-amber-700 dark:text-amber-400 font-mono pt-1.5 border-t border-amber-500/20">
@@ -1785,12 +1804,12 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
               Upload het bestand of plak de tekst hieronder. Het systeem leest alle <code className="text-foreground bg-muted px-1.5 py-0.5 rounded font-mono text-[11px]">[GEMINI OUTPUT ...]</code> blokken uit, saneert wijk-toewijzingen (geen generiek 'Steenwijk') en actualiseert de master metadata direct zonder extra API-calls of wachttijden.
             </p>
 
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
+            <div className="space-y-3">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
                 <label className="text-xs font-semibold text-foreground cursor-pointer">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-muted/60 hover:bg-muted text-xs font-medium text-foreground">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-blue-500/40 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-xs font-semibold text-blue-700 dark:text-blue-300 shadow-2xs transition-colors">
                     <Upload className="w-3.5 h-3.5" />
-                    Kies .txt logbestand van schijf
+                    Kies .txt / .log bestand van schijf
                   </span>
                   <input
                     type="file"
@@ -1799,31 +1818,59 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
-                      const reader = new FileReader();
-                      reader.onload = (event) => {
-                        const content = event.target?.result;
-                        if (typeof content === "string") {
-                          setImportLogText(content);
-                          toast.success(`Logbestand geladen (${file.name}, ${(file.size / 1024).toFixed(1)} KB)`);
-                        }
-                      };
-                      reader.readAsText(file);
+                      setSelectedLogFile(file);
+                      if (file.size < 1024 * 1024) {
+                        const reader = new FileReader();
+                        reader.onload = (event) => {
+                          const content = event.target?.result;
+                          if (typeof content === "string") {
+                            setImportLogText(content);
+                          }
+                        };
+                        reader.readAsText(file);
+                      } else {
+                        setImportLogText("");
+                      }
+                      toast.success(`Logbestand geselecteerd: ${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB)`);
                     }}
                   />
                 </label>
-                {importLogText && (
+                {selectedLogFile && (
+                  <div className="flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-500/30 px-2.5 py-1.5 rounded-lg">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>
+                      <strong>{selectedLogFile.name}</strong> ({(selectedLogFile.size / (1024 * 1024)).toFixed(2)} MB) klaar voor directe verwerking
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedLogFile(null);
+                        setImportLogText("");
+                      }}
+                      className="ml-1 text-muted-foreground hover:text-foreground text-xs"
+                      title="Verwijder selectie"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+                {!selectedLogFile && importLogText && (
                   <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
-                    ✓ {importLogText.length.toLocaleString()} tekens geladen
+                    ✓ {importLogText.length.toLocaleString()} tekens handmatig ingevoerd
                   </span>
                 )}
               </div>
 
               <textarea
                 value={importLogText}
-                onChange={(e) => setImportLogText(e.target.value)}
-                placeholder="Plak hier de inhoud van het uitvoeringslogbestand..."
-                rows={10}
-                className="w-full text-xs font-mono p-3 bg-muted/40 border border-border rounded-xl focus:outline-hidden focus:ring-1 focus:ring-primary resize-y"
+                onChange={(e) => {
+                  setImportLogText(e.target.value);
+                  if (selectedLogFile) setSelectedLogFile(null);
+                }}
+                placeholder={selectedLogFile ? `Bestand ${selectedLogFile.name} wordt direct geüpload. Je hoeft hier niets meer in te plakken.` : "Of plak hier de inhoud van het uitvoeringslogbestand..."}
+                rows={selectedLogFile ? 4 : 8}
+                disabled={!!selectedLogFile}
+                className="w-full text-xs font-mono p-3 bg-muted/40 border border-border rounded-xl focus:outline-hidden focus:ring-1 focus:ring-primary resize-y disabled:opacity-60"
               />
             </div>
 
@@ -1833,6 +1880,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
                 size="sm"
                 onClick={() => {
                   setIsImportLogOpen(false);
+                  setSelectedLogFile(null);
                   setImportLogText("");
                 }}
                 disabled={isImportingLog}
@@ -1842,7 +1890,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
               <Button
                 size="sm"
                 onClick={handleImportLog}
-                disabled={isImportingLog || !importLogText.trim()}
+                disabled={isImportingLog || (!selectedLogFile && !importLogText.trim())}
                 className="bg-blue-600 hover:bg-blue-700 text-white font-medium"
               >
                 {isImportingLog ? (

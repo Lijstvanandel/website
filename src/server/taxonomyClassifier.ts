@@ -558,6 +558,31 @@ export function normalizeSubdossier(
     return exactCanonical;
   }
 
+  // 3. Specifieke samenvoeging van versnipperde Giethoorn-toerisme varianten
+  if (
+    combined.includes("giethoorn") &&
+    (sLower.includes("toerism") || sLower.includes("vaar") || sLower.includes("punter") || sLower.includes("bezoekers"))
+  ) {
+    return "Toerisme Overlast & Regulering";
+  }
+
+  // 4. Als er al een inhoudelijk en specifiek subdossier is (door Gemini geclassificeerd of uit import),
+  // behoud deze dan! Vernietig géén waardevolle door AI gegenereerde subdossiers.
+  const isGenericPlaceholder =
+    !s ||
+    s.length < 3 ||
+    sLower === "overig" ||
+    sLower === "algemeen" ||
+    sLower === "onbekend" ||
+    sLower === "diversen" ||
+    sLower === "subdossier" ||
+    sLower.startsWith("overig ") ||
+    sLower.startsWith("algemeen ");
+
+  if (!isGenericPlaceholder) {
+    return s;
+  }
+
   switch (hoofddossier) {
     case "Ruimtelijke Ordening, Wonen & Omgevingswet": {
       if (

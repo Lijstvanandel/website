@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { GoogleGenAI, Type } from "@google/genai";
 import { extractTextFromFile } from "./documentTextExtractor.js";
-import { getRawMetadata, rebuildNetworkGraph, saveMasterMetadata } from "./dossierManager.js";
+import { getRawMetadata, rebuildNetworkGraph, saveMasterMetadata, invalidateDossierCache } from "./dossierManager.js";
 import { RaadsstukMetadata } from "../types/dossier.js";
 import {
   CANONICAL_HOOFDDOSSIERS,
@@ -1010,6 +1010,7 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
 
       let aiCallsPerformed = 0;
       let consecutiveQuotaErrors = 0;
+      let reclassChanges = false;
       const reclassifiedMetadata: RaadsstukMetadata[] = [];
       const processedFilenamesFinal = new Set<string>();
 
@@ -1038,6 +1039,7 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
         const needsReclassification = isDlq || isSteenwijkGeneric;
 
         if (needsReclassification) {
+          reclassChanges = true;
           if (maxLimit && aiCallsPerformed >= maxLimit) {
             addLogLine(`[BATCH LIMIET BEREIKT] 🛑 Gestopt na verwerken van ${aiCallsPerformed} AI-items (ingestelde limiet: ${maxLimit}).`);
             reclassifiedMetadata.push(norm);
@@ -1139,13 +1141,13 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
         if (norm.bestandsnaam) {
           processedFilenamesFinal.add(path.basename(norm.bestandsnaam).toLowerCase().trim());
         }
-
-        if (i % 100 === 0 && i > 0) {
-          saveMasterMetadata(reclassifiedMetadata);
-        }
       }
 
-      saveMasterMetadata(reclassifiedMetadata);
+      if (reclassChanges) {
+        saveMasterMetadata(reclassifiedMetadata);
+      }
+
+      addLogLine(`Validatie bestaande documenten voltooid. Starten met analyseren van ${newFilesCount} nieuwe documenten...`);
 
       // 2. Scan and classify new physical files with Gemini and Kop-Staart extraction
       for (const file of allFiles) {
@@ -1387,18 +1389,104 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
  * en voegt ze direct samen met de master metadata zonder opnieuw tokens of API calls te verbruiken.
  */
 export function importExecutionLogText(logText: string): { imported: number; updated: number; totalInLog: number } {
+  const extracted: Array<{ filename: string; json: any }> = [];
+  const foundFilenames = new Set<string>();
+
+  // 1. Primaire parser: gebalanceerde accolades voor robuuste extractie van geneste JSON
+  const marker = "[GEMINI OUTPUT";
+  let idx = 0;
+  while ((idx = logText.indexOf(marker, idx)) !== -1) {
+    const closeBracket = logText.indexOf("]:", idx);
+    if (closeBracket === -1) {
+      idx += marker.length;
+      continue;
+    }
+    const rawFilename = logText.slice(idx + marker.length, closeBracket).trim();
+    const openBrace = logText.indexOf("{", closeBracket);
+    if (openBrace === -1) {
+      idx = closeBracket + 2;
+      continue;
+    }
+    let depth = 0;
+    let endBrace = -1;
+    let inString = false;
+    let escape = false;
+    for (let i = openBrace; i < logText.length; i++) {
+      const char = logText[i];
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (char === "\\") {
+        escape = true;
+        continue;
+      }
+      if (char === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (!inString) {
+        if (char === "{") depth++;
+        else if (char === "}") {
+          depth--;
+          if (depth === 0) {
+            endBrace = i;
+            break;
+          }
+        }
+      }
+    }
+    if (endBrace !== -1) {
+      const jsonStr = logText.slice(openBrace, endBrace + 1);
+      try {
+        const parsed = JSON.parse(jsonStr);
+        const normFn = path.basename(rawFilename).toLowerCase().trim();
+        extracted.push({ filename: rawFilename, json: parsed });
+        foundFilenames.add(normFn);
+      } catch (_e) {
+        // Negeer mislukte JSON parse
+      }
+      idx = endBrace + 1;
+    } else {
+      idx = openBrace + 1;
+    }
+  }
+
+  // 2. Fallback parser: regex voor eventuele gemiste regels
   const regex = /\[GEMINI OUTPUT\s+([^\]]+)\]:\s*(\{[\s\S]*?\n\})/g;
   let match: RegExpExecArray | null;
-  const extracted: Array<{ filename: string; json: any }> = [];
-
   while ((match = regex.exec(logText)) !== null) {
     const rawFilename = match[1].trim();
-    const jsonStr = match[2];
-    try {
-      const parsed = JSON.parse(jsonStr);
-      extracted.push({ filename: rawFilename, json: parsed });
-    } catch (_e) {
-      // ignore
+    const normFn = path.basename(rawFilename).toLowerCase().trim();
+    if (!foundFilenames.has(normFn)) {
+      try {
+        const parsed = JSON.parse(match[2]);
+        extracted.push({ filename: rawFilename, json: parsed });
+        foundFilenames.add(normFn);
+      } catch (_e) {
+        // ignore
+      }
+    }
+  }
+
+  // 3. Fallback parser: single-line [HERKLASSIFICATIE GEMINI SUCCESS] regels
+  const lineRegex = /\[HERKLASSIFICATIE GEMINI SUCCESS\]\s*"([^"]+)"\s*➔\s*\[([^\]]+)\]\s*\/\s*\[([^\]]+)\]/g;
+  let lineMatch: RegExpExecArray | null;
+  while ((lineMatch = lineRegex.exec(logText)) !== null) {
+    const fn = lineMatch[1].trim();
+    const normFn = path.basename(fn).toLowerCase().trim();
+    if (!foundFilenames.has(normFn)) {
+      extracted.push({
+        filename: fn,
+        json: {
+          titel: fn.replace(/\.pdf$/i, ""),
+          dossier: lineMatch[2].trim(),
+          subdossier: lineMatch[3].trim(),
+          ai_geclassificeerd: true,
+          ai_model: CLASSIFIER_MODEL
+        }
+      });
+      foundFilenames.add(normFn);
     }
   }
 
@@ -1446,13 +1534,15 @@ export function importExecutionLogText(logText: string): { imported: number; upd
       ...(existing || {}),
       bestandsnaam: existing?.bestandsnaam || item.filename,
       titel: item.json.titel || existing?.titel || item.filename,
-      dossier: item.json.dossier,
-      subdossier: item.json.subdossier,
+      dossier: item.json.dossier || existing?.dossier,
+      subdossier: item.json.subdossier || existing?.subdossier,
       datum: item.json.datum || existing?.datum || new Date().toISOString().slice(0, 10),
-      wijk_of_kern: item.json.wijk_of_kern || "",
-      entiteiten: item.json.entiteiten || "",
-      relaties: item.json.relaties || "",
-      skos_tags: Array.isArray(item.json.skos_tags) ? item.json.skos_tags : [],
+      wijk_of_kern: item.json.wijk_of_kern !== undefined ? item.json.wijk_of_kern : (existing?.wijk_of_kern || ""),
+      entiteiten: item.json.entiteiten || existing?.entiteiten || "",
+      relaties: item.json.relaties || existing?.relaties || "",
+      skos_tags: Array.isArray(item.json.skos_tags)
+        ? item.json.skos_tags
+        : (existing?.skos_tags || []),
       ai_geclassificeerd: true,
       ai_model: CLASSIFIER_MODEL
     };
@@ -1468,6 +1558,7 @@ export function importExecutionLogText(logText: string): { imported: number; upd
 
   const updatedMetadataList = Array.from(metaMap.values());
   saveMasterMetadata(updatedMetadataList);
+  invalidateDossierCache();
   try {
     rebuildNetworkGraph();
   } catch (_e) {
