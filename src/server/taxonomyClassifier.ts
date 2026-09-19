@@ -89,7 +89,6 @@ export const CANONICAL_SUBDOSSIERS_BY_HOOFD: Record<CanonicalHoofddossier, reado
  */
 export const BANNED_ACTOR_KEYWORDS = [
   "wdodelta",
-  "waterschap",
   "waterschap drents overijsselse delta",
   "provincie overijssel",
   "provinciale staten",
@@ -99,11 +98,32 @@ export const BANNED_ACTOR_KEYWORDS = [
   "rsj ijsselland",
   "veiligheidsregio ijsselland",
   "politieke markt",
-  "raadszaken & politieke markt",
+  "raadszaken & politieke markt"
+];
+
+export const BANNED_PLACEHOLDER_SUBDOSSIERS = new Set([
   "algemeen",
   "overig",
-  "diversen"
-];
+  "diversen",
+  "onbekend",
+  "geen",
+  "subdossier",
+  "overige",
+  "onbepaald"
+]);
+
+export function isBannedSubdossier(s?: string): boolean {
+  if (!s) return true;
+  const sLower = s.toLowerCase().trim();
+  if (BANNED_PLACEHOLDER_SUBDOSSIERS.has(sLower)) return true;
+  if (sLower === "overig" || sLower === "algemeen" || sLower === "diversen") return true;
+  for (const banned of BANNED_ACTOR_KEYWORDS) {
+    if (sLower === banned || sLower.startsWith(`${banned} -`) || sLower.startsWith(`${banned}:`) || sLower.startsWith(`${banned} `) || sLower.endsWith(` ${banned}`)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /**
  * Banned generic wijk/kern keywords:
@@ -531,12 +551,9 @@ export function normalizeSubdossier(
     return rawSub || "Audit & Retry Vereist (DLQ)";
   }
 
-  // Filter out any banned actor or generic label from being used as subdossier
-  for (const banned of BANNED_ACTOR_KEYWORDS) {
-    if (sLower.includes(banned)) {
-      rawSub = "";
-      break;
-    }
+  // Als het subdossier een verboden actor of nietszeggende restcontainer is, wis het dan
+  if (isBannedSubdossier(s)) {
+    rawSub = "";
   }
 
   // 1. Custom subdossier expliciet ingesteld door raadsgriffie/beheerder
@@ -567,19 +584,8 @@ export function normalizeSubdossier(
   }
 
   // 4. Als er al een inhoudelijk en specifiek subdossier is (door Gemini geclassificeerd of uit import),
-  // behoud deze dan! Vernietig géén waardevolle door AI gegenereerde subdossiers.
-  const isGenericPlaceholder =
-    !s ||
-    s.length < 3 ||
-    sLower === "overig" ||
-    sLower === "algemeen" ||
-    sLower === "onbekend" ||
-    sLower === "diversen" ||
-    sLower === "subdossier" ||
-    sLower.startsWith("overig ") ||
-    sLower.startsWith("algemeen ");
-
-  if (!isGenericPlaceholder) {
+  // behoud deze dan! Vernietig NOOIT waardevolle door AI gegenereerde of geïmporteerde subdossiers.
+  if (s && s.length >= 3 && !isBannedSubdossier(s)) {
     return s;
   }
 
@@ -1329,12 +1335,8 @@ export function validateRecordConformity(item: RaadsstukMetadata): {
     errors.push(`Ongeldig hoofddossier: '${item.dossier}'. Moet één van de 7 canonieke domeinen zijn.`);
   }
 
-  const subLower = (item.subdossier || "").toLowerCase();
-  for (const banned of BANNED_ACTOR_KEYWORDS) {
-    if (subLower.includes(banned)) {
-      errors.push(`Verboden actor/restbak gevonden in subdossier: '${item.subdossier}'.`);
-      break;
-    }
+  if (item.subdossier && isBannedSubdossier(item.subdossier)) {
+    errors.push(`Verboden actor/restbak gevonden in subdossier: '${item.subdossier}'.`);
   }
 
   const wijkLower = (item.wijk_of_kern || "").toLowerCase().trim();
