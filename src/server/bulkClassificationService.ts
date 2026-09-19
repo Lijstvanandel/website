@@ -768,7 +768,7 @@ async function classifyWithGemini(
 
   === WIJKEN & KERNEN (STRIKT VERBOD OP GENERIEK "STEENWIJK") ===
   Steenwijk op zichzelf is GEEN afzonderlijke wijk of kern, maar de centrale stad bestaande uit 14 specifieke stadswijken:
-  - Stadswijken Steenwijk: Steenwijk Centrum / Binnenstad, Steenwijk West (Spoorzone), De Gagels, Nieuwe Gagels, Clingenborgh, Dolderkanaal, Groot Verlaat, Oostermeenthe, Oostwijken, De Beitel, Paddenpoel en Kornputkwartier, Steenwijkerdiep, Torenlanden, Woldmeenthe, Eeserwold.
+  - Stadswijken Steenwijk: Steenwijk Centrum / Binnenstad, Steenwijk West, De Gagels, Nieuwe Gagels, Clingenborgh, Dolderkanaal, Groot Verlaat, Oostermeenthe, Oostwijken, De Beitel, Paddenpoel en Kornputkwartier, Steenwijkerdiep, Torenlanden, Woldmeenthe, Eeserwold. (Let op: Ontwikkelingen rond station, spoor en De Meenthe horen bij 'Steenwijk West').
   - Dorpskernen Steenwijkerland: Barsbeek, Belt-Schutsloot, Blankenham, Blokzijl, De Pol, Baars, De Bult, Doosje, Eesveen, Giethoorn, Ijsselham, Paasloo, Basse, Jonen, Dwarsgracht, Kalenberg, Kallenkote, Kuinre, Marijenkampen, Willemsoord, Nederland, Baarlo, Oldemarkt, Onna, Ossenzijl, Scheerwolde, Sint Jansklooster, Steenwijkerwold, Witte Paarden, Tuk, Vollenhove, Wanneperveen, Wetering, Zuidveen.
 
   HARDE REGELS VOOR HET VELD 'wijk_of_kern':
@@ -1296,13 +1296,21 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
         const validHoofd = normalizeHoofddossier(rawHoofd, meta.titel, meta.entiteiten, text);
         const validSub = normalizeSubdossier(validHoofd, rawSub, meta.titel, meta.entiteiten, text);
 
+        const detectedWijken = detectWijkenKernen(
+          meta.titel || candidate.existingItem?.titel,
+          meta.entiteiten || candidate.existingItem?.entiteiten,
+          text,
+          meta.wijk_of_kern || candidate.existingItem?.wijk_of_kern
+        );
+        const validWijk = detectedWijken.length > 0 ? detectedWijken.join(", ") : "";
+
         const newRecord: RaadsstukMetadata = {
           bestandsnaam: candidate.relativePath || candidate.filename,
           titel: meta.titel ? cleanPublicTitle(candidate.filename, meta.titel) : (candidate.existingItem?.titel || cleanPublicTitle(candidate.filename, "")),
           dossier: validHoofd,
           subdossier: validSub,
           datum: meta.datum || candidate.existingItem?.datum || new Date().toISOString().split("T")[0],
-          wijk_of_kern: meta.wijk_of_kern || candidate.existingItem?.wijk_of_kern || "",
+          wijk_of_kern: validWijk,
           entiteiten: sanitizeEntities(meta.entiteiten || candidate.existingItem?.entiteiten || (origin !== "Gemeente Steenwijkerland" ? origin : ""), validHoofd, validSub, text),
           relaties: meta.relaties || candidate.existingItem?.relaties || "",
           skos_tags: Array.isArray(meta.skos_tags) && meta.skos_tags.length > 0 ? meta.skos_tags : (candidate.existingItem?.skos_tags || []),

@@ -1163,11 +1163,18 @@ export function detectWijkenKernen(
   if (existingWijk && existingWijk.trim() && existingWijk !== "Geen" && existingWijk !== "Provinciebreed" && existingWijk !== "Waterschapbreed") {
     const parts = existingWijk.split(",").map((p) => p.trim()).filter(Boolean);
     for (const p of parts) {
-      if (BANNED_GENERIC_WIJKEN.has(p.toLowerCase())) {
+      const pLower = p.toLowerCase();
+      if (BANNED_GENERIC_WIJKEN.has(pLower)) {
         // Generiek "Steenwijk" of "Steenwijkerland" is GEEN wijk of kern! Negeren!
         continue;
       }
-      const match = WIJKEN_KERNEN_LIST.find((w) => w.naam.toLowerCase() === p.toLowerCase() || w.slug === p.toLowerCase());
+      let match = WIJKEN_KERNEN_LIST.find((w) => w.naam.toLowerCase() === pLower || w.slug === pLower);
+      if (!match) {
+        match = WIJKEN_KERNEN_LIST.find((w) => 
+          pLower.includes(w.naam.toLowerCase()) || 
+          w.aliases.some((a) => pLower.includes(a.toLowerCase()))
+        );
+      }
       if (match) detected.add(match.naam);
     }
   }
