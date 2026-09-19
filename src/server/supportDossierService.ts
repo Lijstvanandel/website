@@ -595,7 +595,7 @@ Antwoord UITSLUITEND in valide JSON (geen markdown quotes of uitleg) met deze ex
 }`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
+        model: "gemini-2.5-flash",
         contents: prompt,
         config: {
           temperature: 0.1, // Strictest low temperature to ensure absolute determinism & no hallucination

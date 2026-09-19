@@ -38,7 +38,7 @@ function getProgrammaContext(): string {
 /**
  * Deeply scan the documents (stukken) belonging to a council topic
  * and match ALL relevant party standpoints (multiple standpoints allowed and encouraged)
- * using the Gemini API (model: gemini-3.8-flash).
+ * using the Gemini API (model: gemini-2.5-flash).
  */
 export async function scanTopicDocumentsAndMatchStandpunten(
   topic: CouncilAgendaTopic,
@@ -153,7 +153,7 @@ ANTWOORD UITSLUITEND IN DIT VALIDE JSON FORMAAT (GEEN MARKDOWN BACKTICKS OF UITL
 
       try {
         response = await ai.models.generateContent({
-          model: "gemini-3.8-flash",
+          model: "gemini-2.5-flash",
           contents: prompt,
           config: {
             temperature: 0.15,
@@ -163,7 +163,7 @@ ANTWOORD UITSLUITEND IN DIT VALIDE JSON FORMAAT (GEEN MARKDOWN BACKTICKS OF UITL
       } catch (gemini38Err: any) {
         console.warn("[STANDPUNT SCANNER] Gemini 3.8 Flash mislukt, probeer Gemini 2.5 Flash fallback:", gemini38Err?.message || gemini38Err);
         response = await ai.models.generateContent({
-          model: "gemini-3.8-flash",
+          model: "gemini-2.5-flash",
           contents: prompt,
           config: {
             temperature: 0.15,

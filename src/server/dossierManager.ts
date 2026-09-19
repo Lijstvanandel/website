@@ -741,7 +741,8 @@ export function generateMasterMetadataCsv(items: RaadsstukMetadata[]): string {
     "wijk_of_kern",
     "datum",
     "entiteiten",
-    "relaties"
+    "relaties",
+    "goed_verwerkt"
   ];
   const escapeCsv = (val: any) => {
     if (val === null || val === undefined) return '""';
@@ -759,6 +760,11 @@ export function generateMasterMetadataCsv(items: RaadsstukMetadata[]): string {
     const hoofddossier = normalizeHoofddossier(rawDossier, title, entities, rels);
     const subdossier = normalizeSubdossier(hoofddossier, rawSub, title, entities, rels);
 
+    const isGoedVerwerkt = (
+      item.ai_geclassificeerd === true ||
+      (typeof item.ai_model === "string" && item.ai_model.trim().length > 0)
+    ) ? 1 : 0;
+
     return [
       escapeCsv(item.bestandsnaam),
       escapeCsv(title),
@@ -767,7 +773,8 @@ export function generateMasterMetadataCsv(items: RaadsstukMetadata[]): string {
       escapeCsv(item.wijk_of_kern || ""),
       escapeCsv(item.datum || ""),
       escapeCsv(entities || ""),
-      escapeCsv(rels || "")
+      escapeCsv(rels || ""),
+      escapeCsv(isGoedVerwerkt)
     ].join(";");
   });
 
@@ -2400,6 +2407,7 @@ export function parseMetadataCsv(csvContent: string): RaadsstukMetadata[] {
   const entiteitenIdx = header.findIndex((h) => h === "entiteiten" || h === "entities" || h === "tags");
   const relatiesIdx = header.findIndex((h) => h === "relaties" || h === "relations" || h === "referenties");
   const wijkIdx = header.findIndex((h) => h === "wijk_of_kern" || h === "wijk" || h === "kern");
+  const goedVerwerktIdx = header.findIndex((h) => h === "goed_verwerkt" || h === "goedverwerkt");
 
   const itemMap = new Map<string, RaadsstukMetadata>();
   let duplicateCount = 0;
@@ -2422,6 +2430,13 @@ export function parseMetadataCsv(csvContent: string): RaadsstukMetadata[] {
       entiteiten: cols[entiteitenIdx >= 0 ? entiteitenIdx : 4] || "",
       relaties: cols[relatiesIdx >= 0 ? relatiesIdx : 5] || "",
     };
+
+    if (goedVerwerktIdx >= 0 && cols[goedVerwerktIdx]) {
+      const val = cols[goedVerwerktIdx].trim();
+      if (val === "1" || val.toLowerCase() === "true") {
+        item.ai_geclassificeerd = true;
+      }
+    }
 
     if (wijkIdx >= 0 && cols[wijkIdx]) {
       item.wijk_of_kern = cols[wijkIdx];

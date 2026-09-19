@@ -383,7 +383,7 @@ ${introTekst.slice(0, 3000)}`;
 
     try {
       response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
+        model: "gemini-2.5-flash",
         contents: prompt,
         config: {
           temperature: 0.0,
@@ -392,7 +392,7 @@ ${introTekst.slice(0, 3000)}`;
       });
     } catch {
       response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
+        model: "gemini-2.5-flash",
         contents: prompt,
         config: {
           temperature: 0.0,

@@ -790,7 +790,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
                     Dossier Samenbrengingsproces (Taxonomie-AI)
                   </h3>
                   <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-primary/10 text-primary border border-primary/20 rounded-md">
-                    {bulkStatus.modelName || "gemini-3.8-flash"}
+                    {bulkStatus.modelName || "gemini-2.5-flash"}
                   </span>
                   {bulkStatus.limit && (
                     <span className="px-2 py-0.5 text-[10px] font-bold bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30 rounded-full">
@@ -815,7 +815,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
                   {bulkStatus.isPaused
                     ? `Gepauzeerd wegens Gemini API rate limit (10 RPM limiet). Het script wacht op quotum-reset en hervat automatisch...`
                     : bulkStatus.isRunning 
-                    ? `Actief bezig met analyseren en classificeren volgens de Steenwijkerlandse datataxonomie (gemini-3.8-flash, max 10 RPM)...` 
+                    ? `Actief bezig met analyseren en classificeren volgens de Steenwijkerlandse datataxonomie (gemini-2.5-flash, max 10 RPM)...` 
                     : "Alle bestanden zijn geanalyseerd en ingedeeld volgens de ontologische routeringsregels."}
                 </p>
               </div>
