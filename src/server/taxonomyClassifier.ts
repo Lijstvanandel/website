@@ -27,6 +27,64 @@ export const CANONICAL_PRIMARY_SUBDOSSIERS: Record<CanonicalHoofddossier, string
 };
 
 /**
+ * Canonieke lijst van toegestane subdossiers per hoofddossier.
+ * Voorkomt versnippering ("subdossier-explosie") door arbitraire AI-verzinsels.
+ */
+export const CANONICAL_SUBDOSSIERS_BY_HOOFD: Record<CanonicalHoofddossier, readonly string[]> = {
+  "Ruimtelijke Ordening, Wonen & Omgevingswet": [
+    "Bestemmingsplannen & Omgevingsvisie",
+    "Woningbouw & Inbreiding",
+    "Sociale Volkshuisvesting & Woningcorporaties",
+    "Beeldkwaliteit & Welstandstoezicht",
+    "Planschade & Ruimtelijke Jurisprudentie",
+  ],
+  "Landbouw, Natuur & Waterbeheer": [
+    "Waterpeilbeheer & Peilbesluiten",
+    "Veenoxidatie & Bodemdaling",
+    "Stikstof, KDW & AERIUS",
+    "Natura 2000 & Inpassingsplannen",
+    "Agrarische Transitie & Pacht",
+    "Exotenbestrijding & Waterkwaliteit",
+    "Milieu, Bodem & Emissies",
+  ],
+  "Lokale Economie, Toerisme & Energie-infrastructuur": [
+    "Toerisme Overlast & Regulering",
+    "Netcongestie & Energie-infrastructuur",
+    "Bedrijventerreinen & Werkgelegenheid",
+    "Cultuur, Erfgoed & UNESCO Bufferzone",
+    "Sportaccommodaties & Zwembaden",
+    "Podiumkunsten & Bibliotheken",
+    "Middenstand, Horeca & Detailhandel",
+  ],
+  "Verkeer, Wegen & Fysieke Bereikbaarheid": [
+    "Verkeer, N-Wegen & Bruggen",
+    "Fietspaden, Openbaar Vervoer & Mobiliteit",
+    "Verkeersveiligheid & Parkeerbeleid",
+  ],
+  "Sociaal Domein, Asiel & Leefbaarheid": [
+    "Jeugdzorg & RSJ",
+    "Wmo & Publieke Gezondheid (GGD)",
+    "Asielopvang, COA & Spreidingswet",
+    "Onderwijshuisvesting & Kindcentra",
+    "Participatiewet & Schuldhulpverlening",
+    "Beschermd Wonen & Mantelzorg",
+  ],
+  "Mijnbouw & Ondergrondse Opgaven": [
+    "Gaswinning & Seismische Monitoring",
+    "Mijnbouwschade & Zorgplicht",
+    "Ondergrondse Infrastructuur & Geothermie",
+  ],
+  "Bestuur, Financiën & Juridische Zaken": [
+    "Begroting, Jaarstukken & Financiën",
+    "Gemeenschappelijke Regelingen (GR)",
+    "Openbare Orde, Veiligheid & APV",
+    "Beheer Openbare Ruimte & Riolering",
+    "Integriteit, Dienstverlening & Rekenkamer",
+    "Bestuurlijke Organisatie & Raadszaken",
+  ],
+};
+
+/**
  * Banned actor categories: Instanties mogen NOOIT als hoofddossier of subdossier voorkomen.
  */
 export const BANNED_ACTOR_KEYWORDS = [
@@ -481,26 +539,7 @@ export function normalizeSubdossier(
     }
   }
 
-  // If Gemini or source gave a valid, specific subdossier (and it's not a banned actor), preserve it!
-  if (
-    s.length >= 3 &&
-    !sLower.includes("overig") &&
-    !sLower.includes("algemeen") &&
-    !sLower.includes("onbekend")
-  ) {
-    let isBanned = false;
-    for (const banned of BANNED_ACTOR_KEYWORDS) {
-      if (sLower.includes(banned)) {
-        isBanned = true;
-        break;
-      }
-    }
-    if (!isBanned) {
-      return s;
-    }
-  }
-
-  // If user defined a custom subdossier, keep it if valid
+  // 1. Custom subdossier expliciet ingesteld door raadsgriffie/beheerder
   if (
     rawSub &&
     Array.isArray(knownCustomSubdossiers) &&
@@ -508,6 +547,15 @@ export function normalizeSubdossier(
   ) {
     const matched = knownCustomSubdossiers.find((k) => k.toLowerCase().trim() === sLower);
     if (matched) return matched;
+  }
+
+  // 2. Directe match met één van de officiële canonieke subdossiers binnen het hoofddossier
+  const canonicalList = CANONICAL_SUBDOSSIERS_BY_HOOFD[hoofddossier as CanonicalHoofddossier] || [];
+  const exactCanonical = canonicalList.find(
+    (c) => c.toLowerCase() === sLower
+  );
+  if (exactCanonical) {
+    return exactCanonical;
   }
 
   switch (hoofddossier) {
@@ -644,7 +692,9 @@ export function normalizeSubdossier(
         combined.includes("enexis") ||
         combined.includes("res ") ||
         combined.includes("compactstation") ||
-        combined.includes("energietransitie")
+        combined.includes("energietransitie") ||
+        combined.includes("laadpaal") ||
+        combined.includes("laadinfrastructuur")
       ) {
         return "Netcongestie & Energie-infrastructuur";
       }
@@ -653,20 +703,50 @@ export function normalizeSubdossier(
         combined.includes("eeserwold") ||
         combined.includes("groot verlaat") ||
         combined.includes("royal huisman") ||
-        combined.includes("dolderkanaal")
+        combined.includes("dolderkanaal") ||
+        combined.includes("werkgelegenheid") ||
+        combined.includes("ruimtebehoefte") ||
+        combined.includes("bedrijfsleven") ||
+        combined.includes("ondernemersplatform") ||
+        combined.includes("stec")
       ) {
         return "Bedrijventerreinen & Werkgelegenheid";
       }
       if (
         combined.includes("vaarverordening") ||
+        combined.includes("vaarbeleid") ||
+        combined.includes("vaarverkeer") ||
+        combined.includes("vaarrecreatie") ||
+        combined.includes("vaarverhuur") ||
         combined.includes("dorpsgracht") ||
         combined.includes("breedtebeperking") ||
         combined.includes("rondvaart") ||
-        combined.includes("totaalaanpak parkeren") ||
+        combined.includes("verhuurboten") ||
+        combined.includes("punter") ||
+        combined.includes("loswal") ||
         combined.includes("de landije") ||
-        combined.includes("toerisme") ||
-        combined.includes("toeristenbelasting") ||
-        combined.includes("overtoerisme")
+        combined.includes("toerism") ||
+        combined.includes("toerist") ||
+        combined.includes("overtoerisme") ||
+        combined.includes("bezoekersmanagement") ||
+        combined.includes("crowd control") ||
+        combined.includes("waterrecreatie") ||
+        combined.includes("havenbeheer") ||
+        combined.includes("retributie") ||
+        combined.includes("vermakelijkhedenretributie") ||
+        combined.includes("recreatieheffing") ||
+        combined.includes("bezoekers") ||
+        combined.includes("recreanten") ||
+        combined.includes("overlast") ||
+        combined.includes("rondvaartboten") ||
+        combined.includes("rondvaartbedrijf") ||
+        combined.includes("toerismebeleid") ||
+        combined.includes("toerisme-") ||
+        combined.includes("toeristische") ||
+        combined.includes("recreatie-infrastructuur") ||
+        combined.includes("recreatieontwikkeling") ||
+        combined.includes("recreatie op water") ||
+        combined.includes("toeristenbelasting")
       ) {
         return "Toerisme Overlast & Regulering";
       }
@@ -680,7 +760,14 @@ export function normalizeSubdossier(
         combined.includes("monument") ||
         combined.includes("erfgoed") ||
         combined.includes("spijkervet") ||
-        combined.includes("museum")
+        combined.includes("museum") ||
+        combined.includes("musea") ||
+        combined.includes("olde maat") ||
+        combined.includes("beeldende kunst") ||
+        combined.includes("kunstcommissie") ||
+        combined.includes("kunstreserve") ||
+        combined.includes("cultuur") ||
+        combined.includes("historie")
       ) {
         return "Cultuur, Erfgoed & UNESCO Bufferzone";
       }
@@ -689,7 +776,8 @@ export function normalizeSubdossier(
         combined.includes("scala") ||
         combined.includes("theater") ||
         combined.includes("podium") ||
-        combined.includes("bibliotheek")
+        combined.includes("bibliotheek") ||
+        combined.includes("schouwburg")
       ) {
         return "Podiumkunsten & Bibliotheken";
       }
@@ -698,9 +786,30 @@ export function normalizeSubdossier(
         combined.includes("waterwyck") ||
         combined.includes("zwembad") ||
         combined.includes("sportpark") ||
-        combined.includes("kunstgras")
+        combined.includes("sportlaan") ||
+        combined.includes("kunstgras") ||
+        combined.includes("veldverlichting") ||
+        combined.includes("drainage") ||
+        combined.includes("sportevenement") ||
+        combined.includes("sportsubsidie") ||
+        combined.includes("sportvereniging")
       ) {
         return "Sportaccommodaties & Zwembaden";
+      }
+      if (
+        combined.includes("middenstand") ||
+        combined.includes("horeca") ||
+        combined.includes("detailhandel") ||
+        combined.includes("winkeltijd") ||
+        combined.includes("koopzondag") ||
+        combined.includes("winkel") ||
+        combined.includes("ambacht") ||
+        combined.includes("terras")
+      ) {
+        return "Middenstand, Horeca & Detailhandel";
+      }
+      if (combined.includes("giethoorn")) {
+        return "Toerisme Overlast & Regulering";
       }
       return "Middenstand, Horeca & Detailhandel";
     }

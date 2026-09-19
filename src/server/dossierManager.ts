@@ -599,7 +599,7 @@ export function countPhysicalFilesOnDisk(): {
 // Asynchronous background disk sync function for JSON, CSV, and graph files
 async function flushMasterMetadataToDiskAsync(items: RaadsstukMetadata[], csvContent?: string): Promise<void> {
   try {
-    await ensureMasterDirsAsync();
+    ensureMasterDirs();
     const jsonStr = JSON.stringify(items, null, 2);
 
     // Save master file in data/
@@ -1051,16 +1051,13 @@ export function getAllDossiers(
 
   // Group metadata by canonical slug so case differences don't create duplicate dossiers
   metadataList.forEach((item, index) => {
-    const rawDossier = (item.dossier || "Overig").trim();
-    const slug = slugify(rawDossier) || "overig";
+    const isDlq = (item.dossier || "").trim().toLowerCase() === "ongeclassificeerd_falen";
+    const canonicalHoofd = isDlq
+      ? "ONGECLASSIFICEERD_FALEN"
+      : normalizeHoofddossier(item.dossier, item.titel, item.entiteiten);
+    const slug = slugify(canonicalHoofd) || "overig";
     if (!dossierMap.has(slug)) {
-      dossierMap.set(slug, { title: rawDossier, docs: [] });
-    } else {
-      // Keep nicer title (prefer capital letters / Title Case)
-      const existing = dossierMap.get(slug)!;
-      if (rawDossier !== existing.title && /[A-Z]/.test(rawDossier) && !/[A-Z]/.test(existing.title)) {
-        existing.title = rawDossier;
-      }
+      dossierMap.set(slug, { title: canonicalHoofd, docs: [] });
     }
 
     const fileCheck = checkFileExists(item.bestandsnaam);
@@ -1071,7 +1068,17 @@ export function getAllDossiers(
       ? item.relaties.split(",").map((s) => s.trim()).filter(Boolean)
       : [];
 
-    const rawSubdossier = (item.subdossier || "Algemeen").trim();
+    const customSubsForDossier = customSubdossiers ? customSubdossiers[canonicalHoofd] || [] : [];
+    const rawSubdossier = isDlq
+      ? (item.subdossier || "Audit & Retry Vereist (DLQ)")
+      : normalizeSubdossier(
+          canonicalHoofd as any,
+          item.subdossier,
+          item.titel,
+          item.entiteiten,
+          undefined,
+          customSubsForDossier
+        );
     const rawWijk = (item.wijk_of_kern || "").trim();
     const docWijken = rawWijk
       ? rawWijk.split(",").map((w) => w.trim()).filter(Boolean)
@@ -1081,7 +1088,7 @@ export function getAllDossiers(
       id: `doc-${index}-${slugify(item.bestandsnaam)}`,
       bestandsnaam: item.bestandsnaam,
       titel: item.titel || item.bestandsnaam.replace(/\.pdf$/i, ""),
-      dossier: rawDossier,
+      dossier: canonicalHoofd,
       subdossier: rawSubdossier,
       wijk_of_kern: rawWijk,
       wijken: docWijken,

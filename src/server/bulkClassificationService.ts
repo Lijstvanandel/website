@@ -634,21 +634,70 @@ async function classifyWithGemini(
      - Gaswinning (Vermilion, Eesveen) en seismische monitoring gaan ALTIJD naar "Mijnbouw & Ondergrondse Opgaven".
      - Algemene Planning & Control (Programmabegroting, Jaarrekening, OZB, Kadernota), APV, politie/brandweer (VRIJ), algemene raadsreglementen en zuivere procedurele voorstellen gaan naar "Bestuur, Financiën & Juridische Zaken". LET OP: een raadsvoorstel over een specifiek beleidsonderwerp (zoals huishoudelijke hulp/Wmo, bestemmingsplan, provinciale weg, brug of waterpeil) hoort ALTIJD bij het inhoudelijke beleidsdomein, NOOIT bij Bestuur/Financiën!
 
-  === DE 7 CANONIEKE HOOFDDOSSIERS (Kies EXACT ÉÉN) ===
+  === DE 7 CANONIEKE HOOFDDOSSIERS EN HUN VASTE CANONIEKE SUBDOSSIERS ===
+  (Kies voor 'dossier' exact één van de 7 hoofddossiers, en kies voor 'subdossier' UITSLUITEND één van de bijbehorende canonieke subdossiers! Bedenk NOOIT eigen subdossiers!)
+
   1. "Ruimtelijke Ordening, Wonen & Omgevingswet"
-     - Bestemmingsplannen, Omgevingsvisie, TAM-omgevingsplannen, BOPA, woningbouw, inbreiding, sociale volkshuisvesting (Wetland Wonen), beeldkwaliteit, planschade/SAOZ.
+     Toegestane subdossiers:
+     - "Bestemmingsplannen & Omgevingsvisie"
+     - "Woningbouw & Inbreiding"
+     - "Sociale Volkshuisvesting & Woningcorporaties"
+     - "Beeldkwaliteit & Welstandstoezicht"
+     - "Planschade & Ruimtelijke Jurisprudentie"
+
   2. "Landbouw, Natuur & Waterbeheer"
-     - Waterpeilbeheer, peilbesluiten (WDODelta), OGOR, bodemdaling/veenoxidatie, stikstof (AERIUS/KDW), Natura 2000 (Weerribben-Wieden), agrarische transitie/pacht, waterkwaliteit (KRW), dijkversterking.
+     Toegestane subdossiers:
+     - "Waterpeilbeheer & Peilbesluiten"
+     - "Veenoxidatie & Bodemdaling"
+     - "Stikstof, KDW & AERIUS"
+     - "Natura 2000 & Inpassingsplannen"
+     - "Agrarische Transitie & Pacht"
+     - "Exotenbestrijding & Waterkwaliteit"
+     - "Milieu, Bodem & Emissies"
+
   3. "Lokale Economie, Toerisme & Energie-infrastructuur"
-     - Netcongestie, Smart Energy Hub, windenergie, zonneparken, bedrijventerreinen (Eeserwold, Groot Verlaat), toerisme/vaarverordening Giethoorn, cultuur/UNESCO (Koloniën van Weldadigheid), De Meenthe, sport.
+     Toegestane subdossiers:
+     - "Toerisme Overlast & Regulering" (ALLE stukken over toerisme, vaarverordening, dorpsgracht Giethoorn, rondvaart, punters, recreatie, havenbeheer, bezoekersoverlast gaan HIERNAAR TOE)
+     - "Netcongestie & Energie-infrastructuur" (zonneparken, windenergie, Smart Energy Hub, transformatorstations)
+     - "Bedrijventerreinen & Werkgelegenheid" (Eeserwold, Groot Verlaat, Dolderkanaal)
+     - "Cultuur, Erfgoed & UNESCO Bufferzone" (musea, Museum Olde Maat Uus, Koloniën van Weldadigheid, beeldende kunst, monumenten)
+     - "Sportaccommodaties & Zwembaden" (sportverenigingen, De Waterwyck, veldverlichting, sportevenementen en subsidies)
+     - "Podiumkunsten & Bibliotheken" (De Meenthe, Scala, bibliotheekwerk)
+     - "Middenstand, Horeca & Detailhandel" (winkeltijden, koopzondagen, horecavergunningen)
+
   4. "Verkeer, Wegen & Fysieke Bereikbaarheid"
-     - N-wegen (N761/N334/N762/N333), bruggen (Ronduitebrug, Meenthebrug, Scheerbrug), snelfietsroutes, openbaar vervoer (RRReis), GVVP, verkeersveiligheid.
+     Toegestane subdossiers:
+     - "Verkeer, N-Wegen & Bruggen" (N761, N334, N762, N333, Ronduitebrug, Meenthebrug, Scheerbrug, pontje Jonen)
+     - "Fietspaden, Openbaar Vervoer & Mobiliteit" (snelfietsroutes, RRReis, bussen, GVVP)
+     - "Verkeersveiligheid & Parkeerbeleid" (30 km zones, parkeernormen)
+
   5. "Sociaal Domein, Asiel & Leefbaarheid"
-     - Jeugdzorg (RSJ), Wmo, publieke gezondheid (GGD), asielopvang (COA, Spreidingswet), Participatiewet/schuldhulp, onderwijshuisvesting (IHP) & kindcentra, leefbaarheid kleine kernen.
+     Toegestane subdossiers:
+     - "Jeugdzorg & RSJ" (regionaal serviceteam jeugd, jeugdhulp, pleegzorg)
+     - "Wmo & Publieke Gezondheid (GGD)" (hulp bij het huishouden, Van Rijngelden, publieke gezondheid)
+     - "Asielopvang, COA & Spreidingswet" (statushouders, noodopvang, Oekraïne, Fletcher)
+     - "Onderwijshuisvesting & Kindcentra" (IHP, scholenbouw)
+     - "Participatiewet & Schuldhulpverlening" (armoede, bijstand, kredietbank)
+     - "Beschermd Wonen & Mantelzorg" (ouderenzorg, maatschappelijke opvang)
+
   6. "Mijnbouw & Ondergrondse Opgaven"
-     - Gaswinning (Vermilion, Eesveen), winningsplannen, bodembeweging/seismische monitoring, mijnbouwschade, geothermie.
+     Toegestane subdossiers:
+     - "Gaswinning & Seismische Monitoring" (Vermilion, gaslocatie Eesveen)
+     - "Mijnbouwschade & Zorgplicht"
+     - "Ondergrondse Infrastructuur & Geothermie"
+
   7. "Bestuur, Financiën & Juridische Zaken"
-     - Programmabegroting, jaarrekening, gemeentefonds, belastingen (OZB, leges), APV, politie, brandweer, Veiligheidsregio IJsselland (VRIJ), rekenkamer, riolering & openbare ruimte.
+     Toegestane subdossiers:
+     - "Begroting, Jaarstukken & Financiën" (programmabegroting, jaarrekening, OZB, kadernota)
+     - "Gemeenschappelijke Regelingen (GR)"
+     - "Openbare Orde, Veiligheid & APV" (algemene plaatselijke verordening, politie, brandweer VRIJ)
+     - "Beheer Openbare Ruimte & Riolering"
+     - "Integriteit, Dienstverlening & Rekenkamer"
+     - "Bestuurlijke Organisatie & Raadszaken"
+
+  HARDE REGEL VOOR 'subdossier':
+  - Kies UITSLUITEND één van de hierboven expliciet genoemde canonieke subdossiers behorend bij het gekozen hoofddossier!
+  - Bedenk NOOIT eigen subdossiers! Maak NOOIT ad-hoc varianten zoals 'Toerismeregulering vaarverkeer Giethoorn' of 'Sportevenementen & Subsidiebeleid'!
 
   === WIJKEN & KERNEN (STRIKT VERBOD OP GENERIEK "STEENWIJK") ===
   Steenwijk op zichzelf is GEEN afzonderlijke wijk of kern, maar de centrale stad bestaande uit 14 specifieke stadswijken:

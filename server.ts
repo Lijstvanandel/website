@@ -63,6 +63,7 @@ import {
   clearCouncilDocumentViews
 } from "./src/server/sqliteDatabase.js";
 import { executeCouncilSearch } from "./src/server/councilSearchService.js";
+import { normalizeSubdossier } from "./src/server/taxonomyClassifier.js";
 import { indexUploadedFile } from "./src/server/documentTextExtractor.js";
 import {
   scrapeCouncilAgendas,
@@ -11876,10 +11877,18 @@ Sitemap: ${baseUrl}/sitemap.xml
               return null;
             }
 
-            // Recalculate subdossiers specific to this wijk
+            // Recalculate subdossiers specific to this wijk with canonical normalization
             const subMap = new Map<string, typeof matchingDocs>();
+            const customSubsForDossier = (db.customSubdossiers || {})[d.title] || [];
             matchingDocs.forEach((doc) => {
-              const st = doc.subdossier || "Algemeen";
+              const st = normalizeSubdossier(
+                d.title as any,
+                doc.subdossier,
+                doc.titel,
+                (doc.entiteiten || []).join(", "),
+                undefined,
+                customSubsForDossier
+              );
               if (!subMap.has(st)) subMap.set(st, []);
               subMap.get(st)!.push(doc);
             });
