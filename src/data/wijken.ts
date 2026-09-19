@@ -14,11 +14,11 @@ export const WIJKEN_EN_KERNEN: WijkOfKern[] = [
   // =========================================================================
   {
     slug: "centrum-steenwijk",
-    naam: "Centrum Steenwijk",
+    naam: "Steenwijk Centrum / Binnenstad",
     type: "Wijk",
     gemeente: "Steenwijk",
     isGrouped: false,
-    beschrijving: "Het historische stadshart van Steenwijk met de sfeervolle Markt, winkels, horeca, cultuur en monumentale gevels.",
+    beschrijving: "Het historische hart van Steenwijk met de Markt, winkels, horeca en cultuur. Lijst van Andel zet zich in voor een bruisend centrum met minder leegstand en goede bereikbaarheid.",
   },
   {
     slug: "clingenborgh",
@@ -26,15 +26,15 @@ export const WIJKEN_EN_KERNEN: WijkOfKern[] = [
     type: "Wijk",
     gemeente: "Steenwijk",
     isGrouped: false,
-    beschrijving: "Rustige, groene en ruim opgezette woonwijk aan de rand van Steenwijk met een gemoedelijke sfeer.",
+    beschrijving: "Rustige woonwijk met royale groenstroken en een gemoedelijke sfeer nabij de uitvalswegen van Steenwijk.",
   },
   {
     slug: "de-gagels",
-    naam: "De gagels",
+    naam: "De Gagels",
     type: "Wijk",
     gemeente: "Steenwijk",
     isGrouped: false,
-    beschrijving: "Geliefde en kindvriendelijke woonwijk met veel openbaar groen, basisonderwijs en veilige speelgelegenheden.",
+    beschrijving: "Een geliefde woonwijk in Steenwijk met veel groen, scholen en gezinnen. Aandachtspunten zijn speelvoorzieningen en veilige routes voor fietsers en schoolgaande jeugd.",
   },
   {
     slug: "nieuwe-gagels",
@@ -50,7 +50,7 @@ export const WIJKEN_EN_KERNEN: WijkOfKern[] = [
     type: "Wijk",
     gemeente: "Steenwijk",
     isGrouped: false,
-    beschrijving: "Wijkzone langs het Steenwijkerdiep en het Dolderkanaal met een mix van maritieme bedrijvigheid en wonen aan het water.",
+    beschrijving: "Wijk langs het Steenwijkerdiep en Dolderkanaal met een mix van bedrijvigheid en wonen aan het water.",
   },
   {
     slug: "groot-verlaat",
@@ -67,7 +67,7 @@ export const WIJKEN_EN_KERNEN: WijkOfKern[] = [
     gemeente: "Steenwijk",
     isGrouped: false,
     vertegenwoordiger: "Stef Mars",
-    beschrijving: "Grote, vitale woonwijk in Steenwijk Oost met buurtvoorzieningen, basisscholen, sportvelden en hechte gemeenschappen.",
+    beschrijving: "Oostermeenthe is een ruim opgezette woonwijk aan de oostzijde van Steenwijk. Een wijk met karakter, met aandacht voor verkeersveiligheid, groen onderhoud en voorzieningen voor jong en oud.",
   },
   {
     slug: "oostwijken-de-beitel",
@@ -83,7 +83,7 @@ export const WIJKEN_EN_KERNEN: WijkOfKern[] = [
     type: "Wijk",
     gemeente: "Steenwijk",
     isGrouped: false,
-    beschrijving: "Populaire jonge nieuwbouwwijk met duurzame eengezinswoningen, speelzones en veel waterpartijen.",
+    beschrijving: "Populaire jonge woonwijk met moderne architectuur, veilige speelzones en veel waterpartijen.",
   },
   {
     slug: "steenwijk-west",
@@ -91,7 +91,7 @@ export const WIJKEN_EN_KERNEN: WijkOfKern[] = [
     type: "Wijk",
     gemeente: "Steenwijk",
     isGrouped: false,
-    beschrijving: "Veelzijdige en karakteristieke volkswijk met buurthuizen, sterke sociale samenhang en betrokken bewoners.",
+    beschrijving: "Een veelzijdige wijk met sterke sociale samenhang en hechte buurten, waar Lijst van Andel inzet op leefbaarheid en buurtinitiatieven.",
   },
   {
     slug: "steenwijkerdiep",
@@ -115,11 +115,19 @@ export const WIJKEN_EN_KERNEN: WijkOfKern[] = [
     type: "Wijk",
     gemeente: "Steenwijk",
     isGrouped: false,
-    beschrijving: "Architectonisch hoogwaardige villawijk met royale waterpartijen, ecologische zones en rust.",
+    beschrijving: "Een moderne en waterrijke woonwijk met een kenmerkende architectonische uitstraling aan de rand van Steenwijk.",
+  },
+  {
+    slug: "eeserwold",
+    naam: "Eeserwold",
+    type: "Wijk",
+    gemeente: "Steenwijk",
+    isGrouped: false,
+    beschrijving: "Innovatief en duurzaam woon- en werklandschap rond het meer van Eeserwold met moderne ecologische ambities aan de noordzijde van Steenwijk.",
   },
 
   // =========================================================================
-  // 30 Kernen, dorpen en buurtschappen in Steenwijkerland (uit buurt_weergave)
+  // 29 Kernen, dorpen en buurtschappen in Steenwijkerland (uit buurt_weergave)
   // =========================================================================
   {
     slug: "barsbeek-heetveld-en-kadoelen",
@@ -168,14 +176,6 @@ export const WIJKEN_EN_KERNEN: WijkOfKern[] = [
     gemeente: "Steenwijkerland",
     isGrouped: false,
     beschrijving: "Markante, rustieke buurtschap gelegen in het water- en weidelandschap tussen Wanneperveen en Meppel.",
-  },
-  {
-    slug: "eeserwold",
-    naam: "Eeserwold",
-    type: "Kern",
-    gemeente: "Steenwijkerland",
-    isGrouped: true,
-    beschrijving: "Innovatief en duurzaam woon- en werklandschap rond het meer van Eeserwold met moderne ecologische ambities.",
   },
   {
     slug: "eesveen",

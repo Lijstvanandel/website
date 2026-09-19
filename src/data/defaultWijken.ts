@@ -27,17 +27,17 @@ export interface DefaultWijkData {
 
 export const BUURTKAART_WIJKEN: DefaultWijkData[] = [
   // =========================================================================
-  // 13 Stadswijken van Steenwijk (uit buurt_weergave)
+  // 14 Stadswijken van Steenwijk (uit buurt_weergave)
   // =========================================================================
   {
     slug: "centrum-steenwijk",
-    naam: "Centrum Steenwijk",
+    naam: "Steenwijk Centrum / Binnenstad",
     type: "Wijk",
     gemeente: "Steenwijk",
     is_grouped: false,
     bannerUrl: "/assets/markt-steenwijk.jpg",
     heroBannerUrl: "/assets/markt-steenwijk.jpg",
-    beschrijving: "Het historische stadshart van Steenwijk met de sfeervolle Markt, winkels, horeca, cultuur en monumentale gevels.",
+    beschrijving: "Het historische hart van Steenwijk met de Markt, winkels, horeca en cultuur. Lijst van Andel zet zich in voor een bruisend centrum met minder leegstand en goede bereikbaarheid.",
     vertegenwoordiger: null,
   },
   {
@@ -48,18 +48,18 @@ export const BUURTKAART_WIJKEN: DefaultWijkData[] = [
     is_grouped: false,
     bannerUrl: "/assets/steenwijk-aerial.jpg",
     heroBannerUrl: "/assets/steenwijk-aerial.jpg",
-    beschrijving: "Rustige, groene en ruim opgezette woonwijk aan de rand van Steenwijk met een gemoedelijke sfeer.",
+    beschrijving: "Rustige woonwijk met royale groenstroken en een gemoedelijke sfeer nabij de uitvalswegen van Steenwijk.",
     vertegenwoordiger: null,
   },
   {
     slug: "de-gagels",
-    naam: "De gagels",
+    naam: "De Gagels",
     type: "Wijk",
     gemeente: "Steenwijk",
     is_grouped: false,
     bannerUrl: "/assets/steenwijk-aerial.jpg",
     heroBannerUrl: "/assets/steenwijk-aerial.jpg",
-    beschrijving: "Geliefde en kindvriendelijke woonwijk met veel openbaar groen, basisonderwijs en veilige speelgelegenheden.",
+    beschrijving: "Een geliefde woonwijk in Steenwijk met veel groen, scholen en gezinnen. Aandachtspunten zijn speelvoorzieningen en veilige routes voor fietsers en schoolgaande jeugd.",
     vertegenwoordiger: null,
   },
   {
@@ -81,7 +81,7 @@ export const BUURTKAART_WIJKEN: DefaultWijkData[] = [
     is_grouped: false,
     bannerUrl: "/assets/steenwijk-aerial.jpg",
     heroBannerUrl: "/assets/steenwijk-aerial.jpg",
-    beschrijving: "Wijkzone langs het Steenwijkerdiep en het Dolderkanaal met een mix van maritieme bedrijvigheid en wonen aan het water.",
+    beschrijving: "Wijk langs het Steenwijkerdiep en Dolderkanaal met een mix van bedrijvigheid en wonen aan het water.",
     vertegenwoordiger: null,
   },
   {
@@ -151,7 +151,7 @@ export const BUURTKAART_WIJKEN: DefaultWijkData[] = [
     is_grouped: false,
     bannerUrl: "/assets/steenwijk-aerial.jpg",
     heroBannerUrl: "/assets/steenwijk-aerial.jpg",
-    beschrijving: "Veelzijdige en karakteristieke wijk met buurthuizen, sterke sociale samenhang en betrokken bewoners.",
+    beschrijving: "Een veelzijdige wijk met sterke sociale samenhang en hechte buurten, waar Lijst van Andel inzet op leefbaarheid en buurtinitiatieven.",
     vertegenwoordiger: null,
   },
   {
@@ -184,12 +184,23 @@ export const BUURTKAART_WIJKEN: DefaultWijkData[] = [
     is_grouped: false,
     bannerUrl: "/assets/steenwijk-aerial.jpg",
     heroBannerUrl: "/assets/steenwijk-aerial.jpg",
-    beschrijving: "Architectonisch hoogwaardige villawijk met royale waterpartijen, ecologische zones en rust.",
+    beschrijving: "Een moderne en waterrijke woonwijk met een kenmerkende architectonische uitstraling aan de rand van Steenwijk.",
+    vertegenwoordiger: null,
+  },
+  {
+    slug: "eeserwold",
+    naam: "Eeserwold",
+    type: "Wijk",
+    gemeente: "Steenwijk",
+    is_grouped: false,
+    bannerUrl: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1920&auto=format&fit=crop&q=80",
+    heroBannerUrl: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1920&auto=format&fit=crop&q=80",
+    beschrijving: "Innovatief en duurzaam woon- en werklandschap rond het meer van Eeserwold met moderne ecologische ambities aan de noordzijde van Steenwijk.",
     vertegenwoordiger: null,
   },
 
   // =========================================================================
-  // 29 Kernen en dorpen van Steenwijkerland (uit buurt_weergave)
+  // 28 Kernen en dorpen van Steenwijkerland (uit buurt_weergave)
   // =========================================================================
   {
     slug: "barsbeek-heetveld-en-kadoelen",
@@ -255,17 +266,6 @@ export const BUURTKAART_WIJKEN: DefaultWijkData[] = [
     bannerUrl: "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=1920&auto=format&fit=crop&q=80",
     heroBannerUrl: "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=1920&auto=format&fit=crop&q=80",
     beschrijving: "Markante, rustieke buurtschap gelegen in het water- en weidelandschap tussen Wanneperveen en Meppel.",
-    vertegenwoordiger: null,
-  },
-  {
-    slug: "eeserwold",
-    naam: "Eeserwold",
-    type: "Kern",
-    gemeente: "Steenwijkerland",
-    is_grouped: true,
-    bannerUrl: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1920&auto=format&fit=crop&q=80",
-    heroBannerUrl: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1920&auto=format&fit=crop&q=80",
-    beschrijving: "Innovatief en duurzaam woon- en werklandschap rond het meer van Eeserwold met moderne ecologische ambities.",
     vertegenwoordiger: null,
   },
   {

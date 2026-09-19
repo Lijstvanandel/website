@@ -89,6 +89,8 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "react": path.resolve(__dirname, "./node_modules/react"),
+      "react-dom": path.resolve(__dirname, "./node_modules/react-dom"),
     },
     dedupe: [
       "react",
@@ -168,7 +170,12 @@ export default defineConfig(({ mode }) => ({
       output: {
         manualChunks(id) {
           if (id.includes("node_modules")) {
-            if (id.includes("react-router-dom") || id.includes("react-dom") || id.includes("/react/")) {
+            if (
+              id.includes("node_modules/react/") ||
+              id.includes("node_modules/react-dom/") ||
+              id.includes("node_modules/react-router") ||
+              id.includes("node_modules/scheduler/")
+            ) {
               return "vendor-react";
             }
             if (id.includes("@tanstack/react-query")) {
@@ -177,7 +184,7 @@ export default defineConfig(({ mode }) => ({
             if (id.includes("lucide-react")) {
               return "vendor-icons";
             }
-            if (id.includes("motion")) {
+            if (id.includes("motion") || id.includes("framer-motion")) {
               return "vendor-motion";
             }
             if (id.includes("@radix-ui")) {
@@ -186,7 +193,7 @@ export default defineConfig(({ mode }) => ({
             if (id.includes("pdfjs-dist") || id.includes("pdf-lib")) {
               return "vendor-pdf";
             }
-            if (id.includes("leaflet")) {
+            if (id.includes("leaflet") || id.includes("react-leaflet")) {
               return "vendor-map";
             }
             if (id.includes("recharts") || id.includes("d3-")) {

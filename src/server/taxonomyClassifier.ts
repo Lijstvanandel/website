@@ -47,12 +47,33 @@ export const BANNED_ACTOR_KEYWORDS = [
   "diversen"
 ];
 
+/**
+ * Banned generic wijk/kern keywords:
+ * 'Steenwijk' op zichzelf is GEEN wijk of kern, maar de centrale stad bestaande uit 14 afzonderlijke wijken.
+ * Algemeen gemeentelijk beleid (zoals subsidies, APV, leges) is gemeentebreed en mag NOOIT aan 'Steenwijk' gekoppeld worden.
+ */
+export const BANNED_GENERIC_WIJKEN = new Set([
+  "steenwijk",
+  "steenwijkerland",
+  "steenwijk (algemeen)",
+  "steenwijkerland (algemeen)",
+  "gemeente steenwijkerland",
+  "gemeente steenwijk",
+  "stad steenwijk",
+  "algemeen",
+  "geen",
+  "onbekend",
+  "gemeentebreed",
+  "provinciebreed",
+  "waterschapbreed",
+]);
+
 // 42 wijken en kernen in Steenwijkerland met verfijnde alias-matching (voorkomt false positives)
 export const WIJKEN_KERNEN_LIST = [
-  { slug: "centrum-steenwijk", naam: "Centrum Steenwijk", aliases: ["steenwijk centrum", "binnenstad steenwijk", "markt steenwijk", "stadshart steenwijk", "centrum steenwijk", "binnenstad", "gasthuisstraat steenwijk"] },
+  { slug: "centrum-steenwijk", naam: "Steenwijk Centrum / Binnenstad", aliases: ["steenwijk centrum", "binnenstad steenwijk", "markt steenwijk", "stadshart steenwijk", "centrum steenwijk", "binnenstad", "gasthuisstraat steenwijk", "steenwijk centrum / binnenstad"] },
   { slug: "clingenborgh", naam: "Clingenborgh", aliases: ["clingenborgh"] },
-  { slug: "de-gagels", naam: "De gagels", aliases: ["de gagels", "gagels"] },
-  { slug: "nieuwe-gagels", naam: "Nieuwe gagels", aliases: ["nieuwe gagels"] },
+  { slug: "de-gagels", naam: "De Gagels", aliases: ["de gagels", "gagels"] },
+  { slug: "nieuwe-gagels", naam: "Nieuwe Gagels", aliases: ["nieuwe gagels"] },
   { slug: "dolderkanaal", naam: "Dolderkanaal", aliases: ["dolderkanaal", "dolder"] },
   { slug: "groot-verlaat", naam: "Groot Verlaat", aliases: ["groot verlaat", "icebear", "bedrijventerrein groot verlaat"] },
   { slug: "oostermeenthe", naam: "Oostermeenthe", aliases: ["oostermeenthe", "het vrije veld"] },
@@ -62,13 +83,13 @@ export const WIJKEN_KERNEN_LIST = [
   { slug: "steenwijkerdiep", naam: "Steenwijkerdiep", aliases: ["steenwijkerdiep"] },
   { slug: "torenlanden", naam: "Torenlanden", aliases: ["torenlanden"] },
   { slug: "woldmeenthe", naam: "Woldmeenthe", aliases: ["woldmeenthe", "woldmeentherand"] },
+  { slug: "eeserwold", naam: "Eeserwold", aliases: ["eeserwold", "bedrijventerrein eeserwold", "meer van eeserwold"] },
   { slug: "barsbeek-heetveld-en-kadoelen", naam: "Barsbeek, Heetveld en Kadoelen", aliases: ["barsbeek", "heetveld", "kadoelen"] },
   { slug: "belt-schutsloot", naam: "Belt-schutsloot", aliases: ["belt-schutsloot", "beltschutsloot", "dorpsgracht belt-schutsloot", "belterweg", "belterwiede"] },
   { slug: "blankenham", naam: "Blankenham", aliases: ["blankenham", "hammerdijk"] },
   { slug: "blokzijl", naam: "Blokzijl", aliases: ["blokzijl", "de hoop blokzijl", "noordermaten", "mauritsstraat", "haven blokzijl"] },
   { slug: "de-pol-baars-en-de-bult", naam: "De Pol, Baars en de Bult", aliases: ["de pol", "baars", "de bult", "huis ten wolde"] },
   { slug: "doosje", naam: "Doosje", aliases: ["doosje"] },
-  { slug: "eeserwold", naam: "Eeserwold", aliases: ["eeserwold"] },
   { slug: "eesveen", naam: "Eesveen", aliases: ["eesveen", "gaswinning eesveen", "vermilion eesveen"] },
   { slug: "giethoorn", naam: "Giethoorn", aliases: ["giethoorn", "binnenpad", "dorpsgracht giethoorn", "middenbuurt", "loswal kerkweg", "de landije"] },
   { slug: "ijsselham-paasloo-en-de-basse", naam: "Ijsselham, Paasloo en de Basse", aliases: ["ijsselham", "paasloo", "de basse", "basse"] },
@@ -1002,6 +1023,10 @@ export function detectWijkenKernen(
   if (existingWijk && existingWijk.trim() && existingWijk !== "Geen" && existingWijk !== "Provinciebreed" && existingWijk !== "Waterschapbreed") {
     const parts = existingWijk.split(",").map((p) => p.trim()).filter(Boolean);
     for (const p of parts) {
+      if (BANNED_GENERIC_WIJKEN.has(p.toLowerCase())) {
+        // Generiek "Steenwijk" of "Steenwijkerland" is GEEN wijk of kern! Negeren!
+        continue;
+      }
       const match = WIJKEN_KERNEN_LIST.find((w) => w.naam.toLowerCase() === p.toLowerCase() || w.slug === p.toLowerCase());
       if (match) detected.add(match.naam);
     }
@@ -1025,7 +1050,15 @@ export function detectWijkenKernen(
     }
   }
 
-  return Array.from(detected);
+  // Filter altijd verboden generieke termen ("Steenwijk", "Steenwijkerland", etc.) weg
+  const finalCleaned: string[] = [];
+  for (const item of detected) {
+    if (!BANNED_GENERIC_WIJKEN.has(item.toLowerCase().trim())) {
+      finalCleaned.push(item);
+    }
+  }
+
+  return finalCleaned;
 }
 
 export function detectWijkOrKern(text?: string): string | undefined {
@@ -1170,8 +1203,57 @@ export function validateRecordConformity(item: RaadsstukMetadata): {
     }
   }
 
+  const wijkLower = (item.wijk_of_kern || "").toLowerCase().trim();
+  if (
+    wijkLower === "steenwijk" ||
+    wijkLower === "steenwijkerland" ||
+    wijkLower === "steenwijk (algemeen)" ||
+    wijkLower === "steenwijkerland (algemeen)" ||
+    wijkLower.startsWith("steenwijk,") ||
+    wijkLower.endsWith(", steenwijk")
+  ) {
+    errors.push(`Ongeldige wijk/kern toewijzing: '${item.wijk_of_kern}'. Steenwijk is een stad bestaande uit wijken, geen afzonderlijke kern. Wijs een specifieke wijk toe of laat leeg voor gemeentebreed.`);
+  }
+
   return {
     valid: errors.length === 0,
     errors
   };
 }
+
+/**
+ * Bepaalt of een document reeds volledig en conform geclassificeerd is:
+ * - Heeft een AI classificatie (ai_geclassificeerd = true of gevuld ai_model)
+ * - Staat niet in DLQ
+ * - Valt binnen de 7 canonieke hoofddossiers
+ * - Bevat GEEN generiek "Steenwijk" of "Steenwijkerland" als wijk_of_kern
+ */
+export function isDocumentFullyClassified(item: RaadsstukMetadata): boolean {
+  if (!item) return false;
+
+  const hasAi = item.ai_geclassificeerd === true || (typeof item.ai_model === "string" && item.ai_model.trim().length > 0);
+  if (!hasAi) return false;
+
+  if (item.dossier === "ONGECLASSIFICEERD_FALEN" || item.subdossier === "Audit & Retry Vereist (DLQ)") {
+    return false;
+  }
+
+  if (!CANONICAL_HOOFDDOSSIERS.includes(item.dossier as any)) {
+    return false;
+  }
+
+  const wijkLower = (item.wijk_of_kern || "").toLowerCase().trim();
+  if (
+    wijkLower === "steenwijk" ||
+    wijkLower === "steenwijkerland" ||
+    wijkLower === "steenwijk (algemeen)" ||
+    wijkLower === "steenwijkerland (algemeen)" ||
+    wijkLower.startsWith("steenwijk,") ||
+    wijkLower.endsWith(", steenwijk")
+  ) {
+    return false;
+  }
+
+  return true;
+}
+

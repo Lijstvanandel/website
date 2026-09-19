@@ -215,6 +215,9 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
   const [isMissingFilesModalOpen, setIsMissingFilesModalOpen] = useState(false);
   const [isCreateDossierOpen, setIsCreateDossierOpen] = useState(false);
   const [isEditDossierOpen, setIsEditDossierOpen] = useState(false);
+  const [isImportLogOpen, setIsImportLogOpen] = useState(false);
+  const [importLogText, setImportLogText] = useState("");
+  const [isImportingLog, setIsImportingLog] = useState(false);
   const [editingDossier, setEditingDossier] = useState<Dossier | null>(null);
   const [isClassifying, setIsClassifying] = useState(false);
   const isClassifyingRef = useRef(false);
@@ -309,7 +312,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
     return () => clearInterval(interval);
   }, [fetchBulkStatus, bulkStatus?.isRunning, isClassifying]);
 
-  const handleBulkClassify = async (limit?: number) => {
+  const handleBulkClassify = async (limit?: number, force: boolean = false) => {
     isClassifyingRef.current = true;
     setIsClassifying(true);
     const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
@@ -320,17 +323,54 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
           "Content-Type": "application/json",
           Authorization: token ? `Bearer ${token}` : "",
         },
-        body: JSON.stringify({ force: true, limit: limit && limit > 0 ? limit : undefined }),
+        body: JSON.stringify({ force: !!force, limit: limit && limit > 0 ? limit : undefined }),
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Fout bij volledige data-herstructurering");
+        throw new Error(data.error || "Fout bij herstructurering");
       }
-      toast.info(limit ? `Herstructurering gestart voor maximaal ${limit} documenten.` : "Volledige data-herstructurering en taxonomie-classificatie gestart in de achtergrond.");
+      toast.info(
+        limit
+          ? `Herstructurering gestart voor batch van ${limit} documenten.`
+          : force
+          ? "Volledige herstructurering (alles opnieuw) gestart in de achtergrond."
+          : "Slimme herclassificatie gestart: conforme documenten worden overgeslagen, generieke wijk 'Steenwijk' en DLQ worden gericht hersteld."
+      );
       fetchBulkStatus();
     } catch (err: any) {
       toast.error(err.message || "Fout bij uitvoeren herstructurering");
       setIsClassifying(false);
+    }
+  };
+
+  const handleImportLog = async () => {
+    if (!importLogText.trim()) {
+      toast.error("Voer eerst de inhoud van het uitvoeringslogbestand in.");
+      return;
+    }
+    setIsImportingLog(true);
+    const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
+    try {
+      const res = await fetch("/api/council/import-execution-log", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: token ? `Bearer ${token}` : "",
+        },
+        body: JSON.stringify({ logText: importLogText }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Fout bij synchroniseren van het uitvoeringslog");
+      }
+      toast.success(data.message || "Uitvoeringslog succesvol gesynchroniseerd!");
+      setIsImportLogOpen(false);
+      setImportLogText("");
+      fetchDossiers();
+    } catch (err: any) {
+      toast.error(err.message || "Kon uitvoeringslog niet importeren");
+    } finally {
+      setIsImportingLog(false);
     }
   };
 
@@ -694,26 +734,52 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
             </Button>
 
             <Button
-              id="btn-run-bulk-classify-50"
-              onClick={() => handleBulkClassify(50)}
+              id="btn-run-bulk-classify-smart"
+              onClick={() => handleBulkClassify(undefined, false)}
               disabled={isClassifying}
               className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold h-8 rounded-xl shadow-2xs"
-              title="Test & herstructureer maximaal 50 bestanden om kosten te beheersen en Gemini-output direct te inspecteren"
+              title="Hervat de classificatie zonder opnieuw te beginnen: slaat conforme documenten over en herclassificeert alleen wijk 'Steenwijk' en DLQ-bestanden"
             >
               <Sparkles className={`w-3.5 h-3.5 mr-1.5 ${isClassifying ? 'animate-spin' : ''}`} />
-              {isClassifying ? "Verwerken..." : "Herstructureer 50 bestanden (Kostenbeheersing)"}
+              {isClassifying ? "Verwerken..." : "Hervatten & Wijk 'Steenwijk' Corrigeren"}
             </Button>
 
             <Button
-              id="btn-run-bulk-classify"
-              onClick={() => handleBulkClassify()}
+              id="btn-run-bulk-classify-50"
+              onClick={() => handleBulkClassify(50, false)}
               disabled={isClassifying}
               variant="outline"
               className="border-emerald-600/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 text-xs font-semibold h-8 rounded-xl shadow-2xs"
-              title="Herstructureer alle data en breng alle documenten samen in dossiers op basis van taxonomie, MDTO en graph-principes"
+              title="Test & herstructureer maximaal 50 bestanden om kosten te beheersen en Gemini-output direct te inspecteren"
             >
               <Sparkles className={`w-3.5 h-3.5 mr-1.5 ${isClassifying ? 'animate-spin' : ''}`} />
-              {isClassifying ? "Herstructureren..." : "Alles Herstructureren"}
+              {isClassifying ? "Verwerken..." : "Batch 50 Bestanden"}
+            </Button>
+
+            <Button
+              id="btn-open-import-log"
+              onClick={() => setIsImportLogOpen(true)}
+              variant="outline"
+              className="border-blue-600/40 text-blue-700 dark:text-blue-400 hover:bg-blue-500/10 text-xs font-semibold h-8 rounded-xl shadow-2xs"
+              title="Importeer of synchroniseer een eerdere uitvoeringslog (bijv. herstructurering_uitvoeringslog_*.txt)"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5 text-blue-500" />
+              Uitvoeringslog Synchroniseren
+            </Button>
+
+            <Button
+              id="btn-run-bulk-classify-force"
+              onClick={() => {
+                if (window.confirm("Weet je zeker dat je ALLES opnieuw wilt classificeren? Dit verbruikt veel API-calls. Kies anders voor 'Hervatten & Wijk Steenwijk Corrigeren'.")) {
+                  handleBulkClassify(undefined, true);
+                }
+              }}
+              disabled={isClassifying}
+              variant="ghost"
+              className="text-muted-foreground hover:text-foreground text-xs font-normal h-8 rounded-xl"
+              title="Volledige herclassificatie forceren vanaf nul"
+            >
+              Alles Opnieuw (Force)
             </Button>
 
             <a
@@ -725,6 +791,28 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
             >
               <Download className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
               Complete CSV
+            </a>
+
+            <a
+              id="btn-download-processed-csv"
+              href="/api/council/metadata/processed.csv"
+              download
+              className="inline-flex items-center justify-center border border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs font-semibold h-8 px-3 rounded-xl shadow-2xs transition-colors"
+              title="Download een CSV-bestand van uitsluitend de reeds succesvol via Gemini geclassificeerde bestanden"
+            >
+              <Download className="w-3.5 h-3.5 mr-1.5 text-emerald-500" />
+              Reeds Verwerkte CSV
+            </a>
+
+            <a
+              id="btn-download-unprocessed-csv"
+              href="/api/council/metadata/unprocessed.csv"
+              download
+              className="inline-flex items-center justify-center border border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs font-semibold h-8 px-3 rounded-xl shadow-2xs transition-colors"
+              title="Download een CSV-bestand van uitsluitend de nog te verwerken / ongeclassificeerde bestanden"
+            >
+              <Download className="w-3.5 h-3.5 mr-1.5 text-amber-500" />
+              Nog Te Verwerken CSV
             </a>
 
             <a
@@ -1670,6 +1758,109 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
           fetchDossiers();
         }}
       />
+
+      {/* Uitvoeringslog Synchroniseren Modal */}
+      {isImportLogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-2xl w-full p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <FileSpreadsheet className="w-5 h-5 text-blue-500" />
+                <h3 className="text-base font-semibold text-foreground">
+                  Uitvoeringslog Importeren & Synchroniseren
+                </h3>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsImportLogOpen(false)}
+                className="h-8 w-8 p-0 rounded-full"
+              >
+                ✕
+              </Button>
+            </div>
+
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Heb je al een eerdere uitvoeringslog (zoals <code className="text-foreground bg-muted px-1.5 py-0.5 rounded font-mono text-[11px]">herstructurering_uitvoeringslog_*.txt</code>)?
+              Upload het bestand of plak de tekst hieronder. Het systeem leest alle <code className="text-foreground bg-muted px-1.5 py-0.5 rounded font-mono text-[11px]">[GEMINI OUTPUT ...]</code> blokken uit, saneert wijk-toewijzingen (geen generiek 'Steenwijk') en actualiseert de master metadata direct zonder extra API-calls of wachttijden.
+            </p>
+
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-semibold text-foreground cursor-pointer">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-muted/60 hover:bg-muted text-xs font-medium text-foreground">
+                    <Upload className="w-3.5 h-3.5" />
+                    Kies .txt logbestand van schijf
+                  </span>
+                  <input
+                    type="file"
+                    accept=".txt,.log"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (event) => {
+                        const content = event.target?.result;
+                        if (typeof content === "string") {
+                          setImportLogText(content);
+                          toast.success(`Logbestand geladen (${file.name}, ${(file.size / 1024).toFixed(1)} KB)`);
+                        }
+                      };
+                      reader.readAsText(file);
+                    }}
+                  />
+                </label>
+                {importLogText && (
+                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+                    ✓ {importLogText.length.toLocaleString()} tekens geladen
+                  </span>
+                )}
+              </div>
+
+              <textarea
+                value={importLogText}
+                onChange={(e) => setImportLogText(e.target.value)}
+                placeholder="Plak hier de inhoud van het uitvoeringslogbestand..."
+                rows={10}
+                className="w-full text-xs font-mono p-3 bg-muted/40 border border-border rounded-xl focus:outline-hidden focus:ring-1 focus:ring-primary resize-y"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setIsImportLogOpen(false);
+                  setImportLogText("");
+                }}
+                disabled={isImportingLog}
+              >
+                Annuleren
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleImportLog}
+                disabled={isImportingLog || !importLogText.trim()}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-medium"
+              >
+                {isImportingLog ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                    Synchroniseren...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
+                    Log Verwerken & Synchroniseren
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

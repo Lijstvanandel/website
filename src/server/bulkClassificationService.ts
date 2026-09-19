@@ -11,7 +11,9 @@ import {
   detectWijkenKernen,
   cleanPublicTitle,
   normalizeRecord,
-  validateRecordConformity
+  validateRecordConformity,
+  isDocumentFullyClassified,
+  BANNED_GENERIC_WIJKEN
 } from "./taxonomyClassifier.js";
 
 const ROOT_DOCS_DIR = path.join(process.cwd(), "public", "uploads", "documents");
@@ -648,8 +650,15 @@ async function classifyWithGemini(
   7. "Bestuur, Financiën & Juridische Zaken"
      - Programmabegroting, jaarrekening, gemeentefonds, belastingen (OZB, leges), APV, politie, brandweer, Veiligheidsregio IJsselland (VRIJ), rekenkamer, riolering & openbare ruimte.
 
-  === WIJKEN & KERNEN ===
-  Steenwijk (Centrum, West, Spoorzone, Groot Verlaat, Oostermeenthe, Woldmeenthe, Torenlanden, Clingenborgh, Tukse Hoek, Kornputkwartier), Barsbeek, Belt-Schutsloot, Blankenham, Blokzijl, De Pol, Baars, De Bult, Doosje, Eeserwold, Eesveen, Giethoorn, Ijsselham, Paasloo, Basse, Jonen, Dwarsgracht, Kalenberg, Kallenkote, Kuinre, Marijenkampen, Willemsoord, Nederland, Baarlo, Oldemarkt, Onna, Ossenzijl, Scheerwolde, Sint Jansklooster, Steenwijkerwold, Witte Paarden, Tuk, Vollenhove, Wanneperveen, Wetering, Zuidveen.
+  === WIJKEN & KERNEN (STRIKT VERBOD OP GENERIEK "STEENWIJK") ===
+  Steenwijk op zichzelf is GEEN afzonderlijke wijk of kern, maar de centrale stad bestaande uit 14 specifieke stadswijken:
+  - Stadswijken Steenwijk: Steenwijk Centrum / Binnenstad, Steenwijk West (Spoorzone), De Gagels, Nieuwe Gagels, Clingenborgh, Dolderkanaal, Groot Verlaat, Oostermeenthe, Oostwijken, De Beitel, Paddenpoel en Kornputkwartier, Steenwijkerdiep, Torenlanden, Woldmeenthe, Eeserwold.
+  - Dorpskernen Steenwijkerland: Barsbeek, Belt-Schutsloot, Blankenham, Blokzijl, De Pol, Baars, De Bult, Doosje, Eesveen, Giethoorn, Ijsselham, Paasloo, Basse, Jonen, Dwarsgracht, Kalenberg, Kallenkote, Kuinre, Marijenkampen, Willemsoord, Nederland, Baarlo, Oldemarkt, Onna, Ossenzijl, Scheerwolde, Sint Jansklooster, Steenwijkerwold, Witte Paarden, Tuk, Vollenhove, Wanneperveen, Wetering, Zuidveen.
+
+  HARDE REGELS VOOR HET VELD 'wijk_of_kern':
+  - Vul NOOIT 'Steenwijk', 'Steenwijk (algemeen)' of 'Steenwijkerland' in als wijk_of_kern!
+  - Als een document betrekking heeft op algemeen gemeentelijk beleid (zoals sportevenementensubsidies, subsidieverordeningen, programmabegroting, APV, leges) of op de gehele gemeente Steenwijkerland als geheel, laat 'wijk_of_kern' dan ALTIJD LEEG: ""!
+  - Wijs UITSLUITEND een specifieke wijk of dorpskern toe als het document daadwerkelijk en specifiek over die wijk of dorpskern gaat (bijvoorbeeld: bestemmingsplan Woldmeenthe, herinrichting Markt in Steenwijk Centrum, herstructurering De Gagels, zonnepark Eeserwold, etc.).
 
   Geef het resultaat terug in dit JSON formaat:
   {
@@ -657,7 +666,7 @@ async function classifyWithGemini(
     "dossier": "Exact één van de 7 canonieke hoofddossiers",
     "subdossier": "Inhoudelijk SKOS-concept (bijv. 'Waterpeilbeheer & Peilbesluiten', 'Woningbouw & Inbreiding', 'Netcongestie & Energie-infrastructuur')",
     "datum": "YYYY-MM-DD",
-    "wijk_of_kern": "Gevonden Steenwijkerlandse kernen (komma-gescheiden, of leeg indien algemeen/interbestuurlijk)",
+    "wijk_of_kern": "Specifiek benoemde wijk of dorpskern (of LEEG: '' indien algemeen/gemeentebreed beleid)",
     "entiteiten": "Komma-gescheiden betrokken actoren (bijv. 'WDODelta, Provincie Overijssel, Enexis, COA')",
     "relaties": "Eventuele gerelateerde documenttitels of dossiernummers",
     "skos_tags": ["Array van strings met specifieke ontologische SKOS-labels (bijv. ['Netcongestie', 'Bodemdaling', 'Woningbouw', 'Asiel_Spreidingswet', 'Waterpeilbeheer', 'Smart_Energy_Hub', 'Planschade', 'Stikstof_AERIUS', 'Jeugdzorg_RSJ', 'Provinciale_Wegen']). Zoek naar het achterliggende concept, ook als het woord niet letterlijk in de tekst staat."]
@@ -738,6 +747,30 @@ async function classifyWithGemini(
 
   const rawResponseText = response?.text || "{}";
   const parsed = JSON.parse(rawResponseText);
+
+  // Harde controle & opschoning van wijk_of_kern: ban generiek "Steenwijk" of "Steenwijkerland"
+  if (parsed.wijk_of_kern && typeof parsed.wijk_of_kern === "string") {
+    const rawW = parsed.wijk_of_kern.toLowerCase().trim();
+    if (
+      rawW === "steenwijk" ||
+      rawW === "steenwijkerland" ||
+      rawW === "steenwijk (algemeen)" ||
+      rawW === "steenwijkerland (algemeen)" ||
+      rawW === "gemeente steenwijkerland" ||
+      rawW === "gemeente steenwijk" ||
+      rawW === "stad steenwijk"
+    ) {
+      // Zoek of een van de 14 specifieke wijken van Steenwijk genoemd is in titel of tekst
+      const specificMatches = detectWijkenKernen(parsed.titel || filename, parsed.entiteiten || "", textSample);
+      parsed.wijk_of_kern = specificMatches.length > 0 ? specificMatches.join(", ") : "";
+    } else {
+      // Filter afzonderlijke onderdelen tegen verboden termen
+      const parts = parsed.wijk_of_kern.split(",").map((p: string) => p.trim()).filter(Boolean);
+      const cleanedParts = parts.filter((p: string) => !BANNED_GENERIC_WIJKEN.has(p.toLowerCase()));
+      parsed.wijk_of_kern = cleanedParts.join(", ");
+    }
+  }
+
   return { meta: parsed, rawResponseText };
 }
 
@@ -847,7 +880,9 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
       `=== HERSTRUCTURERING UITVOERINGSLOG - ${new Date().toISOString()} ===\nModel: ${CLASSIFIER_MODEL}\nModus: ${payAsYouGo ? "Pay-As-You-Go (~60 RPM)" : "Free Tier (~8 RPM, 250 RPD)"}\n=======================================================\n\n[${new Date().toISOString().slice(11, 19)}] ${initLog}\n`,
       "utf-8"
     );
-  } catch (_e) {}
+  } catch (_e) {
+    // Negeer initialisatiefout indien map al bestaat of schrijfrechten beperkt zijn
+  }
 
   activeProgress = {
     isRunning: true,
@@ -892,24 +927,36 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
         fileMap.set(f.filename.toLowerCase().trim(), f);
       }
 
-      // Count DLQ items needing AI classification vs clean valid metadata
+      // Count items needing AI classification vs already clean valid metadata
       const dlqItemsCount = currentMetadata.filter(
         (item) => item.dossier === "ONGECLASSIFICEERD_FALEN" || item.subdossier === "Audit & Retry Vereist (DLQ)"
       ).length;
 
+      const steenwijkItemsCount = currentMetadata.filter((item) => {
+        const w = (item.wijk_of_kern || "").toLowerCase().trim();
+        return (
+          w === "steenwijk" ||
+          w === "steenwijkerland" ||
+          w === "steenwijk (algemeen)" ||
+          w === "steenwijkerland (algemeen)" ||
+          w.startsWith("steenwijk,") ||
+          w.endsWith(", steenwijk")
+        );
+      }).length;
+
       const processedFilenames = new Set<string>();
       for (const item of currentMetadata) {
-        if (item.bestandsnaam && item.dossier !== "ONGECLASSIFICEERD_FALEN") {
+        if (item.bestandsnaam && isDocumentFullyClassified(item)) {
           processedFilenames.add(path.basename(item.bestandsnaam).toLowerCase().trim());
         }
       }
 
       const newFilesCount = allFiles.filter((f) => !processedFilenames.has(path.basename(f.filename).toLowerCase().trim())).length;
-      const totalToProcess = dlqItemsCount + newFilesCount;
+      const totalToProcess = dlqItemsCount + steenwijkItemsCount + newFilesCount;
 
       activeProgress.total = maxLimit ? Math.min(maxLimit, totalToProcess) : (totalToProcess || currentMetadata.length);
       addLogLine(
-        `Sanering & Classificatie gestart: ${dlqItemsCount} DLQ-herstelpunten, ${currentMetadata.length - dlqItemsCount} actieve raadsstukken en ${newFilesCount} nieuwe bestanden.${maxLimit ? ` (Batchlimiet ingesteld op: ${maxLimit} AI-classificaties)` : ""}`
+        `Sanering & Classificatie gestart: ${steenwijkItemsCount} te herclassificeren 'Steenwijk' items, ${dlqItemsCount} DLQ-herstelpunten, ${currentMetadata.length - dlqItemsCount - steenwijkItemsCount} reeds conforme raadsstukken en ${newFilesCount} nieuwe bestanden.${maxLimit ? ` (Batchlimiet ingesteld op: ${maxLimit} AI-classificaties)` : ""}`
       );
 
       let aiCallsPerformed = 0;
@@ -917,7 +964,7 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
       const reclassifiedMetadata: RaadsstukMetadata[] = [];
       const processedFilenamesFinal = new Set<string>();
 
-      // 1. Saneren & herclassificeren van bestaande metadata (inclusief DLQ-herstel met Gemini)
+      // 1. Saneren & herclassificeren van bestaande metadata (inclusief DLQ-herstel en Steenwijk herclassificatie)
       for (let i = 0; i < currentMetadata.length; i++) {
         if (!activeProgress.isRunning) {
           addLogLine("Classificatie handmatig gestopt.");
@@ -927,8 +974,21 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
         const rawItem = currentMetadata[i];
         let norm = normalizeRecord(rawItem);
         const isDlq = norm.dossier === "ONGECLASSIFICEERD_FALEN" || norm.subdossier === "Audit & Retry Vereist (DLQ)";
+        const rawWijkLower = (rawItem.wijk_of_kern || "").toLowerCase().trim();
+        const normWijkLower = (norm.wijk_of_kern || "").toLowerCase().trim();
+        const isSteenwijkGeneric =
+          rawWijkLower === "steenwijk" ||
+          rawWijkLower === "steenwijkerland" ||
+          rawWijkLower === "steenwijk (algemeen)" ||
+          rawWijkLower === "steenwijkerland (algemeen)" ||
+          rawWijkLower.startsWith("steenwijk,") ||
+          rawWijkLower.endsWith(", steenwijk") ||
+          normWijkLower === "steenwijk" ||
+          normWijkLower === "steenwijkerland";
 
-        if (isDlq) {
+        const needsReclassification = isDlq || isSteenwijkGeneric;
+
+        if (needsReclassification) {
           if (maxLimit && aiCallsPerformed >= maxLimit) {
             addLogLine(`[BATCH LIMIET BEREIKT] 🛑 Gestopt na verwerken van ${aiCallsPerformed} AI-items (ingestelde limiet: ${maxLimit}).`);
             reclassifiedMetadata.push(norm);
@@ -937,7 +997,8 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
           }
 
           if (process.env.GEMINI_API_KEY) {
-            activeProgress.activeFile = norm.bestandsnaam || `DLQ Document ${i + 1}`;
+            const reclassReason = isDlq ? "DLQ Herstel" : "Herclassificatie generieke wijk 'Steenwijk'";
+            activeProgress.activeFile = norm.bestandsnaam || `Herclassificatie Document ${i + 1}`;
             activeProgress.processed++;
 
             const fnLower = path.basename(norm.bestandsnaam || "").toLowerCase().trim();
@@ -972,7 +1033,7 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
                 consecutiveQuotaErrors = 0;
 
                 const formattedGeminiJson = geminiResult.rawResponseText ? geminiResult.rawResponseText.trim() : JSON.stringify(geminiResult.meta, null, 2);
-                addLogLine(`[HERKLASSIFICATIE GEMINI SUCCESS] "${norm.bestandsnaam}" ➔ [${norm.dossier}] / [${norm.subdossier}]`);
+                addLogLine(`[HERKLASSIFICATIE GEMINI SUCCESS (${reclassReason})] "${norm.bestandsnaam}" ➔ [${norm.dossier}] / [${norm.subdossier}] (Wijk/Kern: ${norm.wijk_of_kern || "Gemeentebreed"})`);
                 addLogLine(`  ↳ [GEMINI OUTPUT ${norm.bestandsnaam}]:\n${formattedGeminiJson}`);
               } catch (err: any) {
                 if (err instanceof GeminiDailyQuotaExceededError || err?.name === "GeminiDailyQuotaExceededError") {
@@ -1013,13 +1074,16 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
                   continue;
                 }
 
-                addLogLine(`[DLQ HERKANSING MISLUKT] Document "${norm.bestandsnaam}": ${err?.message || "fout"}`);
+                addLogLine(`[HERKLASSIFICATIE MISLUKT] Document "${norm.bestandsnaam}": ${err?.message || "fout"}`);
                 success = true;
               }
             }
           } else {
-            addLogLine(`[DLQ] Geen GEMINI_API_KEY geconfigureerd voor "${norm.bestandsnaam}". Blijft in DLQ.`);
+            addLogLine(`[GEEN API KEY] Geen GEMINI_API_KEY geconfigureerd voor "${norm.bestandsnaam}". Wijk gesaneerd via regex.`);
           }
+        } else {
+          // Document was reeds volledig geclassificeerd en heeft geen generieke wijk
+          activeProgress.alreadyProcessed++;
         }
 
         reclassifiedMetadata.push(norm);
@@ -1267,3 +1331,100 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
     }
   });
 }
+
+/**
+ * Importeert en synchroniseert een eerdere Gemini uitvoeringslog (bijv. herstructurering_uitvoeringslog_*.txt).
+ * Haalt alle [GEMINI OUTPUT ...]: { ... } blokken eruit, saneert wijk_of_kern (geen generiek 'Steenwijk'),
+ * en voegt ze direct samen met de master metadata zonder opnieuw tokens of API calls te verbruiken.
+ */
+export function importExecutionLogText(logText: string): { imported: number; updated: number; totalInLog: number } {
+  const regex = /\[GEMINI OUTPUT\s+([^\]]+)\]:\s*(\{[\s\S]*?\n\})/g;
+  let match: RegExpExecArray | null;
+  const extracted: Array<{ filename: string; json: any }> = [];
+
+  while ((match = regex.exec(logText)) !== null) {
+    const rawFilename = match[1].trim();
+    const jsonStr = match[2];
+    try {
+      const parsed = JSON.parse(jsonStr);
+      extracted.push({ filename: rawFilename, json: parsed });
+    } catch (_e) {
+      // ignore
+    }
+  }
+
+  if (extracted.length === 0) {
+    return { imported: 0, updated: 0, totalInLog: 0 };
+  }
+
+  const currentMetadata = getRawMetadata();
+  const metaMap = new Map<string, RaadsstukMetadata>();
+  for (const item of currentMetadata) {
+    if (item.bestandsnaam) {
+      metaMap.set(path.basename(item.bestandsnaam).toLowerCase().trim(), item);
+    }
+  }
+
+  let importedCount = 0;
+  let updatedCount = 0;
+
+  for (const item of extracted) {
+    const fnLower = path.basename(item.filename).toLowerCase().trim();
+    const existing = metaMap.get(fnLower);
+
+    // Sanitize wijk_of_kern: ban generiek "Steenwijk" of "Steenwijkerland"
+    if (item.json.wijk_of_kern && typeof item.json.wijk_of_kern === "string") {
+      const rawW = item.json.wijk_of_kern.toLowerCase().trim();
+      if (
+        rawW === "steenwijk" ||
+        rawW === "steenwijkerland" ||
+        rawW === "steenwijk (algemeen)" ||
+        rawW === "steenwijkerland (algemeen)" ||
+        rawW === "gemeente steenwijkerland" ||
+        rawW === "gemeente steenwijk" ||
+        rawW === "stad steenwijk"
+      ) {
+        const specificMatches = detectWijkenKernen(item.json.titel || item.filename, item.json.entiteiten || "");
+        item.json.wijk_of_kern = specificMatches.length > 0 ? specificMatches.join(", ") : "";
+      } else {
+        const parts = item.json.wijk_of_kern.split(",").map((p: string) => p.trim()).filter(Boolean);
+        const cleanedParts = parts.filter((p: string) => !BANNED_GENERIC_WIJKEN.has(p.toLowerCase()));
+        item.json.wijk_of_kern = cleanedParts.join(", ");
+      }
+    }
+
+    const mergedRaw: RaadsstukMetadata = {
+      ...(existing || {}),
+      bestandsnaam: existing?.bestandsnaam || item.filename,
+      titel: item.json.titel || existing?.titel || item.filename,
+      dossier: item.json.dossier,
+      subdossier: item.json.subdossier,
+      datum: item.json.datum || existing?.datum || new Date().toISOString().slice(0, 10),
+      wijk_of_kern: item.json.wijk_of_kern || "",
+      entiteiten: item.json.entiteiten || "",
+      relaties: item.json.relaties || "",
+      skos_tags: Array.isArray(item.json.skos_tags) ? item.json.skos_tags : [],
+      ai_geclassificeerd: true,
+      ai_model: CLASSIFIER_MODEL
+    };
+
+    const normalized = normalizeRecord(mergedRaw);
+    if (existing) {
+      updatedCount++;
+    } else {
+      importedCount++;
+    }
+    metaMap.set(fnLower, normalized);
+  }
+
+  const updatedMetadataList = Array.from(metaMap.values());
+  saveMasterMetadata(updatedMetadataList);
+  try {
+    rebuildNetworkGraph();
+  } catch (_e) {
+    // ignore
+  }
+
+  return { imported: importedCount, updated: updatedCount, totalInLog: extracted.length };
+}
+

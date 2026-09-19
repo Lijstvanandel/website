@@ -112,7 +112,8 @@ import {
   cancelBulkClassification,
   getDeadLetterQueue,
   getTotalDeadLetterCount,
-  clearDeadLetterQueue
+  clearDeadLetterQueue,
+  importExecutionLogText
 } from "./src/server/bulkClassificationService.js";
 import { enrichTopicWithStandpunten } from "./src/lib/standpuntMatcher.js";
 import { scanTopicDocumentsAndMatchStandpunten } from "./src/server/standpuntScannerService.js";
@@ -12523,6 +12524,26 @@ Sitemap: ${baseUrl}/sitemap.xml
     }
   });
 
+  // 5C. Import & Sync external execution log (e.g. herstructurering_uitvoeringslog_*.txt)
+  app.post("/api/council/import-execution-log", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    try {
+      const { logText } = req.body || {};
+      if (!logText || typeof logText !== "string") {
+        return res.status(400).json({ error: "Geen logtekst aangeleverd om te importeren." });
+      }
+
+      const result = importExecutionLogText(logText);
+      res.json({
+        success: true,
+        message: `Uitvoeringslog succesvol gesynchroniseerd: ${result.totalInLog} documenten gevonden (${result.imported} nieuw geïmporteerd, ${result.updated} bijgewerkt). Alle wijk-toewijzingen zijn direct gesaneerd.`,
+        ...result
+      });
+    } catch (err: any) {
+      console.error("[IMPORT EXECUTION LOG ERROR]:", err);
+      res.status(500).json({ error: "Fout bij importeren uitvoeringslog: " + err.message });
+    }
+  });
+
   // 6. Add a document manually to a dossier (with optional file upload)
   app.post(
     "/api/council/dossiers/:slug/documents",
@@ -13114,6 +13135,51 @@ Sitemap: ${baseUrl}/sitemap.xml
       res.send(csv);
     } catch (err: any) {
       console.error("[METADATA CSV DOWNLOAD ERROR]:", err);
+      res.status(500).json({ error: "Fout bij genereren van CSV: " + err.message });
+    }
+  });
+
+  // Download CSV of ONLY unprocessed / DLQ files
+  app.get(["/api/council/metadata/unprocessed.csv"], optionalAuth, (req: any, res: any) => {
+    try {
+      const metadata = getRawMetadata();
+      const unprocessedItems = metadata.filter((item) => {
+        const isGoedVerwerkt = (
+          (item.ai_geclassificeerd === true ||
+           (typeof item.ai_model === "string" && item.ai_model.trim().length > 0)) &&
+          item.dossier !== "ONGECLASSIFICEERD_FALEN"
+        );
+        return !isGoedVerwerkt;
+      });
+      const csv = generateMasterMetadataCsv(unprocessedItems);
+      const dateStr = new Date().toISOString().slice(0, 10);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="onverwerkte_bestanden_${dateStr}.csv"`);
+      res.send(csv);
+    } catch (err: any) {
+      console.error("[UNPROCESSED CSV DOWNLOAD ERROR]:", err);
+      res.status(500).json({ error: "Fout bij genereren van CSV: " + err.message });
+    }
+  });
+
+  // Download CSV of ONLY successfully AI-processed files
+  app.get(["/api/council/metadata/processed.csv"], optionalAuth, (req: any, res: any) => {
+    try {
+      const metadata = getRawMetadata();
+      const processedItems = metadata.filter((item) => {
+        return (
+          (item.ai_geclassificeerd === true ||
+           (typeof item.ai_model === "string" && item.ai_model.trim().length > 0)) &&
+          item.dossier !== "ONGECLASSIFICEERD_FALEN"
+        );
+      });
+      const csv = generateMasterMetadataCsv(processedItems);
+      const dateStr = new Date().toISOString().slice(0, 10);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="verwerkte_bestanden_goed_${dateStr}.csv"`);
+      res.send(csv);
+    } catch (err: any) {
+      console.error("[PROCESSED CSV DOWNLOAD ERROR]:", err);
       res.status(500).json({ error: "Fout bij genereren van CSV: " + err.message });
     }
   });
