@@ -27,8 +27,8 @@ export const FREE_TIER_RPD_LIMIT = 250; // Max 250 Requests Per Day
 export const RATE_LIMIT_DELAY_MS = 7500; // 7.5s nominal interval + jitter = ~7.5-8 requests per minute
 
 export function isPayAsYouGoMode(): boolean {
-  const val = (process.env.GEMINI_PAY_AS_YOU_GO || process.env.PAY_AS_YOU_GO || "").trim().toLowerCase();
-  return val === "true" || val === "1" || val === "yes";
+  const val = (process.env.GEMINI_PAY_AS_YOU_GO || process.env.PAY_AS_YOU_GO || "true").trim().toLowerCase();
+  return val !== "false" && val !== "0" && val !== "no";
 }
 
 export function getEffectiveRpdLimit(): number {
@@ -649,7 +649,7 @@ async function classifyWithGemini(
      - Programmabegroting, jaarrekening, gemeentefonds, belastingen (OZB, leges), APV, politie, brandweer, Veiligheidsregio IJsselland (VRIJ), rekenkamer, riolering & openbare ruimte.
 
   === WIJKEN & KERNEN ===
-  Steenwijk (Centrum, West, Spoorzone, Groot Verlaat, Oostermeenthe, Woldmeenthe, Kornputkwartier), Barsbeek, Belt-Schutsloot, Blankenham, Blokzijl, De Pol, Baars, De Bult, Doosje, Eeserwold, Eesveen, Giethoorn, Ijsselham, Paasloo, Basse, Jonen, Dwarsgracht, Kalenberg, Kallenkote, Kuinre, Marijenkampen, Willemsoord, Nederland, Baarlo, Oldemarkt, Onna, Ossenzijl, Scheerwolde, Sint Jansklooster, Steenwijkerwold, Witte Paarden, Tuk, Vollenhove, Wanneperveen, Wetering, Zuidveen.
+  Steenwijk (Centrum, West, Spoorzone, Groot Verlaat, Oostermeenthe, Woldmeenthe, Torenlanden, Clingenborgh, Tukse Hoek, Kornputkwartier), Barsbeek, Belt-Schutsloot, Blankenham, Blokzijl, De Pol, Baars, De Bult, Doosje, Eeserwold, Eesveen, Giethoorn, Ijsselham, Paasloo, Basse, Jonen, Dwarsgracht, Kalenberg, Kallenkote, Kuinre, Marijenkampen, Willemsoord, Nederland, Baarlo, Oldemarkt, Onna, Ossenzijl, Scheerwolde, Sint Jansklooster, Steenwijkerwold, Witte Paarden, Tuk, Vollenhove, Wanneperveen, Wetering, Zuidveen.
 
   Geef het resultaat terug in dit JSON formaat:
   {

@@ -103,16 +103,24 @@ export function normalizeHoofddossier(
   entities?: string,
   text?: string
 ): CanonicalHoofddossier {
-  const d = (rawDossier || "").trim().toLowerCase();
+  const d = (rawDossier || "").trim();
 
   // Ontsnappingsclausule voor Dead Letter Queue (DLQ)
-  if (d === "ongeclassificeerd_falen") {
+  if (d.toLowerCase() === "ongeclassificeerd_falen") {
     return "ONGECLASSIFICEERD_FALEN" as any;
+  }
+
+  // 0. Als Gemini of de bron al een exact canoniek hoofddossier heeft toegekend, respecteer deze!
+  const matchedCanonical = CANONICAL_HOOFDDOSSIERS.find(
+    (ch) => ch.toLowerCase() === d.toLowerCase()
+  );
+  if (matchedCanonical) {
+    return matchedCanonical;
   }
 
   // Substantieve inhoudscorpus (inhoud van het document heeft altijd absolute voorrang op AI-labels)
   const contentCorpus = `${title || ""} ${entities || ""} ${text || ""}`.toLowerCase();
-  const searchCorpus = `${rawDossier || ""} ${contentCorpus}`.toLowerCase();
+  const searchCorpus = `${d} ${contentCorpus}`.toLowerCase();
 
   // 1. Ontologische routeringsregels op basis van inhoud (Substantive routing):
 
@@ -449,6 +457,25 @@ export function normalizeSubdossier(
     if (sLower.includes(banned)) {
       rawSub = "";
       break;
+    }
+  }
+
+  // If Gemini or source gave a valid, specific subdossier (and it's not a banned actor), preserve it!
+  if (
+    s.length >= 3 &&
+    !sLower.includes("overig") &&
+    !sLower.includes("algemeen") &&
+    !sLower.includes("onbekend")
+  ) {
+    let isBanned = false;
+    for (const banned of BANNED_ACTOR_KEYWORDS) {
+      if (sLower.includes(banned)) {
+        isBanned = true;
+        break;
+      }
+    }
+    if (!isBanned) {
+      return s;
     }
   }
 

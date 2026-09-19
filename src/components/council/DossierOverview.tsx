@@ -818,7 +818,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
                     </span>
                   ) : (
                     <span className="px-2 py-0.5 text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
-                      Max {bulkStatus.ratePerMinute || 10} RPM • {bulkStatus.rpdLimit || 250} RPD
+                      Max {bulkStatus.ratePerMinute || 60} RPM • {bulkStatus.rpdLimit && bulkStatus.rpdLimit >= 10000 ? "Onbeperkt (Pay-As-You-Go)" : `${bulkStatus.rpdLimit || 250} RPD`}
                     </span>
                   )}
                 </div>
@@ -915,9 +915,11 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
               </span>
             </div>
             <div className="text-center p-2 border-l border-border">
-              <span className="block text-[11px] text-muted-foreground font-medium">Dagquotum (250 RPD)</span>
+              <span className="block text-[11px] text-muted-foreground font-medium">
+                {bulkStatus.rpdLimit && bulkStatus.rpdLimit >= 10000 ? "Dagquotum (Pay-As-You-Go)" : "Dagquotum (250 RPD)"}
+              </span>
               <span className="text-base font-bold text-foreground">
-                {bulkStatus.dailyRequestsUsed ?? 0} <span className="text-xs text-muted-foreground font-normal">/ {bulkStatus.rpdLimit || 250}</span>
+                {bulkStatus.dailyRequestsUsed ?? 0} <span className="text-xs text-muted-foreground font-normal">/ {bulkStatus.rpdLimit && bulkStatus.rpdLimit >= 10000 ? "Onbeperkt" : (bulkStatus.rpdLimit || 250)}</span>
               </span>
             </div>
             <div className="text-center p-2 border-l border-border">

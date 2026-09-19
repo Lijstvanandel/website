@@ -761,8 +761,10 @@ export function generateMasterMetadataCsv(items: RaadsstukMetadata[]): string {
     const subdossier = normalizeSubdossier(hoofddossier, rawSub, title, entities, rels);
 
     const isGoedVerwerkt = (
-      item.ai_geclassificeerd === true ||
-      (typeof item.ai_model === "string" && item.ai_model.trim().length > 0)
+      (item.ai_geclassificeerd === true ||
+       (typeof item.ai_model === "string" && item.ai_model.trim().length > 0)) &&
+      item.dossier !== "ONGECLASSIFICEERD_FALEN" &&
+      hoofddossier !== "ONGECLASSIFICEERD_FALEN"
     ) ? 1 : 0;
 
     return [
