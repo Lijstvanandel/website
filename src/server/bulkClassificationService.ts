@@ -13,6 +13,7 @@ import {
   normalizeRecord,
   validateRecordConformity,
   isDocumentFullyClassified,
+  sanitizeEntities,
   BANNED_GENERIC_WIJKEN
 } from "./taxonomyClassifier.js";
 
