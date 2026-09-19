@@ -23,7 +23,7 @@ const ROOT_DOCS_DIR = path.join(process.cwd(), "public", "uploads", "documents")
 export const OFFICIAL_DOSSIERS = [...CANONICAL_HOOFDDOSSIERS];
 
 // Gemini model configuration & strict Free Tier rate limit constants
-export const CLASSIFIER_MODEL = "gemini-2.5-flash";
+export const CLASSIFIER_MODEL = process.env.GEMINI_MODEL || process.env.CLASSIFIER_MODEL || "gemini-2.5-flash";
 export const FREE_TIER_RPM_LIMIT = 10; // Hard max 10 Requests Per Minute (Google Free Tier)
 export const EFFECTIVE_RPM_LIMIT = 8;  // Safe 8 RPM target (~25% safety margin against sliding-window/burst edge cases)
 export const FREE_TIER_RPD_LIMIT = 250; // Max 250 Requests Per Day
@@ -675,8 +675,8 @@ async function classifyWithGemini(
     console.log(`[PRIVACY SANITIZER] ${anonymizedCount} persoons/privacy-elementen gemaskeerd in "${filename}" vóór verzending naar Gemini.`);
   }
 
-  // Kop-staart RAG extractie (8.000 inleiding + 4.000 besluit/dictum) van de gesaneerde tekst
-  const textSample = extractHeadTailText(sanitizedText, 8000, 4000);
+  // Kop-staart extractie (3.500 inleiding + 1.500 besluit/dictum) van de gesaneerde tekst voor minimale tokenkosten
+  const textSample = extractHeadTailText(sanitizedText, 3500, 1500);
 
   const prompt = `
   Analyseer het bestuursrechtelijke document (gemeenteraad, provincie of waterschap) van de gemeente Steenwijkerland.
@@ -801,6 +801,9 @@ async function classifyWithGemini(
       model: CLASSIFIER_MODEL,
       contents: prompt,
       config: {
+        thinkingConfig: {
+          thinkingBudget: 0
+        },
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
