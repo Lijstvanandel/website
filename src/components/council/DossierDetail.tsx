@@ -15,6 +15,9 @@ import {
   Search,
   ExternalLink,
   ChevronRight,
+  ChevronLeft,
+  ChevronsLeft,
+  ChevronsRight,
   ListFilter,
   Edit3,
   Plus,
@@ -79,6 +82,8 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
   const [selectedWijkFilter, setSelectedWijkFilter] = useState<string | null>(null);
   const [docSearch, setDocSearch] = useState("");
   const [subSearch, setSubSearch] = useState("");
+  const [subdossierPage, setSubdossierPage] = useState<number>(1);
+  const [subdossierPageSize, setSubdossierPageSize] = useState<number>(20); // standard 20, choice of 10 and 50
 
   // Document Viewer state
   const [activeDocForViewer, setActiveDocForViewer] = useState<DossierDocument | null>(null);
@@ -529,6 +534,34 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
     }
     return list;
   }, [dossier?.subdossiers, selectedWijkFilter, subSearch]);
+
+  // Reset page when filter or page size changes
+  useEffect(() => {
+    setSubdossierPage(1);
+  }, [subSearch, selectedWijkFilter, subdossierPageSize, dossierSlug]);
+
+  const totalSubdossierPages = Math.max(1, Math.ceil(filteredSubdossiers.length / subdossierPageSize));
+  const effectiveSubdossierPage = Math.min(Math.max(1, subdossierPage), totalSubdossierPages);
+
+  const paginatedSubdossiers = useMemo(() => {
+    const startIndex = (effectiveSubdossierPage - 1) * subdossierPageSize;
+    return filteredSubdossiers.slice(startIndex, startIndex + subdossierPageSize);
+  }, [filteredSubdossiers, effectiveSubdossierPage, subdossierPageSize]);
+
+  const getSubdossierPageNumbers = () => {
+    const total = totalSubdossierPages;
+    const current = effectiveSubdossierPage;
+    if (total <= 7) {
+      return Array.from({ length: total }, (_, i) => i + 1);
+    }
+    if (current <= 4) {
+      return [1, 2, 3, 4, 5, "...", total];
+    }
+    if (current >= total - 3) {
+      return [1, "...", total - 4, total - 3, total - 2, total - 1, total];
+    }
+    return [1, "...", current - 1, current, current + 1, "...", total];
+  };
 
   // Filtered documents list
   const filteredDocuments = useMemo(() => {
@@ -1028,8 +1061,31 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
                 </Button>
               )}
 
-              <span className="text-xs text-muted-foreground">
-                {filteredSubdossiers.length} van {dossier.subdossiers?.length || 0} subdossiers
+              {/* Items per page selector (10, 20 [default], 50) */}
+              <div className="flex items-center gap-1.5 bg-background border border-border rounded-xl px-2.5 py-1 text-xs text-muted-foreground">
+                <span className="text-[11px] font-medium hidden sm:inline">Per pagina:</span>
+                <select
+                  id="select-subdossiers-per-page"
+                  value={subdossierPageSize}
+                  onChange={(e) => {
+                    setSubdossierPageSize(Number(e.target.value));
+                    setSubdossierPage(1);
+                  }}
+                  className="bg-transparent text-foreground text-xs font-semibold focus:outline-hidden cursor-pointer"
+                >
+                  <option value={10}>10</option>
+                  <option value={20}>20 (standaard)</option>
+                  <option value={50}>50</option>
+                </select>
+              </div>
+
+              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                {filteredSubdossiers.length === 0
+                  ? "0 subdossiers"
+                  : `Toont ${Math.min((effectiveSubdossierPage - 1) * subdossierPageSize + 1, filteredSubdossiers.length)}–${Math.min(
+                      effectiveSubdossierPage * subdossierPageSize,
+                      filteredSubdossiers.length
+                    )} van ${filteredSubdossiers.length} subdossiers`}
               </span>
 
               {isCouncilOrAdmin && (
@@ -1082,9 +1138,10 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
               </Button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredSubdossiers.map((sub, idx) => {
-                // Find a few documents belonging to this subdossier
+            <div className="space-y-6">
+              <div id="subdossiers-grid-container" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {paginatedSubdossiers.map((sub, idx) => {
+                  // Find a few documents belonging to this subdossier
                 const subDocs = (dossier.documents || []).filter(
                   (d) =>
                     (d.subdossier && d.subdossier.toLowerCase() === sub.title.toLowerCase()) ||
@@ -1316,6 +1373,114 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
                 );
               })}
             </div>
+
+            {/* Subdossiers Pagination Navigation Bar */}
+            {totalSubdossierPages > 1 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-card border border-border p-4 rounded-2xl shadow-xs">
+                <div className="text-xs text-muted-foreground font-medium order-2 sm:order-1">
+                  Pagina <span className="font-bold text-foreground">{effectiveSubdossierPage}</span> van{" "}
+                  <span className="font-bold text-foreground">{totalSubdossierPages}</span>{" "}
+                  <span className="hidden sm:inline">
+                    ({filteredSubdossiers.length} {filteredSubdossiers.length === 1 ? "subdossier" : "subdossiers"} totaal)
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5 order-1 sm:order-2 flex-wrap justify-center">
+                  {/* First Page */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSubdossierPage(1);
+                      document.getElementById("subdossiers-grid-container")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }}
+                    disabled={effectiveSubdossierPage === 1}
+                    className="h-8 w-8 p-0 rounded-xl"
+                    title="Eerste pagina"
+                  >
+                    <ChevronsLeft className="w-4 h-4" />
+                  </Button>
+
+                  {/* Previous Page */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSubdossierPage((p) => Math.max(1, p - 1));
+                      document.getElementById("subdossiers-grid-container")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }}
+                    disabled={effectiveSubdossierPage === 1}
+                    className="h-8 px-2.5 rounded-xl text-xs gap-1"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                    <span className="hidden xs:inline">Vorige</span>
+                  </Button>
+
+                  {/* Page Numbers */}
+                  <div className="flex items-center gap-1">
+                    {getSubdossierPageNumbers().map((pNum, pIdx) => {
+                      if (pNum === "...") {
+                        return (
+                          <span key={`dots-${pIdx}`} className="px-1.5 text-xs text-muted-foreground font-mono">
+                            ...
+                          </span>
+                        );
+                      }
+                      const isCurrent = pNum === effectiveSubdossierPage;
+                      return (
+                        <Button
+                          key={pNum}
+                          variant={isCurrent ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => {
+                            setSubdossierPage(Number(pNum));
+                            document.getElementById("subdossiers-grid-container")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                          }}
+                          className={`h-8 w-8 p-0 text-xs rounded-xl font-semibold transition-all ${
+                            isCurrent
+                              ? "bg-accent text-accent-foreground shadow-xs font-bold"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {pNum}
+                        </Button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Next Page */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSubdossierPage((p) => Math.min(totalSubdossierPages, p + 1));
+                      document.getElementById("subdossiers-grid-container")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }}
+                    disabled={effectiveSubdossierPage === totalSubdossierPages}
+                    className="h-8 px-2.5 rounded-xl text-xs gap-1"
+                  >
+                    <span className="hidden xs:inline">Volgende</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+
+                  {/* Last Page */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSubdossierPage(totalSubdossierPages);
+                      document.getElementById("subdossiers-grid-container")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }}
+                    disabled={effectiveSubdossierPage === totalSubdossierPages}
+                    className="h-8 w-8 p-0 rounded-xl"
+                    title="Laatste pagina"
+                  >
+                    <ChevronsRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
           )}
         </div>
       )}

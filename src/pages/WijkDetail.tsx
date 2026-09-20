@@ -26,6 +26,7 @@ import {
   Layers,
   Search,
   Filter,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -100,6 +101,7 @@ const WijkDetail = () => {
   const [error, setError] = useState<string | null>(null);
   const [videos, setVideos] = useState<WijkVideo[]>([]);
   const [wijkNews, setWijkNews] = useState<NewsItem[]>([]);
+  const [dossiersLoading, setDossiersLoading] = useState(true);
   const [wijkDossiers, setWijkDossiers] = useState<Dossier[]>([]);
   const [selectedHoofddossierSlug, setSelectedHoofddossierSlug] = useState<string | null>(null);
   const [subSearch, setSubSearch] = useState("");
@@ -114,6 +116,7 @@ const WijkDetail = () => {
     }
   };
 
+  // 1. Fetch core wijk info & quick media immediately
   useEffect(() => {
     if (!slug) return;
     setLoading(true);
@@ -151,10 +154,19 @@ const WijkDetail = () => {
         if (Array.isArray(data)) setWijkNews(data);
       })
       .catch(() => setWijkNews([]));
+  }, [slug]);
 
-    // Fetch dossiers linked to this wijk
+  // 2. Fetch dossiers asynchronously in background (deferred lazy-load)
+  useEffect(() => {
+    if (!slug) return;
+    setDossiersLoading(true);
+    setWijkDossiers([]);
+
     const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
-    fetch(`/api/council/dossiers?wijkSlug=${slug}&limit=50`, {
+    const controller = new AbortController();
+
+    fetch(`/api/council/dossiers?wijkSlug=${encodeURIComponent(slug)}&limit=50`, {
+      signal: controller.signal,
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
@@ -168,7 +180,17 @@ const WijkDetail = () => {
           }
         }
       })
-      .catch(() => setWijkDossiers([]));
+      .catch((err) => {
+        if (err.name !== "AbortError") {
+          console.warn("[WIJK DOSSIERS FETCH ERROR]:", err);
+          setWijkDossiers([]);
+        }
+      })
+      .finally(() => {
+        setDossiersLoading(false);
+      });
+
+    return () => controller.abort();
   }, [slug]);
 
   if (loading) {
@@ -600,7 +622,78 @@ const WijkDetail = () => {
         {/* ========================================================
             HOOFDDOSSIERS & SUBDOSSIERS IN DEZE WIJK / KERN
             ======================================================== */}
-        {wijkDossiers.length > 0 ? (
+        {dossiersLoading ? (
+          <section className="space-y-6">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.3em] text-accent mb-2 flex items-center gap-2">
+                  <Layers className="w-3.5 h-3.5" /> Lopende zaken & raadsstukken
+                </div>
+                <h2 className="font-display text-3xl md:text-4xl border-gold-line pb-2 flex items-center gap-3">
+                  <span>Dossiers in {wijk.naam}</span>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-sans font-medium bg-accent/15 text-accent border border-accent/30 animate-pulse">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Dossiers inladen...
+                  </span>
+                </h2>
+                <p className="text-xs text-muted-foreground mt-1 max-w-2xl">
+                  De gekoppelde raadsdossiers, thema's en stukken voor {wijk.naam} worden asynchroon op de achtergrond ingeladen...
+                </p>
+              </div>
+
+              <Button
+                asChild
+                variant="outline"
+                className="border-accent/40 text-accent hover:bg-accent hover:text-accent-foreground uppercase tracking-wider text-xs font-semibold shrink-0"
+              >
+                <Link to="/raadspaneel?tab=dossiers">
+                  Volledig Raadsarchief <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                </Link>
+              </Button>
+            </div>
+
+            {/* Skeletons for Hoofddossiers Tabs */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="bg-card border border-border rounded-2xl overflow-hidden animate-pulse flex flex-col justify-between"
+                >
+                  <div className="aspect-[16/10] w-full bg-muted/80 relative" />
+                  <div className="p-2.5 space-y-1.5">
+                    <div className="h-3 bg-muted rounded-md w-3/4" />
+                    <div className="h-2 bg-muted/60 rounded-md w-1/2" />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Skeleton for active preview container */}
+            <div className="bg-card border border-border rounded-3xl p-6 sm:p-7 space-y-6 shadow-xs animate-pulse">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-5 pb-5 border-b border-border">
+                <div className="flex items-start gap-4">
+                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-muted/80 shrink-0" />
+                  <div className="space-y-2 flex-1">
+                    <div className="h-3 bg-muted rounded-md w-40" />
+                    <div className="h-6 bg-muted rounded-md w-64" />
+                    <div className="h-3 bg-muted/60 rounded-md w-80" />
+                  </div>
+                </div>
+                <div className="h-9 w-44 bg-muted rounded-xl shrink-0" />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {Array.from({ length: 3 }).map((_, si) => (
+                  <div key={si} className="bg-background border border-border rounded-2xl overflow-hidden p-4 space-y-3">
+                    <div className="aspect-[16/9] w-full bg-muted/80 rounded-xl" />
+                    <div className="h-4 bg-muted rounded-md w-3/4" />
+                    <div className="h-3 bg-muted/60 rounded-md w-full" />
+                    <div className="h-8 bg-muted/40 rounded-xl w-full mt-2" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        ) : wijkDossiers.length > 0 ? (
           <section className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
               <div>

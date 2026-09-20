@@ -713,8 +713,8 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
           )}
         </div>
 
-        {/* Global Beheer & Synchronisatie Toolbar */}
-        {isCouncilOrAdmin && (
+        {/* Global Beheer & Synchronisatie Toolbar - Exclusief voor Admins */}
+        {isAdmin && (
           <div className="pt-4 border-t border-border/70 flex flex-wrap items-center gap-2">
             <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mr-1">
               Beheer & Data:
@@ -861,7 +861,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
       </div>
 
       {/* Alert banner if physical files on disk exceed metadata catalog */}
-      {isCouncilOrAdmin && filesystemScan && filesystemScan.needsSync && (
+      {isAdmin && filesystemScan && filesystemScan.needsSync && (
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
           <div className="flex items-start gap-3">
             <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
