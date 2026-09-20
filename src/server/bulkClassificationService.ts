@@ -50,13 +50,23 @@ const QUOTA_TRACKER_PATH = path.join(process.cwd(), "public", "data", "gemini_qu
 const DLQ_LOG_PATH = path.join(process.cwd(), "public", "data", "gemini_dead_letter_queue.jsonl");
 const EXECUTION_LOG_PATH = path.join(process.cwd(), "public", "data", "last_restructuring_execution.log");
 
+function getAmsterdamTimeStr(date = new Date()): string {
+  return date.toLocaleTimeString("nl-NL", {
+    timeZone: "Europe/Amsterdam",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  });
+}
+
 export function addLogLine(msg: string): void {
   activeProgress.logs.push(msg);
   if (activeProgress.logs.length > 1000) {
     activeProgress.logs.shift();
   }
   try {
-    const timestamp = new Date().toISOString().slice(11, 19);
+    const timestamp = getAmsterdamTimeStr();
     fs.mkdirSync(path.dirname(EXECUTION_LOG_PATH), { recursive: true });
     fs.appendFileSync(EXECUTION_LOG_PATH, `[${timestamp}] ${msg}\n`, "utf-8");
   } catch (_e) {
@@ -1180,7 +1190,7 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
           origin = "WDODelta";
         }
 
-        const timestamp = new Date().toLocaleTimeString();
+        const timestamp = getAmsterdamTimeStr();
         addLogLine(`[${timestamp}] [${activeProgress.processed}/${activeProgress.total}] Analyseren: ${candidate.filename} (${origin})`);
 
         if (activeProgress.logs.length > 300) {
@@ -1241,17 +1251,27 @@ export function startBulkClassificationInBackground(options: { force?: boolean; 
             // Rate Limit (429 RESOURCE_EXHAUSTED / 8-10 RPM) Handling
             if (err instanceof GeminiQuotaExceededError || err?.name === "GeminiQuotaExceededError") {
               consecutiveQuotaErrors++;
+              
+              if (consecutiveQuotaErrors > 3) {
+                addLogLine(`  ↳ [FALLBACK] Rate limit herhaaldelijk geraakt (3x) voor "${candidate.filename}". Lokaal geclassificeerd om wachtrij niet te blokkeren.`);
+                meta = runFallbackClassification(text, candidate.filename, candidate.relativePath, "Herhaaldelijke 429 rate limit");
+                usedSource = "fallback";
+                rawAiOutput = JSON.stringify(meta, null, 2);
+                success = true;
+                consecutiveQuotaErrors = 0;
+                activeProgress.isPaused = false;
+                activeProgress.pauseReason = undefined;
+                activeProgress.pauseRemainingSeconds = 0;
+                break;
+              }
+
               const baseWait = err.retryAfterSeconds || 60;
               const multiplier = Math.min(3, 1 + (consecutiveQuotaErrors - 1) * 0.5);
               const jitterSec = Math.floor(Math.random() * 5) + 1;
               const waitSeconds = Math.round(baseWait * multiplier) + jitterSec;
 
               const resumeDate = new Date(Date.now() + waitSeconds * 1000);
-              const resumeAt = resumeDate.toLocaleTimeString("nl-NL", {
-                hour: "2-digit",
-                minute: "2-digit",
-                second: "2-digit"
-              });
+              const resumeAt = getAmsterdamTimeStr(resumeDate);
 
               activeProgress.isPaused = true;
               activeProgress.pauseRemainingSeconds = waitSeconds;
