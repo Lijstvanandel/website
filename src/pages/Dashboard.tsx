@@ -670,13 +670,13 @@ export default function Dashboard() {
   });
 
   return (
-    <div className="pt-32 pb-24 min-h-screen bg-background">
+    <div className="pt-3 sm:pt-4 pb-20 min-h-screen bg-background text-foreground">
       <div className="container mx-auto px-4 sm:px-6 max-w-6xl">
         {/* Header section */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6 animate-fade-up">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-6 animate-fade-up">
           <div>
             <div className="flex flex-wrap items-center gap-2.5 mb-1">
-              <h1 className="text-3xl sm:text-4xl md:text-5xl font-display text-primary">
+              <h1 className="text-3xl sm:text-4xl md:text-5xl font-display text-zinc-950 dark:text-white font-bold">
                 Welkom, {user.fullName}
               </h1>
               {user.role === "raadslid" && (

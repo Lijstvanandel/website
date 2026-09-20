@@ -154,7 +154,7 @@ export default function Agenda() {
       <div className="container mx-auto px-6 max-w-6xl">
         <div className="text-center mb-12 animate-fade-up">
           <div className="text-xs uppercase tracking-[0.3em] text-accent mb-3">Activiteiten & Bijeenkomsten</div>
-          <h1 className="text-5xl md:text-6xl font-display text-white mb-6">Onze Agenda</h1>
+          <h1 className="text-5xl md:text-6xl font-display text-zinc-950 dark:text-white mb-6">Onze Agenda</h1>
           <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto">
             Blijf op de hoogte van onze activiteiten, raadsvergaderingen en bijeenkomsten in Steenwijkerland.
           </p>

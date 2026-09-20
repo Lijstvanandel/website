@@ -49,7 +49,7 @@ export default function Nieuws() {
           <div className="text-xs uppercase tracking-[0.3em] text-accent font-semibold mb-2">
             Laatste Updates
           </div>
-          <h1 className="text-4xl md:text-6xl font-display text-white mb-4">Actueel Nieuws</h1>
+          <h1 className="text-4xl md:text-6xl font-display text-zinc-950 dark:text-white mb-4">Actueel Nieuws</h1>
           <p className="text-base md:text-lg text-muted-foreground max-w-2xl mx-auto">
             Blijf op de hoogte van onze laatste initiatieven, moties, wijkbezoeken en standpunten in Steenwijkerland.
           </p>

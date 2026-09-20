@@ -184,6 +184,8 @@ export default function Raadspaneel() {
   const { slug } = useParams<{ slug?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
 
+  const isAdmin = Boolean(user && user.role === "admin");
+
   const isCouncilOrAdmin = Boolean(
     user && (
       user.role === "admin" || 
@@ -203,9 +205,9 @@ export default function Raadspaneel() {
       ? "onderzoeken"
       : tabParam === "vragenformulator" && isCouncilOrAdmin
       ? "vragenformulator"
-      : tabParam === "waterschap" && isCouncilOrAdmin
+      : tabParam === "waterschap" && isAdmin
       ? "waterschap"
-      : tabParam === "overijssel" && isCouncilOrAdmin
+      : tabParam === "overijssel" && isAdmin
       ? "overijssel"
       : tabParam === "agenda" && isCouncilOrAdmin
       ? "agenda"
@@ -1018,11 +1020,11 @@ export default function Raadspaneel() {
   }, [topics, selectedTopicId, filteredTopics]);
 
   return (
-    <div className="pt-28 pb-24 min-h-screen bg-background text-foreground">
+    <div className="pt-3 sm:pt-4 pb-20 min-h-screen bg-background text-foreground">
       <div className="container mx-auto px-4 sm:px-6 max-w-7xl">
         
         {/* Top Banner & Header */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 border-b border-border/80 pb-6 animate-fade-up">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 border-b border-border/80 pb-5 animate-fade-up">
           <div>
             <div className="flex items-center gap-2.5 mb-1.5">
               <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-accent/20 text-accent border border-accent/40 flex items-center gap-1">
@@ -1034,7 +1036,7 @@ export default function Raadspaneel() {
                 Gemeenteraad Steenwijkerland
               </span>
             </div>
-            <h1 className="text-3xl sm:text-4xl font-display text-primary font-bold">
+            <h1 className="text-3xl sm:text-4xl font-display text-zinc-950 dark:text-white font-bold">
               {isCouncilOrAdmin ? "Raadspaneel Steenwijkerland" : "Gemeentelijke Dossiers & Raadsstukken"}
             </h1>
             <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
@@ -1164,7 +1166,7 @@ export default function Raadspaneel() {
             </button>
           )}
 
-          {isCouncilOrAdmin && (
+          {isAdmin && (
             <>
               <button
                 id="tab-btn-panel-overijssel"
@@ -1205,9 +1207,9 @@ export default function Raadspaneel() {
             currentUser={user}
             initialTopic={selectedTopic ? { id: selectedTopic.id, title: selectedTopic.title, meetingDate: selectedTopic.meetingDate } : null}
           />
-        ) : activePanelTab === "waterschap" && isCouncilOrAdmin ? (
+        ) : activePanelTab === "waterschap" && isAdmin ? (
           <WaterschapManager token={token || undefined} />
-        ) : activePanelTab === "overijssel" && isCouncilOrAdmin ? (
+        ) : activePanelTab === "overijssel" && isAdmin ? (
           <OverijsselNotubizManager token={token || undefined} />
         ) : isCouncilOrAdmin ? (
           <>
