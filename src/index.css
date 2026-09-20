@@ -102,6 +102,10 @@
   h1, h2, h3, h4, .font-display {
     font-family: 'Bebas Neue', sans-serif;
     letter-spacing: 0.02em;
+    color: #ffffff;
+  }
+  .light h1, .light h2, .light h3, .light h4, .light .font-display {
+    color: #09090b;
   }
 }
 

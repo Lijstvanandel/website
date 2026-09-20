@@ -1314,7 +1314,7 @@ export default function AdminDashboard() {
               <Gavel className="w-4 h-4" />
               <span>Partijvoorzitter & Bestuursleiding</span>
             </div>
-            <h1 className="text-4xl md:text-5xl font-display mb-3">
+            <h1 className="text-4xl md:text-5xl font-display text-zinc-950 dark:text-white mb-3">
               Voorzitterpaneel
             </h1>
             <p className="text-muted-foreground text-sm max-w-3xl">
@@ -1349,7 +1349,7 @@ export default function AdminDashboard() {
               <FolderKanban className="w-4 h-4" />
               <span>Secretariaat & Bestuursorganisatie</span>
             </div>
-            <h1 className="text-4xl md:text-5xl font-display mb-3">
+            <h1 className="text-4xl md:text-5xl font-display text-zinc-950 dark:text-white mb-3">
               Secretarispaneel
             </h1>
             <p className="text-muted-foreground text-sm max-w-3xl">
@@ -1384,7 +1384,7 @@ export default function AdminDashboard() {
               <CreditCard className="w-4 h-4" />
               <span>Financieel Beheer & Administratie</span>
             </div>
-            <h1 className="text-4xl md:text-5xl font-display mb-3">
+            <h1 className="text-4xl md:text-5xl font-display text-zinc-950 dark:text-white mb-3">
               Penningmeesterpaneel
             </h1>
             <p className="text-muted-foreground text-sm max-w-3xl">
@@ -1454,7 +1454,7 @@ export default function AdminDashboard() {
           <div className="text-xs uppercase tracking-[0.3em] text-accent font-semibold mb-2">
             Beheerdersportaal
           </div>
-          <h1 className="text-4xl md:text-5xl font-display mb-3">
+          <h1 className="text-4xl md:text-5xl font-display text-zinc-950 dark:text-white mb-3">
             Beheerderspaneel
           </h1>
           <p className="text-muted-foreground text-sm">
