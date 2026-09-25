@@ -18,6 +18,7 @@ import {
   Layers,
   CheckCircle2,
   Trash2,
+  Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -205,6 +206,11 @@ export const SupportDossierPanel: React.FC<SupportDossierPanelProps> = ({
                     {topic.category || "Hamerstuk"}
                   </span>
                 )}
+
+                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                  <Lock className="w-3 h-3 mr-1 text-amber-500 shrink-0" />
+                  Fractie-Intern & Vertrouwelijk (Vault-Beveiligd)
+                </span>
               </div>
             </div>
 

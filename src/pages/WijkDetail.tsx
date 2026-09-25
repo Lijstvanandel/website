@@ -1,5 +1,5 @@
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Mail,
   Instagram,
@@ -27,6 +27,14 @@ import {
   Search,
   Filter,
   Loader2,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  ChevronUp,
+  ArrowUpDown,
+  SlidersHorizontal,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -105,6 +113,9 @@ const WijkDetail = () => {
   const [wijkDossiers, setWijkDossiers] = useState<Dossier[]>([]);
   const [selectedHoofddossierSlug, setSelectedHoofddossierSlug] = useState<string | null>(null);
   const [subSearch, setSubSearch] = useState("");
+  const [subSort, setSubSort] = useState<"az" | "za" | "docs-desc" | "docs-asc">("az");
+  const [subPageSize, setSubPageSize] = useState<number>(10);
+  const [subPage, setSubPage] = useState<number>(1);
 
   const handleHelpClick = () => {
     if (!wijk) return;
@@ -161,6 +172,9 @@ const WijkDetail = () => {
     if (!slug) return;
     setDossiersLoading(true);
     setWijkDossiers([]);
+    setSelectedHoofddossierSlug(null);
+    setSubSearch("");
+    setSubPage(1);
 
     const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
     const controller = new AbortController();
@@ -722,11 +736,22 @@ const WijkDetail = () => {
             {/* Hoofddossiers Tabs / Selector Tiles with Thumbnails */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {wijkDossiers.map((d) => {
-                const isSelected = (d.slug || d.id) === (selectedHoofddossierSlug || wijkDossiers[0]?.slug);
+                const isSelected = selectedHoofddossierSlug === (d.slug || d.id);
                 return (
                   <button
                     key={d.id || d.slug}
-                    onClick={() => setSelectedHoofddossierSlug(d.slug || d.id)}
+                    onClick={() => {
+                      if (selectedHoofddossierSlug === (d.slug || d.id)) {
+                        setSelectedHoofddossierSlug(null);
+                      } else {
+                        setSelectedHoofddossierSlug(d.slug || d.id);
+                        setSubPage(1);
+                        setSubSearch("");
+                        setTimeout(() => {
+                          document.getElementById("active-wijk-hoofddossier-view")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                        }, 50);
+                      }
+                    }}
                     className={`text-left rounded-2xl border transition-all flex flex-col justify-between relative overflow-hidden cursor-pointer group ${
                       isSelected
                         ? "bg-card border-accent shadow-md ring-2 ring-accent/40"
@@ -746,7 +771,7 @@ const WijkDetail = () => {
                           {d.documentCount} {d.documentCount === 1 ? "stuk" : "st."}
                         </span>
                       </div>
-                      <div className="absolute bottom-1.5 left-2 right-2">
+                      <div className="absolute bottom-1.5 left-2 right-2 flex items-center justify-between">
                         <span className="text-[10px] font-semibold flex items-center gap-1 text-white/90">
                           <span
                             className={`w-1.5 h-1.5 rounded-full ${
@@ -755,6 +780,11 @@ const WijkDetail = () => {
                           />
                           {d.subdossiers?.length || 0} subdossiers
                         </span>
+                        {isSelected && (
+                          <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-accent text-accent-foreground">
+                            Open
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -768,17 +798,91 @@ const WijkDetail = () => {
               })}
             </div>
 
-            {/* Active Hoofddossier Overview & Subdossiers Grid */}
+            {/* Active Hoofddossier Overview & Subdossiers Grid (Only shown when clicked/selected) */}
             {(() => {
-              const activeHoofddossier =
-                wijkDossiers.find(
-                  (d) => (d.slug || d.id) === (selectedHoofddossierSlug || wijkDossiers[0]?.slug)
-                ) || wijkDossiers[0];
+              if (!selectedHoofddossierSlug) {
+                return (
+                  <div className="bg-card/60 border border-dashed border-border rounded-3xl p-7 text-center space-y-3">
+                    <div className="w-12 h-12 rounded-2xl bg-accent/10 border border-accent/20 flex items-center justify-center mx-auto text-accent shadow-2xs">
+                      <FolderTree className="w-6 h-6" />
+                    </div>
+                    <h4 className="font-bold text-sm sm:text-base text-foreground">
+                      Kies een hoofddossier om de subdossiers te bekijken
+                    </h4>
+                    <p className="text-xs text-muted-foreground max-w-md mx-auto leading-relaxed">
+                      Klik op een van de {wijkDossiers.length} hoofddossiers hierboven om alle bijbehorende subdossiers, deelonderwerpen en raadsstukken voor {wijk.naam} uit te klappen.
+                    </p>
+                  </div>
+                );
+              }
+
+              const activeHoofddossier = wijkDossiers.find(
+                (d) => (d.slug || d.id) === selectedHoofddossierSlug
+              );
 
               if (!activeHoofddossier) return null;
 
+              const allSubs = activeHoofddossier.subdossiers || [];
+              
+              // Filter by search query
+              const query = subSearch.toLowerCase().trim();
+              const filteredSubs = allSubs.filter((sub) => {
+                if (!query) return true;
+                return (
+                  sub.title.toLowerCase().includes(query) ||
+                  (sub.description && sub.description.toLowerCase().includes(query)) ||
+                  (sub.tags && sub.tags.some((t) => t.toLowerCase().includes(query)))
+                );
+              });
+
+              // Sort
+              const sortedSubs = [...filteredSubs].sort((a, b) => {
+                if (subSort === "az") {
+                  return a.title.localeCompare(b.title, "nl", { sensitivity: "base" });
+                }
+                if (subSort === "za") {
+                  return b.title.localeCompare(a.title, "nl", { sensitivity: "base" });
+                }
+                if (subSort === "docs-desc") {
+                  const countA = a.documentCount ?? 0;
+                  const countB = b.documentCount ?? 0;
+                  if (countB !== countA) return countB - countA;
+                  return a.title.localeCompare(b.title, "nl", { sensitivity: "base" });
+                }
+                if (subSort === "docs-asc") {
+                  const countA = a.documentCount ?? 0;
+                  const countB = b.documentCount ?? 0;
+                  if (countA !== countB) return countA - countB;
+                  return a.title.localeCompare(b.title, "nl", { sensitivity: "base" });
+                }
+                return 0;
+              });
+
+              // Pagination calculations
+              const totalPages = Math.max(1, Math.ceil(sortedSubs.length / subPageSize));
+              const currentPage = Math.min(Math.max(1, subPage), totalPages);
+              const startIndex = (currentPage - 1) * subPageSize;
+              const paginatedSubs = sortedSubs.slice(startIndex, startIndex + subPageSize);
+
+              const getPageNumbers = () => {
+                if (totalPages <= 7) {
+                  return Array.from({ length: totalPages }, (_, i) => i + 1);
+                }
+                if (currentPage <= 4) {
+                  return [1, 2, 3, 4, 5, "...", totalPages];
+                }
+                if (currentPage >= totalPages - 3) {
+                  return [1, "...", totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+                }
+                return [1, "...", currentPage - 1, currentPage, currentPage + 1, "...", totalPages];
+              };
+
+              const scrollToSubdossiers = () => {
+                document.getElementById("subdossiers-wijk-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+              };
+
               return (
-                <div className="bg-card border border-border rounded-3xl p-6 sm:p-7 space-y-6 shadow-xs">
+                <div id="active-wijk-hoofddossier-view" className="bg-card border border-border rounded-3xl p-6 sm:p-7 space-y-6 shadow-xs">
                   {/* Active Hoofddossier Banner with Thumbnail */}
                   <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-5 pb-5 border-b border-border">
                     <div className="flex items-start gap-4">
@@ -807,6 +911,17 @@ const WijkDetail = () => {
 
                     <div className="flex items-center gap-2 shrink-0">
                       <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSelectedHoofddossierSlug(null)}
+                        className="h-9 text-xs rounded-xl border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+                        title="Sluit en klap subdossiers in"
+                      >
+                        <ChevronUp className="w-3.5 h-3.5 mr-1" />
+                        Inklappen
+                      </Button>
+
+                      <Button
                         asChild
                         size="sm"
                         className="bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-semibold rounded-xl h-9"
@@ -824,136 +939,111 @@ const WijkDetail = () => {
                   </div>
 
                   {/* Subdossiers Section */}
-                  <div>
-                    <div className="flex items-center justify-between mb-4">
-                      <h4 className="text-sm font-bold text-foreground flex items-center gap-2">
-                        <FolderTree className="w-4 h-4 text-accent" />
-                        Subdossiers binnen {activeHoofddossier.title} ({activeHoofddossier.subdossiers?.length || 0})
-                      </h4>
-                      <span className="text-xs text-muted-foreground">
-                        Betrekking hebbend op {wijk.naam}
-                      </span>
+                  <div id="subdossiers-wijk-section" className="space-y-4">
+                    {/* Header with Title and Sorting / Filter / Pagination Controls */}
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                      <div>
+                        <h4 className="text-sm sm:text-base font-bold text-foreground flex items-center gap-2">
+                          <FolderTree className="w-4 h-4 text-accent" />
+                          Subdossiers binnen {activeHoofddossier.title} ({allSubs.length})
+                        </h4>
+                        <span className="text-xs text-muted-foreground">
+                          Onderwerpen en stukken betrekking hebbend op {wijk.naam}
+                        </span>
+                      </div>
+
+                      {/* Controls Bar */}
+                      {allSubs.length > 0 && (
+                        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                          {/* Search */}
+                          <div className="relative min-w-[160px] sm:w-52 flex-1 sm:flex-none">
+                            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                            <input
+                              type="text"
+                              value={subSearch}
+                              onChange={(e) => {
+                                setSubSearch(e.target.value);
+                                setSubPage(1);
+                              }}
+                              placeholder="Zoek in subdossiers..."
+                              className="w-full bg-background border border-border rounded-xl pl-8 pr-7 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:border-accent"
+                            />
+                            {subSearch && (
+                              <button
+                                onClick={() => {
+                                  setSubSearch("");
+                                  setSubPage(1);
+                                }}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
+                                title="Wis zoekopdracht"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Sorteren */}
+                          <div className="flex items-center gap-1.5 bg-background border border-border rounded-xl px-2.5 py-1.5 text-xs text-muted-foreground shadow-2xs shrink-0">
+                            <ArrowUpDown className="w-3.5 h-3.5 text-accent shrink-0" />
+                            <span className="text-[11px] font-medium hidden lg:inline">Sorteren:</span>
+                            <select
+                              id="select-wijk-subdossier-sort"
+                              value={subSort}
+                              onChange={(e) => {
+                                setSubSort(e.target.value as "az" | "za" | "docs-desc" | "docs-asc");
+                                setSubPage(1);
+                              }}
+                              className="bg-transparent text-foreground text-xs font-semibold focus:outline-hidden cursor-pointer"
+                              aria-label="Sorteer subdossiers"
+                            >
+                              <option value="az">A tot Z</option>
+                              <option value="za">Z tot A</option>
+                              <option value="docs-desc">Documenten (meeste)</option>
+                              <option value="docs-asc">Documenten (minste)</option>
+                            </select>
+                          </div>
+
+                          {/* Items per page selector (10 [standard], 20, 50) */}
+                          <div className="flex items-center gap-1.5 bg-background border border-border rounded-xl px-2.5 py-1.5 text-xs text-muted-foreground shadow-2xs shrink-0">
+                            <span className="text-[11px] font-medium hidden sm:inline">Per pagina:</span>
+                            <select
+                              id="select-wijk-subdossiers-per-page"
+                              value={subPageSize}
+                              onChange={(e) => {
+                                setSubPageSize(Number(e.target.value));
+                                setSubPage(1);
+                              }}
+                              className="bg-transparent text-foreground text-xs font-semibold focus:outline-hidden cursor-pointer"
+                              aria-label="Aantal subdossiers per pagina"
+                            >
+                              <option value={10}>10</option>
+                              <option value={20}>20</option>
+                              <option value={50}>50</option>
+                            </select>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
-                    {activeHoofddossier.subdossiers && activeHoofddossier.subdossiers.length > 0 ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {activeHoofddossier.subdossiers.map((sub, sIdx) => {
-                          const subThumbnail =
-                            sub.thumbnail ||
-                            getSubdossierClientThumbnail(
-                              sub.title,
-                              activeHoofddossier.title,
-                              activeHoofddossier.thumbnail
-                            );
-                          // Docs in this subdossier
-                          const subDocs = (activeHoofddossier.documents || []).filter(
-                            (sd) =>
-                              (sd.subdossier || "Algemeen").toLowerCase() === sub.title.toLowerCase() ||
-                              (sd.subdossier || "").toLowerCase().includes(sub.title.toLowerCase())
-                          );
-
-                          return (
-                            <div
-                              key={sub.id || sIdx}
-                              className="group bg-background border border-border hover:border-accent/50 rounded-2xl overflow-hidden transition-all flex flex-col justify-between shadow-2xs hover:shadow-xs"
-                            >
-                              <div>
-                                {/* Subdossier Thumbnail Banner */}
-                                <div className="relative aspect-[16/9] w-full overflow-hidden bg-muted">
-                                  <img
-                                    src={subThumbnail}
-                                    alt={sub.title}
-                                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                  />
-                                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
-                                  <div className="absolute top-2 left-2">
-                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-black/60 text-white backdrop-blur-xs border border-white/20 flex items-center gap-1">
-                                      <FolderTree className="w-3 h-3 text-accent" /> Subdossier
-                                    </span>
-                                  </div>
-                                  <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-white text-[11px]">
-                                    <span className="font-semibold drop-shadow-xs flex items-center gap-1">
-                                      <FileText className="w-3 h-3 text-accent" />
-                                      {sub.documentCount} {sub.documentCount === 1 ? "stuk" : "stukken"}
-                                    </span>
-                                    {sub.uploadedCount > 0 && (
-                                      <span className="font-bold text-emerald-300 drop-shadow-xs flex items-center gap-1">
-                                        <CheckCircle2 className="w-3 h-3" />
-                                        {sub.uploadedCount} PDF's
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-
-                                <div className="p-4">
-                                  <h5 className="font-bold text-sm text-foreground group-hover:text-accent transition-colors mb-1.5">
-                                    {sub.title}
-                                  </h5>
-
-                                  {sub.description && (
-                                    <p className="text-xs text-muted-foreground line-clamp-2 mb-3 leading-relaxed">
-                                      {sub.description}
-                                    </p>
-                                  )}
-
-                                  {/* Document title preview */}
-                                  {subDocs.length > 0 && (
-                                    <div className="p-2.5 rounded-xl bg-muted/40 border border-border/50 space-y-1 mb-3">
-                                      <div className="text-[10px] font-semibold text-muted-foreground">
-                                        Recente stukken in {wijk.naam}:
-                                      </div>
-                                      {subDocs.slice(0, 2).map((sd, sdi) => (
-                                        <div
-                                          key={sdi}
-                                          className="text-[11px] text-foreground truncate flex items-center gap-1.5"
-                                        >
-                                          <FileText className="w-3 h-3 text-accent shrink-0" />
-                                          <span className="truncate">{sd.titel}</span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-
-                                  {/* Tags */}
-                                  {sub.tags && sub.tags.length > 0 && (
-                                    <div className="flex flex-wrap gap-1">
-                                      {sub.tags.slice(0, 3).map((t, ti) => (
-                                        <span
-                                          key={ti}
-                                          className="px-1.5 py-0.5 rounded text-[10px] bg-secondary text-secondary-foreground"
-                                        >
-                                          #{t}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="p-4 pt-0 border-t border-border flex items-center justify-between gap-2 mt-2">
-                                <Button
-                                  asChild
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-8 text-xs rounded-xl flex-1 border-accent/30 text-accent hover:bg-accent/15 font-semibold"
-                                >
-                                  <Link
-                                    to={`/raadspaneel?tab=dossiers&dossier=${encodeURIComponent(
-                                      activeHoofddossier.slug || activeHoofddossier.id
-                                    )}&subdossier=${encodeURIComponent(sub.slug)}&wijk=${encodeURIComponent(
-                                      wijk.naam
-                                    )}`}
-                                  >
-                                    Bekijk subdossier ({sub.documentCount})
-                                    <ArrowRight className="w-3.5 h-3.5 ml-1" />
-                                  </Link>
-                                </Button>
-                              </div>
-                            </div>
-                          );
-                        })}
+                    {/* Active Filter Indicator */}
+                    {subSearch && (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground pt-1">
+                        <span>Gefilterd op: <strong className="text-foreground">"{subSearch}"</strong></span>
+                        <span className="text-[11px]">({sortedSubs.length} van {allSubs.length} subdossiers)</span>
+                        <button
+                          onClick={() => {
+                            setSubSearch("");
+                            setSubPage(1);
+                          }}
+                          className="text-accent hover:underline inline-flex items-center gap-1 font-semibold ml-1 cursor-pointer"
+                        >
+                          <X className="w-3 h-3" /> Wis filter
+                        </button>
                       </div>
-                    ) : (
+                    )}
+
+                    {/* Subdossiers Content */}
+                    {allSubs.length === 0 ? (
                       <div className="p-6 text-center bg-background border border-border rounded-2xl">
                         <p className="text-xs text-muted-foreground">
                           Geen specifieke subdossiers ingedeeld; alle {activeHoofddossier.documentCount} stukken vallen onder het algemene thema.
@@ -967,6 +1057,260 @@ const WijkDetail = () => {
                             Bekijk stukken in Raadspaneel
                           </Link>
                         </Button>
+                      </div>
+                    ) : paginatedSubs.length === 0 ? (
+                      <div className="p-8 text-center bg-background border border-border rounded-2xl space-y-3">
+                        <FolderTree className="w-8 h-8 text-muted-foreground/40 mx-auto" />
+                        <p className="text-sm font-semibold text-foreground">
+                          Geen subdossiers gevonden
+                        </p>
+                        <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                          Er zijn geen subdossiers gevonden die overeenkomen met de zoekopdracht &quot;{subSearch}&quot;.
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSubSearch("");
+                            setSubPage(1);
+                          }}
+                          className="rounded-xl text-xs"
+                        >
+                          <X className="w-3.5 h-3.5 mr-1.5" />
+                          Wis zoekopdracht
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        {/* Subdossiers Grid */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {paginatedSubs.map((sub, sIdx) => {
+                            const subThumbnail =
+                              sub.thumbnail ||
+                              getSubdossierClientThumbnail(
+                                sub.title,
+                                activeHoofddossier.title,
+                                activeHoofddossier.thumbnail
+                              );
+                            // Docs in this subdossier
+                            const subDocs = (activeHoofddossier.documents || []).filter(
+                              (sd) =>
+                                (sd.subdossier || "Algemeen").toLowerCase() === sub.title.toLowerCase() ||
+                                (sd.subdossier || "").toLowerCase().includes(sub.title.toLowerCase())
+                            );
+
+                            return (
+                              <div
+                                key={sub.id || sub.slug || sIdx}
+                                className="group bg-background border border-border hover:border-accent/50 rounded-2xl overflow-hidden transition-all flex flex-col justify-between shadow-2xs hover:shadow-xs"
+                              >
+                                <div>
+                                  {/* Subdossier Thumbnail Banner */}
+                                  <div className="relative aspect-[16/9] w-full overflow-hidden bg-muted">
+                                    <img
+                                      src={subThumbnail}
+                                      alt={sub.title}
+                                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                    />
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
+                                    <div className="absolute top-2 left-2">
+                                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-black/60 text-white backdrop-blur-xs border border-white/20 flex items-center gap-1">
+                                        <FolderTree className="w-3 h-3 text-accent" /> Subdossier
+                                      </span>
+                                    </div>
+                                    <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-white text-[11px]">
+                                      <span className="font-semibold drop-shadow-xs flex items-center gap-1">
+                                        <FileText className="w-3 h-3 text-accent" />
+                                        {sub.documentCount} {sub.documentCount === 1 ? "stuk" : "stukken"}
+                                      </span>
+                                      {sub.uploadedCount > 0 && (
+                                        <span className="font-bold text-emerald-300 drop-shadow-xs flex items-center gap-1">
+                                          <CheckCircle2 className="w-3 h-3" />
+                                          {sub.uploadedCount} PDF's
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="p-4">
+                                    <h5 className="font-bold text-sm text-foreground group-hover:text-accent transition-colors mb-1.5">
+                                      {sub.title}
+                                    </h5>
+
+                                    {sub.description && (
+                                      <p className="text-xs text-muted-foreground line-clamp-2 mb-3 leading-relaxed">
+                                        {sub.description}
+                                      </p>
+                                    )}
+
+                                    {/* Document title preview */}
+                                    {subDocs.length > 0 && (
+                                      <div className="p-2.5 rounded-xl bg-muted/40 border border-border/50 space-y-1 mb-3">
+                                        <div className="text-[10px] font-semibold text-muted-foreground">
+                                          Recente stukken in {wijk.naam}:
+                                        </div>
+                                        {subDocs.slice(0, 2).map((sd, sdi) => (
+                                          <div
+                                            key={sdi}
+                                            className="text-[11px] text-foreground truncate flex items-center gap-1.5"
+                                          >
+                                            <FileText className="w-3 h-3 text-accent shrink-0" />
+                                            <span className="truncate">{sd.titel}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+
+                                    {/* Tags */}
+                                    {sub.tags && sub.tags.length > 0 && (
+                                      <div className="flex flex-wrap gap-1">
+                                        {sub.tags.slice(0, 3).map((t, ti) => (
+                                          <span
+                                            key={ti}
+                                            className="px-1.5 py-0.5 rounded text-[10px] bg-secondary text-secondary-foreground"
+                                          >
+                                            #{t}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="p-4 pt-0 border-t border-border flex items-center justify-between gap-2 mt-2">
+                                  <Button
+                                    asChild
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-8 text-xs rounded-xl flex-1 border-accent/30 text-accent hover:bg-accent/15 font-semibold"
+                                  >
+                                    <Link
+                                      to={`/raadspaneel?tab=dossiers&dossier=${encodeURIComponent(
+                                        activeHoofddossier.slug || activeHoofddossier.id
+                                      )}&subdossier=${encodeURIComponent(sub.slug)}&wijk=${encodeURIComponent(
+                                        wijk.naam
+                                      )}`}
+                                    >
+                                      Bekijk subdossier ({sub.documentCount})
+                                      <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                                    </Link>
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Subdossiers Pagination Navigation Bar */}
+                        {totalPages > 1 && (
+                          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-background border border-border p-4 rounded-2xl shadow-2xs">
+                            <div className="text-xs text-muted-foreground font-medium order-2 sm:order-1">
+                              Pagina <span className="font-bold text-foreground">{currentPage}</span> van{" "}
+                              <span className="font-bold text-foreground">{totalPages}</span>{" "}
+                              <span className="hidden sm:inline">
+                                ({sortedSubs.length} {sortedSubs.length === 1 ? "subdossier" : "subdossiers"} totaal)
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 order-1 sm:order-2 flex-wrap justify-center">
+                              {/* First Page */}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSubPage(1);
+                                  scrollToSubdossiers();
+                                }}
+                                disabled={currentPage === 1}
+                                className="h-8 w-8 p-0 rounded-xl"
+                                title="Eerste pagina"
+                              >
+                                <ChevronsLeft className="w-4 h-4" />
+                              </Button>
+
+                              {/* Previous Page */}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSubPage((p) => Math.max(1, p - 1));
+                                  scrollToSubdossiers();
+                                }}
+                                disabled={currentPage === 1}
+                                className="h-8 w-8 p-0 rounded-xl"
+                                title="Vorige pagina"
+                              >
+                                <ChevronLeft className="w-4 h-4" />
+                              </Button>
+
+                              {/* Page Numbers */}
+                              <div className="flex items-center gap-1">
+                                {getPageNumbers().map((pageNum, pIdx) => {
+                                  if (pageNum === "...") {
+                                    return (
+                                      <span
+                                        key={`dots-${pIdx}`}
+                                        className="px-1 text-xs text-muted-foreground font-semibold"
+                                      >
+                                        ...
+                                      </span>
+                                    );
+                                  }
+
+                                  const isCurrent = currentPage === pageNum;
+                                  return (
+                                    <Button
+                                      key={`page-${pageNum}`}
+                                      variant={isCurrent ? "default" : "outline"}
+                                      size="sm"
+                                      onClick={() => {
+                                        setSubPage(Number(pageNum));
+                                        scrollToSubdossiers();
+                                      }}
+                                      className={`h-8 min-w-[32px] px-2 text-xs font-semibold rounded-xl ${
+                                        isCurrent
+                                          ? "bg-accent text-accent-foreground hover:bg-accent/90"
+                                          : "hover:bg-muted text-foreground"
+                                      }`}
+                                    >
+                                      {pageNum}
+                                    </Button>
+                                  );
+                                })}
+                              </div>
+
+                              {/* Next Page */}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSubPage((p) => Math.min(totalPages, p + 1));
+                                  scrollToSubdossiers();
+                                }}
+                                disabled={currentPage === totalPages}
+                                className="h-8 w-8 p-0 rounded-xl"
+                                title="Volgende pagina"
+                              >
+                                <ChevronRight className="w-4 h-4" />
+                              </Button>
+
+                              {/* Last Page */}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSubPage(totalPages);
+                                  scrollToSubdossiers();
+                                }}
+                                disabled={currentPage === totalPages}
+                                className="h-8 w-8 p-0 rounded-xl"
+                                title="Laatste pagina"
+                              >
+                                <ChevronsRight className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

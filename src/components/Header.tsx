@@ -102,10 +102,16 @@ export const Header = () => {
     const rawPath = (location.pathname || "").split("?")[0].split("#")[0].toLowerCase().trim();
     const cleanPath = rawPath.replace(/\/+$/, "") || "/";
 
-    // 1. Check for single wijk/kern detail page: e.g. /wijken-en-kernen/:slug or /wijken-en/kernen/:slug
+    // Strictly check for individual wijk/kern detail page: e.g. /wijken-en-kernen/:slug or /wijken-en/kernen/:slug
     const detailMatch = cleanPath.match(/^\/wijken-en(?:-|\/)kernen\/([^/?#]+)/);
     if (detailMatch && detailMatch[1]) {
       const rawSlug = decodeURIComponent(detailMatch[1]).toLowerCase();
+      
+      // If slug is empty or matches overview page name, default strictly to Steenwijkerland
+      if (!rawSlug || rawSlug === "wijken-en-kernen" || rawSlug === "kernen") {
+        return "Steenwijkerland";
+      }
+
       const mappedSlug = LEGACY_SLUG_MAP[rawSlug] || rawSlug;
 
       // Check API dynamically loaded name first
@@ -125,12 +131,7 @@ export const Header = () => {
         .join(" ");
     }
 
-    // 2. Overview page for Wijken & Kernen
-    if (cleanPath === "/wijken-en-kernen" || cleanPath === "/wijken-en/kernen") {
-      return "Wijken & Kernen";
-    }
-
-    // 3. Strict default for home and all other non-wijk pages
+    // Strict default for /wijken-en-kernen, home, and all other non-wijk-detail pages
     return "Steenwijkerland";
   }, [location.pathname, apiWijkenMap]);
 
@@ -189,14 +190,14 @@ export const Header = () => {
                     <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-5 h-0.5 bg-accent" />
                   )}
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="min-w-[170px] bg-background border-accent/30 shadow-lg z-50">
+                <DropdownMenuContent align="start" className="min-w-[170px] bg-card border border-border/90 shadow-xl z-50 p-1.5 rounded-xl">
                   {partijItems.map((item) => (
-                    <DropdownMenuItem key={item.to} asChild>
+                    <DropdownMenuItem key={item.to} asChild className="focus:bg-accent focus:text-accent-foreground rounded-lg">
                       <NavLink
                         to={item.to}
                         className={({ isActive }) =>
-                          `w-full px-3 py-2 text-xs xl:text-sm uppercase tracking-wider font-medium cursor-pointer whitespace-nowrap ${
-                            isActive ? "text-accent font-semibold" : "text-foreground/90 hover:text-accent"
+                          `w-full px-3 py-2 text-xs xl:text-sm uppercase tracking-wider font-medium cursor-pointer whitespace-nowrap transition-colors ${
+                            isActive ? "text-accent font-semibold" : "text-foreground hover:text-accent"
                           }`
                         }
                       >

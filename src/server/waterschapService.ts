@@ -4,6 +4,12 @@ import https from "node:https";
 import http from "node:http";
 import dns from "node:dns";
 import { GoogleGenAI } from "@google/genai";
+import {
+  validateNotubizApiContract,
+  isScraperCircuitOpen,
+  sanitizeCleanText,
+  isCorruptOrHtmlGarbage,
+} from "./scraperContractValidator.js";
 
 try {
   dns.setDefaultResultOrder("ipv4first");
@@ -460,6 +466,14 @@ async function fetchJson(url: string): Promise<any> {
 export async function startWaterschapSync(): Promise<void> {
   if (syncState.isRunning) {
     addLog("Synchronisatie is al actief.", "warn");
+    return;
+  }
+
+  // Circuit breaker check
+  if (isScraperCircuitOpen("waterschap_wdodelta")) {
+    const errorMsg = "CIRCUIT_OPEN: Waterschap WDODelta lay-out gewijzigd of offline. Schrijfoperaties gepauzeerd ter bescherming van database.";
+    addLog(errorMsg, "error");
+    syncState.error = errorMsg;
     return;
   }
 

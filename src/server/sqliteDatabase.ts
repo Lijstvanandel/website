@@ -1,9 +1,24 @@
 import initSqlJs from "sql.js";
 import fs from "fs";
 import path from "path";
+import {
+  initVaultDatabase,
+  loadVaultTable,
+  saveVaultTable,
+  loadVaultSingle,
+  saveVaultSingle,
+  migrateAndSanitizePublicDatabase,
+  anonymizeBelafspraakInVault,
+  bulkAnonymizeOldBelafsprakenInVault,
+  getVaultFilePath,
+  SENSITIVE_TABLE_NAMES,
+  SensitiveTable,
+} from "./vaultDatabase.js";
 
 const SQLITE_FILE = process.env.DATABASE_PATH || path.join(process.cwd(), "database.sqlite");
 const LEGACY_JSON = path.join(process.cwd(), "db.json");
+
+const SENSITIVE_TABLE_SET = new Set<string>(SENSITIVE_TABLE_NAMES);
 
 let sqlInstance: any = null;
 let sqliteDb: any = null;
@@ -173,6 +188,16 @@ export async function initDatabase() {
     }
   }
 
+  // Initialize isolated physical Vault database for sensitive CRM & Strategy
+  try {
+    await initVaultDatabase(sqlInstance);
+    // Sanitize public database: Migrate any sensitive records to encrypted Vault and purge from public db
+    migrateAndSanitizePublicDatabase(sqliteDb);
+    persistSqlite();
+  } catch (vaultErr) {
+    console.error("[CRM-VAULT INIT FOUT]:", vaultErr);
+  }
+
   return sqliteDb;
 }
 
@@ -250,44 +275,29 @@ export function getDbFromSqlite(): any {
     councilResearchItems: [],
   };
 
-  // Load list tables
-  const listTables = [
-    "users",
+  // Public list tables strictly residing in public database.sqlite
+  const publicListTables = [
     "fractieleden",
     "videos",
     "news",
     "events",
     "categories",
-    "contactMessages",
     "faqs",
     "wijken",
     "documents",
     "stemgedrag",
-    "stellingSubmissions",
     "qrLocations",
     "stellingen",
-    "belafspraken",
-    "newsletterSubscribers",
     "newsletters",
-    "eventTickets",
-    "eventCancellations",
-    "donations",
-    "pushSubscriptions",
-    "pushLogs",
-    "auditLogs",
     "councilAgendaTopics",
     "documentFavorites",
     "councilSearchLogs",
     "councilDocumentViews",
     "customDossiers",
     "councilResearchItems",
-    "treasurerAccounts",
-    "treasurerInvoices",
-    "treasurerAfdrachten",
-    "treasurerBudget",
   ];
 
-  for (const table of listTables) {
+  for (const table of publicListTables) {
     try {
       const rows = sqliteDb.exec(`SELECT data FROM ${table}`);
       if (rows.length > 0 && rows[0].values) {
@@ -306,7 +316,31 @@ export function getDbFromSqlite(): any {
     }
   }
 
-  // Load single-object tables
+  // Sensitive tables strictly retrieved from isolated, AES-256-GCM encrypted CRM-Vault
+  try {
+    result.users = loadVaultTable("users");
+    result.belafspraken = loadVaultTable("belafspraken");
+    result.contactMessages = loadVaultTable("contactMessages");
+    result.stellingSubmissions = loadVaultTable("stellingSubmissions");
+    result.newsletterSubscribers = loadVaultTable("newsletterSubscribers");
+    result.eventTickets = loadVaultTable("eventTickets");
+    result.eventCancellations = loadVaultTable("eventCancellations");
+    result.donations = loadVaultTable("donations");
+    result.pushSubscriptions = loadVaultTable("pushSubscriptions");
+    result.pushLogs = loadVaultTable("pushLogs");
+    result.auditLogs = loadVaultTable("auditLogs");
+    result.treasurerAccounts = loadVaultTable("treasurerAccounts");
+    result.treasurerInvoices = loadVaultTable("treasurerInvoices");
+    result.treasurerAfdrachten = loadVaultTable("treasurerAfdrachten");
+    result.treasurerBudget = loadVaultTable("treasurerBudget");
+    result.treasurerKascommissie = loadVaultSingle("treasurerKascommissie");
+    result.treasurerSettings = loadVaultSingle("treasurerSettings");
+    result.internalCouncilStrategy = loadVaultTable("internalCouncilStrategy");
+  } catch (vaultErr) {
+    console.error("[CRM-VAULT LOAD ERROR]:", vaultErr);
+  }
+
+  // Load single-object tables from public db
   try {
     const memRows = sqliteDb.exec("SELECT data FROM membershipSettings WHERE id = 'default' LIMIT 1");
     if (memRows.length > 0 && memRows[0].values && memRows[0].values.length > 0) {
@@ -314,24 +348,6 @@ export function getDbFromSqlite(): any {
     }
   } catch (_e) {
     result.membershipSettings = null;
-  }
-
-  try {
-    const kasRows = sqliteDb.exec("SELECT data FROM treasurerKascommissie WHERE id = 'default' LIMIT 1");
-    if (kasRows.length > 0 && kasRows[0].values && kasRows[0].values.length > 0) {
-      result.treasurerKascommissie = JSON.parse(kasRows[0].values[0][0]);
-    }
-  } catch (_e) {
-    result.treasurerKascommissie = null;
-  }
-
-  try {
-    const setRows = sqliteDb.exec("SELECT data FROM treasurerSettings WHERE id = 'default' LIMIT 1");
-    if (setRows.length > 0 && setRows[0].values && setRows[0].values.length > 0) {
-      result.treasurerSettings = JSON.parse(setRows[0].values[0][0]);
-    }
-  } catch (_e) {
-    result.treasurerSettings = null;
   }
 
   // Load kv_store
@@ -356,14 +372,32 @@ export function getDbFromSqlite(): any {
 
 /**
  * Save complete or partial domain state directly to SQLite with high-performance transactions
+ * Routing sensitive citizen CRM & internal strategy exclusively to the encrypted Vault!
  */
 export function saveDbToSqlite(data: any) {
   if (!sqliteDb || !data) return;
 
   try {
+    // 1. Route sensitive data to isolated encrypted CRM Vault
+    for (const [key, val] of Object.entries(data)) {
+      if (SENSITIVE_TABLE_SET.has(key)) {
+        if (key === "treasurerKascommissie" || key === "treasurerSettings") {
+          saveVaultSingle(key as SensitiveTable, val);
+        } else if (Array.isArray(val)) {
+          saveVaultTable(key as SensitiveTable, val);
+        }
+      }
+    }
+
+    // 2. Persist public data to public database.sqlite
     sqliteDb.run("BEGIN TRANSACTION;");
 
     for (const [key, val] of Object.entries(data)) {
+      // Strictly skip sensitive tables from being saved to public database.sqlite
+      if (SENSITIVE_TABLE_SET.has(key)) {
+        continue;
+      }
+
       if (TABLE_DEFINITIONS[key] && Array.isArray(val)) {
         // Clear old table and insert updated items
         sqliteDb.run(`DELETE FROM ${key};`);
@@ -372,7 +406,7 @@ export function saveDbToSqlite(data: any) {
           const itemId = String(item.id || item.email || item.slug || item.key || crypto.randomUUID());
           sqliteDb.run(`INSERT INTO ${key} (id, data) VALUES (?, ?)`, [itemId, JSON.stringify(item)]);
         }
-      } else if ((key === "membershipSettings" || key === "treasurerKascommissie" || key === "treasurerSettings") && val && typeof val === "object") {
+      } else if (key === "membershipSettings" && val && typeof val === "object") {
         sqliteDb.run(`INSERT OR REPLACE INTO ${key} (id, data) VALUES ('default', ?)`, [
           JSON.stringify(val),
         ]);
@@ -699,5 +733,11 @@ export function clearCouncilDocumentViews(): boolean {
     return false;
   }
 }
+
+export {
+  anonymizeBelafspraakInVault,
+  bulkAnonymizeOldBelafsprakenInVault,
+  getVaultFilePath,
+};
 
 

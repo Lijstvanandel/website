@@ -4,6 +4,12 @@ import https from "node:https";
 import http from "node:http";
 import dns from "node:dns";
 import { GoogleGenAI } from "@google/genai";
+import {
+  validateNotubizApiContract,
+  isScraperCircuitOpen,
+  sanitizeCleanText,
+  isCorruptOrHtmlGarbage,
+} from "./scraperContractValidator.js";
 
 try {
   dns.setDefaultResultOrder("ipv4first");
@@ -665,6 +671,14 @@ export async function startOverijsselNotubizSync(options?: {
     return syncState;
   }
 
+  // Circuit breaker check
+  if (isScraperCircuitOpen("notubiz_overijssel")) {
+    const errorMsg = "CIRCUIT_OPEN: Notubiz / OpenRaadsinformatie lay-out gewijzigd of geblokkeerd. Schrijfoperaties gepauzeerd ter bescherming van database.";
+    addLog(errorMsg, "error");
+    syncState.error = errorMsg;
+    return syncState;
+  }
+
   const targetYears = options?.years && options.years.length > 0 ? options.years : [2021, 2022, 2023, 2024, 2025, 2026];
   const minTargetYear = Math.min(...targetYears);
   abortController = new AbortController();
@@ -789,6 +803,14 @@ export async function startOverijsselNotubizSync(options?: {
           const res = await fetchWithRetry(url, { signal, headers: { Accept: "application/json" } }, 3, 25000);
           if (res.ok) {
             const data = await res.json();
+            
+            // Contract validation
+            const contract = validateNotubizApiContract(data, url, "notubiz_overijssel");
+            if (!contract.isValid) {
+              addLog(`OpenRaadsinformatie contractfout bij offset ${offset}: ${contract.reason}`, "error");
+              break;
+            }
+
             searchRes = {
               results: Array.isArray(data.results) ? data.results : [],
               totalCount: typeof data.totalCount === "number" ? data.totalCount : 0,

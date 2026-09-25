@@ -3,6 +3,12 @@ import { CouncilAgendaTopic, CouncilDocument, CouncilTopicDiffAlert } from "../t
 import { getDbFromSqlite, saveDbToSqlite, initDatabase, persistSqlite } from "./sqliteDatabase.js";
 import { notifyDocumentDiffDetected } from "./pushService.js";
 import { enrichTopicWithStandpunten } from "../lib/standpuntMatcher.js";
+import {
+  validateIbabsHtmlContract,
+  isScraperCircuitOpen,
+  sanitizeCleanText,
+  isCorruptOrHtmlGarbage,
+} from "./scraperContractValidator.js";
 
 const BASE_URL = "https://steenwijkerland.bestuurlijkeinformatie.nl";
 const AGENDAS_API_TEMPLATE = `${BASE_URL}/Agenda/RetrieveAgendasForYear?agendatypeId=100000059&year=`;
@@ -161,6 +167,11 @@ export function parseDutchDate(text: string, defaultYear?: number): { dateIso: s
 export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date().getFullYear(), new Date().getFullYear() + 1]) {
   console.log(`[RAADSPANEEL SCRAPER] Start scraping voor gemeenteraad Steenwijkerland (jaren: ${yearsToScrape.join(", ")})...`);
   
+  // Circuit Breaker check
+  if (isScraperCircuitOpen("ibabs_steenwijkerland")) {
+    throw new Error("CIRCUIT_OPEN: iBabs lay-out gewijzigd of geblokkeerd. Schrijfoperaties gepauzeerd ter bescherming van database.");
+  }
+
   // Ensure DB is initialized
   await initDatabase();
 
@@ -185,6 +196,14 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
       }
 
       const html = await res.text();
+      
+      // Contract check on index response
+      const contract = validateIbabsHtmlContract(html, url);
+      if (!contract.isValid) {
+        console.warn(`[RAADSPANEEL SCRAPER] iBabs contract mismatch op index ${url}: ${contract.reason}`);
+        continue;
+      }
+
       const $ = cheerio.load(html);
 
       // Search for links inside .agenda-link or <a href*="/Agenda/Index/">
@@ -251,10 +270,19 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
           }
 
           const meetingHtml = await res.text();
+          
+          // Contract validation on individual meeting page
+          const meetingContract = validateIbabsHtmlContract(meetingHtml, meeting.url);
+          if (!meetingContract.isValid) {
+            console.warn(`[RAADSPANEEL SCRAPER] iBabs meeting layout mismatch bij ${meeting.url}: ${meetingContract.reason}`);
+            return;
+          }
+
           const $ = cheerio.load(meetingHtml);
 
           // Meeting title
-          const pageTitle = $("h1, .page-title, .agenda-title").first().text().replace(/\s+/g, " ").trim() || "Raadsbijeenkomst Steenwijkerland";
+          const rawPageTitle = $("h1, .page-title, .agenda-title").first().text().replace(/\s+/g, " ").trim() || "Raadsbijeenkomst Steenwijkerland";
+          const pageTitle = sanitizeCleanText(rawPageTitle) || "Raadsbijeenkomst Steenwijkerland";
           
           // Determine date
           const parsedDate = parseDutchDate(meeting.dateDisplay || pageTitle, meeting.year);
@@ -286,8 +314,9 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
           $(".panel.agenda-item, .agenda-item").each((index, itemEl) => {
             const itemNumber = $(itemEl).find(".panel-id").first().text().trim() || `${index + 1}`;
             const rawTitle = $(itemEl).find(".panel-title-label, .panel-title, h3, h4").first().text().replace(/\s+/g, " ").trim();
+            const cleanTitle = sanitizeCleanText(rawTitle);
             
-            if (!rawTitle) return;
+            if (!cleanTitle || isCorruptOrHtmlGarbage(cleanTitle)) return;
 
             // Check if this is a section category header (e.g. "4 Oordeelvorming - hamerstukken" or "Bespreekstukken")
             if (isSectionHeader(rawTitle)) {
@@ -326,6 +355,12 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
               }
               if (badgeSize && !docTitle.includes(badgeSize)) {
                 docTitle = `${docTitle} (${badgeSize})`;
+              }
+
+              // Sanitize docTitle against HTML tags or garbage
+              docTitle = sanitizeCleanText(docTitle) || "Bijlage document";
+              if (isCorruptOrHtmlGarbage(docTitle)) {
+                docTitle = `Bijlage document`;
               }
 
               const docIdMatch = fullDocUrl.match(/documentId=([a-zA-Z0-9-]+)/i) || fullDocUrl.match(/Document\/([a-zA-Z0-9-]+)/i);
@@ -565,6 +600,20 @@ export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date()
     if (a.isArchived !== b.isArchived) return a.isArchived ? 1 : -1;
     return a.meetingDate.localeCompare(b.meetingDate);
   });
+
+  // Idempotency & Safety guard: If scraper found 0 meetings while existing topics existed,
+  // do NOT wipe or overwrite existing topics with empty data!
+  if (scrapedMeetingLinks.length === 0 && existingTopics.length > 0) {
+    console.warn("[RAADSPANEEL SCRAPER] Geen nieuwe vergaderingen gevonden op iBabs; bestaande agendapunten veilig behouden ter bescherming van data-integriteit.");
+    return db.councilScrapeSummary || {
+      lastScrapedAt: new Date().toISOString(),
+      totalMeetingsScraped: 0,
+      totalTopics: existingTopics.length,
+      bespreekstukkenCount: existingTopics.filter((t) => t.category === "Oordeelvorming - bespreekstukken" && !t.isArchived).length,
+      archivedCount: 0,
+      status: "success",
+    };
+  }
 
   // Calculate adaptive interval based on upcoming meetings
   const adaptive = calculateAdaptiveInterval(finalList);

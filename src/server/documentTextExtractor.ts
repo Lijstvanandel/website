@@ -1,6 +1,14 @@
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
+import {
+  parsePdfBufferInWorker,
+  extractPdfFileInWorker,
+  getEventLoopLagMetrics,
+  globalPdfWorkerPool,
+} from "./workers/pdfWorkerPool.js";
+
+export { getEventLoopLagMetrics, globalPdfWorkerPool };
 
 const DOCUMENTS_DIR = path.join(process.cwd(), "public", "uploads", "documents");
 const DIST_DOCUMENTS_DIR = path.join(process.cwd(), "dist", "uploads", "documents");
@@ -195,11 +203,22 @@ export function resolveDocumentPath(filename: string): string | null {
 }
 
 /**
- * Safely parse a PDF buffer using pdf-parse or fallback methods
+ * Safely parse a PDF buffer using isolated worker threads (offloads from main event loop)
  */
 export async function parsePdfBuffer(buf: Buffer): Promise<string> {
   if (!buf || buf.length === 0) return "";
 
+  // 1. Primary path: parse in dedicated worker thread (0ms main event loop blocking)
+  try {
+    const workerText = await parsePdfBufferInWorker(buf);
+    if (workerText && workerText.trim().length > 0) {
+      return workerText.trim();
+    }
+  } catch (workerErr: any) {
+    console.warn("[TEXT EXTRACTOR] Worker thread parse failed, falling back to local:", workerErr?.message);
+  }
+
+  // 2. In-process fallback if worker pool is unavailable
   try {
     const pdfParseModule = await import("pdf-parse");
     const pdfDefault = (pdfParseModule as any).default || pdfParseModule;
@@ -210,7 +229,8 @@ export async function parsePdfBuffer(buf: Buffer): Promise<string> {
     // 1. Try PDFParse class constructor if explicitly exported
     if (PDFParseClass && typeof PDFParseClass === "function") {
       try {
-        const parser = new PDFParseClass(buf);
+        const u8 = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+        const parser = new PDFParseClass(u8);
         if (typeof parser.getText === "function") {
           const res = await parser.getText();
           if (res?.text) extractedText = String(res.text);
@@ -219,60 +239,22 @@ export async function parsePdfBuffer(buf: Buffer): Promise<string> {
           const res = await parser.parse();
           if (res?.text) extractedText = String(res.text);
         }
-      } catch (_e1) {
-        try {
-          const parser = new PDFParseClass({ data: buf });
-          if (typeof parser.getText === "function") {
-            const res = await parser.getText();
-            if (res?.text) extractedText = String(res.text);
-          }
-        } catch (_e2) {
-          // Avoid calling class constructor without new
+        if (typeof parser.destroy === "function") {
+          try { await parser.destroy(); } catch (_) {}
         }
+      } catch (_e1) {
+        // ignore
       }
     }
 
     // 2. Try pdfDefault as function or class constructor
     if (!extractedText && typeof pdfDefault === "function") {
       try {
-        // Try standard function invocation: pdfParse(buf)
         const res = await (pdfDefault as (...args: any[]) => any)(buf);
         if (res?.text) extractedText = String(res.text);
         else if (typeof res === "string") extractedText = res;
       } catch (fnErr: any) {
-        const errStr = String(fnErr);
-        if (errStr.includes("cannot be invoked without 'new'") || errStr.includes("Class constructor")) {
-          try {
-            const parser = new (pdfDefault as any)(buf);
-            if (typeof parser.getText === "function") {
-              const res = await parser.getText();
-              if (res?.text) extractedText = String(res.text);
-            } else if (typeof parser.parse === "function") {
-              const res = await parser.parse();
-              if (res?.text) extractedText = String(res.text);
-            }
-          } catch (_e3) {
-            try {
-              const parser = new (pdfDefault as any)({ data: buf });
-              if (typeof parser.getText === "function") {
-                const res = await parser.getText();
-                if (res?.text) extractedText = String(res.text);
-              }
-            } catch (_e4) {
-              // ignore parser instantiate fallback error
-            }
-          }
-        }
-      }
-    }
-
-    // 3. Fallback: try pdfParseModule(buf) directly if it's a function
-    if (!extractedText && typeof (pdfParseModule as any) === "function") {
-      try {
-        const res = await (pdfParseModule as any)(buf);
-        if (res?.text) extractedText = String(res.text);
-      } catch (_e5) {
-        // ignore pdfParseModule error
+        // ignore
       }
     }
 
@@ -287,7 +269,7 @@ export async function parsePdfBuffer(buf: Buffer): Promise<string> {
 }
 
 /**
- * Extract text from a document buffer or file
+ * Extract text from a document buffer or file (Offloaded to worker thread)
  */
 export async function extractTextFromFile(filePath: string): Promise<string> {
   if (!fs.existsSync(filePath)) return "";
@@ -303,8 +285,17 @@ export async function extractTextFromFile(filePath: string): Promise<string> {
     }
   }
 
-  // PDF extraction via pdf-parse
+  // PDF extraction: isolated worker thread with fallback
   if (ext === ".pdf") {
+    try {
+      const workerText = await extractPdfFileInWorker(filePath);
+      if (workerText && workerText.trim().length > 0) {
+        return workerText.trim();
+      }
+    } catch (workerErr: any) {
+      console.warn(`[TEXT EXTRACTOR] Worker thread failed for ${path.basename(filePath)}, retrying buffer:`, workerErr?.message);
+    }
+
     try {
       const buf = fs.readFileSync(filePath);
       return await parsePdfBuffer(buf);

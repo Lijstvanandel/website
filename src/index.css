@@ -99,6 +99,29 @@
     font-family: 'Inter', sans-serif;
     font-feature-settings: "ss01", "cv11";
   }
+
+  /* Universal styling for native select & option elements to guarantee high-contrast legibility */
+  select {
+    color-scheme: dark;
+  }
+  .light select {
+    color-scheme: light;
+  }
+
+  select option,
+  select optgroup {
+    background-color: #0b1812 !important;
+    color: #f6f3eb !important;
+    padding: 6px 12px;
+  }
+
+  .light select option,
+  .light select optgroup {
+    background-color: #ffffff !important;
+    color: #09090b !important;
+    padding: 6px 12px;
+  }
+
   h1, h2, h3, h4, .font-display {
     font-family: 'Bebas Neue', sans-serif;
     letter-spacing: 0.02em;

@@ -47,6 +47,8 @@ export interface Belafspraak {
   notitie?: string;
   handledAt?: string | null;
   handledBy?: string | null;
+  isAnonymized?: boolean;
+  anonymizedAt?: string | null;
   createdAt: string;
 }
 
@@ -91,6 +93,10 @@ export function BelafsprakenManager({ token, headers }: Props) {
   const [selectedUserPerLid, setSelectedUserPerLid] = useState<Record<string, string>>({});
   const [isLinking, setIsLinking] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // AVG Anonymization state
+  const [anonymizingId, setAnonymizingId] = useState<string | null>(null);
+  const [isBulkAnonymizing, setIsBulkAnonymizing] = useState(false);
 
   const effectiveAuthToken =
     token ||
@@ -293,6 +299,61 @@ export function BelafsprakenManager({ token, headers }: Props) {
     } catch (err: unknown) {
       const error = err as Error;
       toast.error(error.message || "Fout bij verwijderen");
+    }
+  };
+
+  // AVG Artikel 17 Compliance: Recht op vergetelheid anonimisering
+  const handleAnonymizeCitizen = async (id: string, name: string) => {
+    if (!confirm(`Weet u zeker dat u de contactgegevens van '${name}' wilt anonimiseren conform AVG Artikel 17 (Recht op vergetelheid)? Dit wist telefoon, email en inhoudelijke burger-notities onomkeerbaar met behoud van verantwoording.`)) {
+      return;
+    }
+    setAnonymizingId(id);
+    try {
+      const res = await fetch(`/api/admin/belafspraken/${id}/anonymize`, {
+        method: "POST",
+        headers: jsonHeaders,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Fout bij anonimiseren");
+      toast.success("Inwonergegevens succesvol geanonimiseerd conform AVG Artikel 17.");
+      setAppointments(prev => prev.map(a => a.id === id ? {
+        ...a,
+        name: "[Inwoner geanonimiseerd conform AVG Art. 17]",
+        phone: "[Verwijderd conform AVG]",
+        email: "",
+        notitie: "[Burger-notitie gewist conform AVG]",
+        isAnonymized: true,
+        anonymizedAt: new Date().toISOString()
+      } : a));
+    } catch (err: unknown) {
+      const error = err as Error;
+      toast.error(error.message || "Fout bij anonimiseren");
+    } finally {
+      setAnonymizingId(null);
+    }
+  };
+
+  // AVG Retentie: Bulk schoonmaak van afgehandelde afspraken
+  const handleBulkAnonymize = async (days = 30) => {
+    if (!confirm(`Wilt u alle afgehandelde belafspraken ouder dan ${days} dagen direct anonimiseren conform het AVG data-retentiebeleid?`)) {
+      return;
+    }
+    setIsBulkAnonymizing(true);
+    try {
+      const res = await fetch("/api/admin/belafspraken/bulk-anonymize", {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({ days }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Fout bij bulk anonimisering");
+      toast.success(`${data.anonymizedCount} belafspraken geanonimiseerd conform AVG.`);
+      fetchData();
+    } catch (err: unknown) {
+      const error = err as Error;
+      toast.error(error.message || "Fout bij bulk anonimisering");
+    } finally {
+      setIsBulkAnonymizing(false);
     }
   };
 
@@ -510,6 +571,43 @@ export function BelafsprakenManager({ token, headers }: Props) {
           </div>
         </div>
 
+        {/* AVG ARTIKEL 9 & DATA-ISOLATIE SECURITY VAULT STATUS BANNER */}
+        <div className="bg-emerald-950/30 border border-emerald-500/30 rounded-xl p-4 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 rounded-lg bg-emerald-500/20 text-emerald-400 mt-0.5 shrink-0">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold text-emerald-200 text-sm">AVG Artikel 9 Beveiligde CRM-Vault</span>
+                <span className="px-2 py-0.5 text-[10px] font-mono font-medium rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  AES-256-GCM Versleuteld
+                </span>
+                <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                  Fysiek Gescheiden van Raadsdata
+                </span>
+              </div>
+              <p className="text-xs text-emerald-300/80 mt-1 max-w-3xl leading-relaxed">
+                Contactgegevens en notities van inwoners kwalificeren juridisch als bijzondere persoonsgegevens (politieke affiliatie). Deze data draait in een fysiek gescheiden, hardwarematig versleutelde kluis en is hermetisch afgeschermd van de openbare documenten- en scraperdatabase.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleBulkAnonymize(30)}
+              disabled={isBulkAnonymizing}
+              className="text-xs border-emerald-500/40 text-emerald-200 hover:bg-emerald-900/50 h-8"
+              title="Anonimiseer afgehandelde belafspraken ouder dan 30 dagen conform AVG data-retentie"
+            >
+              <RotateCcw className="w-3.5 h-3.5 mr-1.5 text-emerald-400" />
+              {isBulkAnonymizing ? "Anonimiseren..." : "AVG Retentie-schoonmaak (>30d)"}
+            </Button>
+          </div>
+        </div>
+
         {/* 4 VERTICALE KOLOMMEN (KANBAN OVERZICHT) */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 items-start">
           
@@ -653,8 +751,15 @@ export function BelafsprakenManager({ token, headers }: Props) {
         {/* Caller Header */}
         <div className="flex items-start justify-between gap-1">
           <div>
-            <div className="font-semibold text-foreground text-sm font-display leading-snug">
-              {item.name}
+            <div className="flex items-center gap-1.5">
+              <span className="font-semibold text-foreground text-sm font-display leading-snug">
+                {item.name}
+              </span>
+              {item.isAnonymized && (
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  AVG
+                </span>
+              )}
             </div>
             <div className="text-[11px] text-accent font-medium">
               Met: {item.fractielidNaam.split(" — ")[0]}
@@ -782,6 +887,24 @@ export function BelafsprakenManager({ token, headers }: Props) {
             >
               ↩ Heropenen
             </button>
+          )}
+
+          {item.status !== "ingepland" && (
+            item.isAnonymized ? (
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-1">
+                ✓ Geanonimiseerd
+              </span>
+            ) : (
+              <button
+                onClick={() => handleAnonymizeCitizen(item.id, item.name)}
+                disabled={anonymizingId === item.id}
+                className="px-2 py-1 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 hover:bg-amber-500 hover:text-white transition-colors flex items-center gap-1"
+                title="Anonimiseer inwonergegevens conform AVG Recht op vergetelheid"
+              >
+                <ShieldCheck className="w-3 h-3" />
+                {anonymizingId === item.id ? "..." : "Anonimiseer"}
+              </button>
+            )
           )}
 
           <button
