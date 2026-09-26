@@ -3065,6 +3065,7 @@ async function startServer() {
       ...safeUser,
       email: resolvedEmail,
       newsletterSubscribed,
+      municipality: safeUser.municipality || "steenwijkerland",
       billingStatus: safeUser.billingStatus || (safeUser.role === "admin" ? "exempt" : "paid"),
       isFullMember: memDetails.isFullMember,
       isLid: memDetails.isLid,
@@ -5442,13 +5443,24 @@ async function startServer() {
   });
 
   app.patch("/api/admin/users/:id/role", requireAuth, requireBoardOrAdmin, (req: any, res: any) => {
-    const { role } = req.body;
+    const { role, municipality } = req.body;
     const db = getDb();
     const user = db.users.find((u: any) => u.id === req.params.id);
     if (!user) return res.status(404).json({ error: "Gebruiker niet gevonden" });
-    user.role = role;
+    if (role !== undefined) user.role = role;
+    if (municipality !== undefined) user.municipality = municipality;
     saveDb(db);
-    res.json({ message: "Rol bijgewerkt", user });
+    res.json({ message: "Rol bijgewerkt", user: getSafeUserWithMembership(user) });
+  });
+
+  app.patch("/api/admin/users/:id/municipality", requireAuth, requireBoardOrAdmin, (req: any, res: any) => {
+    const { municipality } = req.body;
+    const db = getDb();
+    const user = db.users.find((u: any) => u.id === req.params.id);
+    if (!user) return res.status(404).json({ error: "Gebruiker niet gevonden" });
+    user.municipality = municipality || "steenwijkerland";
+    saveDb(db);
+    res.json({ message: "Gemeente bijgewerkt", user: getSafeUserWithMembership(user) });
   });
 
   app.patch("/api/admin/users/:id/newsletter", requireAuth, requireAdmin, (req: any, res: any) => {
@@ -10717,34 +10729,71 @@ Sitemap: ${baseUrl}/sitemap.xml
     };
   }
 
-  // 1. Get all council agenda topics (and scraping status)
+  // Helper to determine active municipality from request context
+  function resolveRequestMunicipality(req: any): "steenwijkerland" | "hoogeveen" {
+    const q = String(req.query?.municipality || "").toLowerCase().trim();
+    if (q === "hoogeveen" || q === "hgv") return "hoogeveen";
+    if (q === "steenwijkerland" || q === "swl") return "steenwijkerland";
+
+    const host = String(req.headers["x-forwarded-host"] || req.headers.host || req.headers.origin || "").toLowerCase();
+    if (host.includes("hoogeveen.") || host.includes("hgv.") || host.startsWith("hoogeveen-")) {
+      return "hoogeveen";
+    }
+
+    if (req.user?.municipality === "hoogeveen" && req.user?.role !== "admin") {
+      return "hoogeveen";
+    }
+
+    return "steenwijkerland";
+  }
+
+  // 1. Get all council agenda topics (and scraping status) - strictly isolated per municipality
   app.get("/api/council/topics", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
     const db = getDb();
+    const targetMunicipality = resolveRequestMunicipality(req);
     const rawTopics = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
-    const topics = rawTopics.map((t: any) => {
+    
+    // Filter agenda topics strictly by municipality
+    const scopedRawTopics = rawTopics.filter((t: any) => {
+      const topicMuni = t.municipality || "steenwijkerland";
+      return topicMuni === targetMunicipality;
+    });
+
+    const topics = scopedRawTopics.map((t: any) => {
       const withMember = enrichTopicWithMemberData(t, db);
       return enrichTopicWithStandpunten(withMember);
     });
-    const summary = db.councilScrapeSummary || {
+
+    const summaryKey = targetMunicipality === "hoogeveen" ? "councilScrapeSummaryHoogeveen" : "councilScrapeSummary";
+    const summary = db[summaryKey] || {
       lastScrapedAt: null,
       totalMeetingsScraped: 0,
       totalTopics: topics.length,
       bespreekstukkenCount: topics.filter((t: any) => t.category === "Oordeelvorming - bespreekstukken" && !t.isArchived).length,
       archivedCount: topics.filter((t: any) => t.isArchived).length,
-      status: "idle"
+      status: "idle",
+      municipality: targetMunicipality,
     };
 
-    // Get list of council members / fractieleden / admins for assignment dropdown
+    // Get list of council members / fractieleden for assignment dropdown (scoped to target municipality, admins visible to all)
     const councilMembers = (db.users || [])
-      .filter((u: any) => u.role === "raadslid" || u.role === "admin" || u.role === "fractielid")
+      .filter((u: any) => {
+        const isCouncil = u.role === "raadslid" || u.role === "admin" || u.role === "fractielid";
+        if (!isCouncil) return false;
+        if (u.role === "admin") return true;
+        const userMuni = u.municipality || "steenwijkerland";
+        return userMuni === targetMunicipality;
+      })
       .map((u: any) => ({
         id: u.id,
         username: u.username,
         fullName: u.fullName || u.username,
-        role: u.role
+        role: u.role,
+        municipality: u.municipality || "steenwijkerland",
       }));
 
     return res.json({
+      municipality: targetMunicipality,
       topics,
       summary,
       councilMembers
@@ -11684,8 +11733,13 @@ Sitemap: ${baseUrl}/sitemap.xml
   // -------------------------------------------------------------
   app.get("/api/council/research", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
     const db = getDb();
-    const items = Array.isArray(db.councilResearchItems) ? db.councilResearchItems : [];
-    return res.json({ items });
+    const targetMunicipality = resolveRequestMunicipality(req);
+    const rawItems = Array.isArray(db.councilResearchItems) ? db.councilResearchItems : [];
+    const items = rawItems.filter((r: any) => {
+      const muni = r.municipality || "steenwijkerland";
+      return muni === targetMunicipality;
+    });
+    return res.json({ items, municipality: targetMunicipality });
   });
 
   app.post("/api/council/research", requireAuth, requireCouncilOrAdmin, uploadResearchFile.single("file"), (req: any, res: any) => {
@@ -12086,7 +12140,15 @@ Sitemap: ${baseUrl}/sitemap.xml
   app.get("/api/council/dossiers", optionalAuth, (req: any, res: any) => {
     try {
       const db = getDb();
-      const allDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || [], db.customSubdossiers || {});
+      const targetMunicipality = resolveRequestMunicipality(req);
+      const scopedCustomDossiers = (db.customDossiers || []).filter((d: any) => {
+        const dMuni = d.municipality || "steenwijkerland";
+        return dMuni === targetMunicipality;
+      });
+      let allDossiers = getAllDossiers(scopedCustomDossiers, db.deletedDossierSlugs || [], db.customSubdossiers || {});
+      if (targetMunicipality === "hoogeveen") {
+        allDossiers = allDossiers.filter((d: any) => d.municipality === "hoogeveen" || scopedCustomDossiers.some((cd: any) => cd.slug === d.slug));
+      }
 
       const search = (req.query.search || "").toString().toLowerCase().trim();
       const category = (req.query.category || "").toString().trim();

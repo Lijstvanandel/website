@@ -107,6 +107,7 @@ interface UserItem {
   stripeCustomerId?: string;
   billingNotes?: string;
   createdAt?: string;
+  municipality?: string;
 }
 
 interface FractielidItem {
@@ -712,6 +713,24 @@ export default function AdminDashboard() {
       }
     } catch (error) {
       toast.error("Fout bij bijwerken");
+    }
+  };
+
+  const changeUserMunicipality = async (id: string, newMunicipality: string) => {
+    try {
+      const res = await fetch(`/api/admin/users/${id}/municipality`, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ municipality: newMunicipality }),
+      });
+      if (res.ok) {
+        toast.success(`Gemeente bijgewerkt naar ${newMunicipality === "hoogeveen" ? "Hoogeveen" : "Steenwijkerland"}`);
+        fetchUsers();
+      } else {
+        toast.error("Fout bij bijwerken gemeente");
+      }
+    } catch (error) {
+      toast.error("Fout bij bijwerken gemeente");
     }
   };
 
@@ -1671,6 +1690,7 @@ export default function AdminDashboard() {
                     <th className="px-4 py-3">E-mailadres</th>
                     <th className="px-4 py-3">Woonplaats</th>
                     <th className="px-4 py-3">Rol</th>
+                    <th className="px-4 py-3">Gemeente</th>
                     <th className="px-4 py-3">Contributie</th>
                     <th className="px-4 py-3">Nieuwsbrief</th>
                     <th className="px-4 py-3">Status</th>
@@ -1742,6 +1762,17 @@ export default function AdminDashboard() {
                               {u.role}
                             </span>
                           )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <select
+                            className="text-xs px-2.5 py-1 rounded border outline-none cursor-pointer bg-background font-medium text-foreground border-accent/30 hover:border-accent"
+                            value={u.municipality || "steenwijkerland"}
+                            onChange={(e) => changeUserMunicipality(u.id, e.target.value)}
+                            title="Kies de gemeente van dit lid / raadslid (Steenwijkerland of Hoogeveen)"
+                          >
+                            <option value="steenwijkerland">Steenwijkerland</option>
+                            <option value="hoogeveen">Hoogeveen</option>
+                          </select>
                         </td>
                         <td className="px-4 py-3">
                           <select
