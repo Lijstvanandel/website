@@ -12,13 +12,32 @@ function cleanFrontendAssets() {
     return;
   }
 
-  // 1. Remove dist/assets folder safely
+  // 1. Remove dist/assets folder safely and re-sync static assets from public/assets
   const assetsDir = path.join(distDir, 'assets');
   if (fs.existsSync(assetsDir)) {
     try {
       fs.rmSync(assetsDir, { recursive: true, force: true });
     } catch (err) {
       console.warn('Notice: Could not completely remove dist/assets, proceeding:', err.message);
+    }
+  }
+
+  // Ensure dist/assets exists and copy static media from public/assets
+  const publicAssetsDir = path.join(process.cwd(), 'public', 'assets');
+  if (fs.existsSync(publicAssetsDir)) {
+    try {
+      fs.mkdirSync(assetsDir, { recursive: true });
+      for (const f of fs.readdirSync(publicAssetsDir)) {
+        const src = path.join(publicAssetsDir, f);
+        const dest = path.join(assetsDir, f);
+        try {
+          if (fs.statSync(src).isFile()) {
+            fs.copyFileSync(src, dest);
+          }
+        } catch (_) {}
+      }
+    } catch (err) {
+      console.warn('Notice: Could not pre-populate dist/assets from public/assets:', err.message);
     }
   }
 

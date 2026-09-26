@@ -364,25 +364,42 @@ export default function Raadspaneel() {
   const [isParking, setIsParking] = useState(false);
 
 
-  // Safe JSON parser for API responses to prevent HTML syntax errors
+  // Safe JSON parser for API responses to prevent HTML syntax errors and raw doctype dumps
   const parseApiResponse = async (res: Response) => {
     const text = await res.text();
+    const trimmed = text.trim();
+    const isHtml = trimmed.startsWith("<") || res.headers.get("content-type")?.includes("text/html");
+
+    if (isHtml) {
+      if (res.status === 504 || res.status === 502) {
+        throw new Error("De externe gemeenteserver reageerde te traag (timeout). Probeer het over een momentje nogmaals.");
+      }
+      if (res.status === 401 || res.status === 403) {
+        throw new Error("Uw inlogsessie is verlopen of niet geldig. Log opnieuw in.");
+      }
+      throw new Error("De server is momenteel bezig met initialiseren of herstarten. Gegevens worden geladen...");
+    }
+
     try {
       return JSON.parse(text);
     } catch (_err) {
       if (res.status === 504 || res.status === 502) {
         throw new Error("De externe gemeenteserver reageerde te traag (timeout). Probeer het over een momentje nogmaals.");
       }
-      throw new Error(`Serverfout (${res.status}): ${text.slice(0, 100)}`);
+      throw new Error(`Serverfout (${res.status}): Ongeldig antwoord van de server.`);
     }
   };
 
-  const fetchCouncilData = useCallback(async (quiet = false) => {
+  const fetchCouncilData = useCallback(async (quiet = false, retryCount = 0) => {
     if (!token) return;
-    if (!quiet) setLoading(true);
+    if (!quiet && retryCount === 0) setLoading(true);
     try {
-      const res = await fetch("/api/council/topics", {
-        headers: { Authorization: `Bearer ${token}` },
+      const res = await fetch(`/api/council/topics?portal=${portalConfig.tenantId}&municipality=${portalConfig.tenantId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "x-portal-tenant": portalConfig.tenantId,
+          "x-municipality": portalConfig.tenantId,
+        },
       });
       const data = await parseApiResponse(res);
       if (!res.ok) {
@@ -406,12 +423,19 @@ export default function Raadspaneel() {
         }
       }
     } catch (err: any) {
+      // If server was temporarily warming up / restarting, retry once automatically without showing error toast
+      if (retryCount < 2 && (err?.message?.includes("initialiseren") || err?.message?.includes("herstarten"))) {
+        setTimeout(() => {
+          fetchCouncilData(true, retryCount + 1);
+        }, 1200);
+        return;
+      }
       console.error(err);
       if (!quiet) toast.error(err.message || "Fout bij inladen");
     } finally {
-      if (!quiet) setLoading(false);
+      if (!quiet && retryCount === 0) setLoading(false);
     }
-  }, [token, selectedTopicId, searchParams]);
+  }, [token, selectedTopicId, searchParams, portalConfig.tenantId]);
 
   useEffect(() => {
     if (isAuthenticated && isCouncilOrAdmin) {
@@ -489,7 +513,9 @@ export default function Raadspaneel() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
+          "x-portal-tenant": portalConfig.tenantId,
+          "x-municipality": portalConfig.tenantId,
         },
       });
       const data = await parseApiResponse(res);
@@ -535,6 +561,8 @@ export default function Raadspaneel() {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
+          "x-portal-tenant": portalConfig.tenantId,
+          "x-municipality": portalConfig.tenantId,
         },
       });
       const data = await parseApiResponse(res);

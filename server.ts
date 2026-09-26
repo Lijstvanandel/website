@@ -2795,6 +2795,58 @@ async function startServer() {
   app.use("/api/uploads", express.static(uploadsPath, staticUploadsOptions));
   app.use("/api/uploads", express.static(distUploadsPath, staticUploadsOptions));
 
+  // Serve static public assets (/assets, /maps, and public root) with fallback
+  const publicDir = path.join(process.cwd(), "public");
+  const publicAssetsDir = path.join(publicDir, "assets");
+  const distAssetsDir = path.join(process.cwd(), "dist", "assets");
+  const staticAssetsOptions = {
+    maxAge: "30d",
+    setHeaders: (res: any, filePath: string) => {
+      if (/\.(jpg|jpeg|png|webp|svg|ico)$/i.test(filePath)) {
+        res.setHeader("Cache-Control", "public, max-age=2592000, immutable");
+        res.setHeader("Access-Control-Allow-Origin", "*");
+      }
+    }
+  };
+
+  app.use("/assets", express.static(publicAssetsDir, staticAssetsOptions));
+  app.use("/assets", express.static(distAssetsDir, staticAssetsOptions));
+  app.use("/public/assets", express.static(publicAssetsDir, staticAssetsOptions));
+  app.use("/public/assets", express.static(distAssetsDir, staticAssetsOptions));
+  app.use("/maps", express.static(path.join(publicDir, "maps"), staticAssetsOptions));
+  app.use("/maps", express.static(path.join(process.cwd(), "dist", "maps"), staticAssetsOptions));
+
+  // Fallback handler for /assets when direct static match didn't find the file
+  app.use(["/assets", "/public/assets"], (req: any, res: any, next: any) => {
+    const rawPath = req.path || "";
+    const cleanPath = rawPath.replace(/^\/+/, "").replace(/\.\./g, "");
+    const baseName = path.basename(cleanPath);
+
+    const candidatePaths = [
+      path.join(publicAssetsDir, cleanPath),
+      path.join(distAssetsDir, cleanPath),
+      path.join(publicAssetsDir, baseName),
+      path.join(distAssetsDir, baseName),
+      path.join(publicDir, cleanPath),
+      path.join(process.cwd(), "dist", cleanPath),
+    ];
+
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p) && fs.statSync(p).isFile()) {
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.setHeader("Cache-Control", "public, max-age=2592000, immutable");
+        const ext = path.extname(p).toLowerCase();
+        if (ext === ".png") res.setHeader("Content-Type", "image/png");
+        else if (ext === ".jpg" || ext === ".jpeg") res.setHeader("Content-Type", "image/jpeg");
+        else if (ext === ".webp") res.setHeader("Content-Type", "image/webp");
+        else if (ext === ".svg") res.setHeader("Content-Type", "image/svg+xml");
+        else if (ext === ".ico") res.setHeader("Content-Type", "image/x-icon");
+        return res.sendFile(p);
+      }
+    }
+    next();
+  });
+
   // Fallback handler for /uploads when direct static match didn't find the file
   app.use("/uploads", (req: any, res: any) => {
     const rawPath = req.path || "";
@@ -12669,7 +12721,32 @@ Sitemap: ${baseUrl}/sitemap.xml
   app.get("/api/council/catalog/all-documents", optionalAuth, (req: any, res: any) => {
     try {
       const db = getDb();
-      const docs = getAllCatalogDocuments(db);
+      const targetMunicipality = resolveRequestMunicipality(req);
+      let docs: any[] = [];
+
+      if (targetMunicipality === "hoogeveen") {
+        const hoogeveenDossiers = getHoogeveenDossiers();
+        const customHoogeveen = (db.customDossiers || []).filter((d: any) => d.municipality === "hoogeveen");
+        const allHgDossiers = [...hoogeveenDossiers, ...customHoogeveen];
+        const map = new Map<string, any>();
+        allHgDossiers.forEach((dossier) => {
+          (dossier.documents || []).forEach((doc: any) => {
+            const key = doc.bestandsnaam || doc.id || doc.titel;
+            if (key && !map.has(key)) {
+              map.set(key, doc);
+            }
+          });
+        });
+        docs = Array.from(map.values()).sort((a: any, b: any) => {
+          if (!a.datum && !b.datum) return a.titel?.localeCompare(b.titel || "") || 0;
+          if (!a.datum) return 1;
+          if (!b.datum) return -1;
+          return new Date(b.datum).getTime() - new Date(a.datum).getTime();
+        });
+      } else {
+        docs = getAllCatalogDocuments(db);
+      }
+
       res.json({ documents: docs, total: docs.length });
     } catch (err: any) {
       console.error("[COUNCIL CATALOG ERROR]:", err);
@@ -12774,10 +12851,13 @@ Sitemap: ${baseUrl}/sitemap.xml
       const rawSlug = decodeURIComponent(req.params.slug || "").trim();
       const db = getDb();
       const targetMunicipality = resolveRequestMunicipality(req);
-      const hoogeveenDossiers: any[] = getHoogeveenDossiers();
       const allDossiers = targetMunicipality === "hoogeveen"
-        ? [...hoogeveenDossiers, ...(db.customDossiers || []).filter((d: any) => d.municipality === "hoogeveen")]
-        : [...hoogeveenDossiers, ...getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || [], db.customSubdossiers || {})];
+        ? [...getHoogeveenDossiers(), ...(db.customDossiers || []).filter((d: any) => d.municipality === "hoogeveen")]
+        : getAllDossiers(
+            (db.customDossiers || []).filter((d: any) => (d.municipality || "steenwijkerland") === "steenwijkerland"),
+            db.deletedDossierSlugs || [],
+            db.customSubdossiers || {}
+          );
       
       const searchSlug = rawSlug.toLowerCase();
       const normalizeClean = (str: string) => (str || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -12810,6 +12890,8 @@ Sitemap: ${baseUrl}/sitemap.xml
         const topics = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
         const matchingTopic = topics.find((t: any) => {
           if (!t) return false;
+          const topicMuni = t.municipality || "steenwijkerland";
+          if (topicMuni !== targetMunicipality) return false;
           const topicSlug = slugify(t.title || "");
           const expectedDossierSlug = `ondersteuningsdossier-${topicSlug}`;
           return (
@@ -12929,6 +13011,7 @@ Sitemap: ${baseUrl}/sitemap.xml
       }
 
       const db = getDb();
+      const targetMunicipality = resolveRequestMunicipality(req);
       const created = createCustomDossier(
         {
           title,
@@ -12938,6 +13021,7 @@ Sitemap: ${baseUrl}/sitemap.xml
           tags: Array.isArray(tags) ? tags : typeof tags === "string" ? tags.split(",").map((t: string) => t.trim()) : [],
           wijkSlug: wijkSlug || "",
           wijkNaam: wijkNaam || "",
+          municipality: targetMunicipality,
         },
         db,
         saveDb
