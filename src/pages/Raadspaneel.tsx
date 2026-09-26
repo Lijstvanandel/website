@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Navigate, Link, useSearchParams, useParams } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
+import { getPortalConfig } from "@/utils/portalConfig";
 import { DossierOverview } from "@/components/council/DossierOverview";
 import {
   FileText,
@@ -184,6 +185,7 @@ function isInvalidOrJunkTopic(rawTitle: string): boolean {
 
 export default function Raadspaneel() {
   const { user, token, isAuthenticated } = useAuth();
+  const portalConfig = getPortalConfig();
   const { slug } = useParams<{ slug?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -1114,16 +1116,16 @@ export default function Raadspaneel() {
               </span>
               <span className="text-xs text-muted-foreground flex items-center gap-1">
                 <Clock className="w-3.5 h-3.5 text-accent" />
-                Gemeenteraad Steenwijkerland
+                Gemeenteraad {portalConfig.municipalityName}
               </span>
             </div>
             <h1 className="text-3xl sm:text-4xl font-display text-zinc-950 dark:text-white font-bold">
-              {isCouncilOrAdmin ? "Raadspaneel Steenwijkerland" : "Gemeentelijke Dossiers & Raadsstukken"}
+              {isCouncilOrAdmin ? (portalConfig.isPortalMode ? `Raadsportaal ${portalConfig.municipalityName}` : "Raadspaneel Steenwijkerland") : "Gemeentelijke Dossiers & Raadsstukken"}
             </h1>
             <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
               {isCouncilOrAdmin
                 ? "Vergaderstukken, bespreekstukken en voorbereiding voor de gemeenteraadsfractie. Verdeel onderwerpen onder fractieleden, markeer gelezen documenten en deel interne notities."
-                : "Openbaar inzicht in alle gemeentelijke beleidsdossiers, raadsstukken en besluitvorming van Steenwijkerland en haar wijken en kernen."}
+                : `Openbaar inzicht in alle gemeentelijke beleidsdossiers, raadsstukken en besluitvorming van ${portalConfig.municipalityName} en haar wijken en kernen.`}
             </p>
           </div>
 
@@ -1150,10 +1152,10 @@ export default function Raadspaneel() {
                       ? "border-rose-500/50 bg-rose-500/10 text-rose-700 dark:text-rose-400 hover:bg-rose-500/20"
                       : "border-sky-500/40 text-sky-600 dark:text-sky-400 hover:bg-sky-500/10"
                   }`}
-                  title="Controleer iBabs direct op nieuwe documenten of 'vrijdagmiddag-dumps'"
+                  title={`Controleer ${portalConfig.isPortalMode ? "NotuBiz" : "iBabs"} direct op nieuwe documenten of 'vrijdagmiddag-dumps'`}
                 >
                   <Search className={`w-3.5 h-3.5 mr-1.5 ${isDiffChecking ? "animate-spin" : ""}`} />
-                  {isDiffChecking ? "Controleren..." : "iBabs Diff-Check"}
+                  {isDiffChecking ? "Controleren..." : `${portalConfig.isPortalMode ? "NotuBiz" : "iBabs"} Diff-Check`}
                   {topicsWithDumps.length > 0 && (
                     <span className="ml-1.5 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-rose-500 text-white">
                       {topicsWithDumps.length}
@@ -1164,7 +1166,8 @@ export default function Raadspaneel() {
                   onClick={handleTriggerScrape}
                   disabled={isScraping || isClearing || isDiffChecking}
                   variant="outline"
-                  className="border-accent/40 text-accent hover:bg-accent/15 text-xs font-semibold h-9 rounded-xl shadow-xs"
+                  className="border-accent/40 text-accent hover:bg-accent/15 text-xs font-semibold h-9 rounded-xl shadow-xs cursor-pointer"
+                  title={`Ophalen van alle vergaderstukken van ${portalConfig.municipalityName}`}
                 >
                   <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isScraping ? "animate-spin" : ""}`} />
                   {isScraping ? "Scrapen..." : "Vergaderstukken Nu Ophalen"}
@@ -1467,7 +1470,7 @@ export default function Raadspaneel() {
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5 max-w-3xl">
-                      Het college heeft recent een Nota van Inlichtingen, gewijzigd raadsvoorstel of financiële bijlage aan iBabs toegevoegd. Controleer de stukken om te voorkomen dat u in de raadszaal verrast wordt met nieuwere stukken.
+                      Het college heeft recent een Nota van Inlichtingen, gewijzigd raadsvoorstel of financiële bijlage aan {portalConfig.isPortalMode ? "NotuBiz" : "iBabs"} toegevoegd. Controleer de stukken om te voorkomen dat u in de raadszaal verrast wordt met nieuwere stukken.
                     </p>
                   </div>
                 </div>
@@ -1504,7 +1507,7 @@ export default function Raadspaneel() {
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 rounded-xl bg-muted/40 border border-border/80 text-xs">
               <div className="flex items-center gap-2 text-muted-foreground">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                <span className="font-semibold text-foreground">iBabs Watchdog Diff-Checker:</span>
+                <span className="font-semibold text-foreground">{portalConfig.isPortalMode ? "NotuBiz" : "iBabs"} Watchdog Diff-Checker:</span>
                 <span>
                   {summary?.activePollingIntervalMinutes
                     ? `Actief (Controleert elke ${summary.activePollingIntervalMinutes} minuten ivm vergaderritme)`
