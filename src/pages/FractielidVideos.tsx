@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, Video, Calendar, Tag, MapPin, AlertCircle, Share2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,7 @@ interface VideoItem {
   fractieledenIds?: string[];
 }
 
-const FractielidVideos = () => {
+export default function FractielidVideos() {
   const { id } = useParams<{ id: string }>();
   const [member, setMember] = useState<FractielidItem | null>(null);
   const [videos, setVideos] = useState<VideoItem[]>([]);
@@ -365,6 +365,4 @@ const FractielidVideos = () => {
       />
     </div>
   );
-};
-
-export default FractielidVideos;
+}

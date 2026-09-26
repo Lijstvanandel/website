@@ -12823,7 +12823,9 @@ Sitemap: ${baseUrl}/sitemap.xml
           textToImport = fs.readFileSync(req.file.path, "utf-8");
           try {
             fs.unlinkSync(req.file.path);
-          } catch (_e) {}
+          } catch (_e) {
+            /* ignore cleanup error */
+          }
         } else if (req.body && req.body.logText) {
           textToImport = req.body.logText;
         }

@@ -240,7 +240,9 @@ export async function parsePdfBuffer(buf: Buffer): Promise<string> {
           if (res?.text) extractedText = String(res.text);
         }
         if (typeof parser.destroy === "function") {
-          try { await parser.destroy(); } catch (_) {}
+          try { await parser.destroy(); } catch (_destErr) {
+            /* ignore parser destroy error */
+          }
         }
       } catch (_e1) {
         // ignore
