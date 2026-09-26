@@ -15,6 +15,7 @@ import {
   UserPlus,
   Lock,
   Shield,
+  Building2,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import logo from "@/assets/logo.png";
 import { BUURTKAART_43_WIJKEN, LEGACY_SLUG_MAP } from "@/data/defaultWijken";
+import { getPortalConfig } from "@/utils/portalConfig";
 
 const navItems = [
   { to: "/standpunten", label: "Standpunten" },
@@ -39,6 +41,13 @@ const navItems = [
   { to: "/nieuws", label: "Nieuws" },
   { to: "/wijken-en-kernen", label: "Wijken en kernen" },
   { to: "/contact", label: "Contact" },
+];
+
+const portalNavItems = [
+  { to: "/raadspaneel?tab=dossiers", label: "Dossiers & Stukken" },
+  { to: "/raadspaneel?tab=agenda", label: "Raadskalender" },
+  { to: "/raadspaneel?tab=vragenformulator", label: "Vragen & Moties" },
+  { to: "/raadspaneel?tab=onderzoeken", label: "Onderzoek" },
 ];
 
 const partijItems = [
@@ -135,6 +144,8 @@ export const Header = () => {
     return "Steenwijkerland";
   }, [location.pathname, apiWijkenMap]);
 
+  const portalConfig = getPortalConfig();
+
   return (
     <>
       <header className="sticky top-0 z-40 backdrop-blur-md bg-background/95 border-b border-accent/20 w-full transition-colors">
@@ -143,100 +154,146 @@ export const Header = () => {
           
           {/* Left Side: Logo & Brand Name + Desktop Navigation */}
           <div className="flex items-center gap-2.5 sm:gap-4 lg:gap-4 xl:gap-6 min-w-0 shrink">
-            {/* Logo & Brand Name with animated wijk/kern subtitle (stable width so navbar never shifts) */}
-            <Link
-              to="/"
-              className="flex items-center gap-2 sm:gap-2.5 group shrink-0 select-none w-[190px] sm:w-[230px] lg:w-[270px] xl:w-[310px]"
-            >
-              <img
-                src={logo}
-                alt="Lijst van Andel logo"
-                className="w-10 h-10 sm:w-12 sm:h-12 lg:w-14 lg:h-14 xl:w-16 xl:h-16 rounded-full object-cover transition-transform duration-300 group-hover:scale-105 shrink-0 shadow-sm ring-1 ring-accent/30"
-              />
-              <div className="leading-tight flex-1 min-w-0">
-                <div className="font-display text-base sm:text-lg lg:text-xl xl:text-2xl tracking-wide text-foreground whitespace-nowrap">
-                  Lijst van Andel
+            {portalConfig.isPortalMode ? (
+              // Neutral Council Portal Mode (Hoogeveen)
+              <Link
+                to="/raadspaneel"
+                className="flex items-center gap-2.5 sm:gap-3 group shrink-0 select-none"
+              >
+                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-accent/15 border border-accent/35 flex items-center justify-center text-accent shadow-sm group-hover:scale-105 transition-transform">
+                  <Building2 className="w-5 h-5 sm:w-6 sm:h-6" />
                 </div>
-                <div className="h-4 sm:h-4.5 overflow-visible flex items-center">
-                  <AnimatePresence mode="wait" initial={false}>
-                    <motion.div
-                      key={currentSubtitle}
-                      initial={{ opacity: 0, y: 7, filter: "blur(2px)" }}
-                      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                      exit={{ opacity: 0, y: -7, filter: "blur(2px)" }}
-                      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-                      className="text-[8.5px] sm:text-[9.5px] lg:text-[10px] xl:text-[10.5px] uppercase tracking-[0.08em] sm:tracking-[0.10em] xl:tracking-[0.12em] font-semibold text-accent whitespace-nowrap"
-                      title={currentSubtitle}
-                    >
-                      {currentSubtitle}
-                    </motion.div>
-                  </AnimatePresence>
+                <div className="leading-tight flex-1 min-w-0">
+                  <div className="font-display text-base sm:text-lg lg:text-xl tracking-wide text-foreground whitespace-nowrap">
+                    {portalConfig.portalTitle}
+                  </div>
+                  <div className="text-[9.5px] sm:text-[10px] uppercase tracking-wider font-semibold text-accent whitespace-nowrap">
+                    {portalConfig.portalSubtitle}
+                  </div>
                 </div>
-              </div>
-            </Link>
+              </Link>
+            ) : (
+              // Full Party Website (Lijst van Andel Steenwijkerland)
+              <Link
+                to="/"
+                className="flex items-center gap-2 sm:gap-2.5 group shrink-0 select-none w-[190px] sm:w-[230px] lg:w-[270px] xl:w-[310px]"
+              >
+                <img
+                  src={logo}
+                  alt="Lijst van Andel logo"
+                  className="w-10 h-10 sm:w-12 sm:h-12 lg:w-14 lg:h-14 xl:w-16 xl:h-16 rounded-full object-cover transition-transform duration-300 group-hover:scale-105 shrink-0 shadow-sm ring-1 ring-accent/30"
+                />
+                <div className="leading-tight flex-1 min-w-0">
+                  <div className="font-display text-base sm:text-lg lg:text-xl xl:text-2xl tracking-wide text-foreground whitespace-nowrap">
+                    Lijst van Andel
+                  </div>
+                  <div className="h-4 sm:h-4.5 overflow-visible flex items-center">
+                    <AnimatePresence mode="wait" initial={false}>
+                      <motion.div
+                        key={currentSubtitle}
+                        initial={{ opacity: 0, y: 7, filter: "blur(2px)" }}
+                        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                        exit={{ opacity: 0, y: -7, filter: "blur(2px)" }}
+                        transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+                        className="text-[8.5px] sm:text-[9.5px] lg:text-[10px] xl:text-[10.5px] uppercase tracking-[0.08em] sm:tracking-[0.10em] xl:tracking-[0.12em] font-semibold text-accent whitespace-nowrap"
+                        title={currentSubtitle}
+                      >
+                        {currentSubtitle}
+                      </motion.div>
+                    </AnimatePresence>
+                  </div>
+                </div>
+              </Link>
+            )}
 
             {/* Desktop Navigation starting cleanly on the left */}
-            <nav className="hidden lg:flex items-center gap-0.5 xl:gap-1 2xl:gap-2 shrink">
-              {/* Mensen Dropdown */}
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  className={`px-2 xl:px-3 py-1.5 text-xs xl:text-sm uppercase tracking-wider font-medium transition-colors relative inline-flex items-center gap-1 outline-none whitespace-nowrap ${
-                    partijActive ? "text-accent" : "text-foreground/85 hover:text-accent"
-                  }`}
-                >
-                  <span>Mensen</span>
-                  <ChevronDown className="w-3.5 h-3.5 opacity-80" />
-                  {partijActive && (
-                    <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-5 h-0.5 bg-accent" />
-                  )}
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="min-w-[170px] bg-card border border-border/90 shadow-xl z-50 p-1.5 rounded-xl">
-                  {partijItems.map((item) => (
-                    <DropdownMenuItem key={item.to} asChild className="focus:bg-accent focus:text-accent-foreground rounded-lg">
-                      <NavLink
-                        to={item.to}
-                        className={({ isActive }) =>
-                          `w-full px-3 py-2 text-xs xl:text-sm uppercase tracking-wider font-medium cursor-pointer whitespace-nowrap transition-colors ${
-                            isActive ? "text-accent font-semibold" : "text-foreground hover:text-accent"
-                          }`
-                        }
-                      >
-                        {item.label}
-                      </NavLink>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              {/* Standard Nav Items */}
-              {navItems.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.to === "/"}
-                  className={({ isActive }) =>
-                    `px-2 xl:px-3 py-1.5 text-xs xl:text-sm uppercase tracking-wider font-medium transition-colors relative whitespace-nowrap ${
-                      isActive ? "text-accent font-semibold" : "text-foreground/85 hover:text-accent"
-                    }`
-                  }
-                >
-                  {({ isActive }) => (
-                    <>
+            {portalConfig.isPortalMode ? (
+              // Dedicated Council Navigation Tabs in Portal Mode
+              <nav className="hidden lg:flex items-center gap-1 xl:gap-2 shrink">
+                {portalNavItems.map((item) => {
+                  const targetTab = item.to.split("tab=")[1];
+                  const currentTab = new URLSearchParams(location.search).get("tab") || "dossiers";
+                  const isActive = location.pathname.startsWith("/raadspaneel") && currentTab === targetTab;
+                  return (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      className={`px-2.5 xl:px-3.5 py-1.5 text-xs xl:text-sm uppercase tracking-wider font-medium transition-colors relative whitespace-nowrap ${
+                        isActive ? "text-accent font-semibold" : "text-foreground/85 hover:text-accent"
+                      }`}
+                    >
                       <span>{item.label}</span>
                       {isActive && (
                         <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-5 h-0.5 bg-accent" />
                       )}
-                    </>
-                  )}
-                </NavLink>
-              ))}
-            </nav>
+                    </NavLink>
+                  );
+                })}
+              </nav>
+            ) : (
+              // Standard Party Nav Items
+              <nav className="hidden lg:flex items-center gap-0.5 xl:gap-1 2xl:gap-2 shrink">
+                {/* Mensen Dropdown */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    className={`px-2 xl:px-3 py-1.5 text-xs xl:text-sm uppercase tracking-wider font-medium transition-colors relative inline-flex items-center gap-1 outline-none whitespace-nowrap ${
+                      partijActive ? "text-accent" : "text-foreground/85 hover:text-accent"
+                    }`}
+                  >
+                    <span>Mensen</span>
+                    <ChevronDown className="w-3.5 h-3.5 opacity-80" />
+                    {partijActive && (
+                      <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-5 h-0.5 bg-accent" />
+                    )}
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="min-w-[170px] bg-card border border-border/90 shadow-xl z-50 p-1.5 rounded-xl">
+                    {partijItems.map((item) => (
+                      <DropdownMenuItem key={item.to} asChild className="focus:bg-accent focus:text-accent-foreground rounded-lg">
+                        <NavLink
+                          to={item.to}
+                          className={({ isActive }) =>
+                            `w-full px-3 py-2 text-xs xl:text-sm uppercase tracking-wider font-medium cursor-pointer whitespace-nowrap transition-colors ${
+                              isActive ? "text-accent font-semibold" : "text-foreground hover:text-accent"
+                            }`
+                          }
+                        >
+                          {item.label}
+                        </NavLink>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* Standard Nav Items */}
+                {navItems.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.to === "/"}
+                    className={({ isActive }) =>
+                      `px-2 xl:px-3 py-1.5 text-xs xl:text-sm uppercase tracking-wider font-medium transition-colors relative whitespace-nowrap ${
+                        isActive ? "text-accent font-semibold" : "text-foreground/85 hover:text-accent"
+                      }`
+                    }
+                  >
+                    {({ isActive }) => (
+                      <>
+                        <span>{item.label}</span>
+                        {isActive && (
+                          <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-5 h-0.5 bg-accent" />
+                        )}
+                      </>
+                    )}
+                  </NavLink>
+                ))}
+              </nav>
+            )}
           </div>
 
           {/* Right-side Actions & Authentication Controls */}
           <div className="flex items-center gap-1 sm:gap-1.5 lg:gap-1.5 xl:gap-2 shrink-0">
-            {/* 1. Word lid Button (alleen als bezoeker nog niet is ingelogd) */}
-            {!isAuthenticated && (
+            {/* 1. Word lid Button (alleen op de partijwebsite en als bezoeker nog niet is ingelogd) */}
+            {!portalConfig.isPortalMode && !isAuthenticated && (
               <Link to="/registreren" className="hidden sm:inline-flex">
                 <Button
                   className="bg-primary hover:bg-primary/90 text-primary-foreground border border-accent/40 uppercase tracking-wider text-xs font-semibold px-2.5 xl:px-3 h-8 sm:h-9 whitespace-nowrap shrink-0 shadow-sm"
@@ -253,13 +310,22 @@ export const Header = () => {
             {/* 3. Authentication Buttons (Logged in vs Guest) */}
             {isAuthenticated ? (
               <div className="hidden sm:flex items-center gap-1 shrink-0">
-                <Link to="/dashboard">
+                <Link to={portalConfig.isPortalMode ? "/raadspaneel" : "/dashboard"}>
                   <Button
                     variant="outline"
                     className="border-accent/40 text-accent hover:bg-accent/15 uppercase tracking-wider text-xs font-semibold px-2 xl:px-3 h-8 sm:h-9 whitespace-nowrap"
                   >
-                    <User className="w-3.5 h-3.5 mr-1" />
-                    <span>Dashboard</span>
+                    {portalConfig.isPortalMode ? (
+                      <>
+                        <Building2 className="w-3.5 h-3.5 mr-1" />
+                        <span>Raadspaneel</span>
+                      </>
+                    ) : (
+                      <>
+                        <User className="w-3.5 h-3.5 mr-1" />
+                        <span>Dashboard</span>
+                      </>
+                    )}
                   </Button>
                 </Link>
                 <Button
@@ -491,59 +557,79 @@ export const Header = () => {
         {mobileOpen && (
           <div className="lg:hidden border-t border-accent/20 bg-background/98 backdrop-blur-md shadow-2xl animate-in slide-in-from-top-2 duration-200">
             <nav className="max-w-[1720px] mx-auto px-5 py-5 flex flex-col gap-1.5">
-              {/* Current Active Location Indicator if on a wijk page */}
-              {currentSubtitle !== "Steenwijkerland" && (
-                <div className="px-3 py-1.5 mb-2 rounded bg-accent/10 border border-accent/20 text-accent text-xs font-semibold uppercase tracking-wider flex items-center justify-between">
-                  <span>Huidige locatie:</span>
-                  <span className="font-bold">{currentSubtitle}</span>
-                </div>
-              )}
-
-              {/* Mensen Accordion in Mobile */}
-              <button
-                onClick={() => setPartijMobileOpen((o) => !o)}
-                className={`px-3 py-3 text-sm uppercase tracking-wider font-medium border-l-2 flex items-center justify-between transition-colors ${
-                  partijActive ? "text-accent border-accent font-semibold" : "text-foreground/80 border-transparent"
-                }`}
-              >
-                <span>Mensen</span>
-                <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${partijMobileOpen ? "rotate-180" : ""}`} />
-              </button>
-              {partijMobileOpen &&
-                partijItems.map((item) => (
+              {/* Portal Mode Navigation Links vs Standard Party Navigation */}
+              {portalConfig.isPortalMode ? (
+                portalNavItems.map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}
                     onClick={() => setMobileOpen(false)}
                     className={({ isActive }) =>
-                      `pl-8 pr-3 py-2.5 text-xs uppercase tracking-wider font-medium border-l-2 transition-colors ${
-                        isActive ? "text-accent border-accent font-bold" : "text-foreground/75 border-transparent"
+                      `px-3 py-3 text-sm uppercase tracking-wider font-medium border-l-2 transition-colors ${
+                        isActive ? "text-accent border-accent font-bold" : "text-foreground/80 border-transparent"
                       }`
                     }
                   >
                     {item.label}
                   </NavLink>
-                ))}
+                ))
+              ) : (
+                <>
+                  {/* Current Active Location Indicator if on a wijk page */}
+                  {currentSubtitle !== "Steenwijkerland" && (
+                    <div className="px-3 py-1.5 mb-2 rounded bg-accent/10 border border-accent/20 text-accent text-xs font-semibold uppercase tracking-wider flex items-center justify-between">
+                      <span>Huidige locatie:</span>
+                      <span className="font-bold">{currentSubtitle}</span>
+                    </div>
+                  )}
 
-              {/* Nav Items in Mobile */}
-              {navItems.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  onClick={() => setMobileOpen(false)}
-                  className={({ isActive }) =>
-                    `px-3 py-3 text-sm uppercase tracking-wider font-medium border-l-2 transition-colors ${
-                      isActive ? "text-accent border-accent font-bold" : "text-foreground/80 border-transparent"
-                    }`
-                  }
-                >
-                  {item.label}
-                </NavLink>
-              ))}
+                  {/* Mensen Accordion in Mobile */}
+                  <button
+                    onClick={() => setPartijMobileOpen((o) => !o)}
+                    className={`px-3 py-3 text-sm uppercase tracking-wider font-medium border-l-2 flex items-center justify-between transition-colors ${
+                      partijActive ? "text-accent border-accent font-semibold" : "text-foreground/80 border-transparent"
+                    }`}
+                  >
+                    <span>Mensen</span>
+                    <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${partijMobileOpen ? "rotate-180" : ""}`} />
+                  </button>
+                  {partijMobileOpen &&
+                    partijItems.map((item) => (
+                      <NavLink
+                        key={item.to}
+                        to={item.to}
+                        onClick={() => setMobileOpen(false)}
+                        className={({ isActive }) =>
+                          `pl-8 pr-3 py-2.5 text-xs uppercase tracking-wider font-medium border-l-2 transition-colors ${
+                            isActive ? "text-accent border-accent font-bold" : "text-foreground/75 border-transparent"
+                          }`
+                        }
+                      >
+                        {item.label}
+                      </NavLink>
+                    ))}
+
+                  {/* Nav Items in Mobile */}
+                  {navItems.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      onClick={() => setMobileOpen(false)}
+                      className={({ isActive }) =>
+                        `px-3 py-3 text-sm uppercase tracking-wider font-medium border-l-2 transition-colors ${
+                          isActive ? "text-accent border-accent font-bold" : "text-foreground/80 border-transparent"
+                        }`
+                      }
+                    >
+                      {item.label}
+                    </NavLink>
+                  ))}
+                </>
+              )}
 
               {/* Mobile Action Buttons */}
               <div className="mt-3 flex flex-col gap-2">
-                {!isAuthenticated && (
+                {!portalConfig.isPortalMode && !isAuthenticated && (
                   <Link
                     to="/registreren"
                     onClick={() => setMobileOpen(false)}
@@ -558,19 +644,21 @@ export const Header = () => {
                   </Link>
                 )}
 
-                <Link
-                  to="/doneren"
-                  onClick={() => setMobileOpen(false)}
-                  className="w-full"
-                >
-                  <Button
-                    variant="outline"
-                    className="w-full border-rose-400/50 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 uppercase tracking-wider text-xs font-semibold py-2.5 flex items-center justify-center gap-2"
+                {!portalConfig.isPortalMode && (
+                  <Link
+                    to="/doneren"
+                    onClick={() => setMobileOpen(false)}
+                    className="w-full"
                   >
-                    <Heart className="w-4 h-4 fill-rose-600 text-rose-600" />
-                    <span>Doneren aan de partij</span>
-                  </Button>
-                </Link>
+                    <Button
+                      variant="outline"
+                      className="w-full border-rose-400/50 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 uppercase tracking-wider text-xs font-semibold py-2.5 flex items-center justify-center gap-2"
+                    >
+                      <Heart className="w-4 h-4 fill-rose-600 text-rose-600" />
+                      <span>Doneren aan de partij</span>
+                    </Button>
+                  </Link>
+                )}
 
                 <div className="w-full">
                   <PWAInstallButton variant="header" className="w-full justify-center h-10" />
@@ -578,13 +666,22 @@ export const Header = () => {
 
                 {isAuthenticated ? (
                   <div className="flex flex-col gap-2">
-                    <Link to="/dashboard" onClick={() => setMobileOpen(false)}>
+                    <Link to={portalConfig.isPortalMode ? "/raadspaneel" : "/dashboard"} onClick={() => setMobileOpen(false)}>
                       <Button
                         variant="outline"
                         className="w-full border-accent text-accent hover:bg-accent hover:text-accent-foreground uppercase tracking-wider text-xs font-semibold justify-center"
                       >
-                        <User className="w-4 h-4 mr-2" />
-                        Dashboard
+                        {portalConfig.isPortalMode ? (
+                          <>
+                            <Building2 className="w-4 h-4 mr-2" />
+                            Raadspaneel
+                          </>
+                        ) : (
+                          <>
+                            <User className="w-4 h-4 mr-2" />
+                            Dashboard
+                          </>
+                        )}
                       </Button>
                     </Link>
                     <Button
