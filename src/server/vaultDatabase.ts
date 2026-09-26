@@ -194,6 +194,54 @@ export function scheduleVaultPersist() {
   }, 50);
 }
 
+const vaultTableSignatures = new Map<string, string>();
+
+function computeVaultSignature(data: any): string {
+  if (!data) return "null";
+  try {
+    const serialized = JSON.stringify(data);
+    return crypto.createHash("sha1").update(serialized).digest("base64");
+  } catch {
+    return String(Math.random());
+  }
+}
+
+/**
+ * Atomically save or update a single record in a sensitive table in CRM-Vault
+ * Lightning fast: encrypts only this record and updates in-place via PRIMARY KEY
+ */
+export function saveVaultItem(tableName: SensitiveTable, item: any) {
+  if (!vaultSqliteDb || !item) return;
+  try {
+    const itemId = String(item.id || item.email || item.username || item.key);
+    if (!itemId) return;
+    const encrypted = encryptVaultPayload(item);
+    const nowIso = new Date().toISOString();
+    vaultSqliteDb.run(
+      `INSERT OR REPLACE INTO ${tableName} (id, ciphertext, iv, authTag, updatedAt) VALUES (?, ?, ?, ?, ?)`,
+      [itemId, encrypted.ciphertext, encrypted.iv, encrypted.authTag, nowIso]
+    );
+    vaultTableSignatures.delete(tableName);
+    scheduleVaultPersist();
+  } catch (err) {
+    console.error(`[CRM-VAULT SAVE ITEM FOUT] Kon item '${tableName}' niet opslaan:`, err);
+  }
+}
+
+/**
+ * Atomically delete a single record in a sensitive table in CRM-Vault
+ */
+export function deleteVaultItem(tableName: SensitiveTable, itemId: string) {
+  if (!vaultSqliteDb || !itemId) return;
+  try {
+    vaultSqliteDb.run(`DELETE FROM ${tableName} WHERE id = ?`, [String(itemId)]);
+    vaultTableSignatures.delete(tableName);
+    scheduleVaultPersist();
+  } catch (err) {
+    console.error(`[CRM-VAULT DELETE ITEM FOUT] Kon item '${tableName}' niet verwijderen:`, err);
+  }
+}
+
 /**
  * Load array records from a sensitive table, decrypting on the fly
  */
@@ -202,9 +250,11 @@ export function loadVaultTable(tableName: SensitiveTable): any[] {
   try {
     const rows = vaultSqliteDb.exec(`SELECT ciphertext, iv, authTag FROM ${tableName}`);
     if (rows.length > 0 && rows[0].values) {
-      return rows[0].values
+      const records = rows[0].values
         .map((v: any) => decryptVaultPayload({ ciphertext: v[0], iv: v[1], authTag: v[2] }))
         .filter(Boolean);
+      vaultTableSignatures.set(tableName, computeVaultSignature(records));
+      return records;
     }
   } catch (err) {
     console.error(`[CRM-VAULT LOAD FOUT] Kon tabel '${tableName}' niet laden:`, err);
@@ -214,9 +264,16 @@ export function loadVaultTable(tableName: SensitiveTable): any[] {
 
 /**
  * Save array records to a sensitive table with AES-256-GCM encryption at rest
+ * Skips execution completely if table content hasn't changed
  */
 export function saveVaultTable(tableName: SensitiveTable, items: any[]) {
   if (!vaultSqliteDb || !Array.isArray(items)) return;
+
+  const currentSig = computeVaultSignature(items);
+  if (vaultTableSignatures.get(tableName) === currentSig) {
+    return; // No changes detected, skip re-encrypting entire table
+  }
+
   try {
     vaultSqliteDb.run("BEGIN TRANSACTION;");
     vaultSqliteDb.run(`DELETE FROM ${tableName};`);
@@ -234,6 +291,7 @@ export function saveVaultTable(tableName: SensitiveTable, items: any[]) {
     }
 
     vaultSqliteDb.run("COMMIT;");
+    vaultTableSignatures.set(tableName, currentSig);
     scheduleVaultPersist();
   } catch (err) {
     console.error(`[CRM-VAULT SAVE FOUT] Kon tabel '${tableName}' niet opslaan:`, err);

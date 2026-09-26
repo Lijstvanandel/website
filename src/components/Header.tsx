@@ -292,14 +292,14 @@ export const Header = () => {
 
           {/* Right-side Actions & Authentication Controls */}
           <div className="flex items-center gap-1 sm:gap-1.5 lg:gap-1.5 xl:gap-2 shrink-0">
-            {/* 1. Word lid Button (alleen op de partijwebsite en als bezoeker nog niet is ingelogd) */}
-            {!portalConfig.isPortalMode && !isAuthenticated && (
+            {/* 1. Word lid / Registreren Button */}
+            {!isAuthenticated && (
               <Link to="/registreren" className="hidden sm:inline-flex">
                 <Button
                   className="bg-primary hover:bg-primary/90 text-primary-foreground border border-accent/40 uppercase tracking-wider text-xs font-semibold px-2.5 xl:px-3 h-8 sm:h-9 whitespace-nowrap shrink-0 shadow-sm"
                 >
                   <UserPlus className="w-3.5 h-3.5 mr-1" />
-                  <span>Word lid</span>
+                  <span>{portalConfig.isPortalMode ? "Registreren" : "Word lid"}</span>
                 </Button>
               </Link>
             )}
@@ -629,7 +629,7 @@ export const Header = () => {
 
               {/* Mobile Action Buttons */}
               <div className="mt-3 flex flex-col gap-2">
-                {!portalConfig.isPortalMode && !isAuthenticated && (
+                {!isAuthenticated && (
                   <Link
                     to="/registreren"
                     onClick={() => setMobileOpen(false)}
@@ -639,7 +639,7 @@ export const Header = () => {
                       className="w-full bg-primary hover:bg-primary/90 text-primary-foreground border border-accent/40 uppercase tracking-wider text-xs font-semibold py-2.5 flex items-center justify-center gap-2 shadow-sm"
                     >
                       <UserPlus className="w-4 h-4" />
-                      <span>Word lid</span>
+                      <span>{portalConfig.isPortalMode ? "Registreren (Fractie)" : "Word lid"}</span>
                     </Button>
                   </Link>
                 )}

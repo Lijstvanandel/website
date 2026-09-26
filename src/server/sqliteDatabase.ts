@@ -1,12 +1,15 @@
 import initSqlJs from "sql.js";
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import {
   initVaultDatabase,
   loadVaultTable,
   saveVaultTable,
   loadVaultSingle,
   saveVaultSingle,
+  saveVaultItem,
+  deleteVaultItem,
   migrateAndSanitizePublicDatabase,
   anonymizeBelafspraakInVault,
   bulkAnonymizeOldBelafsprakenInVault,
@@ -221,6 +224,18 @@ export function persistSqlite() {
   }
 }
 
+const publicTableSignatures = new Map<string, string>();
+
+function computePublicSignature(data: any): string {
+  if (!data) return "null";
+  try {
+    const serialized = JSON.stringify(data);
+    return crypto.createHash("sha1").update(serialized).digest("base64");
+  } catch {
+    return String(Math.random());
+  }
+}
+
 /**
  * Schedule a debounced flush to disk (max 50ms) for high-performance non-blocking queries
  */
@@ -314,6 +329,7 @@ export function getDbFromSqlite(): any {
     } catch (_err) {
       result[table] = [];
     }
+    publicTableSignatures.set(table, computePublicSignature(result[table]));
   }
 
   // Sensitive tables strictly retrieved from isolated, AES-256-GCM encrypted CRM-Vault
@@ -390,6 +406,7 @@ export function saveDbToSqlite(data: any) {
     }
 
     // 2. Persist public data to public database.sqlite
+    let hasChanges = false;
     sqliteDb.run("BEGIN TRANSACTION;");
 
     for (const [key, val] of Object.entries(data)) {
@@ -399,6 +416,11 @@ export function saveDbToSqlite(data: any) {
       }
 
       if (TABLE_DEFINITIONS[key] && Array.isArray(val)) {
+        const currentSig = computePublicSignature(val);
+        if (publicTableSignatures.get(key) === currentSig) {
+          continue; // Unchanged: skip wiping and re-inserting entire table!
+        }
+        hasChanges = true;
         // Clear old table and insert updated items
         sqliteDb.run(`DELETE FROM ${key};`);
         for (const item of val) {
@@ -406,25 +428,43 @@ export function saveDbToSqlite(data: any) {
           const itemId = String(item.id || item.email || item.slug || item.key || crypto.randomUUID());
           sqliteDb.run(`INSERT INTO ${key} (id, data) VALUES (?, ?)`, [itemId, JSON.stringify(item)]);
         }
+        publicTableSignatures.set(key, currentSig);
       } else if (key === "membershipSettings" && val && typeof val === "object") {
-        sqliteDb.run(`INSERT OR REPLACE INTO ${key} (id, data) VALUES ('default', ?)`, [
-          JSON.stringify(val),
-        ]);
+        const currentSig = computePublicSignature(val);
+        if (publicTableSignatures.get(key) !== currentSig) {
+          hasChanges = true;
+          sqliteDb.run(`INSERT OR REPLACE INTO ${key} (id, data) VALUES ('default', ?)`, [
+            JSON.stringify(val),
+          ]);
+          publicTableSignatures.set(key, currentSig);
+        }
       } else if (Array.isArray(val) || (typeof val === "object" && val !== null)) {
-        sqliteDb.run("INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)", [
-          key,
-          JSON.stringify(val),
-        ]);
+        const currentSig = computePublicSignature(val);
+        if (publicTableSignatures.get(key) !== currentSig) {
+          hasChanges = true;
+          sqliteDb.run("INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)", [
+            key,
+            JSON.stringify(val),
+          ]);
+          publicTableSignatures.set(key, currentSig);
+        }
       } else if (val !== undefined) {
-        sqliteDb.run("INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)", [
-          key,
-          JSON.stringify(val),
-        ]);
+        const currentSig = String(val);
+        if (publicTableSignatures.get(key) !== currentSig) {
+          hasChanges = true;
+          sqliteDb.run("INSERT OR REPLACE INTO kv_store (key, value) VALUES (?, ?)", [
+            key,
+            JSON.stringify(val),
+          ]);
+          publicTableSignatures.set(key, currentSig);
+        }
       }
     }
 
     sqliteDb.run("COMMIT;");
-    schedulePersist();
+    if (hasChanges) {
+      schedulePersist();
+    }
   } catch (err: any) {
     console.error("[SQLITE SAVE FOUT]:", err);
     try {
@@ -434,6 +474,23 @@ export function saveDbToSqlite(data: any) {
     }
   }
 }
+
+/**
+ * Fast atomic save for a single item in a public table
+ */
+export function savePublicItem(tableName: string, item: any) {
+  if (!sqliteDb || !item || !TABLE_DEFINITIONS[tableName]) return;
+  try {
+    const itemId = String(item.id || item.email || item.slug || item.key || crypto.randomUUID());
+    sqliteDb.run(`INSERT OR REPLACE INTO ${tableName} (id, data) VALUES (?, ?)`, [itemId, JSON.stringify(item)]);
+    publicTableSignatures.delete(tableName);
+    schedulePersist();
+  } catch (err) {
+    console.error(`[SQLITE SAVE ITEM FOUT] voor tabel '${tableName}':`, err);
+  }
+}
+
+export { saveVaultItem, deleteVaultItem };
 
 export function getSqliteFilePath(): string {
   return SQLITE_FILE;

@@ -64,6 +64,7 @@ import {
   anonymizeBelafspraakInVault,
   bulkAnonymizeOldBelafsprakenInVault,
   getVaultFilePath,
+  saveVaultItem,
 } from "./src/server/sqliteDatabase.js";
 import { executeCouncilSearch } from "./src/server/councilSearchService.js";
 import { normalizeSubdossier } from "./src/server/taxonomyClassifier.js";
@@ -2917,8 +2918,8 @@ async function startServer() {
   };
 
   const requireBoardOrAdmin = (req: any, res: any, next: any) => {
-    if (req.user.role !== 'admin' && req.user.role !== 'voorzitter' && req.user.role !== 'secretaris' && req.user.role !== 'penningmeester' && req.user.role !== 'bestuur') {
-      return res.status(403).json({ error: "Toegang geweigerd: bestuurs- of beheerdersrechten vereist" });
+    if (req.user.role !== 'admin' && req.user.role !== 'key-user' && req.user.role !== 'voorzitter' && req.user.role !== 'secretaris' && req.user.role !== 'penningmeester' && req.user.role !== 'bestuur') {
+      return res.status(403).json({ error: "Toegang geweigerd: bestuurs-, beheerders- of key-userrechten vereist" });
     }
     next();
   };
@@ -2930,8 +2931,15 @@ async function startServer() {
     next();
   };
 
+  const requireKeyUserOrAdmin = (req: any, res: any, next: any) => {
+    if (req.user.role !== 'admin' && req.user.role !== 'key-user' && req.user.role !== 'voorzitter') {
+      return res.status(403).json({ error: "Toegang geweigerd: beheerder- of key-userrechten vereist" });
+    }
+    next();
+  };
+
   const requireCouncilOrAdmin = (req: any, res: any, next: any) => {
-    if (req.user.role !== 'admin' && req.user.role !== 'raadslid' && req.user.role !== 'fractielid' && req.user.role !== 'voorzitter' && req.user.role !== 'bestuur') {
+    if (req.user.role !== 'admin' && req.user.role !== 'key-user' && req.user.role !== 'raadslid' && req.user.role !== 'fractielid' && req.user.role !== 'voorzitter' && req.user.role !== 'bestuur') {
       return res.status(403).json({ error: "Toegang geweigerd: alleen toegankelijk voor raadsleden, fractieleden of de beheerder." });
     }
     next();
@@ -3060,6 +3068,8 @@ async function startServer() {
     const memDetails = computeMembershipDetails(user);
     const resolvedEmail = safeUser.email || (safeUser.username?.includes("@") ? safeUser.username : "");
     const newsletterSubscribed = safeUser.newsletterSubscribed !== undefined ? Boolean(safeUser.newsletterSubscribed) : true;
+    const isHoogeveen = safeUser.municipality === "hoogeveen" || safeUser.isPortalUser;
+    const portalApproved = safeUser.portalApproved !== undefined ? Boolean(safeUser.portalApproved) : (isHoogeveen ? false : true);
     
     return {
       ...safeUser,
@@ -3067,6 +3077,8 @@ async function startServer() {
       newsletterSubscribed,
       municipality: safeUser.municipality || "steenwijkerland",
       billingStatus: safeUser.billingStatus || (safeUser.role === "admin" ? "exempt" : "paid"),
+      portalApproved,
+      isPortalUser: Boolean(safeUser.isPortalUser),
       isFullMember: memDetails.isFullMember,
       isLid: memDetails.isLid,
       membershipState: memDetails.membershipState,
@@ -3078,7 +3090,20 @@ async function startServer() {
 
   // Auth Routes
   app.post("/api/register", async (req, res) => {
-    const { salutation, fullName, address, city, username, email, password, remarks, directDebit, newsletterSubscribed } = req.body;
+    const {
+      salutation,
+      fullName,
+      address,
+      city,
+      username,
+      email,
+      password,
+      remarks,
+      directDebit,
+      newsletterSubscribed,
+      portalMode,
+      municipality: reqMuni
+    } = req.body;
     const db = getDb();
     if (db.users.find((u: any) => u.username === username)) {
       return res.status(400).json({ error: "Gebruikersnaam is al in gebruik." });
@@ -3087,6 +3112,16 @@ async function startServer() {
     const isFirstUser = db.users.length === 0;
     const isAdminUser = username === 'admin' || isFirstUser;
     const resolvedEmail = (email && typeof email === 'string') ? email.trim() : (username.includes('@') ? username : '');
+
+    const host = String(req.headers.host || "").toLowerCase();
+    const isPortalReg = Boolean(
+      portalMode === true ||
+      reqMuni === "hoogeveen" ||
+      host.includes("hoogeveen.") ||
+      host.includes("hgv.") ||
+      host.startsWith("hoogeveen-")
+    );
+    const assignedMunicipality = isPortalReg ? (reqMuni || "hoogeveen") : (reqMuni || "steenwijkerland");
 
     const settings = db.membershipSettings || {
       enabled: true,
@@ -3098,22 +3133,27 @@ async function startServer() {
       requirePaymentAtRegistration: true,
     };
 
-    const initialBillingStatus = isAdminUser ? 'exempt' : (settings.enabled && settings.requirePaymentAtRegistration ? 'pending' : 'paid');
+    const initialBillingStatus = (isAdminUser || isPortalReg)
+      ? 'exempt'
+      : (settings.enabled && settings.requirePaymentAtRegistration ? 'pending' : 'paid');
 
     const newUser: any = {
       id: Date.now().toString(),
       salutation, 
       fullName, 
-      address, 
-      city, 
+      address: address || "", 
+      city: city || (isPortalReg ? "Hoogeveen" : ""), 
       username, 
       email: resolvedEmail,
       password: hashedPassword, 
       remarks, 
-      directDebit,
+      directDebit: Boolean(directDebit),
       newsletterSubscribed: newsletterSubscribed !== undefined ? Boolean(newsletterSubscribed) : true,
       role: isAdminUser ? 'admin' : 'member',
-      isActive: true,
+      isActive: isPortalReg ? false : true,
+      portalApproved: isPortalReg ? false : true,
+      isPortalUser: isPortalReg,
+      municipality: assignedMunicipality,
       billingStatus: initialBillingStatus,
       paidAmount: initialBillingStatus === 'paid' ? Number(settings.amount) || 12 : 0,
       paidAt: initialBillingStatus === 'paid' ? new Date().toISOString() : null,
@@ -3126,7 +3166,7 @@ async function startServer() {
     let checkoutUrl: string | null = null;
     let sessionId: string | null = null;
 
-    if (settings.enabled && settings.requirePaymentAtRegistration && !isAdminUser) {
+    if (!isPortalReg && settings.enabled && settings.requirePaymentAtRegistration && !isAdminUser) {
       const stripe = getStripe();
       const origin = resolveRequestOrigin(req);
 
@@ -3177,9 +3217,17 @@ async function startServer() {
     }
 
     db.users.push(newUser);
-    saveDb(db);
+    saveVaultItem("users", newUser);
 
     const safeUser = getSafeUserWithMembership(newUser);
+
+    if (isPortalReg) {
+      return res.status(201).json({
+        message: "in afwachting van goedkeuring. De beheerder is op de hoogte.",
+        pendingApproval: true,
+        user: safeUser
+      });
+    }
 
     res.status(201).json({ 
       message: "Registratie succesvol", 
@@ -3208,22 +3256,84 @@ async function startServer() {
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (isMatch) {
-      const tokenExpiresIn = rememberMe !== false ? "365d" : "1d";
-      const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: tokenExpiresIn });
-      const safeUser = getSafeUserWithMembership(user);
-      res.status(200).json({ 
-        message: "Succesvol ingelogd", 
-        user: safeUser,
-        token
-      });
-    } else {
-      res.status(401).json({ error: "Ongeldige inloggegevens" });
+    if (!isMatch) {
+      return res.status(401).json({ error: "Ongeldige inloggegevens" });
     }
+
+    // Portal approval check: ONLY for portal mode (Hoogeveen) users who are not yet approved
+    const isPortalUser = (user.municipality === "hoogeveen" || user.isPortalUser);
+    const isPrivileged = user.role === "admin" || user.role === "key-user" || user.role === "voorzitter";
+    if (isPortalUser && !isPrivileged && user.portalApproved !== true) {
+      return res.status(403).json({
+        error: "in afwachting van goedkeuring. De beheerder is op de hoogte.",
+        pendingApproval: true
+      });
+    }
+
+    const tokenExpiresIn = rememberMe !== false ? "365d" : "1d";
+    const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: tokenExpiresIn });
+    const safeUser = getSafeUserWithMembership(user);
+    res.status(200).json({ 
+      message: "Succesvol ingelogd", 
+      user: safeUser,
+      token
+    });
   };
 
   app.post("/api/login", handleLoginLogic);
   app.post("/api/auth/login", handleLoginLogic);
+
+  // Portal User Approval Routes (Key-Users & Admins)
+  app.get("/api/portal/pending-users", requireAuth, requireKeyUserOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const userMuni = req.user.municipality || "hoogeveen";
+    const isAdmin = req.user.role === "admin" || req.user.role === "voorzitter";
+
+    const pending = db.users
+      .filter((u: any) => {
+        if (u.role === "admin" || u.role === "voorzitter" || u.role === "secretaris" || u.role === "penningmeester" || u.role === "key-user") return false;
+        const isPortal = u.municipality === "hoogeveen" || u.isPortalUser;
+        if (!isPortal) return false;
+        if (u.portalApproved === true) return false;
+        if (!isAdmin && u.municipality && u.municipality !== userMuni) return false;
+        return true;
+      })
+      .map((u: any) => getSafeUserWithMembership(u));
+
+    res.json(pending);
+  });
+
+  app.patch("/api/portal/users/:id/approve", requireAuth, requireKeyUserOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const user = db.users.find((u: any) => String(u.id) === String(req.params.id));
+    if (!user) return res.status(404).json({ error: "Gebruiker niet gevonden" });
+
+    user.portalApproved = true;
+    user.isActive = true;
+    user.approvedAt = new Date().toISOString();
+    user.approvedBy = req.user.username;
+    if (!user.role || user.role === "member") {
+      user.role = "raadslid"; // Default to raadslid/fractielid upon portal approval
+    }
+
+    saveVaultItem("users", user);
+    res.json({
+      message: `Gebruiker ${user.fullName || user.username} is succesvol geaccepteerd voor het raadsportaal.`,
+      user: getSafeUserWithMembership(user)
+    });
+  });
+
+  app.delete("/api/portal/users/:id/reject", requireAuth, requireKeyUserOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const userIndex = db.users.findIndex((u: any) => String(u.id) === String(req.params.id));
+    if (userIndex === -1) return res.status(404).json({ error: "Gebruiker niet gevonden" });
+
+    const [removedUser] = db.users.splice(userIndex, 1);
+    deleteVaultItem("users", removedUser.id);
+    res.json({
+      message: `Aanmelding van ${removedUser.fullName || removedUser.username} is afgewezen.`
+    });
+  });
 
   // Forgot Password Request Endpoint
   app.post("/api/auth/forgot-password", async (req: any, res: any) => {
@@ -3699,7 +3809,7 @@ async function startServer() {
       user.billingNotes = notes;
     }
 
-    saveDb(db);
+    saveVaultItem("users", user);
     const safeUser = getSafeUserWithMembership(user);
     res.json({ message: "Facturatiestatus succesvol bijgewerkt", user: safeUser });
   });
@@ -5438,18 +5548,21 @@ async function startServer() {
     const user = db.users.find((u: any) => u.id === req.params.id);
     if (!user) return res.status(404).json({ error: "Gebruiker niet gevonden" });
     user.isActive = isActive;
-    saveDb(db);
+    saveVaultItem("users", user);
     res.json({ message: "Status bijgewerkt", user });
   });
 
   app.patch("/api/admin/users/:id/role", requireAuth, requireBoardOrAdmin, (req: any, res: any) => {
+    if (req.user.role !== 'admin' && req.user.role !== 'voorzitter') {
+      return res.status(403).json({ error: "Alleen de beheerder kan gebruikersrollen toekennen." });
+    }
     const { role, municipality } = req.body;
     const db = getDb();
     const user = db.users.find((u: any) => u.id === req.params.id);
     if (!user) return res.status(404).json({ error: "Gebruiker niet gevonden" });
     if (role !== undefined) user.role = role;
     if (municipality !== undefined) user.municipality = municipality;
-    saveDb(db);
+    saveVaultItem("users", user);
     res.json({ message: "Rol bijgewerkt", user: getSafeUserWithMembership(user) });
   });
 
@@ -5459,7 +5572,7 @@ async function startServer() {
     const user = db.users.find((u: any) => u.id === req.params.id);
     if (!user) return res.status(404).json({ error: "Gebruiker niet gevonden" });
     user.municipality = municipality || "steenwijkerland";
-    saveDb(db);
+    saveVaultItem("users", user);
     res.json({ message: "Gemeente bijgewerkt", user: getSafeUserWithMembership(user) });
   });
 
@@ -5469,7 +5582,7 @@ async function startServer() {
     const user = db.users.find((u: any) => u.id === req.params.id);
     if (!user) return res.status(404).json({ error: "Gebruiker niet gevonden" });
     user.newsletterSubscribed = Boolean(newsletterSubscribed);
-    saveDb(db);
+    saveVaultItem("users", user);
     res.json({ message: "Nieuwsbriefstatus bijgewerkt", user });
   });
 

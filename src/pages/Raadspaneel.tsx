@@ -40,6 +40,9 @@ import {
   FileQuestion,
   Loader2,
   FileSearch,
+  Check,
+  UserPlus,
+  ShieldCheck,
 } from "lucide-react";
 import { safeLocalStorage, safeSessionStorage } from "@/lib/safeStorage";
 import { toast } from "sonner";
@@ -189,6 +192,7 @@ export default function Raadspaneel() {
   const isCouncilOrAdmin = Boolean(
     user && (
       user.role === "admin" || 
+      user.role === "key-user" || 
       user.role === "raadslid" || 
       user.role === "fractielid" || 
       user.role === "voorzitter" || 
@@ -198,10 +202,22 @@ export default function Raadspaneel() {
     )
   );
 
+  const isKeyUserOrAdmin = Boolean(
+    user && (
+      user.role === "admin" ||
+      user.role === "key-user" ||
+      user.role === "voorzitter"
+    )
+  );
+
   const initialDossierSlug = slug || searchParams.get("dossier") || null;
   const tabParam = searchParams.get("tab");
-  const activePanelTab: "dossiers" | "agenda" | "vragenformulator" | "overijssel" | "waterschap" | "onderzoeken" =
-    tabParam === "onderzoeken" && isCouncilOrAdmin
+  type PanelTabType = "dossiers" | "agenda" | "vragenformulator" | "overijssel" | "waterschap" | "onderzoeken" | "approvals";
+
+  const activePanelTab: PanelTabType =
+    tabParam === "approvals" && isKeyUserOrAdmin
+      ? "approvals"
+      : tabParam === "onderzoeken" && isCouncilOrAdmin
       ? "onderzoeken"
       : tabParam === "vragenformulator" && isCouncilOrAdmin
       ? "vragenformulator"
@@ -213,7 +229,7 @@ export default function Raadspaneel() {
       ? "agenda"
       : "dossiers";
 
-  const setActivePanelTab = (tab: "dossiers" | "agenda" | "vragenformulator" | "overijssel" | "waterschap" | "onderzoeken") => {
+  const setActivePanelTab = (tab: PanelTabType) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.set("tab", tab);
@@ -235,6 +251,10 @@ export default function Raadspaneel() {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [isDismissingAllDiffs, setIsDismissingAllDiffs] = useState(false);
   const [dismissingTopicId, setDismissingTopicId] = useState<string | null>(null);
+
+  // Key-User & Admin Pending Users State
+  const [pendingUsers, setPendingUsers] = useState<any[]>([]);
+  const [loadingPendingUsers, setLoadingPendingUsers] = useState(false);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -371,6 +391,67 @@ export default function Raadspaneel() {
       fetchCouncilData();
     }
   }, [isAuthenticated, isCouncilOrAdmin, fetchCouncilData]);
+
+  // Key-User & Admin: Fetch and manage pending portal registrations
+  const fetchPendingUsers = useCallback(async () => {
+    if (!token || !isKeyUserOrAdmin) return;
+    try {
+      setLoadingPendingUsers(true);
+      const res = await fetch("/api/portal/pending-users", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPendingUsers(Array.isArray(data) ? data : []);
+      }
+    } catch {
+      // non-fatal
+    } finally {
+      setLoadingPendingUsers(false);
+    }
+  }, [token, isKeyUserOrAdmin]);
+
+  useEffect(() => {
+    if (isAuthenticated && isKeyUserOrAdmin) {
+      fetchPendingUsers();
+    }
+  }, [isAuthenticated, isKeyUserOrAdmin, fetchPendingUsers]);
+
+  const handleApprovePortalUser = async (userId: string, name: string) => {
+    try {
+      const res = await fetch(`/api/portal/users/${userId}/approve`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        toast.error("Fout bij accepteren van gebruiker");
+        return;
+      }
+      const data = await res.json();
+      toast.success(data.message || `Gebruiker ${name} is succesvol geaccepteerd!`);
+      setPendingUsers((prev) => prev.filter((u) => u.id !== userId));
+    } catch {
+      toast.error("Fout bij accepteren van gebruiker");
+    }
+  };
+
+  const handleRejectPortalUser = async (userId: string, name: string) => {
+    if (!window.confirm(`Weet u zeker dat u de aanmelding van ${name} wilt afwijzen?`)) return;
+    try {
+      const res = await fetch(`/api/portal/users/${userId}/reject`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        toast.error("Fout bij afwijzen");
+        return;
+      }
+      toast.info(`Aanmelding van ${name} is afgewezen`);
+      setPendingUsers((prev) => prev.filter((u) => u.id !== userId));
+    } catch {
+      toast.error("Fout bij afwijzen");
+    }
+  };
 
   // Trigger manual scrape
   const handleTriggerScrape = async () => {
@@ -1106,6 +1187,32 @@ export default function Raadspaneel() {
           </div>
         </div>
 
+        {/* Key-User / Admin: Notification banner for pending portal user registrations */}
+        {isKeyUserOrAdmin && pendingUsers.length > 0 && (
+          <div className="mb-6 p-4 sm:p-5 rounded-2xl bg-amber-500/10 border-2 border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">
+                <UserPlus className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-sm font-bold text-foreground">
+                  {pendingUsers.length === 1 ? "1 nieuwe aanmelding wacht op goedkeuring" : `${pendingUsers.length} nieuwe aanmeldingen wachten op goedkeuring`}
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Als key-user kunt u geregistreerde fractieleden direct accepteren voor het portaal.
+                </p>
+              </div>
+            </div>
+            <Button
+              onClick={() => setActivePanelTab("approvals")}
+              className="bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs h-9 px-4 shrink-0 shadow-sm"
+            >
+              <UserCheck className="w-4 h-4 mr-1.5" />
+              Bekijken & Accepteren ({pendingUsers.length})
+            </Button>
+          </div>
+        )}
+
         {/* Raadspaneel Main Modules Tab Navigation */}
         <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 mb-8 border-b border-border pb-3">
           <button
@@ -1133,6 +1240,26 @@ export default function Raadspaneel() {
             >
               <Calendar className="w-4 h-4" />
               Vergaderagenda & Bespreekstukken
+            </button>
+          )}
+
+          {isKeyUserOrAdmin && (
+            <button
+              id="tab-btn-panel-approvals"
+              onClick={() => setActivePanelTab("approvals")}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all shrink-0 ${
+                activePanelTab === "approvals"
+                  ? "bg-purple-600 text-white shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-card border border-border/70"
+              }`}
+            >
+              <UserCheck className="w-4 h-4 text-purple-300" />
+              <span>Aanmeldingen goedkeuren</span>
+              {pendingUsers.length > 0 && (
+                <span className="ml-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-500 text-black">
+                  {pendingUsers.length}
+                </span>
+              )}
             </button>
           )}
 
@@ -1197,7 +1324,120 @@ export default function Raadspaneel() {
           )}
         </div>
 
-        {activePanelTab === "dossiers" ? (
+        {activePanelTab === "approvals" && isKeyUserOrAdmin ? (
+          <div className="space-y-6">
+            <div className="bg-card border border-border rounded-2xl p-6 sm:p-8 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-border">
+                <div>
+                  <div className="text-xs uppercase tracking-wider font-semibold text-purple-600 dark:text-purple-400 mb-1 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4" />
+                    Key-User Portaalbeheer
+                  </div>
+                  <h2 className="text-2xl sm:text-3xl font-display font-bold text-foreground">
+                    Aanmeldingen goedkeuren
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
+                    Als key-user keurt u geregistreerde gebruikers goed voor toegang tot het raadsportaal. Na acceptatie krijgen zij direct de rol 'raadslid' en toegang tot alle besloten dossiers.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={fetchPendingUsers}
+                  disabled={loadingPendingUsers}
+                  className="text-xs h-9 cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loadingPendingUsers ? "animate-spin" : ""}`} />
+                  Vernieuwen
+                </Button>
+              </div>
+
+              {pendingUsers.length === 0 ? (
+                <div className="py-16 text-center space-y-4">
+                  <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto ring-8 ring-emerald-500/5">
+                    <CheckCircle2 className="w-8 h-8" />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="font-display font-bold text-lg text-foreground">
+                      Geen openstaande aanmeldingen
+                    </h3>
+                    <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                      Alle geregistreerde gebruikers zijn geaccepteerd of er zijn momenteel geen nieuwe aanmeldingen via het portaal.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-6">
+                  {pendingUsers.map((pUser) => (
+                    <div
+                      key={pUser.id}
+                      className="bg-muted/30 border border-border rounded-xl p-5 flex flex-col justify-between gap-4 hover:border-purple-500/40 transition-colors shadow-xs"
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <h3 className="font-bold text-base text-foreground">
+                              {pUser.salutation ? `${pUser.salutation} ` : ""}{pUser.fullName}
+                            </h3>
+                            <div className="text-xs text-muted-foreground font-mono">
+                              @{pUser.username}
+                            </div>
+                          </div>
+                          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 flex items-center gap-1 shrink-0">
+                            <Clock className="w-3 h-3" />
+                            In afwachting
+                          </span>
+                        </div>
+
+                        <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                          <div>
+                            <span className="font-medium text-foreground">E-mail:</span> {pUser.email || "Niet opgegeven"}
+                          </div>
+                          <div>
+                            <span className="font-medium text-foreground">Woonplaats:</span> {pUser.city || "Hoogeveen"}
+                          </div>
+                          <div>
+                            <span className="font-medium text-foreground">Gemeente:</span> {pUser.municipality === "hoogeveen" ? "Hoogeveen" : (pUser.municipality || "Hoogeveen")}
+                          </div>
+                          {pUser.createdAt && (
+                            <div>
+                              <span className="font-medium text-foreground">Geregistreerd op:</span> {new Date(pUser.createdAt).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                            </div>
+                          )}
+                          {pUser.remarks && (
+                            <div className="p-2.5 mt-2 rounded bg-background/80 border border-border text-xs italic">
+                              "{pUser.remarks}"
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="pt-3 border-t border-border/80 flex items-center justify-end gap-2.5">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleRejectPortalUser(pUser.id, pUser.fullName)}
+                          className="text-xs h-9 border-destructive/40 text-destructive hover:bg-destructive/10 cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5 mr-1" />
+                          Weigeren
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => handleApprovePortalUser(pUser.id, pUser.fullName)}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs h-9 px-4 shadow-sm cursor-pointer"
+                        >
+                          <Check className="w-4 h-4 mr-1.5" />
+                          Accepteren voor portaal
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : activePanelTab === "dossiers" ? (
           <DossierOverview initialDossierSlug={initialDossierSlug} />
         ) : activePanelTab === "onderzoeken" && isCouncilOrAdmin ? (
           <CouncilResearchManager token={token || undefined} />

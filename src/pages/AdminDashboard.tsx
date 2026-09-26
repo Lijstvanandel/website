@@ -108,6 +108,8 @@ interface UserItem {
   billingNotes?: string;
   createdAt?: string;
   municipality?: string;
+  portalApproved?: boolean;
+  isPortalUser?: boolean;
 }
 
 interface FractielidItem {
@@ -210,7 +212,7 @@ export interface ContactMessage {
 }
 
 export default function AdminDashboard() {
-  const { user, token, isAuthenticated } = useAuth();
+  const { user, token, isAuthenticated, updateUser } = useAuth();
   const [activeTab, setActiveTab] = useState(
     user?.role === "voorzitter"
       ? "voorzitter"
@@ -442,7 +444,12 @@ export default function AdminDashboard() {
     }
   };
 
-  const changeUserBillingStatus = async (id: string, newBillingStatus: string) => {
+  const changeUserBillingStatus = async (id: string, newBillingStatus: any) => {
+    setUsers((prev) =>
+      prev.map((u) => (u.id === id ? { ...u, billingStatus: newBillingStatus } : u))
+    );
+    toast.success("Facturatiestatus direct bijgewerkt");
+
     try {
       const res = await fetch(`/api/admin/users/${id}/billing`, {
         method: "PATCH",
@@ -450,14 +457,14 @@ export default function AdminDashboard() {
         body: JSON.stringify({ billingStatus: newBillingStatus }),
       });
       if (res.ok) {
-        toast.success("Facturatiestatus bijgewerkt");
-        fetchUsers();
         fetchMembershipSettings();
       } else {
         toast.error("Kon facturatiestatus niet bijwerken");
+        fetchUsers();
       }
     } catch {
       toast.error("Fout bij bijwerken facturatiestatus");
+      fetchUsers();
     }
   };
 
@@ -685,68 +692,152 @@ export default function AdminDashboard() {
   };
 
   const toggleUserStatus = async (id: string, currentStatus: boolean) => {
+    const nextStatus = !currentStatus;
+    setUsers((prev) =>
+      prev.map((u) => (u.id === id ? { ...u, isActive: nextStatus } : u))
+    );
+    toast.success("Gebruikersstatus direct bijgewerkt");
+
     try {
       const res = await fetch(`/api/admin/users/${id}/status`, {
         method: "PATCH",
         headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ isActive: !currentStatus }),
+        body: JSON.stringify({ isActive: nextStatus }),
       });
-      if (res.ok) {
-        toast.success("Gebruikersstatus bijgewerkt");
+      if (!res.ok) {
+        toast.error("Fout bij bijwerken status op server");
         fetchUsers();
       }
     } catch (error) {
       toast.error("Fout bij bijwerken");
+      fetchUsers();
     }
   };
 
   const changeUserRole = async (id: string, newRole: string) => {
+    setUsers((prev) =>
+      prev.map((u) => (u.id === id ? { ...u, role: newRole } : u))
+    );
+    if (user?.id === id) {
+      updateUser({ role: newRole });
+    }
+    toast.success("Rol direct bijgewerkt");
+
     try {
       const res = await fetch(`/api/admin/users/${id}/role`, {
         method: "PATCH",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({ role: newRole }),
       });
-      if (res.ok) {
-        toast.success("Rol bijgewerkt");
+      if (!res.ok) {
+        toast.error("Fout bij bijwerken rol op server");
         fetchUsers();
       }
     } catch (error) {
       toast.error("Fout bij bijwerken");
+      fetchUsers();
     }
   };
 
   const changeUserMunicipality = async (id: string, newMunicipality: string) => {
+    const targetName = newMunicipality === "hoogeveen" ? "Hoogeveen" : "Steenwijkerland";
+    setUsers((prev) =>
+      prev.map((u) => (u.id === id ? { ...u, municipality: newMunicipality } : u))
+    );
+    if (user?.id === id) {
+      updateUser({ municipality: newMunicipality });
+    }
+    toast.success(`Gemeente direct gewijzigd naar ${targetName}`);
+
     try {
       const res = await fetch(`/api/admin/users/${id}/municipality`, {
         method: "PATCH",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({ municipality: newMunicipality }),
       });
-      if (res.ok) {
-        toast.success(`Gemeente bijgewerkt naar ${newMunicipality === "hoogeveen" ? "Hoogeveen" : "Steenwijkerland"}`);
+      if (!res.ok) {
+        toast.error("Fout bij opslaan gemeente op server");
         fetchUsers();
-      } else {
-        toast.error("Fout bij bijwerken gemeente");
       }
     } catch (error) {
       toast.error("Fout bij bijwerken gemeente");
+      fetchUsers();
     }
   };
 
   const toggleUserNewsletter = async (id: string, currentStatus: boolean) => {
+    const nextStatus = !currentStatus;
+    setUsers((prev) =>
+      prev.map((u) => (u.id === id ? { ...u, newsletterSubscribed: nextStatus } : u))
+    );
+    toast.success("Nieuwsbriefvoorkeur direct bijgewerkt");
+
     try {
       const res = await fetch(`/api/admin/users/${id}/newsletter`, {
         method: "PATCH",
         headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ newsletterSubscribed: !currentStatus }),
+        body: JSON.stringify({ newsletterSubscribed: nextStatus }),
       });
-      if (res.ok) {
-        toast.success("Nieuwsbriefvoorkeur bijgewerkt");
+      if (!res.ok) {
+        toast.error("Fout bij bijwerken nieuwsbriefvoorkeur op server");
         fetchUsers();
       }
     } catch (error) {
       toast.error("Fout bij bijwerken nieuwsbriefvoorkeur");
+      fetchUsers();
+    }
+  };
+
+  const approvePortalUser = async (id: string) => {
+    setUsers((prev) =>
+      prev.map((u) =>
+        u.id === id
+          ? {
+              ...u,
+              portalApproved: true,
+              isActive: true,
+              role: u.role === "member" ? "raadslid" : u.role,
+            }
+          : u
+      )
+    );
+    toast.success("Gebruiker direct geaccepteerd!");
+
+    try {
+      const res = await fetch(`/api/portal/users/${id}/approve`, {
+        method: "PATCH",
+        headers,
+      });
+      if (!res.ok) {
+        toast.error("Fout bij accepteren op server");
+        fetchUsers();
+      } else {
+        const data = await res.json();
+        toast.success(data.message || "Gebruiker succesvol geaccepteerd voor het portaal");
+      }
+    } catch {
+      toast.error("Fout bij accepteren");
+      fetchUsers();
+    }
+  };
+
+  const rejectPortalUser = async (id: string, name: string) => {
+    if (!window.confirm(`Weet u zeker dat u de aanmelding van ${name} wilt afwijzen?`)) return;
+    setUsers((prev) => prev.filter((u) => u.id !== id));
+    toast.info(`Aanmelding van ${name} afgewezen`);
+
+    try {
+      const res = await fetch(`/api/portal/users/${id}/reject`, {
+        method: "DELETE",
+        headers,
+      });
+      if (!res.ok) {
+        toast.error("Fout bij afwijzen op server");
+        fetchUsers();
+      }
+    } catch {
+      toast.error("Fout bij afwijzen");
+      fetchUsers();
     }
   };
 
@@ -1319,7 +1410,8 @@ export default function AdminDashboard() {
     user?.role !== "admin" &&
     user?.role !== "penningmeester" &&
     user?.role !== "secretaris" &&
-    user?.role !== "voorzitter"
+    user?.role !== "voorzitter" &&
+    user?.role !== "key-user"
   )
     return <Navigate to="/dashboard" />;
 
@@ -1681,6 +1773,61 @@ export default function AdminDashboard() {
               </div>
             </div>
 
+            {/* Aanmeldingen in afwachting van goedkeuring (Portal Mode / Hoogeveen) */}
+            {users.some((u) => u.portalApproved === false && u.role !== 'admin' && u.role !== 'key-user' && u.role !== 'voorzitter') && (
+              <div className="bg-amber-500/10 border-2 border-amber-500/30 rounded-xl p-5 shadow-xs">
+                <div className="flex items-center gap-2.5 mb-2">
+                  <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                  <h3 className="font-display font-bold text-lg text-foreground">
+                    Aanmeldingen in afwachting van goedkeuring ({users.filter((u) => u.portalApproved === false && u.role !== 'admin' && u.role !== 'key-user' && u.role !== 'voorzitter').length})
+                  </h3>
+                </div>
+                <p className="text-xs text-muted-foreground mb-4">
+                  Deze fractieleden hebben zich geregistreerd via de portal mode en wachten op acceptatie door een beheerder of key-user.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {users
+                    .filter((u) => u.portalApproved === false && u.role !== 'admin' && u.role !== 'key-user' && u.role !== 'voorzitter')
+                    .map((pUser) => (
+                      <div
+                        key={pUser.id}
+                        className="bg-card border border-border p-4 rounded-lg flex items-center justify-between gap-3 shadow-xs"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-semibold text-sm text-foreground truncate">
+                            {pUser.fullName}
+                          </div>
+                          <div className="text-xs text-muted-foreground truncate">
+                            @{pUser.username} &bull; {pUser.email || "Geen e-mail"}
+                          </div>
+                          <div className="text-[11px] text-amber-700 dark:text-amber-300 font-medium mt-1">
+                            Gemeente {pUser.municipality === "hoogeveen" ? "Hoogeveen" : (pUser.municipality || "Steenwijkerland")} &bull; In afwachting
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Button
+                            size="sm"
+                            onClick={() => approvePortalUser(pUser.id)}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs h-8 px-3"
+                          >
+                            <Check className="w-3.5 h-3.5 mr-1" />
+                            Accepteren
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => rejectPortalUser(pUser.id, pUser.fullName)}
+                            className="border-destructive/40 text-destructive hover:bg-destructive/10 text-xs h-8 px-2.5"
+                          >
+                            Weigeren
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
                 <thead className="bg-muted/50 text-muted-foreground uppercase text-xs">
@@ -1718,6 +1865,8 @@ export default function AdminDashboard() {
                               className={`text-xs px-2 py-1 rounded border outline-none cursor-pointer ${
                                 u.role === "admin"
                                   ? "bg-accent/20 text-accent border-accent/20 font-semibold"
+                                  : u.role === "key-user"
+                                  ? "bg-purple-500/20 text-purple-700 dark:text-purple-400 border-purple-500/30 font-semibold"
                                   : u.role === "voorzitter"
                                   ? "bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/30 font-semibold"
                                   : u.role === "secretaris"
@@ -1734,6 +1883,7 @@ export default function AdminDashboard() {
                               onChange={(e) => changeUserRole(u.id, e.target.value)}
                             >
                               <option value="admin">admin (beheerder)</option>
+                              <option value="key-user">key-user (fractiebeheerder / goedkeurder)</option>
                               <option value="voorzitter">voorzitter (partijvoorzitter & bestuursleiding)</option>
                               <option value="secretaris">secretaris (bestuur & vereniging)</option>
                               <option value="penningmeester">penningmeester (financieel beheerder)</option>
@@ -1746,6 +1896,8 @@ export default function AdminDashboard() {
                               className={`px-2 py-1 rounded text-xs font-semibold ${
                                 u.role === "admin"
                                   ? "bg-accent/20 text-accent"
+                                  : u.role === "key-user"
+                                  ? "bg-purple-500/20 text-purple-700 dark:text-purple-400 font-semibold"
                                   : u.role === "voorzitter"
                                   ? "bg-amber-500/20 text-amber-700 dark:text-amber-400"
                                   : u.role === "secretaris"
@@ -1817,7 +1969,11 @@ export default function AdminDashboard() {
                           </button>
                         </td>
                         <td className="px-4 py-3">
-                          {u.isActive ? (
+                          {u.portalApproved === false ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                              <Clock className="w-3 h-3" /> In afwachting
+                            </span>
+                          ) : u.isActive ? (
                             <span className="flex items-center text-green-500 text-xs">
                               <Check className="w-3 h-3 mr-1" /> Actief
                             </span>
@@ -1828,7 +1984,26 @@ export default function AdminDashboard() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          {u.id !== user?.id && (
+                          {u.portalApproved === false ? (
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Button
+                                size="sm"
+                                className="text-xs h-8 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                                onClick={() => approvePortalUser(u.id)}
+                              >
+                                <Check className="w-3.5 h-3.5 mr-1" />
+                                Accepteren
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-xs h-8 text-destructive border-destructive/30 hover:bg-destructive/10"
+                                onClick={() => rejectPortalUser(u.id, u.fullName)}
+                              >
+                                Weigeren
+                              </Button>
+                            </div>
+                          ) : u.id !== user?.id && (
                             <Button
                               variant="outline"
                               size="sm"

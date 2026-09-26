@@ -109,9 +109,10 @@ const App = () => {
                             <Route path="/doneren" element={<Navigate to="/raadspaneel" replace />} />
                             <Route path="/doneren/*" element={<Navigate to="/raadspaneel" replace />} />
                             <Route path="/doneer" element={<Navigate to="/raadspaneel" replace />} />
-                            <Route path="/registreren" element={<Navigate to="/raadspaneel" replace />} />
-                            <Route path="/word-lid" element={<Navigate to="/raadspaneel" replace />} />
-                            <Route path="/wordlid" element={<Navigate to="/raadspaneel" replace />} />
+                            <Route path="/registreren" element={<Register />} />
+                            <Route path="/register" element={<Register />} />
+                            <Route path="/word-lid" element={<Register />} />
+                            <Route path="/wordlid" element={<Register />} />
                             <Route path="/peilingen" element={<Navigate to="/raadspaneel" replace />} />
                             <Route path="/polls" element={<Navigate to="/raadspaneel" replace />} />
                           </>

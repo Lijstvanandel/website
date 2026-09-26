@@ -17,11 +17,14 @@ import {
   Shield,
   HelpCircle,
   Banknote,
+  Clock,
+  UserPlus,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { safeJson } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { MembershipHelpModal } from "@/components/MembershipHelpModal";
+import { getPortalConfig } from "@/utils/portalConfig";
 import {
   Form,
   FormControl,
@@ -47,8 +50,8 @@ const registerSchema = z
     salutation: z.string().min(1, "Aanhef is verplicht"),
     fullName: z.string().min(2, "Naam is verplicht"),
     email: z.string().email("Ongeldig e-mailadres").min(5, "E-mailadres is verplicht"),
-    address: z.string().min(5, "Adres is verplicht"),
-    city: z.string().min(2, "Woonplaats is verplicht"),
+    address: z.string().optional().or(z.literal("")),
+    city: z.string().optional().or(z.literal("")),
     username: z.string().min(3, "Gebruikersnaam moet minimaal 3 tekens zijn"),
     password: z.string().min(6, "Wachtwoord moet minimaal 6 tekens zijn"),
     confirmPassword: z.string().min(1, "Wachtwoord herhalen is verplicht"),
@@ -161,6 +164,7 @@ export default function Register() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { login } = useAuth();
+  const portalConfig = getPortalConfig();
 
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -168,6 +172,7 @@ export default function Register() {
   const [membershipConfig, setMembershipConfig] = useState<MembershipConfig | null>(null);
   const [registeredPaymentInfo, setRegisteredPaymentInfo] = useState<{ checkoutUrl: string; sessionId?: string } | null>(null);
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [isPendingApproval, setIsPendingApproval] = useState(false);
 
   // Verification states when returning from Stripe Checkout
   const isPaymentSuccess = searchParams.get("payment_success") === "true";
@@ -287,13 +292,25 @@ export default function Register() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          ...data,
+          portalMode: portalConfig.isPortalMode,
+          municipality: portalConfig.tenantId,
+        }),
       });
 
       const result = await safeJson(response, {});
 
       if (!response.ok) {
         throw new Error(result.error || "Registratie mislukt");
+      }
+
+      if (portalConfig.isPortalMode || result.pendingApproval) {
+        setIsPendingApproval(true);
+        toast.info("In afwachting van goedkeuring", {
+          description: "De beheerder is op de hoogte.",
+        });
+        return;
       }
 
       if (result.checkoutUrl) {
@@ -327,6 +344,49 @@ export default function Register() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  // View when portal user registered and is waiting for key-user / admin approval
+  if (isPendingApproval) {
+    return (
+      <div className="container max-w-xl mx-auto py-16 px-4">
+        <div className="bg-card p-8 rounded-xl shadow-lg border border-border text-center space-y-6">
+          <div className="w-16 h-16 bg-amber-500/15 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center mx-auto ring-8 ring-amber-500/5">
+            <Clock className="w-8 h-8" />
+          </div>
+
+          <div>
+            <h2 className="text-2xl font-display font-bold text-foreground">
+              In afwachting van goedkeuring
+            </h2>
+            <p className="text-base font-semibold text-amber-600 dark:text-amber-400 mt-2">
+              De beheerder is op de hoogte.
+            </p>
+            <p className="text-muted-foreground text-sm mt-3 max-w-md mx-auto leading-relaxed">
+              Uw aanmelding voor het raadsportaal ({portalConfig.municipalityName}) is succesvol ingediend. Omdat dit portaal exclusief voor fracties is, dient een key-user of beheerder uw account eerst te accepteren. Zodra dit is gebeurd, kunt u direct inloggen.
+            </p>
+          </div>
+
+          <div className="bg-muted/40 border border-border/80 rounded-lg p-4 text-xs text-muted-foreground text-left space-y-1">
+            <div className="font-semibold text-foreground flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-primary" />
+              Kosteloos account voor fracties
+            </div>
+            <p>
+              Voor het fractieportaal geldt geen contributie of betalingsverplichting. Na verificatie door de fractiebeheerder of key-user heeft u direct toegang tot alle besloten dossiers.
+            </p>
+          </div>
+
+          <div className="pt-2">
+            <Link to="/login">
+              <Button className="w-full sm:w-auto px-6 font-semibold">
+                Naar inloggen
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // View when user registered and is prompted to complete Stripe Checkout
@@ -467,8 +527,14 @@ export default function Register() {
   return (
     <div className="container max-w-2xl mx-auto py-16 px-4">
       <div className="text-center mb-10">
-        <h1 className="text-4xl font-display mb-2">Word lid</h1>
-        <p className="text-foreground/80">Registreer u bij Lijst van Andel en steun onze lokale beweging</p>
+        <h1 className="text-4xl font-display mb-2">
+          {portalConfig.isPortalMode ? `Registreren — ${portalConfig.portalTitle}` : "Word lid"}
+        </h1>
+        <p className="text-foreground/80">
+          {portalConfig.isPortalMode
+            ? `Gratis account voor fractie- en raadsleden van gemeente ${portalConfig.municipalityName}`
+            : "Registreer u bij Lijst van Andel en steun onze lokale beweging"}
+        </p>
       </div>
 
       {isPaymentCancelled && (
@@ -483,28 +549,52 @@ export default function Register() {
         </div>
       )}
 
-      {/* Membership Dues Highlight Banner */}
-      <div className="mb-8 rounded-xl bg-gradient-to-br from-primary/10 via-accent/5 to-transparent border border-primary/20 p-5 shadow-sm">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5">
-            <div className="w-10 h-10 rounded-lg bg-primary/20 text-primary flex items-center justify-center shrink-0">
-              <CreditCard className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="text-sm font-semibold text-foreground">
-                Lidmaatschapscontributie: €{duesAmount.toFixed(2)} per jaar
+      {/* Membership Dues Highlight Banner (Only for Steenwijkerland) vs Free Fractie Portal Banner */}
+      {portalConfig.isPortalMode ? (
+        <div className="mb-8 rounded-xl bg-gradient-to-br from-primary/10 via-accent/5 to-transparent border border-primary/20 p-5 shadow-sm">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-lg bg-primary/20 text-primary flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-5 h-5" />
               </div>
-              <div className="text-xs text-muted-foreground">
-                Veilig afrekenen via Stripe (iDEAL, Bancontact, Visa/Mastercard)
+              <div>
+                <div className="text-sm font-semibold text-foreground">
+                  Kosteloos account voor fracties ({portalConfig.municipalityName})
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  In tegenstelling tot de partijwebsite is registratie hier gratis. Na aanmelding keurt een key-user uw toegang goed.
+                </div>
               </div>
             </div>
-          </div>
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-medium">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            Direct lidmaatschap
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-medium">
+              <Check className="w-3.5 h-3.5" />
+              Gratis voor fracties
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="mb-8 rounded-xl bg-gradient-to-br from-primary/10 via-accent/5 to-transparent border border-primary/20 p-5 shadow-sm">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-lg bg-primary/20 text-primary flex items-center justify-center shrink-0">
+                <CreditCard className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-foreground">
+                  Lidmaatschapscontributie: €{duesAmount.toFixed(2)} per jaar
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Veilig afrekenen via Stripe (iDEAL, Bancontact, Visa/Mastercard)
+                </div>
+              </div>
+            </div>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-medium">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Direct lidmaatschap
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="bg-card p-6 md:p-8 rounded-xl shadow-lg border border-border">
         <Form {...form}>
@@ -831,38 +921,45 @@ export default function Register() {
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="directDebit"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-lg border border-border p-4">
-                  <FormControl>
-                    <Checkbox
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                  </FormControl>
-                  <div className="space-y-1 leading-none">
-                    <FormLabel className="cursor-pointer font-medium text-foreground">
-                      Jaarlijkse verlenging via Stripe
-                    </FormLabel>
-                    <FormDescription>
-                      U rekent nu €{duesAmount.toFixed(2)} af voor het eerste jaar lidmaatschap.
-                    </FormDescription>
-                  </div>
-                </FormItem>
-              )}
-            />
+            {!portalConfig.isPortalMode && (
+              <FormField
+                control={form.control}
+                name="directDebit"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-lg border border-border p-4">
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                    <div className="space-y-1 leading-none">
+                      <FormLabel className="cursor-pointer font-medium text-foreground">
+                        Jaarlijkse verlenging via Stripe
+                      </FormLabel>
+                      <FormDescription>
+                        U rekent nu €{duesAmount.toFixed(2)} af voor het eerste jaar lidmaatschap.
+                      </FormDescription>
+                    </div>
+                  </FormItem>
+                )}
+              />
+            )}
 
             <Button
               type="submit"
-              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3 flex items-center justify-center gap-2"
+              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3 flex items-center justify-center gap-2 cursor-pointer"
               disabled={isLoading}
             >
               {isLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Bezig met account aanmaken...
+                </>
+              ) : portalConfig.isPortalMode ? (
+                <>
+                  <UserPlus className="w-4 h-4" />
+                  Aanmelding indienen (gratis voor fracties)
                 </>
               ) : (
                 <>
@@ -872,33 +969,35 @@ export default function Register() {
               )}
             </Button>
 
-            {/* Handmatige Overboeking Hulp Banner */}
-            <div className="mt-6 p-4 rounded-xl bg-muted/40 border border-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                  <Banknote className="w-4 h-4" />
+            {/* Handmatige Overboeking Hulp Banner (Alleen Steenwijkerland) */}
+            {!portalConfig.isPortalMode && (
+              <div className="mt-6 p-4 rounded-xl bg-muted/40 border border-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                    <Banknote className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="font-semibold text-foreground block">Lukt het lid worden niet via het formulier?</span>
+                    <span className="text-muted-foreground block">
+                      U kunt de contributie ook direct per bank overmaken naar ons rekeningnummer.
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <span className="font-semibold text-foreground block">Lukt het lid worden niet via het formulier?</span>
-                  <span className="text-muted-foreground block">
-                    U kunt de contributie ook direct per bank overmaken naar ons rekeningnummer.
-                  </span>
-                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowHelpModal(true)}
+                  className="shrink-0 text-xs h-8 gap-1.5 border-primary/30 text-primary hover:bg-primary/10 font-semibold"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                  Bekijk bankgegevens
+                </Button>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setShowHelpModal(true)}
-                className="shrink-0 text-xs h-8 gap-1.5 border-primary/30 text-primary hover:bg-primary/10 font-semibold"
-              >
-                <HelpCircle className="w-3.5 h-3.5" />
-                Bekijk bankgegevens
-              </Button>
-            </div>
+            )}
 
             <div className="mt-4 text-center text-xs text-muted-foreground">
-              Al lid van Lijst van Andel?{" "}
+              {portalConfig.isPortalMode ? "Al een account voor het raadsportaal?" : "Al lid van Lijst van Andel?"}{" "}
               <Link
                 to={redirectUrl ? `/login?redirect=${encodeURIComponent(redirectUrl)}` : "/login"}
                 className="text-primary hover:underline font-semibold"
