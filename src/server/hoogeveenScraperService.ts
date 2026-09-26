@@ -279,15 +279,22 @@ export async function scrapeCouncilAgendasHoogeveen(yearsToScrape: number[] = [2
               const docId = String(doc.id || doc.document_id);
               const docTitle = sanitizeCleanText(doc.title || doc.description || `Bijlage document`) || "Bijlage document";
               const version = doc.version || 1;
-              const docUrl = doc.url || `${NOTUBIZ_API_BASE}/document/${docId}/${version}`;
+              const remoteUrl = doc.url || `${NOTUBIZ_API_BASE}/document/${docId}/${version}`;
+
+              const expectedFilename = `hoogeveen_doc_${docId}_v${version}.pdf`;
+              const localFilePath = path.join(HOOGEVEEN_DOCUMENTS_DIR, expectedFilename);
+              const localPublicUrl = `/uploads/documents/hoogeveen/${expectedFilename}`;
+              const isLocalCached = fs.existsSync(localFilePath) && fs.statSync(localFilePath).size > 100;
+              const finalUrl = isLocalCached ? localPublicUrl : remoteUrl;
 
               if (!docLinks.some((d) => d.id === docId)) {
                 docLinks.push({
                   id: docId,
                   title: docTitle,
-                  url: docUrl,
+                  url: finalUrl,
                   fileType: docTitle.toLowerCase().endsWith(".xlsx") || docTitle.toLowerCase().includes("excel") ? "XLS" : (docTitle.toLowerCase().endsWith(".docx") || docTitle.toLowerCase().endsWith(".doc")) ? "DOC" : "PDF",
                   viewedBy: [],
+                  fileExists: isLocalCached,
                 });
               }
             }
@@ -512,6 +519,13 @@ export async function scrapeCouncilAgendasHoogeveen(yearsToScrape: number[] = [2
   saveDbToSqlite(db);
 
   console.log(`[HOOGEVEEN SCRAPER] Voltooid! ${hoogeveenTopicsList.length} Hoogeveen agendapunten opgeslagen (${bespreekstukkenFound} bespreekstukken).`);
+
+  // Automatically start background download for any new physical PDF files
+  setTimeout(() => {
+    bulkDownloadHoogeveenPdfs().catch((err) =>
+      console.warn("[HOOGEVEEN AUTO BULK DOWNLOAD WARN]:", err?.message)
+    );
+  }, 1000);
 
   // Schedule next watchdog run
   scheduleNextHoogeveenWatchdogScrape(120 * 60 * 1000); // 2 hours
