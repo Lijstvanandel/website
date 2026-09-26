@@ -77,6 +77,17 @@ import {
   dismissAllDiffAlerts,
 } from "./src/server/councilScraperService.js";
 import {
+  scrapeCouncilAgendasHoogeveen,
+  startHoogeveenCouncilWatchdogScheduler,
+} from "./src/server/hoogeveenScraperService.js";
+import {
+  distributeHoogeveenDossiers,
+  getHoogeveenWijkenOverview,
+} from "./src/server/hoogeveenDossierManager.js";
+import {
+  HOOGEVEEN_WIJKEN_MATRIX,
+} from "./src/server/hoogeveenTaxonomy.js";
+import {
   getEventLoopLagMetrics,
   globalPdfWorkerPool,
 } from "./src/server/workers/pdfWorkerPool.js";
@@ -10917,17 +10928,29 @@ Sitemap: ${baseUrl}/sitemap.xml
   app.post("/api/council/scrape-now", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
     res.setHeader("Content-Type", "application/json");
     try {
-      const idempotencyKey = `ibabs-scrape-${new Date().toISOString().slice(0, 13)}`;
+      const targetMunicipality = resolveRequestMunicipality(req);
+      const isHoogeveen = targetMunicipality === "hoogeveen";
+      const syncType = isHoogeveen ? "COUNCIL_HOOGEVEEN_NOTUBIZ_SYNC" : "COUNCIL_IBABS_SYNC";
+      const idempotencyKey = `${isHoogeveen ? "hoogeveen" : "ibabs"}-scrape-${new Date().toISOString().slice(0, 13)}`;
+
       const { job, isDuplicate } = globalBackgroundJobQueue.enqueue(
-        "COUNCIL_IBABS_SYNC",
+        syncType,
         idempotencyKey,
         async (bgJob) => {
-          globalBackgroundJobQueue.updateProgress(bgJob.id, 25, "Ophalen vergaderingen van iBabs...");
-          const summary = await scrapeCouncilAgendas();
-          globalBackgroundJobQueue.updateProgress(bgJob.id, 100, "Scraping succesvol afgerond");
+          globalBackgroundJobQueue.updateProgress(bgJob.id, 25, isHoogeveen ? "Ophalen vergaderingen Hoogeveen (NotuBiz)..." : "Ophalen vergaderingen van iBabs...");
+          const summary = isHoogeveen ? await scrapeCouncilAgendasHoogeveen() : await scrapeCouncilAgendas();
+          globalBackgroundJobQueue.updateProgress(bgJob.id, 80, isHoogeveen ? "Dossierverdeling Hoogeveen uitvoeren..." : "Topic categorisatie...");
+          if (isHoogeveen) {
+            try {
+              await distributeHoogeveenDossiers();
+            } catch (dErr: any) {
+              console.warn("[HOOGEVEEN DOSSIERVERDELING WARN]:", dErr?.message);
+            }
+          }
+          globalBackgroundJobQueue.updateProgress(bgJob.id, 100, "Scraping en verdeling succesvol afgerond");
           return summary;
         },
-        { initiatedBy: req.user?.username || "raadslid", initialAction: "Starten iBabs synchronisatie..." }
+        { initiatedBy: req.user?.username || "raadslid", initialAction: `Starten ${isHoogeveen ? "Hoogeveen NotuBiz" : "iBabs"} synchronisatie...` }
       );
 
       if (req.query.async === "true") {
@@ -10940,11 +10963,68 @@ Sitemap: ${baseUrl}/sitemap.xml
         });
       }
 
-      const summary = await scrapeCouncilAgendas();
-      return res.json({ success: true, message: "Agenda's en documenten succesvol gescraped!", summary, jobId: job.id });
+      const summary = isHoogeveen ? await scrapeCouncilAgendasHoogeveen() : await scrapeCouncilAgendas();
+      if (isHoogeveen) {
+        try {
+          await distributeHoogeveenDossiers();
+        } catch (dErr: any) {
+          console.warn("[HOOGEVEEN AUTO-DISTRIBUTE]:", dErr?.message);
+        }
+      }
+      return res.json({ success: true, message: `Agenda's en documenten voor ${isHoogeveen ? "Hoogeveen" : "Steenwijkerland"} succesvol gescraped!`, summary, jobId: job.id });
     } catch (err: any) {
       console.error("[RAADSPANEEL SCRAPER FOUT]", err);
       return res.status(500).json({ error: "Fout bij scrapen van vergaderstukken: " + err.message });
+    }
+  });
+
+  // Dedicated Hoogeveen Scraper Endpoint
+  app.post("/api/council/hoogeveen/scrape-now", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
+    res.setHeader("Content-Type", "application/json");
+    try {
+      const summary = await scrapeCouncilAgendasHoogeveen();
+      const distSummary = await distributeHoogeveenDossiers();
+      return res.json({
+        success: true,
+        message: "Gemeente Hoogeveen raadsinformatie succesvol gescraped en verdeeld over wijken!",
+        summary,
+        distribution: distSummary,
+      });
+    } catch (err: any) {
+      console.error("[HOOGEVEEN SCRAPER ROUTE FOUT]", err);
+      return res.status(500).json({ error: "Fout bij scrapen van Hoogeveen vergaderstukken: " + err.message });
+    }
+  });
+
+  // Dedicated Hoogeveen Dossierverdeler Endpoint
+  app.post("/api/dossiers/hoogeveen/distribute", requireAuth, requireCouncilOrAdmin, async (_req: any, res: any) => {
+    res.setHeader("Content-Type", "application/json");
+    try {
+      const result = await distributeHoogeveenDossiers();
+      return res.json({
+        success: true,
+        message: "Hoogeveen dossiers succesvol verdeeld over wijken en kerndossiers!",
+        result,
+      });
+    } catch (err: any) {
+      console.error("[HOOGEVEEN DOSSIERVERDELER ROUTE FOUT]", err);
+      return res.status(500).json({ error: "Fout bij verdelen van Hoogeveen dossiers: " + err.message });
+    }
+  });
+
+  // Hoogeveen Wijken & Kernen Overview (Aggregated CBS data)
+  app.get("/api/dossiers/hoogeveen/wijken", (_req: any, res: any) => {
+    res.setHeader("Content-Type", "application/json");
+    try {
+      const wijken = getHoogeveenWijkenOverview();
+      return res.json({
+        success: true,
+        municipality: "hoogeveen",
+        totalWijken: wijken.length,
+        wijken,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: "Fout bij ophalen Hoogeveen wijken: " + err.message });
     }
   });
 
@@ -14381,8 +14461,11 @@ Sitemap: ${baseUrl}/sitemap.xml
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on port ${PORT}`);
-    // Start automated 24-hour council agenda scraper
+    // Start automated 24-hour council agenda scraper for Steenwijkerland
     startDailyCouncilScraper();
+
+    // Start autonomous council agenda scraper for Hoogeveen
+    startHoogeveenCouncilWatchdogScheduler();
 
     // Auto-verify and sync server documents if disk contains more files than metadata asynchronously
     (async () => {
