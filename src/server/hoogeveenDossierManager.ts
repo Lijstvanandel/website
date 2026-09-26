@@ -10,6 +10,64 @@ const HOOGEVEEN_DATA_DIR = path.join(process.cwd(), "public", "data", "hoogeveen
 const HOOGEVEEN_METADATA_JSON = path.join(HOOGEVEEN_DATA_DIR, "raadsstukken_metadata_hoogeveen.json");
 const HOOGEVEEN_GRAPH_JSON = path.join(HOOGEVEEN_DATA_DIR, "network_graph_hoogeveen.json");
 
+export interface HoogeveenClassificationProgress {
+  isRunning: boolean;
+  isPaused: boolean;
+  pauseReason?: string;
+  pauseRemainingSeconds?: number;
+  pauseResumesAt?: string;
+  ratePerMinute: number;
+  rpdLimit: number;
+  dailyRequestsUsed: number;
+  dailyRequestsRemaining: number;
+  modelName: string;
+  privacySanitized: boolean;
+  total: number;
+  processed: number;
+  newlyClassified: number;
+  alreadyProcessed: number;
+  deadLetterCount: number;
+  activeFile: string;
+  limit?: number;
+  lastResults: any[];
+  logs: string[];
+}
+
+const activeHoogeveenProgress: HoogeveenClassificationProgress = {
+  isRunning: false,
+  isPaused: false,
+  pauseReason: undefined,
+  pauseRemainingSeconds: 0,
+  pauseResumesAt: undefined,
+  ratePerMinute: 60,
+  rpdLimit: 100000,
+  dailyRequestsUsed: 0,
+  dailyRequestsRemaining: 100000,
+  modelName: "Hoogeveen NotuBiz Taxonomie-Engine",
+  privacySanitized: true,
+  total: 0,
+  processed: 0,
+  newlyClassified: 0,
+  alreadyProcessed: 0,
+  deadLetterCount: 0,
+  activeFile: "",
+  limit: undefined,
+  lastResults: [],
+  logs: [],
+};
+
+export function getHoogeveenClassificationStatus(): HoogeveenClassificationProgress {
+  return activeHoogeveenProgress;
+}
+
+export function cancelHoogeveenClassification(): void {
+  if (activeHoogeveenProgress.isRunning) {
+    activeHoogeveenProgress.isRunning = false;
+    const time = new Date().toLocaleTimeString("nl-NL");
+    activeHoogeveenProgress.logs.push(`[${time}] Hoogeveen herstructureringsproces handmatig geannuleerd.`);
+  }
+}
+
 function ensureHoogeveenDirs() {
   try {
     if (!fs.existsSync(HOOGEVEEN_DATA_DIR)) {
@@ -146,9 +204,10 @@ export function classifyHoogeveenHoofddossier(title: string, content = ""): Hoog
 /**
  * Main Dossierverdeler Engine for Gemeente Hoogeveen
  * Scans all scraped council topics and documents for Hoogeveen,
- * assigns them to canonical hoofddossiers and geographic wijken/kernen.
+ * assigns them to canonical hoofddossiers and geographic wijken/kernen,
+ * and tracks real-time progress for the council portal.
  */
-export async function distributeHoogeveenDossiers(): Promise<{
+export async function distributeHoogeveenDossiers(options: { force?: boolean; limit?: number } = {}): Promise<{
   dossiersCount: number;
   documentsDistributedCount: number;
   wijkenCount: number;
@@ -158,7 +217,24 @@ export async function distributeHoogeveenDossiers(): Promise<{
   await initDatabase();
   const db = getDbFromSqlite();
   const allTopics = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
-  const hoogeveenTopics = allTopics.filter((t: any) => t.municipality === "hoogeveen");
+  let hoogeveenTopics = allTopics.filter((t: any) => t.municipality === "hoogeveen");
+
+  if (options.limit && options.limit > 0) {
+    hoogeveenTopics = hoogeveenTopics.slice(0, options.limit);
+  }
+
+  const nowTimeStr = new Date().toLocaleTimeString("nl-NL");
+  activeHoogeveenProgress.isRunning = true;
+  activeHoogeveenProgress.total = hoogeveenTopics.length;
+  activeHoogeveenProgress.processed = 0;
+  activeHoogeveenProgress.newlyClassified = 0;
+  activeHoogeveenProgress.alreadyProcessed = 0;
+  activeHoogeveenProgress.deadLetterCount = 0;
+  activeHoogeveenProgress.limit = options.limit;
+  activeHoogeveenProgress.lastResults = [];
+  activeHoogeveenProgress.logs = [
+    `[${nowTimeStr}] Hoogeveen herstructurering gestart: scannen van ${hoogeveenTopics.length} agendapunten en gekoppelde raadsdocumenten...`,
+  ];
 
   console.log(`[HOOGEVEEN DOSSIERVERDELER] Start verdeling over ${hoogeveenTopics.length} Hoogeveen agendapunten...`);
 
@@ -185,8 +261,16 @@ export async function distributeHoogeveenDossiers(): Promise<{
     });
   }
 
+  const HOOGEVEEN_DOCUMENTS_DIR = path.join(process.cwd(), "uploads", "documents", "hoogeveen");
+
   // Iterate over topics and distribute
-  for (const topic of hoogeveenTopics) {
+  for (let i = 0; i < hoogeveenTopics.length; i++) {
+    if (!activeHoogeveenProgress.isRunning) {
+      console.log("[HOOGEVEEN DOSSIERVERDELER] Proces afgebroken.");
+      break;
+    }
+
+    const topic = hoogeveenTopics[i];
     const topicTitle = topic.title || "";
     const topicDocs: any[] = Array.isArray(topic.documents) ? topic.documents : [];
     const detectedWijken = (topic.wijken && topic.wijken.length > 0) ? topic.wijken : detectHoogeveenWijken(topicTitle, "", "", topic.description);
@@ -223,10 +307,31 @@ export async function distributeHoogeveenDossiers(): Promise<{
     // Convert council documents to DossierDocument format
     for (const doc of topicDocs) {
       totalDocsCount++;
+      const expectedFilename = `hoogeveen_doc_${doc.id}_v1.pdf`;
+      activeHoogeveenProgress.activeFile = expectedFilename;
+
+      const possibleFilePaths = [
+        path.join(HOOGEVEEN_DOCUMENTS_DIR, expectedFilename),
+        path.join(process.cwd(), "public", "uploads", "documents", "hoogeveen", expectedFilename),
+        path.join(process.cwd(), "dist", "uploads", "documents", "hoogeveen", expectedFilename),
+      ];
+
+      const foundPath = possibleFilePaths.find((p) => {
+        try {
+          return fs.existsSync(p) && fs.statSync(p).size > 100;
+        } catch {
+          return false;
+        }
+      });
+
+      const isLocalCached = !!foundPath;
+      const localPublicUrl = `/uploads/documents/hoogeveen/${expectedFilename}`;
+      const finalDocUrl = isLocalCached ? localPublicUrl : doc.url;
+
       const dDoc: DossierDocument = {
         id: `hg_doc_${doc.id}`,
         title: doc.title || "Raadsdocument Hoogeveen",
-        url: doc.url,
+        url: finalDocUrl,
         fileType: doc.fileType || "PDF",
         fileSize: doc.fileSize || "1.2 MB",
         date: topic.meetingDate || new Date().toISOString().slice(0, 10),
@@ -239,6 +344,7 @@ export async function distributeHoogeveenDossiers(): Promise<{
         municipality: "hoogeveen",
         source: "NotuBiz Hoogeveen",
         vergadering: topic.meetingTitle,
+        fileExists: isLocalCached,
       };
 
       parentDossier.documents.push(dDoc);
@@ -249,12 +355,40 @@ export async function distributeHoogeveenDossiers(): Promise<{
         subDossier.documents.push(dDoc);
         subDossier.documentsCount = subDossier.documents.length;
       }
+
+      if (activeHoogeveenProgress.lastResults.length < 50) {
+        activeHoogeveenProgress.lastResults.unshift({
+          filename: expectedFilename,
+          source: "gemini",
+          modelUsed: "Hoogeveen NotuBiz Taxonomie-Engine",
+          timestamp: new Date().toISOString(),
+          dossier: hoofddossier,
+          subdossier: subTitle,
+          titel: doc.title || topicTitle,
+          wijk_of_kern: detectedWijken.join(", ") || "Gemeentebreed",
+          entiteiten: detectedWijken.join(", "),
+          skos_tags: ["Hoogeveen", hoofddossier, ...detectedWijken],
+        });
+      }
     }
 
     // Merge wijken to parent
     for (const w of detectedWijken) {
       if (!parentDossier.wijken.includes(w)) {
         parentDossier.wijken.push(w);
+      }
+    }
+
+    activeHoogeveenProgress.processed = i + 1;
+    activeHoogeveenProgress.newlyClassified += topicDocs.length;
+
+    if (i % 5 === 0 || i === hoogeveenTopics.length - 1) {
+      const stepTime = new Date().toLocaleTimeString("nl-NL");
+      activeHoogeveenProgress.logs.push(
+        `[${stepTime}] [${i + 1}/${hoogeveenTopics.length}] Agendapunt "${topicTitle.slice(0, 45)}..." -> ${hoofddossier} (${detectedWijken.join(", ") || "Gemeentebreed"})`
+      );
+      if (activeHoogeveenProgress.logs.length > 500) {
+        activeHoogeveenProgress.logs.shift();
       }
     }
   }
@@ -333,6 +467,12 @@ export async function distributeHoogeveenDossiers(): Promise<{
   saveDbToSqlite(db);
   setKv("hoogeveenDossiers", resultDossiers);
 
+  const doneTimeStr = new Date().toLocaleTimeString("nl-NL");
+  activeHoogeveenProgress.isRunning = false;
+  activeHoogeveenProgress.logs.push(
+    `[${doneTimeStr}] Hoogeveen herstructurering succesvol afgerond: ${resultDossiers.length} hoofddossiers, ${totalDocsCount} documenten verdeeld over ${HOOGEVEEN_WIJKEN_MATRIX.length} wijken en kernen.`
+  );
+
   console.log(`[HOOGEVEEN DOSSIERVERDELER] Verdeling succesvol afgerond: ${resultDossiers.length} hoofddossiers, ${totalDocsCount} documenten verdeeld over ${HOOGEVEEN_WIJKEN_MATRIX.length} wijken en kernen.`);
 
   return {
@@ -341,6 +481,78 @@ export async function distributeHoogeveenDossiers(): Promise<{
     wijkenCount: HOOGEVEEN_WIJKEN_MATRIX.length,
     lastDistributedAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Executes Hoogeveen restructuring asynchronously in the background
+ */
+export function startHoogeveenRestructuringInBackground(options: { force?: boolean; limit?: number } = {}): void {
+  if (activeHoogeveenProgress.isRunning) return;
+
+  activeHoogeveenProgress.isRunning = true;
+  activeHoogeveenProgress.processed = 0;
+  activeHoogeveenProgress.total = 0;
+  activeHoogeveenProgress.newlyClassified = 0;
+  activeHoogeveenProgress.alreadyProcessed = 0;
+  activeHoogeveenProgress.limit = options.limit;
+  activeHoogeveenProgress.logs = [
+    `[${new Date().toLocaleTimeString("nl-NL")}] Achtergrondtaak Hoogeveen herstructurering geïnitialiseerd...`,
+  ];
+  activeHoogeveenProgress.lastResults = [];
+
+  setTimeout(async () => {
+    try {
+      await distributeHoogeveenDossiers(options);
+    } catch (err: any) {
+      console.error("[HOOGEVEEN RESTRUCTURING ERROR]:", err);
+      activeHoogeveenProgress.isRunning = false;
+      activeHoogeveenProgress.logs.push(`[${new Date().toLocaleTimeString("nl-NL")}] Fout tijdens Hoogeveen herstructurering: ${err.message}`);
+    }
+  }, 50);
+}
+
+/**
+ * Generates CSV metadata export specifically for Gemeente Hoogeveen documents
+ */
+export function generateHoogeveenMetadataCsv(filterType: "all" | "processed" | "unprocessed" = "all"): string {
+  const dossiers = getHoogeveenDossiers();
+  const allDocs: any[] = [];
+  for (const d of dossiers) {
+    for (const doc of (d.documents || [])) {
+      allDocs.push({
+        ...doc,
+        hoofddossier: d.title,
+        dossierSlug: d.slug,
+      });
+    }
+  }
+
+  const filtered = allDocs.filter((doc) => {
+    if (filterType === "processed") return doc.fileExists === true;
+    if (filterType === "unprocessed") return !doc.fileExists;
+    return true;
+  });
+
+  const header = ["ID", "Bestandsnaam", "Titel", "Hoofddossier", "Subdossier", "Wijk_of_Kern", "Gemeente", "Vergadering", "Datum", "Bestaat_Op_Server", "Document_URL"];
+  const rows = filtered.map((doc) => {
+    const rawId = doc.id?.replace(/^hg_doc_/, "") || "";
+    const filename = `hoogeveen_doc_${rawId}_v1.pdf`;
+    return [
+      `"${(doc.id || "").replace(/"/g, '""')}"`,
+      `"${filename.replace(/"/g, '""')}"`,
+      `"${(doc.title || "").replace(/"/g, '""')}"`,
+      `"${(doc.hoofddossier || "").replace(/"/g, '""')}"`,
+      `"${(doc.subdossier || "").replace(/"/g, '""')}"`,
+      `"${(doc.wijkOfKern || (doc.wijken && doc.wijken.join("; ")) || "Gemeentebreed").replace(/"/g, '""')}"`,
+      `"Hoogeveen"`,
+      `"${(doc.vergadering || "").replace(/"/g, '""')}"`,
+      `"${(doc.date || "").replace(/"/g, '""')}"`,
+      `"${doc.fileExists ? "JA" : "NEE"}"`,
+      `"${(doc.url || "").replace(/"/g, '""')}"`,
+    ].join(",");
+  });
+
+  return [header.join(","), ...rows].join("\n");
 }
 
 /**

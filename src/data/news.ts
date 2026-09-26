@@ -1,5 +1,5 @@
-import kopwijzerImg from "@/assets/news-kopwijzer.jpg";
-import marktImg from "@/assets/markt-steenwijk.jpg";
+const kopwijzerImg = "/assets/news-kopwijzer.jpg";
+const marktImg = "/assets/markt-steenwijk.jpg";
 
 export interface NewsItem {
   id: string;

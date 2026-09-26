@@ -31,7 +31,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import logo from "@/assets/logo.png";
+const logo = "/assets/logo.png";
 import { BUURTKAART_43_WIJKEN, LEGACY_SLUG_MAP } from "@/data/defaultWijken";
 import { getPortalConfig } from "@/utils/portalConfig";
 

@@ -1,4 +1,4 @@
-import lezingImg from "@/assets/markt-steenwijk.jpg";
+const lezingImg = "/assets/markt-steenwijk.jpg";
 
 export interface EventItem {
   id: string;

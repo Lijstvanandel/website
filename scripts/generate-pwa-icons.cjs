@@ -5,7 +5,15 @@ const sharp = require('sharp');
 const publicDir = path.join(__dirname, '..', 'public');
 const srcAssetsDir = path.join(__dirname, '..', 'src', 'assets');
 
-// Crisp vector definition of the new Steenwijkerland emblem logo
+// Skip regeneration if icons already exist to conserve memory during build
+if (
+  fs.existsSync(path.join(publicDir, 'pwa-192x192.png')) &&
+  fs.existsSync(path.join(publicDir, 'pwa-512x512.png')) &&
+  fs.existsSync(path.join(publicDir, 'pwa-maskable-512x512.png'))
+) {
+  console.log('✅ PWA icons already exist. Skipping icon generation.');
+  process.exit(0);
+}
 // Scaled and centered with ample padding so the entire shape fits completely inside the circle without getting clipped
 const mapPathData = `
   M 118 182

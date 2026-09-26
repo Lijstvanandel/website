@@ -85,6 +85,10 @@ import {
   distributeHoogeveenDossiers,
   getHoogeveenWijkenOverview,
   getHoogeveenDossiers,
+  startHoogeveenRestructuringInBackground,
+  getHoogeveenClassificationStatus,
+  cancelHoogeveenClassification,
+  generateHoogeveenMetadataCsv,
 } from "./src/server/hoogeveenDossierManager.js";
 import {
   HOOGEVEEN_WIJKEN_MATRIX,
@@ -10909,7 +10913,16 @@ Sitemap: ${baseUrl}/sitemap.xml
 
   // Helper to determine active municipality from request context
   function resolveRequestMunicipality(req: any): "steenwijkerland" | "hoogeveen" {
-    const q = String(req.query?.municipality || req.query?.portal || req.query?.tenant || req.query?.muni || "").toLowerCase().trim();
+    const q = String(
+      req.query?.municipality ||
+      req.query?.portal ||
+      req.query?.tenant ||
+      req.query?.muni ||
+      req.body?.municipality ||
+      req.body?.portal ||
+      req.body?.tenant ||
+      ""
+    ).toLowerCase().trim();
     if (q === "hoogeveen" || q === "hgv") return "hoogeveen";
     if (q === "steenwijkerland" || q === "swl") return "steenwijkerland";
 
@@ -13110,6 +13123,22 @@ Sitemap: ${baseUrl}/sitemap.xml
   app.post("/api/council/classify-bulk-documents", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
     try {
       const { force, limit } = req.body || {};
+      const targetMunicipality = resolveRequestMunicipality(req);
+
+      if (targetMunicipality === "hoogeveen") {
+        const currentStatus = getHoogeveenClassificationStatus();
+        if (currentStatus.isRunning) {
+          return res.status(400).json({ error: "Er is al een herstructureringsproces actief voor Hoogeveen." });
+        }
+        const parsedLimit = typeof limit === "number" && limit > 0 ? limit : (limit ? parseInt(limit, 10) : undefined);
+        startHoogeveenRestructuringInBackground({ force: !!force, limit: parsedLimit && parsedLimit > 0 ? parsedLimit : undefined });
+        return res.json({
+          success: true,
+          message: parsedLimit
+            ? `Hoogeveen dossiers herverdelen gestart voor maximaal ${parsedLimit} documenten in de achtergrond`
+            : "Hoogeveen dossiers herverdelen en herstructureren gestart in de achtergrond",
+        });
+      }
       
       const currentStatus = getBulkClassificationStatus();
       if (currentStatus.isRunning) {
@@ -13131,6 +13160,11 @@ Sitemap: ${baseUrl}/sitemap.xml
 
   app.get("/api/council/classify-bulk-status", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
     try {
+      const targetMunicipality = resolveRequestMunicipality(req);
+      if (targetMunicipality === "hoogeveen") {
+        const status = getHoogeveenClassificationStatus();
+        return res.json(status);
+      }
       const status = getBulkClassificationStatus();
       res.json(status);
     } catch (err: any) {
@@ -13140,6 +13174,11 @@ Sitemap: ${baseUrl}/sitemap.xml
 
   app.post("/api/council/classify-bulk-cancel", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
     try {
+      const targetMunicipality = resolveRequestMunicipality(req);
+      if (targetMunicipality === "hoogeveen") {
+        cancelHoogeveenClassification();
+        return res.json({ success: true, message: "Hoogeveen herstructureringsproces geannuleerd" });
+      }
       cancelBulkClassification();
       res.json({ success: true, message: "Proces geannuleerd" });
     } catch (err: any) {
@@ -13784,12 +13823,19 @@ Sitemap: ${baseUrl}/sitemap.xml
     }
   });
 
-  // Download complete master metadata CSV containing all 5000+ documents
+  // Download complete master metadata CSV containing all documents
   app.get(["/api/council/metadata.csv", "/api/council/metadata/download"], optionalAuth, (req: any, res: any) => {
     try {
+      const targetMunicipality = resolveRequestMunicipality(req);
+      const dateStr = new Date().toISOString().slice(0, 10);
+      if (targetMunicipality === "hoogeveen") {
+        const csv = generateHoogeveenMetadataCsv("all");
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="hoogeveen_raadsstukken_metadata_compleet_${dateStr}.csv"`);
+        return res.send(csv);
+      }
       const metadata = getRawMetadata();
       const csv = generateMasterMetadataCsv(metadata);
-      const dateStr = new Date().toISOString().slice(0, 10);
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="raadsstukken_metadata_compleet_${dateStr}.csv"`);
       res.send(csv);
@@ -13802,6 +13848,14 @@ Sitemap: ${baseUrl}/sitemap.xml
   // Download CSV of ONLY unprocessed / DLQ files
   app.get(["/api/council/metadata/unprocessed.csv"], optionalAuth, (req: any, res: any) => {
     try {
+      const targetMunicipality = resolveRequestMunicipality(req);
+      const dateStr = new Date().toISOString().slice(0, 10);
+      if (targetMunicipality === "hoogeveen") {
+        const csv = generateHoogeveenMetadataCsv("unprocessed");
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="hoogeveen_onverwerkte_bestanden_${dateStr}.csv"`);
+        return res.send(csv);
+      }
       const metadata = getRawMetadata();
       const unprocessedItems = metadata.filter((item) => {
         const isGoedVerwerkt = (
@@ -13812,7 +13866,6 @@ Sitemap: ${baseUrl}/sitemap.xml
         return !isGoedVerwerkt;
       });
       const csv = generateMasterMetadataCsv(unprocessedItems);
-      const dateStr = new Date().toISOString().slice(0, 10);
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="onverwerkte_bestanden_${dateStr}.csv"`);
       res.send(csv);
@@ -13825,6 +13878,14 @@ Sitemap: ${baseUrl}/sitemap.xml
   // Download CSV of ONLY successfully AI-processed files
   app.get(["/api/council/metadata/processed.csv"], optionalAuth, (req: any, res: any) => {
     try {
+      const targetMunicipality = resolveRequestMunicipality(req);
+      const dateStr = new Date().toISOString().slice(0, 10);
+      if (targetMunicipality === "hoogeveen") {
+        const csv = generateHoogeveenMetadataCsv("processed");
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="hoogeveen_verwerkte_bestanden_goed_${dateStr}.csv"`);
+        return res.send(csv);
+      }
       const metadata = getRawMetadata();
       const processedItems = metadata.filter((item) => {
         return (
@@ -13834,7 +13895,6 @@ Sitemap: ${baseUrl}/sitemap.xml
         );
       });
       const csv = generateMasterMetadataCsv(processedItems);
-      const dateStr = new Date().toISOString().slice(0, 10);
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="verwerkte_bestanden_goed_${dateStr}.csv"`);
       res.send(csv);

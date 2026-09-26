@@ -8,7 +8,7 @@ import { sanitizeCleanText, isCorruptOrHtmlGarbage } from "./scraperContractVali
 
 const HOOGEVEEN_ORG_ID = "572";
 const NOTUBIZ_API_BASE = "https://api.notubiz.nl";
-const HOOGEVEEN_DOCUMENTS_DIR = path.join(process.cwd(), "public", "uploads", "documents", "hoogeveen");
+const HOOGEVEEN_DOCUMENTS_DIR = path.join(process.cwd(), "uploads", "documents", "hoogeveen");
 
 function ensureHoogeveenDocsDir() {
   try {

@@ -1,5 +1,5 @@
 import { Mail, Instagram, Facebook, Linkedin } from "lucide-react";
-import silhouette from "@/assets/silhouette.png";
+const silhouette = "/assets/silhouette.png";
 
 interface Steunlid {
   id: string;

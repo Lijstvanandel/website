@@ -32,10 +32,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { fetchWithAuth, safeJson } from "@/lib/api";
-import placeholder from "@/assets/silhouette.png";
+const placeholder = "/assets/silhouette.png";
 import { getSafeDocumentUrl } from "@/lib/documentUrl";
-import sammyImg from "@/assets/sammy.png";
-import stefImg from "@/assets/stef-mars.jpg";
+const sammyImg = "/assets/sammy.png";
+const stefImg = "/assets/stef-mars.jpg";
 import { useAuth } from "@/context/AuthContext";
 
 export interface OrganisatieDocItem {

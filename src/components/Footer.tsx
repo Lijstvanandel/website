@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Facebook, Instagram, Linkedin, Twitter, Mail, CheckCircle2, ArrowRight, Heart, Shield, Building2, Lock } from "lucide-react";
-import logo from "@/assets/logo.png";
+const logo = "/assets/logo.png";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";

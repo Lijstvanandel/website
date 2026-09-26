@@ -19,22 +19,28 @@ import {
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { MemberDocument } from "@/types/document";
-import * as pdfjsModule from "pdfjs-dist";
-import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 
-// Support both ESM default and namespace exports for pdfjs-dist
-const pdfjsLib: any = (pdfjsModule as any)?.default || pdfjsModule;
-
-// Configure PDF.js worker
-if (typeof window !== "undefined") {
-  const workerOptions = pdfjsLib?.GlobalWorkerOptions || (pdfjsModule as any)?.GlobalWorkerOptions;
-  if (workerOptions) {
-    try {
-      workerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib?.version || (pdfjsModule as any)?.version || "3.11.174"}/pdf.worker.min.js`;
-    } catch (e) {
-      console.warn("Failed to set PDF.js workerSrc", e);
+async function loadPdfJsFromCdn(): Promise<any> {
+  if ((window as any).pdfjsLib) return (window as any).pdfjsLib;
+  return new Promise((resolve, reject) => {
+    const existing = document.getElementById("pdfjs-cdn-script");
+    if (existing) {
+      existing.addEventListener("load", () => resolve((window as any).pdfjsLib));
+      return;
     }
-  }
+    const script = document.createElement("script");
+    script.id = "pdfjs-cdn-script";
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    script.onload = () => {
+      const lib = (window as any).pdfjsLib;
+      if (lib && lib.GlobalWorkerOptions) {
+        lib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      }
+      resolve(lib);
+    };
+    script.onerror = () => reject(new Error("Kon PDF.js niet inladen via CDN"));
+    document.head.appendChild(script);
+  });
 }
 
 interface SecureDocumentViewerProps {
@@ -69,8 +75,8 @@ export const SecureDocumentViewer: React.FC<SecureDocumentViewerProps> = ({
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const pdfDocRef = useRef<PDFDocumentProxy | null>(null);
-  const renderTaskRef = useRef<RenderTask | null>(null);
+  const pdfDocRef = useRef<any>(null);
+  const renderTaskRef = useRef<any>(null);
 
   const memberName = user?.fullName || user?.username || "Geregistreerd Lid";
   const userIdentifier = user?.email || user?.username || "Lid";
@@ -200,7 +206,8 @@ export const SecureDocumentViewer: React.FC<SecureDocumentViewerProps> = ({
 
       setPdfLoading(true);
       try {
-        const getDocFn = pdfjsLib?.getDocument || (pdfjsModule as any)?.getDocument;
+        const pdfjsLib = await loadPdfJsFromCdn();
+        const getDocFn = pdfjsLib?.getDocument;
         if (!getDocFn) {
           throw new Error("PDF.js getDocument functie niet beschikbaar");
         }
