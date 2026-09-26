@@ -846,19 +846,6 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
               Uitvoeringslog (.txt)
             </a>
 
-            {getPortalConfig().isPortalMode && (
-              <a
-                id="btn-download-pdf-log"
-                href="/api/council/hoogeveen/bulk-download-log/download"
-                download
-                className="inline-flex items-center justify-center border border-purple-500/40 bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 text-xs font-semibold h-8 px-3 rounded-xl shadow-2xs transition-colors"
-                title="Download het live voortgangslogboek van de fysieke PDF Bulk-Download"
-              >
-                <Download className="w-3.5 h-3.5 mr-1.5 text-purple-600 dark:text-purple-400" />
-                PDF Downloadlog (.txt)
-              </a>
-            )}
-
             <Button
               id="btn-export-missing-files"
               onClick={() => setIsMissingFilesModalOpen(true)}
@@ -1612,7 +1599,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
 
                 {/* Card Body */}
                 <div className="p-5">
-                  {dossier.dateRange.start && (
+                  {dossier.dateRange?.start && (
                     <div className="flex items-center gap-1 text-[11px] text-muted-foreground mb-1.5 font-medium">
                       <Calendar className="w-3 h-3" />
                       {dossier.dateRange.start} {dossier.dateRange.end && `– ${dossier.dateRange.end}`}

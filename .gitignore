@@ -32,7 +32,7 @@ dist/version.json
 .env.*
 !.env.example
 
-# Database & Uploads
+# Database, Uploads & Runtime Generated Files
 database.sqlite
 database.sqlite*
 *.sqlite
@@ -44,7 +44,8 @@ public/uploads/
 public/*.csv
 dist/*.csv
 !src/data/
-!public/data/
+public/data/*.log
+public/data/*/*.log
 public/data/gemini_quota_tracker.json
 public/data/gemini_dead_letter_queue.jsonl
 *metadata_master*

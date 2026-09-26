@@ -470,7 +470,7 @@ export const SubdossierDetailView: React.FC<SubdossierDetailViewProps> = ({
                 {(subdossier.dateRange?.start || subdossier.dateRange?.end) && (
                   <span className="px-2 py-0.5 rounded-md bg-black/40 text-white/80 text-[11px] font-mono flex items-center gap-1 border border-white/10">
                     <Calendar className="w-3 h-3" />
-                    {subdossier.dateRange.start || "—"} t/m {subdossier.dateRange.end || "heden"}
+                    {subdossier.dateRange?.start || "—"} t/m {subdossier.dateRange?.end || "heden"}
                   </span>
                 )}
               </div>

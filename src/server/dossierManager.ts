@@ -1301,8 +1301,8 @@ export function getAllDossiers(
 
         const dates = finalDocs.map((d) => d.datum).filter(Boolean) as string[];
         dates.sort();
-        const startDate = dates.length > 0 ? dates[0] : dossiers[existingIdx].dateRange.start;
-        const endDate = dates.length > 0 ? dates[dates.length - 1] : dossiers[existingIdx].dateRange.end;
+        const startDate = dates.length > 0 ? dates[0] : (dossiers[existingIdx].dateRange?.start || null);
+        const endDate = dates.length > 0 ? dates[dates.length - 1] : (dossiers[existingIdx].dateRange?.end || null);
 
         dossiers[existingIdx] = {
           ...dossiers[existingIdx],

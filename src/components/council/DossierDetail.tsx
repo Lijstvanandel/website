@@ -849,7 +849,7 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
                       {dossier.wijkNaam}
                     </span>
                   )}
-                  {dossier.dateRange.start && (
+                  {dossier.dateRange?.start && (
                     <span className="text-xs text-muted-foreground flex items-center gap-1 font-medium">
                       <Calendar className="w-3.5 h-3.5" />
                       {dossier.dateRange.start} {dossier.dateRange.end && `– ${dossier.dateRange.end}`}
@@ -1239,7 +1239,7 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
                         )}
 
                         {/* Date Range if available */}
-                        {(sub.dateRange.start || sub.dateRange.end) && (
+                        {(sub.dateRange?.start || sub.dateRange?.end) && (
                           <div className="flex items-center gap-1 text-[11px] text-muted-foreground mb-3 font-mono">
                             <Calendar className="w-3 h-3 text-muted-foreground shrink-0" />
                             <span>

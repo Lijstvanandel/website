@@ -101,8 +101,8 @@ export async function executeCouncilSearch(params: CouncilSearchParams): Promise
     // 3. Period / Timeline filter for dossier
     // "als ik bijvoorbeeld 06-06-2024 als begin selecteer, dat ik dan dossiers krijg waarvan de documenten actief of gestart zijn op de tijdlijn. Voor eind geld hetzelfde."
     let dossierTimelineMatch = true;
-    const dStart = dossier.dateRange.start ? parseDateToIso(dossier.dateRange.start) : null;
-    const dEnd = dossier.dateRange.end ? parseDateToIso(dossier.dateRange.end) : null;
+    const dStart = dossier.dateRange?.start ? parseDateToIso(dossier.dateRange.start) : null;
+    const dEnd = dossier.dateRange?.end ? parseDateToIso(dossier.dateRange.end) : null;
 
     if (isoStart) {
       // Dossier is active on/after isoStart if its end date >= isoStart or any doc >= isoStart
@@ -173,7 +173,7 @@ export async function executeCouncilSearch(params: CouncilSearchParams): Promise
         description: dossier.description,
         documentCount: dossier.documentCount,
         uploadedCount: dossier.uploadedCount,
-        date: dossier.dateRange.end || dossier.dateRange.start,
+        date: dossier.dateRange?.end || dossier.dateRange?.start || null,
         matchField: dossierMatchField,
         snippet: dossierSnippet || dossier.description,
         score: dossierScore || 10,

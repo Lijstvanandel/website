@@ -260,16 +260,28 @@ export async function distributeHoogeveenDossiers(): Promise<{
   }
 
   const resultDossiers = Array.from(dossierMap.values()).map((d) => {
+    const dates = (d.documents || []).map((doc: any) => doc.datum).filter(Boolean).sort();
+    const startDate = dates.length > 0 ? dates[0] : null;
+    const endDate = dates.length > 0 ? dates[dates.length - 1] : null;
+
     return {
       ...d,
+      dateRange: d.dateRange || { start: startDate, end: endDate },
       documentCount: d.documents?.length || 0,
       documentsCount: d.documents?.length || 0,
       subdossiersCount: d.subdossiers?.length || 0,
-      subdossiers: (d.subdossiers || []).map((sub: any) => ({
-        ...sub,
-        documentCount: sub.documents?.length || 0,
-        documentsCount: sub.documents?.length || 0,
-      })),
+      subdossiers: (d.subdossiers || []).map((sub: any) => {
+        const subDates = (sub.documents || []).map((doc: any) => doc.datum).filter(Boolean).sort();
+        return {
+          ...sub,
+          dateRange: sub.dateRange || {
+            start: subDates.length > 0 ? subDates[0] : null,
+            end: subDates.length > 0 ? subDates[subDates.length - 1] : null,
+          },
+          documentCount: sub.documents?.length || 0,
+          documentsCount: sub.documents?.length || 0,
+        };
+      }),
     };
   });
 
