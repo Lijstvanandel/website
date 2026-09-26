@@ -157,7 +157,11 @@ export const SubdossierDetailView: React.FC<SubdossierDetailViewProps> = ({
     // Add nodes from server graph if they belong to this subdossier
     (graphData.nodes || []).forEach((n) => {
       if (docMap.has(n.id)) {
-        nodeMap.set(n.id, n);
+        const doc = docMap.get(n.id);
+        nodeMap.set(n.id, {
+          ...n,
+          label: n.label || (n as any)?.title || (n as any)?.titel || (n as any)?.name || doc?.titel || doc?.bestandsnaam || n.id,
+        });
       }
     });
 

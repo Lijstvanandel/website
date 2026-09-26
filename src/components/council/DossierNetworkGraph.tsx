@@ -166,6 +166,16 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
 
     // Initial placement with generous distance based on count
     const simNodes: SimNode[] = activeNodes.map((node, i) => {
+      const safeLabel = String(
+        node.label ||
+        (node as any)?.title ||
+        (node as any)?.titel ||
+        (node as any)?.name ||
+        (node as any)?.bestandsnaam ||
+        node.id ||
+        "Document"
+      );
+
       let x = VIRTUAL_CENTER_X;
       let y = VIRTUAL_CENTER_Y;
 
@@ -203,6 +213,7 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
 
       return {
         ...node,
+        label: safeLabel,
         x,
         y,
         vx: 0,
@@ -360,7 +371,8 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
         if (isHighlighted && edge.label) {
           const midX = (source.x + target.x) / 2;
           const midY = (source.y + target.y) / 2;
-          const edgeText = edge.label.length > 40 ? edge.label.substring(0, 37) + "..." : edge.label;
+          const rawEdgeLabel = String(edge.label || "");
+          const edgeText = rawEdgeLabel.length > 40 ? rawEdgeLabel.substring(0, 37) + "..." : rawEdgeLabel;
 
           ctx.save();
           ctx.font = "600 11px system-ui, sans-serif";
@@ -397,7 +409,16 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
         const isHovered = hoveredNode?.id === node.id;
         const isSelected = selectedNode?.id === node.id;
         const isConnectedToActive = directConnectedIds.has(node.id);
-        const isSearchMatch = query && node.label.toLowerCase().includes(query);
+        const rawNodeLabel = String(
+          node.label ||
+          (node as any)?.title ||
+          (node as any)?.titel ||
+          (node as any)?.name ||
+          (node as any)?.bestandsnaam ||
+          node.id ||
+          "Document"
+        );
+        const isSearchMatch = query && rawNodeLabel.toLowerCase().includes(query);
 
         ctx.save();
         ctx.beginPath();
@@ -442,7 +463,7 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
 
         // Document Label below node
         const showFull = isHovered || isSelected;
-        const cleanName = node.label.replace(/\.pdf$/i, "");
+        const cleanName = rawNodeLabel.replace(/\.pdf$/i, "");
         const labelText =
           cleanName.length > 34 && !showFull ? cleanName.substring(0, 32) + "..." : cleanName;
 
@@ -585,7 +606,7 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
       } else {
         onSelectDocument({
           bestandsnaam: clicked.bestandsnaam || clicked.id,
-          titel: clicked.label,
+          titel: clicked.label || (clicked as any)?.title || (clicked as any)?.titel || clicked.id,
           dossier: clicked.dossier,
         });
       }
@@ -826,7 +847,7 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
               </span>
             </div>
             <div className="text-xs font-bold text-foreground leading-snug">
-              {hoveredNode.label}
+              {hoveredNode.label || (hoveredNode as any)?.title || (hoveredNode as any)?.titel || hoveredNode.id}
             </div>
             {hoveredNode.date && (
               <div className="text-[11px] text-muted-foreground mt-1">
@@ -849,7 +870,7 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
                   Geselecteerd Document
                 </span>
                 <h5 className="font-bold text-foreground text-sm leading-tight mt-0.5">
-                  {selectedNode.label}
+                  {selectedNode.label || (selectedNode as any)?.title || (selectedNode as any)?.titel || selectedNode.id}
                 </h5>
                 {selectedNode.date && (
                   <p className="text-[11px] text-muted-foreground mt-0.5">Datum: {selectedNode.date}</p>
@@ -876,7 +897,7 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
                 } else {
                   onSelectDocument({
                     bestandsnaam: selectedNode.bestandsnaam || selectedNode.id,
-                    titel: selectedNode.label,
+                    titel: selectedNode.label || (selectedNode as any)?.title || (selectedNode as any)?.titel || selectedNode.id,
                     dossier: selectedNode.dossier,
                   });
                 }
@@ -905,7 +926,7 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
                       }}
                     >
                       <div className="text-[11px] font-semibold text-foreground truncate">
-                        • {c.label}
+                        • {c.label || (c as any)?.title || (c as any)?.titel || c.id}
                       </div>
                       <div className="text-[10px] text-muted-foreground truncate pl-2">
                         Verbonden via: <span className="text-accent font-medium">{reason}</span>
