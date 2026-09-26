@@ -9442,16 +9442,68 @@ async function startServer() {
   // WIJKEN EN KERNEN API
   // ==========================================
 
-  // Public: Get all wijken en kernen
+  // Public: Get all wijken en kernen (scoped to active municipality)
   app.get("/api/wijken", (req, res) => {
     const db = getDb();
+    const targetMunicipality = resolveRequestMunicipality(req);
+    if (targetMunicipality === "hoogeveen") {
+      const hgOverview = getHoogeveenWijkenOverview();
+      const formatted = hgOverview.map((w) => ({
+        id: w.id,
+        naam: w.naam,
+        slug: w.slug,
+        type: w.type === "stadswijk" ? "Wijk" : "Kern",
+        gemeente: "Hoogeveen",
+        beschrijving: w.description || `Wijk/Kern ${w.naam} in Gemeente Hoogeveen.`,
+        bannerUrl: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800&auto=format&fit=crop&q=80",
+        inwoners: w.totaalInwoners,
+        oppervlakteHa: w.totaalOppervlakteHa,
+        documentCount: w.documentCount,
+        topicCount: w.topicCount,
+        buurten: w.buurten,
+        aliases: w.aliases,
+      }));
+      return res.json(formatted);
+    }
     res.json(db.wijken || []);
   });
 
-  // Public: Get single wijk by slug (with alias resolution)
+  // Public: Get single wijk by slug (with alias resolution & Hoogeveen dossier matching)
   app.get("/api/wijken/:slug", (req, res) => {
     const db = getDb();
+    const targetMunicipality = resolveRequestMunicipality(req);
     const rawSlug = req.params.slug.toLowerCase();
+
+    if (targetMunicipality === "hoogeveen") {
+      const hgOverview = getHoogeveenWijkenOverview();
+      const wijk = hgOverview.find(
+        (w) => w.slug.toLowerCase() === rawSlug || w.naam.toLowerCase() === rawSlug || w.aliases.some((a) => a.toLowerCase() === rawSlug)
+      );
+      if (!wijk) {
+        return res.status(404).json({ error: "Wijk of kern niet gevonden in Hoogeveen" });
+      }
+
+      const hoogeveenDossiers: any[] = db.hoogeveenDossiers || [];
+      const matchingDossiers = hoogeveenDossiers.filter((d) => d.wijken?.includes(wijk.naam));
+
+      return res.json({
+        id: wijk.id,
+        naam: wijk.naam,
+        slug: wijk.slug,
+        type: wijk.type === "stadswijk" ? "Wijk" : "Kern",
+        gemeente: "Hoogeveen",
+        beschrijving: wijk.description,
+        bannerUrl: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800&auto=format&fit=crop&q=80",
+        inwoners: wijk.totaalInwoners,
+        oppervlakteHa: wijk.totaalOppervlakteHa,
+        documentCount: wijk.documentCount,
+        topicCount: wijk.topicCount,
+        buurten: wijk.buurten,
+        aliases: wijk.aliases,
+        dossiers: matchingDossiers,
+      });
+    }
+
     const slug = LEGACY_SLUG_MAP[rawSlug] || rawSlug;
     const wijk = (db.wijken || []).find((w: any) => w.slug.toLowerCase() === slug || w.slug.toLowerCase() === rawSlug);
     if (!wijk) {

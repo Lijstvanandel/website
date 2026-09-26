@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import { CouncilAgendaTopic, CouncilDocument, CouncilTopicDiffAlert } from "../types/council.js";
 import { getDbFromSqlite, saveDbToSqlite, initDatabase } from "./sqliteDatabase.js";
 import { notifyDocumentDiffDetected } from "./pushService.js";
@@ -6,6 +8,52 @@ import { sanitizeCleanText, isCorruptOrHtmlGarbage } from "./scraperContractVali
 
 const HOOGEVEEN_ORG_ID = "572";
 const NOTUBIZ_API_BASE = "https://api.notubiz.nl";
+const HOOGEVEEN_DOCUMENTS_DIR = path.join(process.cwd(), "public", "uploads", "documents", "hoogeveen");
+
+function ensureHoogeveenDocsDir() {
+  try {
+    if (!fs.existsSync(HOOGEVEEN_DOCUMENTS_DIR)) {
+      fs.mkdirSync(HOOGEVEEN_DOCUMENTS_DIR, { recursive: true });
+    }
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Downloads a single Hoogeveen document to server disk for permanent local storage
+ */
+export async function downloadHoogeveenDocument(docId: string, version = 1, rawUrl?: string): Promise<string | null> {
+  ensureHoogeveenDocsDir();
+  const filename = `hoogeveen_doc_${docId}_v${version}.pdf`;
+  const localPath = path.join(HOOGEVEEN_DOCUMENTS_DIR, filename);
+  const publicUrl = `/uploads/documents/hoogeveen/${filename}`;
+
+  if (fs.existsSync(localPath) && fs.statSync(localPath).size > 100) {
+    return publicUrl;
+  }
+
+  const targetUrl = rawUrl || `${NOTUBIZ_API_BASE}/document/${docId}/${version}`;
+  try {
+    const res = await fetch(targetUrl, {
+      signal: AbortSignal.timeout(15000),
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/1.0",
+      },
+    });
+
+    if (!res.ok) return null;
+    const arrayBuffer = await res.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    if (buffer.length < 100) return null;
+    fs.writeFileSync(localPath, buffer);
+    return publicUrl;
+  } catch (err: any) {
+    console.warn(`[HOOGEVEEN DOWNLOAD WARN] Kon document ${docId} niet downloaden:`, err?.message);
+    return null;
+  }
+}
 
 export const PROCEDURAL_KEYWORDS_HOOGEVEEN = [
   "opening",
@@ -57,7 +105,7 @@ function scheduleNextHoogeveenWatchdogScrape(delayMs: number) {
 /**
  * Scrapes meetings and agenda topics autonomously for Gemeente Hoogeveen via NotuBiz API (Org 572)
  */
-export async function scrapeCouncilAgendasHoogeveen(yearsToScrape: number[] = [new Date().getFullYear() - 1, new Date().getFullYear(), new Date().getFullYear() + 1]) {
+export async function scrapeCouncilAgendasHoogeveen(yearsToScrape: number[] = [2021, 2022, 2023, 2024, 2025, 2026]) {
   console.log(`[HOOGEVEEN SCRAPER] Start scraping voor Gemeente Hoogeveen (jaren: ${yearsToScrape.join(", ")})...`);
   await initDatabase();
 
@@ -86,9 +134,36 @@ export async function scrapeCouncilAgendasHoogeveen(yearsToScrape: number[] = [n
 
   const eventsData = await eventsRes.json();
   const allEvents: any[] = Array.isArray(eventsData.events) ? eventsData.events : [];
-  const meetingEvents = allEvents.filter((e) => e.type === "meeting" || e.event_type_data);
+  
+  // Collect all meeting IDs (including child meetings inside assemblies)
+  const meetingEvents: { id: string }[] = [];
+  for (const e of allEvents) {
+    if (e.type === "meeting" || e.event_type_data) {
+      if (!meetingEvents.some((m) => m.id === String(e.id))) {
+        meetingEvents.push({ id: String(e.id) });
+      }
+    } else if (e.type === "assembly") {
+      try {
+        const assRes = await fetch(`${NOTUBIZ_API_BASE}/events/assemblies/${e.id}?format=json&version=1.17.0`, {
+          signal: AbortSignal.timeout(10000),
+          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/1.0" },
+        });
+        if (assRes.ok) {
+          const assData = await assRes.json();
+          const subMeetings = assData.assembly?.meetings || [];
+          for (const sm of subMeetings) {
+            if (!meetingEvents.some((m) => m.id === String(sm.id))) {
+              meetingEvents.push({ id: String(sm.id) });
+            }
+          }
+        }
+      } catch {
+        // ignore assembly fetch failure
+      }
+    }
+  }
 
-  console.log(`[HOOGEVEEN SCRAPER] ${meetingEvents.length} vergaderingen gevonden op NotuBiz. Detailgegevens ophalen...`);
+  console.log(`[HOOGEVEEN SCRAPER] ${meetingEvents.length} vergaderingen/sessies gevonden op NotuBiz. Detailgegevens ophalen...`);
 
   const db = getDbFromSqlite();
   const existingTopicsAll: CouncilAgendaTopic[] = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];

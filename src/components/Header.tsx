@@ -45,6 +45,7 @@ const navItems = [
 
 const portalNavItems = [
   { to: "/raadspaneel?tab=dossiers", label: "Dossiers & Stukken" },
+  { to: "/wijken-en-kernen", label: "Wijken & Kernen" },
   { to: "/raadspaneel?tab=agenda", label: "Raadskalender" },
   { to: "/raadspaneel?tab=vragenformulator", label: "Vragen & Moties" },
   { to: "/raadspaneel?tab=onderzoeken", label: "Onderzoek" },

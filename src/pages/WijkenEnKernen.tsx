@@ -1,15 +1,19 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, MapPin, Search, User, RefreshCw } from "lucide-react";
+import { ArrowRight, MapPin, Search, User, RefreshCw, FolderTree, FileText } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { WijkItem } from "@/types/wijk";
+import { getPortalConfig } from "@/utils/portalConfig";
 
 const WijkenEnKernen = () => {
+  const portalConfig = getPortalConfig();
   const [wijken, setWijken] = useState<WijkItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [tab, setTab] = useState<"all" | "vertegenwoordigd" | "Wijk" | "Kern">("vertegenwoordigd");
+  const [tab, setTab] = useState<"all" | "vertegenwoordigd" | "Wijk" | "Kern">(
+    portalConfig.isPortalMode ? "all" : "vertegenwoordigd"
+  );
 
   useEffect(() => {
     fetch("/api/wijken")
@@ -26,7 +30,7 @@ const WijkenEnKernen = () => {
   const displayedList = wijken.filter((w) => {
     const matchesSearch =
       w.naam.toLowerCase().includes(search.toLowerCase()) ||
-      w.gemeente.toLowerCase().includes(search.toLowerCase()) ||
+      (w.gemeente && w.gemeente.toLowerCase().includes(search.toLowerCase())) ||
       (w.vertegenwoordiger &&
         `${w.vertegenwoordiger.voornaam} ${w.vertegenwoordiger.achternaam}`
           .toLowerCase()
@@ -41,52 +45,50 @@ const WijkenEnKernen = () => {
   });
 
   return (
-    <div className="container py-16 md:py-24">
+    <div className="container py-12 md:py-20">
       {/* Header */}
       <div className="max-w-3xl mb-12">
-        <div className="text-xs uppercase tracking-[0.3em] text-accent mb-3">
-          Verken Steenwijkerland
+        <div className="text-xs uppercase tracking-[0.3em] text-accent mb-3 font-semibold">
+          {portalConfig.isPortalMode ? `Raadsportaal ${portalConfig.municipalityName}` : "Verken Steenwijkerland"}
         </div>
-        <h1 className="font-display text-6xl md:text-7xl mb-6 border-gold-line pb-5">
+        <h1 className="font-display text-5xl md:text-6xl mb-6 border-gold-line pb-4">
           Wijken en kernen
         </h1>
-        <p className="text-lg text-muted-foreground">
-          Steenwijkerland bestaat uit de historische stad Steenwijk met daaromheen tientallen
-          karakteristieke kernen, dorpen en buurtschappen. Ontdek hieronder de actuele status,
-          vertegenwoordigers en dossiers van uw eigen woonomgeving.
+        <p className="text-base md:text-lg text-muted-foreground leading-relaxed">
+          {portalConfig.isPortalMode
+            ? `Gemeente ${portalConfig.municipalityName} bestaat uit diverse stadswijken, dorpskernen en buitengebieden. Bekijk hieronder alle geaggregeerde hoofddossiers, subdossiers en gekoppelde raadsstukken per wijk of kern.`
+            : "Steenwijkerland bestaat uit de historische stad Steenwijk met daaromheen tientallen karakteristieke kernen, dorpen en buurtschappen. Ontdek hieronder de actuele status, vertegenwoordigers en dossiers van uw eigen woonomgeving."}
         </p>
       </div>
 
       {/* Informatieblok */}
-      <aside className="bg-card border border-accent/30 p-6 md:p-8 mb-16 rounded-lg">
-        <div className="text-[10px] uppercase tracking-[0.3em] text-accent mb-2">Hoe werkt het</div>
-        <h2 className="font-display text-2xl mb-4 border-gold-line pb-4">
-          Uw wijk of kern op de kaart
+      <aside className="bg-card border border-accent/30 p-6 md:p-8 mb-12 rounded-xl shadow-sm">
+        <div className="text-[10px] uppercase tracking-[0.3em] text-accent mb-2 font-semibold">Hoe werkt het</div>
+        <h2 className="font-display text-2xl mb-4 border-gold-line pb-3">
+          Geografische dossierverdeling per wijk of kern
         </h2>
         <p className="text-sm text-muted-foreground leading-relaxed mb-5">
-          Elke wijk en kern heeft een eigen profielpagina met een achtergrondfoto, wijkbeschrijving,
-          aanspreekpunt, video's en dossiers. Zo weet u precies wat er speelt en wie u kunt benaderen.
+          {portalConfig.isPortalMode
+            ? `Elke wijk en kern heeft een eigen dossieroverzicht. Alle raadsvoorstellen, omgevingsplannen en besluitvormende documenten van Gemeente ${portalConfig.municipalityName} worden automatisch gecategoriseerd en geografisch toegewezen.`
+            : "Elke wijk en kern heeft een eigen profielpagina met een achtergrondfoto, wijkbeschrijving, aanspreekpunt, video's en dossiers. Zo weet u precies wat er speelt en wie u kunt benaderen."}
         </p>
         <ul className="grid sm:grid-cols-3 gap-4 text-sm">
-          <li className="flex items-start gap-3 bg-muted/30 p-3 rounded border border-border/40">
+          <li className="flex items-start gap-3 bg-muted/30 p-3.5 rounded-lg border border-border/40">
             <span className="text-accent font-display text-xl leading-none mt-0.5">01</span>
             <span>
-              <span className="text-foreground font-medium">Stadswijken</span> liggen binnen de stad
-              Steenwijk (bijv. Oostermeenthe, Centrum, De Gagels).
+              <span className="text-foreground font-medium">Stadswijken</span> liggen binnen de kern {portalConfig.municipalityName} (bijv. {portalConfig.isPortalMode ? "Schutlanden, Krakeel, Wolfsbos, Erflanden" : "Oostermeenthe, Centrum, De Gagels"}).
             </span>
           </li>
-          <li className="flex items-start gap-3 bg-muted/30 p-3 rounded border border-border/40">
+          <li className="flex items-start gap-3 bg-muted/30 p-3.5 rounded-lg border border-border/40">
             <span className="text-accent font-display text-xl leading-none mt-0.5">02</span>
             <span>
-              <span className="text-foreground font-medium">Kernen</span> zijn alle dorpen en
-              buurtschappen in Steenwijkerland (bijv. Giethoorn, Vollenhove, Oldemarkt).
+              <span className="text-foreground font-medium">Kernen & Dorpen</span> omvatten alle omliggende dorpen (bijv. {portalConfig.isPortalMode ? "Elim, Hollandscheveld, Nieuweroord, Pesse, Fluitenberg" : "Giethoorn, Vollenhove, Oldemarkt"}).
             </span>
           </li>
-          <li className="flex items-start gap-3 bg-muted/30 p-3 rounded border border-border/40">
+          <li className="flex items-start gap-3 bg-muted/30 p-3.5 rounded-lg border border-border/40">
             <span className="text-accent font-display text-xl leading-none mt-0.5">03</span>
             <span>
-              <span className="text-foreground font-medium">Aanspreekpunt</span>: per gebied kunt u
-              direct mailen of een belafspraak inplannen.
+              <span className="text-foreground font-medium">Dossiers per Gebied</span>: bekijk direct alle actuele raadsvoorstellen en bijbehorende PDF-stukken voor die wijk.
             </span>
           </li>
         </ul>
