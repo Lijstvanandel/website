@@ -258,6 +258,30 @@ export default function Raadspaneel() {
   // Key-User & Admin Pending Users State
   const [pendingUsers, setPendingUsers] = useState<any[]>([]);
   const [loadingPendingUsers, setLoadingPendingUsers] = useState(false);
+  const [activeJobs, setActiveJobs] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!token || !isCouncilOrAdmin) return;
+    
+    const fetchJobs = async () => {
+      try {
+        const res = await fetch("/api/admin/jobs?limit=5", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const runningOrPending = (data.jobs || []).filter((j: any) => j.status === "running" || j.status === "pending");
+          setActiveJobs(runningOrPending);
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    fetchJobs();
+    const interval = setInterval(fetchJobs, 3000);
+    return () => clearInterval(interval);
+  }, [token, isCouncilOrAdmin]);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -1535,6 +1559,38 @@ export default function Raadspaneel() {
                     )}
                   </Button>
                 </div>
+              </div>
+            )}
+
+            {/* Active Background Jobs Live Progress Monitor */}
+            {activeJobs.length > 0 && (
+              <div className="mb-6 p-5 rounded-2xl bg-purple-500/10 border-2 border-purple-500/40 dark:bg-purple-950/20 space-y-4 animate-pulse shadow-sm">
+                {activeJobs.map((job) => (
+                  <div key={job.id} className="space-y-2">
+                    <div className="flex items-center justify-between text-xs sm:text-sm">
+                      <div className="flex items-center gap-2">
+                        <RefreshCw className="w-4 h-4 text-purple-600 dark:text-purple-400 animate-spin" />
+                        <span className="font-bold text-foreground">
+                          {job.type === "HOOGEVEEN_PDF_BULK_DOWNLOAD"
+                            ? "📥 Bezig met PDF Bulk-Download (2021-2026)..."
+                            : "🔄 Bezig met NotuBiz Hoogeveen Synchronisatie..."}
+                        </span>
+                      </div>
+                      <span className="font-bold text-purple-700 dark:text-purple-300">
+                        {job.progress}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-purple-200 dark:bg-purple-950 rounded-full h-2.5 overflow-hidden">
+                      <div
+                        className="bg-purple-600 dark:bg-purple-400 h-2.5 rounded-full transition-all duration-500 ease-out"
+                        style={{ width: `${job.progress}%` }}
+                      />
+                    </div>
+                    <p className="text-[11.5px] text-muted-foreground italic">
+                      {job.currentAction || "Initialiseren..."}
+                    </p>
+                  </div>
+                ))}
               </div>
             )}
 
