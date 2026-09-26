@@ -1220,16 +1220,27 @@ export default function Raadspaneel() {
                   {isScraping ? "Scrapen..." : "Vergaderstukken Nu Ophalen"}
                 </Button>
                 {portalConfig.isPortalMode && (
-                  <Button
-                    onClick={handleTriggerBulkDownload}
-                    disabled={isBulkDownloading || isScraping || isDiffChecking}
-                    variant="default"
-                    className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold h-9 rounded-xl shadow-sm cursor-pointer"
-                    title="Download alle 2.944 PDF raadsdocumenten (2021-2026) fysiek naar de server"
-                  >
-                    <Download className={`w-3.5 h-3.5 mr-1.5 ${isBulkDownloading ? "animate-pulse" : ""}`} />
-                    {isBulkDownloading ? "Download starten..." : "PDF Bulk-Download (2021-2026)"}
-                  </Button>
+                  <>
+                    <Button
+                      onClick={handleTriggerBulkDownload}
+                      disabled={isBulkDownloading || isScraping || isDiffChecking}
+                      variant="default"
+                      className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold h-9 rounded-xl shadow-sm cursor-pointer"
+                      title="Download alle 2.944 PDF raadsdocumenten (2021-2026) fysiek naar de server"
+                    >
+                      <Download className={`w-3.5 h-3.5 mr-1.5 ${isBulkDownloading ? "animate-pulse" : ""}`} />
+                      {isBulkDownloading ? "Download starten..." : "PDF Bulk-Download (2021-2026)"}
+                    </Button>
+                    <a
+                      href="/api/council/hoogeveen/bulk-download-log/download"
+                      download
+                      className="inline-flex items-center justify-center border border-purple-500/40 bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 text-xs font-semibold h-9 px-3 rounded-xl shadow-xs transition-colors"
+                      title="Download het live uitvoeringslogboek van de PDF Bulk-Download"
+                    >
+                      <FileText className="w-3.5 h-3.5 mr-1.5 text-purple-600 dark:text-purple-400" />
+                      Downloadlog (.txt)
+                    </a>
+                  </>
                 )}
               </>
             )}
@@ -1586,9 +1597,24 @@ export default function Raadspaneel() {
                         style={{ width: `${job.progress}%` }}
                       />
                     </div>
-                    <p className="text-[11.5px] text-muted-foreground italic">
-                      {job.currentAction || "Initialiseren..."}
-                    </p>
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <p className="text-[11.5px] text-muted-foreground italic truncate">
+                        {job.currentAction || "Initialiseren..."}
+                      </p>
+                      {portalConfig.isPortalMode && job.type === "HOOGEVEEN_PDF_BULK_DOWNLOAD" && (
+                        <a
+                          href="/api/council/hoogeveen/bulk-download-log/download"
+                          download
+                          target="_blank"
+                          rel="noreferrer"
+                          className="shrink-0 text-[11px] font-semibold text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1"
+                          title="Bekijk of download het live geschreven .txt logbestand"
+                        >
+                          <FileText className="w-3 h-3" />
+                          Live logboek bekijken (.txt)
+                        </a>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

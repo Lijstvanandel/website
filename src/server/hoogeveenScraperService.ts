@@ -21,9 +21,45 @@ function ensureHoogeveenDocsDir() {
 }
 
 /**
+ * Resilient JSON fetcher with automatic exponential backoff retry for NotuBiz API
+ */
+async function fetchWithRetryJson(url: string, headers: Record<string, string> = {}, maxRetries = 3, timeoutMs = 15000): Promise<any | null> {
+  let lastError: any = null;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(timeoutMs),
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/1.0",
+          Accept: "application/json",
+          ...headers,
+        },
+      });
+
+      if (res.status === 404) {
+        return null;
+      }
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status} ${res.statusText}`);
+      }
+
+      return await res.json();
+    } catch (err: any) {
+      lastError = err;
+      if (attempt < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, 600 * attempt));
+      }
+    }
+  }
+  console.warn(`[HOOGEVEEN SCRAPER WARN] Verzoek naar ${url} niet geslaagd na ${maxRetries} pogingen: ${lastError?.message || lastError}`);
+  return null;
+}
+
+/**
  * Downloads a single Hoogeveen document to server disk for permanent local storage
  */
-export async function downloadHoogeveenDocument(docId: string, version = 1, rawUrl?: string): Promise<string | null> {
+export async function downloadHoogeveenDocument(docId: string, version = 1, rawUrl?: string, maxRetries = 3): Promise<string | null> {
   ensureHoogeveenDocsDir();
   const filename = `hoogeveen_doc_${docId}_v${version}.pdf`;
   const localPath = path.join(HOOGEVEEN_DOCUMENTS_DIR, filename);
@@ -34,25 +70,31 @@ export async function downloadHoogeveenDocument(docId: string, version = 1, rawU
   }
 
   const targetUrl = rawUrl || `${NOTUBIZ_API_BASE}/document/${docId}/${version}`;
-  try {
-    const res = await fetch(targetUrl, {
-      signal: AbortSignal.timeout(15000),
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/1.0",
-      },
-    });
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(targetUrl, {
+        signal: AbortSignal.timeout(20000),
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/1.0",
+        },
+      });
 
-    if (!res.ok) return null;
-    const arrayBuffer = await res.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-    if (buffer.length < 100) return null;
-    fs.writeFileSync(localPath, buffer);
-    return publicUrl;
-  } catch (err: any) {
-    console.warn(`[HOOGEVEEN DOWNLOAD WARN] Kon document ${docId} niet downloaden:`, err?.message);
-    return null;
+      const arrayBuffer = await res.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      if (buffer.length < 100) return null;
+      fs.writeFileSync(localPath, buffer);
+      return publicUrl;
+    } catch (err: any) {
+      if (attempt < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, 800 * attempt));
+      }
+    }
   }
+  return null;
 }
 
 export const PROCEDURAL_KEYWORDS_HOOGEVEEN = [
@@ -120,20 +162,24 @@ export async function scrapeCouncilAgendasHoogeveen(yearsToScrape: number[] = [2
   eventsUrl.searchParams.set("format", "json");
   eventsUrl.searchParams.set("version", "1.17.0");
 
-  const eventsRes = await fetch(eventsUrl.toString(), {
-    signal: AbortSignal.timeout(20000),
-    headers: {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/1.0",
-      "Accept": "application/json",
-    },
-  });
-
-  if (!eventsRes.ok) {
-    throw new Error(`Kon NotuBiz events voor Hoogeveen niet ophalen (status: ${eventsRes.status})`);
+  const eventsData = await fetchWithRetryJson(eventsUrl.toString(), {}, 3, 25000);
+  if (!eventsData || !Array.isArray(eventsData.events)) {
+    console.warn(`[HOOGEVEEN SCRAPER WARN] Kon NotuBiz events voor Hoogeveen niet ophalen`);
+    return {
+      lastScrapedAt: new Date().toISOString(),
+      totalMeetingsScraped: 0,
+      totalTopics: 0,
+      bespreekstukkenCount: 0,
+      archivedCount: 0,
+      status: "warning",
+      municipality: "hoogeveen",
+      lastDiffCheckAt: new Date().toISOString(),
+      diffsDetectedCount: 0,
+      lateDumpsDetectedCount: 0,
+    };
   }
 
-  const eventsData = await eventsRes.json();
-  const allEvents: any[] = Array.isArray(eventsData.events) ? eventsData.events : [];
+  const allEvents: any[] = eventsData.events;
   
   // Collect all meeting IDs (including child meetings inside assemblies)
   const meetingEvents: { id: string }[] = [];
@@ -144,12 +190,8 @@ export async function scrapeCouncilAgendasHoogeveen(yearsToScrape: number[] = [2
       }
     } else if (e.type === "assembly") {
       try {
-        const assRes = await fetch(`${NOTUBIZ_API_BASE}/events/assemblies/${e.id}?format=json&version=1.17.0`, {
-          signal: AbortSignal.timeout(10000),
-          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/1.0" },
-        });
-        if (assRes.ok) {
-          const assData = await assRes.json();
+        const assData = await fetchWithRetryJson(`${NOTUBIZ_API_BASE}/events/assemblies/${e.id}?format=json&version=1.17.0`, {}, 2, 12000);
+        if (assData) {
           const subMeetings = assData.assembly?.meetings || [];
           for (const sm of subMeetings) {
             if (!meetingEvents.some((m) => m.id === String(sm.id))) {
@@ -178,8 +220,8 @@ export async function scrapeCouncilAgendasHoogeveen(yearsToScrape: number[] = [2
   let totalDiffsDetected = 0;
   let totalLateDumpsDetected = 0;
 
-  // Process meetings in parallel batches
-  const batchSize = 4;
+  // Process meetings in parallel batches with rate limiting
+  const batchSize = 3;
   for (let i = 0; i < meetingEvents.length; i += batchSize) {
     const batch = meetingEvents.slice(i, i + batchSize);
     await Promise.all(
@@ -187,16 +229,9 @@ export async function scrapeCouncilAgendasHoogeveen(yearsToScrape: number[] = [2
         try {
           const meetingId = String(event.id);
           const detailUrl = `${NOTUBIZ_API_BASE}/events/meetings/${meetingId}?format=json&version=1.17.0`;
-          const mRes = await fetch(detailUrl, {
-            signal: AbortSignal.timeout(15000),
-            headers: {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/1.0",
-              "Accept": "application/json",
-            },
-          });
+          const mData = await fetchWithRetryJson(detailUrl, {}, 3, 20000);
+          if (!mData) return;
 
-          if (!mRes.ok) return;
-          const mData = await mRes.json();
           const meeting = mData.meeting;
           if (!meeting) return;
 
@@ -416,10 +451,15 @@ export async function scrapeCouncilAgendasHoogeveen(yearsToScrape: number[] = [2
 
           agendaItems.forEach((item, idx) => processItem(item, `${idx + 1}`));
         } catch (mErr: any) {
-          console.error(`[HOOGEVEEN SCRAPER] Fout bij verwerken vergadering ${event.id}:`, mErr?.message);
+          console.warn(`[HOOGEVEEN SCRAPER WARN] Overgeslagen vergadering ${event.id}:`, mErr?.message);
         }
       })
     );
+
+    // Minor pause between parallel batches to avoid socket exhaustion or API rate limiting
+    if (i + batchSize < meetingEvents.length) {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    }
   }
 
   // Auto archive topics older than 7 days
@@ -486,14 +526,22 @@ export function startHoogeveenCouncilWatchdogScheduler() {
 
 /**
  * Bulk downloads all physical PDF files from 2021-2026 for Hoogeveen to local server disk
+ * with real-time progressive disk logging just like the classifier execution log
  */
 export async function bulkDownloadHoogeveenPdfs(onProgress?: (downloaded: number, total: number, currentTitle: string) => void) {
   const db = getDbFromSqlite();
   const allTopics = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
   const hoogeveenTopics = allTopics.filter((t: any) => t.municipality === "hoogeveen");
 
-  // Collect all unique documents
-  const docList: { docId: string; version: number; url: string; title: string; topicId: string }[] = [];
+  ensureHoogeveenDocsDir();
+  const hoogeveenDataDir = path.join(process.cwd(), "public", "data", "hoogeveen");
+  if (!fs.existsSync(hoogeveenDataDir)) {
+    fs.mkdirSync(hoogeveenDataDir, { recursive: true });
+  }
+  const bulkDownloadLogPath = path.join(hoogeveenDataDir, "last_pdf_bulk_download_hoogeveen.log");
+
+  // Collect all unique documents with topic metadata
+  const docList: { docId: string; version: number; url: string; title: string; topicId: string; topicTitle: string; meetingDate: string }[] = [];
   for (const topic of hoogeveenTopics) {
     for (const doc of topic.documents || []) {
       if (!doc.id) continue;
@@ -502,26 +550,67 @@ export async function bulkDownloadHoogeveenPdfs(onProgress?: (downloaded: number
           docId: doc.id,
           version: 1,
           url: doc.url,
-          title: doc.title,
+          title: doc.title || `Document ${doc.id}`,
           topicId: topic.id,
+          topicTitle: topic.title || "Agendapunt",
+          meetingDate: topic.meetingDate || "",
         });
       }
     }
   }
 
+  const startTime = new Date();
+  const initialLog = [
+    `=============================================================================`,
+    `GEMEENTE HOOGEVEEN - RAADSDOCUMENTEN PDF BULK-DOWNLOAD UITVOERINGSLOG (2021-2026)`,
+    `Gestart op: ${startTime.toLocaleString("nl-NL")}`,
+    `Totaal unieke raadsdocumenten in index: ${docList.length} bestanden`,
+    `Doellocatie op server: /public/uploads/documents/hoogeveen/`,
+    `Bron: Officiële NotuBiz Open Data API (Gemeente Hoogeveen org_id 572)`,
+    `=============================================================================\n`,
+    `[STATUS] Starten met downloaden en live indexeren van ${docList.length} documenten...\n`,
+  ].join("\n");
+
+  try {
+    fs.writeFileSync(bulkDownloadLogPath, initialLog, "utf-8");
+  } catch (err: any) {
+    console.warn("[HOOGEVEEN LOG WARN] Kon downloadlog niet initialiseren:", err?.message);
+  }
+
   console.log(`[HOOGEVEEN BULK DOWNLOAD] Starten met downloaden van ${docList.length} fysieke PDF-bestanden (2021-2026)...`);
 
   let downloadedCount = 0;
-  const batchSize = 5;
+  let alreadyCachedCount = 0;
+  let failedCount = 0;
+  let processedCount = 0;
+  const batchSize = 4;
 
   for (let i = 0; i < docList.length; i += batchSize) {
     const batch = docList.slice(i, i + batchSize);
+    const batchLogLines: string[] = [];
+
     await Promise.all(
       batch.map(async (item) => {
+        const expectedFilename = `hoogeveen_doc_${item.docId}_v${item.version}.pdf`;
+        const localFilePath = path.join(HOOGEVEEN_DOCUMENTS_DIR, expectedFilename);
+        const wasAlreadyCached = fs.existsSync(localFilePath) && fs.statSync(localFilePath).size > 100;
+
         const localUrl = await downloadHoogeveenDocument(item.docId, item.version, item.url);
+        processedCount++;
+        const percent = ((processedCount / docList.length) * 100).toFixed(1);
+
         if (localUrl) {
           downloadedCount++;
-          // Update URL in database
+          let fileSizeKb = 0;
+          try {
+            if (fs.existsSync(localFilePath)) {
+              fileSizeKb = Math.round(fs.statSync(localFilePath).size / 1024);
+            }
+          } catch {
+            // ignore
+          }
+
+          // Update URL in database topic
           const topic = hoogeveenTopics.find((t) => t.id === item.topicId);
           if (topic && topic.documents) {
             const targetDoc = topic.documents.find((d) => d.id === item.docId);
@@ -529,13 +618,55 @@ export async function bulkDownloadHoogeveenPdfs(onProgress?: (downloaded: number
               targetDoc.url = localUrl;
             }
           }
+
+          if (wasAlreadyCached) {
+            alreadyCachedCount++;
+            batchLogLines.push(`[REEDS_AANWEZIG] (${processedCount}/${docList.length} - ${percent}%) "${item.title}" [DocID: ${item.docId}] -> ${localUrl} (${fileSizeKb} KB) | [${item.meetingDate}] "${item.topicTitle.slice(0, 45)}"`);
+          } else {
+            batchLogLines.push(`[DOWNLOAD_SUCCES] (${processedCount}/${docList.length} - ${percent}%) "${item.title}" [DocID: ${item.docId}] -> ${localUrl} (${fileSizeKb} KB) | [${item.meetingDate}] "${item.topicTitle.slice(0, 45)}"`);
+          }
+        } else {
+          failedCount++;
+          batchLogLines.push(`[DOWNLOAD_MISLUKT] (${processedCount}/${docList.length} - ${percent}%) "${item.title}" [DocID: ${item.docId}] -> Niet beschikbaar op NotuBiz endpoint | [${item.meetingDate}] "${item.topicTitle.slice(0, 45)}"`);
         }
       })
     );
 
+    // Append batch results to real-time log file
+    try {
+      if (batchLogLines.length > 0) {
+        fs.appendFileSync(bulkDownloadLogPath, batchLogLines.join("\n") + "\n", "utf-8");
+      }
+    } catch {
+      // non-fatal
+    }
+
     if (onProgress) {
       onProgress(downloadedCount, docList.length, batch[0]?.title || "");
     }
+
+    // Brief pause between batches
+    if (i + batchSize < docList.length) {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    }
+  }
+
+  const endTime = new Date();
+  const durationSec = Math.round((endTime.getTime() - startTime.getTime()) / 1000);
+  const finalSummaryLines = [
+    `\n=============================================================================`,
+    `BULK-DOWNLOAD VOLTOOID OP: ${endTime.toLocaleString("nl-NL")} (Totale duur: ${durationSec} seconden)`,
+    `Totaal geanalyseerde unieke bestanden: ${docList.length}`,
+    `Succesvol beschikbaar op lokale server: ${downloadedCount} (Waarvan nieuw gedownload: ${downloadedCount - alreadyCachedCount}, Reeds gecached: ${alreadyCachedCount})`,
+    `Niet beschikbaar / mislukt: ${failedCount}`,
+    `Status: 100% Voltooid`,
+    `=============================================================================`,
+  ].join("\n");
+
+  try {
+    fs.appendFileSync(bulkDownloadLogPath, finalSummaryLines, "utf-8");
+  } catch {
+    // non-fatal
   }
 
   saveDbToSqlite(db);
@@ -544,6 +675,9 @@ export async function bulkDownloadHoogeveenPdfs(onProgress?: (downloaded: number
   return {
     totalDocuments: docList.length,
     downloadedCount,
+    alreadyCachedCount,
+    failedCount,
+    durationSec,
     status: "completed",
   };
 }

@@ -1,5 +1,6 @@
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useState, useEffect, useMemo } from "react";
+import { getPortalConfig } from "@/utils/portalConfig";
 import {
   Mail,
   Instagram,
@@ -144,7 +145,8 @@ const WijkDetail = () => {
       .then((data: WijkItem | null) => {
         if (!data) throw new Error("Ongeldige wijk gegevens");
         setWijk(data);
-        document.title = `${data.naam} (${data.type || 'Wijk/Kern'}) | Lijst van Andel`;
+        const portalConfig = getPortalConfig();
+        document.title = `${data.naam} (${data.type || 'Wijk/Kern'}) | ${portalConfig.isPortalMode ? portalConfig.portalTitle : "Lijst van Andel"}`;
         setLoading(false);
       })
       .catch((err) => {
@@ -178,10 +180,12 @@ const WijkDetail = () => {
 
     const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
     const controller = new AbortController();
+    const portalConfig = getPortalConfig();
 
-    fetch(`/api/council/dossiers?wijkSlug=${encodeURIComponent(slug)}&limit=50`, {
+    fetch(`/api/council/dossiers?wijkSlug=${encodeURIComponent(slug)}&portal=${portalConfig.tenantId}&limit=50`, {
       signal: controller.signal,
       headers: {
+        "x-portal-tenant": portalConfig.tenantId,
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
     })

@@ -16,14 +16,18 @@ const WijkenEnKernen = () => {
   );
 
   useEffect(() => {
-    fetch("/api/wijken")
+    fetch(`/api/wijken?portal=${portalConfig.tenantId}`, {
+      headers: {
+        "x-portal-tenant": portalConfig.tenantId,
+      },
+    })
       .then((res) => (res.ok ? res.json().catch(() => []) : []))
       .then((data: WijkItem[]) => {
         setWijken(Array.isArray(data) ? data : []);
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, []);
+  }, [portalConfig.tenantId]);
 
   const vertegenwoordigdeWijken = wijken.filter((w) => !!w.vertegenwoordiger);
 
@@ -173,7 +177,7 @@ const WijkenEnKernen = () => {
             return (
               <Link
                 key={w.slug}
-                to={`/wijken-en-kernen/${w.slug}`}
+                to={portalConfig.isPortalMode ? `/wijken-en-kernen/${w.slug}?portal=${portalConfig.tenantId}` : `/wijken-en-kernen/${w.slug}`}
                 className="group bg-card border border-border rounded-lg overflow-hidden hover-lift flex flex-col justify-between transition-all hover:border-accent/50 shadow-sm"
               >
                 {/* Banner thumbnail */}

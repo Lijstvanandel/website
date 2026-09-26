@@ -84,6 +84,7 @@ import {
 import {
   distributeHoogeveenDossiers,
   getHoogeveenWijkenOverview,
+  getHoogeveenDossiers,
 } from "./src/server/hoogeveenDossierManager.js";
 import {
   HOOGEVEEN_WIJKEN_MATRIX,
@@ -9484,7 +9485,7 @@ async function startServer() {
         return res.status(404).json({ error: "Wijk of kern niet gevonden in Hoogeveen" });
       }
 
-      const hoogeveenDossiers: any[] = db.hoogeveenDossiers || [];
+      const hoogeveenDossiers: any[] = getHoogeveenDossiers();
       const matchingDossiers = hoogeveenDossiers.filter((d) => d.wijken?.includes(wijk.naam));
 
       return res.json({
@@ -10908,16 +10909,25 @@ Sitemap: ${baseUrl}/sitemap.xml
 
   // Helper to determine active municipality from request context
   function resolveRequestMunicipality(req: any): "steenwijkerland" | "hoogeveen" {
-    const q = String(req.query?.municipality || "").toLowerCase().trim();
+    const q = String(req.query?.municipality || req.query?.portal || req.query?.tenant || req.query?.muni || "").toLowerCase().trim();
     if (q === "hoogeveen" || q === "hgv") return "hoogeveen";
     if (q === "steenwijkerland" || q === "swl") return "steenwijkerland";
+
+    const headerTenant = String(req.headers["x-portal-tenant"] || req.headers["x-municipality"] || req.headers["x-tenant"] || "").toLowerCase().trim();
+    if (headerTenant === "hoogeveen" || headerTenant === "hgv") return "hoogeveen";
+    if (headerTenant === "steenwijkerland" || headerTenant === "swl") return "steenwijkerland";
+
+    const referer = String(req.headers.referer || "").toLowerCase();
+    if (referer.includes("portal=hoogeveen") || referer.includes("tenant=hoogeveen") || referer.includes("muni=hoogeveen") || referer.includes("municipality=hoogeveen")) {
+      return "hoogeveen";
+    }
 
     const host = String(req.headers["x-forwarded-host"] || req.headers.host || req.headers.origin || "").toLowerCase();
     if (host.includes("hoogeveen.") || host.includes("hgv.") || host.startsWith("hoogeveen-")) {
       return "hoogeveen";
     }
 
-    if (req.user?.municipality === "hoogeveen" && req.user?.role !== "admin") {
+    if (req.user?.municipality === "hoogeveen") {
       return "hoogeveen";
     }
 
@@ -12423,9 +12433,12 @@ Sitemap: ${baseUrl}/sitemap.xml
         const dMuni = d.municipality || "steenwijkerland";
         return dMuni === targetMunicipality;
       });
-      let allDossiers = getAllDossiers(scopedCustomDossiers, db.deletedDossierSlugs || [], db.customSubdossiers || {});
+      let allDossiers: any[] = [];
       if (targetMunicipality === "hoogeveen") {
-        allDossiers = allDossiers.filter((d: any) => d.municipality === "hoogeveen" || scopedCustomDossiers.some((cd: any) => cd.slug === d.slug));
+        const hoogeveenDossiers: any[] = getHoogeveenDossiers();
+        allDossiers = [...hoogeveenDossiers, ...scopedCustomDossiers];
+      } else {
+        allDossiers = getAllDossiers(scopedCustomDossiers, db.deletedDossierSlugs || [], db.customSubdossiers || {});
       }
 
       const search = (req.query.search || "").toString().toLowerCase().trim();
@@ -12747,7 +12760,11 @@ Sitemap: ${baseUrl}/sitemap.xml
     try {
       const rawSlug = decodeURIComponent(req.params.slug || "").trim();
       const db = getDb();
-      const allDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || [], db.customSubdossiers || {});
+      const targetMunicipality = resolveRequestMunicipality(req);
+      const hoogeveenDossiers: any[] = getHoogeveenDossiers();
+      const allDossiers = targetMunicipality === "hoogeveen"
+        ? [...hoogeveenDossiers, ...(db.customDossiers || []).filter((d: any) => d.municipality === "hoogeveen")]
+        : [...hoogeveenDossiers, ...getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || [], db.customSubdossiers || {})];
       
       const searchSlug = rawSlug.toLowerCase();
       const normalizeClean = (str: string) => (str || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -13843,11 +13860,30 @@ Sitemap: ${baseUrl}/sitemap.xml
       const content = fs.readFileSync(logPath, "utf-8");
       const dateStr = new Date().toISOString().slice(0, 10);
       res.setHeader("Content-Type", "text/plain; charset=utf-8");
-      res.setHeader("Content-Disposition", `attachment; filename="hoogeveen_herstructurering_uitvoeringslog_${dateStr}.txt"`);
+      res.setHeader("Content-Disposition", `attachment; filename="${isHoogeveen ? "hoogeveen" : "steenwijkerland"}_herstructurering_uitvoeringslog_${dateStr}.txt"`);
       res.send(content);
     } catch (err: any) {
       console.error("[LOG DOWNLOAD ERROR]:", err);
       res.status(500).json({ error: "Fout bij downloaden van uitvoeringslog: " + err.message });
+    }
+  });
+
+  // Download Hoogeveen PDF Bulk-Download live progress and execution log
+  app.get(["/api/council/hoogeveen/bulk-download-log/download", "/api/council/hoogeveen/bulk-download-log.txt", "/api/council/bulk-download-log.txt"], optionalAuth, (req: any, res: any) => {
+    try {
+      const logPath = path.join(process.cwd(), "public", "data", "hoogeveen", "last_pdf_bulk_download_hoogeveen.log");
+      if (!fs.existsSync(logPath)) {
+        res.setHeader("Content-Type", "text/plain; charset=utf-8");
+        return res.send("Nog geen PDF bulk-downloadlog beschikbaar. Druk op 'PDF Bulk-Download (2021-2026)' om een downloadsessie te starten.");
+      }
+      const content = fs.readFileSync(logPath, "utf-8");
+      const dateStr = new Date().toISOString().slice(0, 10);
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="hoogeveen_pdf_bulk_download_log_${dateStr}.txt"`);
+      res.send(content);
+    } catch (err: any) {
+      console.error("[BULK DOWNLOAD LOG ERROR]:", err);
+      res.status(500).json({ error: "Fout bij ophalen van bulk download log: " + err.message });
     }
   });
 

@@ -212,13 +212,19 @@ export const Header = () => {
               // Dedicated Council Navigation Tabs in Portal Mode
               <nav className="hidden lg:flex items-center gap-1 xl:gap-2 shrink">
                 {portalNavItems.map((item) => {
-                  const targetTab = item.to.split("tab=")[1];
+                  const hasTab = item.to.includes("tab=");
+                  const targetTab = hasTab ? item.to.split("tab=")[1] : null;
                   const currentTab = new URLSearchParams(location.search).get("tab") || "dossiers";
-                  const isActive = location.pathname.startsWith("/raadspaneel") && currentTab === targetTab;
+                  const isActive = targetTab
+                    ? location.pathname.startsWith("/raadspaneel") && currentTab === targetTab
+                    : location.pathname === item.to.split("?")[0] || location.pathname.startsWith(`${item.to.split("?")[0]}/`);
+                  const targetUrl = item.to.includes("portal=")
+                    ? item.to
+                    : `${item.to}${item.to.includes("?") ? "&" : "?"}portal=${portalConfig.tenantId}`;
                   return (
                     <NavLink
                       key={item.to}
-                      to={item.to}
+                      to={targetUrl}
                       className={`px-2.5 xl:px-3.5 py-1.5 text-xs xl:text-sm uppercase tracking-wider font-medium transition-colors relative whitespace-nowrap ${
                         isActive ? "text-accent font-semibold" : "text-foreground/85 hover:text-accent"
                       }`}
@@ -560,20 +566,29 @@ export const Header = () => {
             <nav className="max-w-[1720px] mx-auto px-5 py-5 flex flex-col gap-1.5">
               {/* Portal Mode Navigation Links vs Standard Party Navigation */}
               {portalConfig.isPortalMode ? (
-                portalNavItems.map((item) => (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    onClick={() => setMobileOpen(false)}
-                    className={({ isActive }) =>
-                      `px-3 py-3 text-sm uppercase tracking-wider font-medium border-l-2 transition-colors ${
+                portalNavItems.map((item) => {
+                  const hasTab = item.to.includes("tab=");
+                  const targetTab = hasTab ? item.to.split("tab=")[1] : null;
+                  const currentTab = new URLSearchParams(location.search).get("tab") || "dossiers";
+                  const isActive = targetTab
+                    ? location.pathname.startsWith("/raadspaneel") && currentTab === targetTab
+                    : location.pathname === item.to.split("?")[0] || location.pathname.startsWith(`${item.to.split("?")[0]}/`);
+                  const targetUrl = item.to.includes("portal=")
+                    ? item.to
+                    : `${item.to}${item.to.includes("?") ? "&" : "?"}portal=${portalConfig.tenantId}`;
+                  return (
+                    <NavLink
+                      key={item.to}
+                      to={targetUrl}
+                      onClick={() => setMobileOpen(false)}
+                      className={`px-3 py-3 text-sm uppercase tracking-wider font-medium border-l-2 transition-colors ${
                         isActive ? "text-accent border-accent font-bold" : "text-foreground/80 border-transparent"
-                      }`
-                    }
-                  >
-                    {item.label}
-                  </NavLink>
-                ))
+                      }`}
+                    >
+                      {item.label}
+                    </NavLink>
+                  );
+                })
               ) : (
                 <>
                   {/* Current Active Location Indicator if on a wijk page */}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { getPortalConfig } from "@/utils/portalConfig";
 import {
   Search,
   FolderPlus,
@@ -139,7 +140,10 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
     setLoading(true);
     try {
       const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
+      const portalConfig = getPortalConfig();
       const params = new URLSearchParams({
+        portal: portalConfig.tenantId,
+        municipality: portalConfig.tenantId,
         page: page.toString(),
         limit: pageSize.toString(),
         sortBy: sortBy,
@@ -151,6 +155,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
 
       const res = await fetch(`/api/council/dossiers?${params.toString()}`, {
         headers: {
+          "x-portal-tenant": portalConfig.tenantId,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       });
@@ -840,6 +845,19 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
               <FileText className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
               Uitvoeringslog (.txt)
             </a>
+
+            {getPortalConfig().isPortalMode && (
+              <a
+                id="btn-download-pdf-log"
+                href="/api/council/hoogeveen/bulk-download-log/download"
+                download
+                className="inline-flex items-center justify-center border border-purple-500/40 bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 text-xs font-semibold h-8 px-3 rounded-xl shadow-2xs transition-colors"
+                title="Download het live voortgangslogboek van de fysieke PDF Bulk-Download"
+              >
+                <Download className="w-3.5 h-3.5 mr-1.5 text-purple-600 dark:text-purple-400" />
+                PDF Downloadlog (.txt)
+              </a>
+            )}
 
             <Button
               id="btn-export-missing-files"

@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { Dossier, DossierDocument, NetworkGraphData, GraphNode, GraphEdge } from "../types/dossier.js";
-import { getDbFromSqlite, saveDbToSqlite } from "./sqliteDatabase.js";
+import { getDbFromSqlite, saveDbToSqlite, initDatabase, setKv, getKv } from "./sqliteDatabase.js";
 import { HOOGEVEEN_WIJKEN_MATRIX, detectHoogeveenWijken, HoogeveenWijkOrKern } from "./hoogeveenTaxonomy.js";
 import { slugify } from "./dossierManager.js";
 
@@ -155,6 +155,7 @@ export async function distributeHoogeveenDossiers(): Promise<{
   lastDistributedAt: string;
 }> {
   ensureHoogeveenDirs();
+  await initDatabase();
   const db = getDbFromSqlite();
   const allTopics = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
   const hoogeveenTopics = allTopics.filter((t: any) => t.municipality === "hoogeveen");
@@ -258,7 +259,19 @@ export async function distributeHoogeveenDossiers(): Promise<{
     }
   }
 
-  const resultDossiers = Array.from(dossierMap.values());
+  const resultDossiers = Array.from(dossierMap.values()).map((d) => {
+    return {
+      ...d,
+      documentCount: d.documents?.length || 0,
+      documentsCount: d.documents?.length || 0,
+      subdossiersCount: d.subdossiers?.length || 0,
+      subdossiers: (d.subdossiers || []).map((sub: any) => ({
+        ...sub,
+        documentCount: sub.documents?.length || 0,
+        documentsCount: sub.documents?.length || 0,
+      })),
+    };
+  });
 
   // Generate detailed execution log specifically for Hoogeveen
   const logLines: string[] = [];
@@ -306,6 +319,7 @@ export async function distributeHoogeveenDossiers(): Promise<{
   };
 
   saveDbToSqlite(db);
+  setKv("hoogeveenDossiers", resultDossiers);
 
   console.log(`[HOOGEVEEN DOSSIERVERDELER] Verdeling succesvol afgerond: ${resultDossiers.length} hoofddossiers, ${totalDocsCount} documenten verdeeld over ${HOOGEVEEN_WIJKEN_MATRIX.length} wijken en kernen.`);
 
@@ -315,6 +329,24 @@ export async function distributeHoogeveenDossiers(): Promise<{
     wijkenCount: HOOGEVEEN_WIJKEN_MATRIX.length,
     lastDistributedAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Safely loads Hoogeveen dossiers from JSON file, KV store, or database
+ */
+export function getHoogeveenDossiers(): Dossier[] {
+  try {
+    if (fs.existsSync(HOOGEVEEN_METADATA_JSON)) {
+      const data = JSON.parse(fs.readFileSync(HOOGEVEEN_METADATA_JSON, "utf-8"));
+      if (Array.isArray(data) && data.length > 0) return data;
+    }
+  } catch (err) {
+    console.warn("[HOOGEVEEN DOSSIERS READ WARN]:", err);
+  }
+  const kv = getKv("hoogeveenDossiers");
+  if (Array.isArray(kv) && kv.length > 0) return kv;
+  const db = getDbFromSqlite();
+  return Array.isArray(db.hoogeveenDossiers) ? db.hoogeveenDossiers : [];
 }
 
 /**

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { getPortalConfig } from "@/utils/portalConfig";
 import {
   ArrowLeft,
   Calendar,
@@ -108,8 +109,10 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
     setError(null);
     try {
       const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
-      const res = await fetch(`/api/council/dossiers/${encodeURIComponent(dossierSlug)}`, {
+      const portalConfig = getPortalConfig();
+      const res = await fetch(`/api/council/dossiers/${encodeURIComponent(dossierSlug)}?portal=${portalConfig.tenantId}`, {
         headers: {
+          "x-portal-tenant": portalConfig.tenantId,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       });
