@@ -526,7 +526,7 @@ export function startHoogeveenCouncilWatchdogScheduler() {
 
 /**
  * Bulk downloads all physical PDF files from 2021-2026 for Hoogeveen to local server disk
- * with real-time progressive disk logging just like the classifier execution log
+ * with real-time progressive disk logging
  */
 export async function bulkDownloadHoogeveenPdfs(onProgress?: (downloaded: number, total: number, currentTitle: string) => void) {
   const db = getDbFromSqlite();
@@ -632,7 +632,7 @@ export async function bulkDownloadHoogeveenPdfs(onProgress?: (downloaded: number
       })
     );
 
-    // Append batch results to real-time log file
+    // Append batch results immediately to real-time log file
     try {
       if (batchLogLines.length > 0) {
         fs.appendFileSync(bulkDownloadLogPath, batchLogLines.join("\n") + "\n", "utf-8");
