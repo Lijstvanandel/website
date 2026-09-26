@@ -30,8 +30,19 @@ export function getPortalConfig(): PortalConfig {
   }
 
   const hostname = window.location.hostname.toLowerCase();
-  const searchParams = new URLSearchParams(window.location.search);
-  const portalParam = searchParams.get("portal")?.toLowerCase();
+  const searchParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const queryParam = searchParams.get("portal")?.toLowerCase() || searchParams.get("tenant")?.toLowerCase() || searchParams.get("muni")?.toLowerCase();
+
+  if (queryParam) {
+    try {
+      localStorage.setItem("portal_tenant", queryParam);
+    } catch {
+      // ignore
+    }
+  }
+
+  const storedTenant = typeof localStorage !== "undefined" ? localStorage.getItem("portal_tenant") : null;
+  const portalParam = queryParam || storedTenant;
 
   // Check if Hoogeveen domain or test param
   const isHoogeveen =
@@ -67,4 +78,11 @@ export function getPortalConfig(): PortalConfig {
 
 export function isCurrentPortalMode(): boolean {
   return getPortalConfig().isPortalMode;
+}
+
+export function setPortalTenant(tenant: "hoogeveen" | "steenwijkerland") {
+  if (typeof localStorage !== "undefined") {
+    localStorage.setItem("portal_tenant", tenant);
+    window.location.reload();
+  }
 }
