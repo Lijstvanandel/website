@@ -483,3 +483,67 @@ export function startHoogeveenCouncilWatchdogScheduler() {
     scrapeCouncilAgendasHoogeveen().catch((err) => console.error("[HOOGEVEEN SCRAPER INIT FOUT]:", err));
   }, 10000);
 }
+
+/**
+ * Bulk downloads all physical PDF files from 2021-2026 for Hoogeveen to local server disk
+ */
+export async function bulkDownloadHoogeveenPdfs(onProgress?: (downloaded: number, total: number, currentTitle: string) => void) {
+  const db = getDbFromSqlite();
+  const allTopics = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
+  const hoogeveenTopics = allTopics.filter((t: any) => t.municipality === "hoogeveen");
+
+  // Collect all unique documents
+  const docList: { docId: string; version: number; url: string; title: string; topicId: string }[] = [];
+  for (const topic of hoogeveenTopics) {
+    for (const doc of topic.documents || []) {
+      if (!doc.id) continue;
+      if (!docList.some((d) => d.docId === doc.id)) {
+        docList.push({
+          docId: doc.id,
+          version: 1,
+          url: doc.url,
+          title: doc.title,
+          topicId: topic.id,
+        });
+      }
+    }
+  }
+
+  console.log(`[HOOGEVEEN BULK DOWNLOAD] Starten met downloaden van ${docList.length} fysieke PDF-bestanden (2021-2026)...`);
+
+  let downloadedCount = 0;
+  const batchSize = 5;
+
+  for (let i = 0; i < docList.length; i += batchSize) {
+    const batch = docList.slice(i, i + batchSize);
+    await Promise.all(
+      batch.map(async (item) => {
+        const localUrl = await downloadHoogeveenDocument(item.docId, item.version, item.url);
+        if (localUrl) {
+          downloadedCount++;
+          // Update URL in database
+          const topic = hoogeveenTopics.find((t) => t.id === item.topicId);
+          if (topic && topic.documents) {
+            const targetDoc = topic.documents.find((d) => d.id === item.docId);
+            if (targetDoc) {
+              targetDoc.url = localUrl;
+            }
+          }
+        }
+      })
+    );
+
+    if (onProgress) {
+      onProgress(downloadedCount, docList.length, batch[0]?.title || "");
+    }
+  }
+
+  saveDbToSqlite(db);
+  console.log(`[HOOGEVEEN BULK DOWNLOAD VOLTOOID] ${downloadedCount}/${docList.length} bestanden lokaal opgeslagen op de server!`);
+
+  return {
+    totalDocuments: docList.length,
+    downloadedCount,
+    status: "completed",
+  };
+}

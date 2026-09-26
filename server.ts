@@ -79,6 +79,7 @@ import {
 import {
   scrapeCouncilAgendasHoogeveen,
   startHoogeveenCouncilWatchdogScheduler,
+  bulkDownloadHoogeveenPdfs,
 } from "./src/server/hoogeveenScraperService.js";
 import {
   distributeHoogeveenDossiers,
@@ -11048,6 +11049,38 @@ Sitemap: ${baseUrl}/sitemap.xml
     }
   });
 
+  // Dedicated Hoogeveen PDF Bulk-Download Endpoint (with Background Progress Tracking)
+  app.post("/api/council/hoogeveen/bulk-download-pdfs", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
+    res.setHeader("Content-Type", "application/json");
+    try {
+      const idempotencyKey = `hoogeveen-pdf-bulk-download-${new Date().toISOString().slice(0, 10)}`;
+      const { job, isDuplicate } = globalBackgroundJobQueue.enqueue(
+        "HOOGEVEEN_PDF_BULK_DOWNLOAD",
+        idempotencyKey,
+        async (bgJob) => {
+          globalBackgroundJobQueue.updateProgress(bgJob.id, 0, "Initialiseren van document downloads (2021-2026)...");
+          const result = await bulkDownloadHoogeveenPdfs((downloaded, total, currentTitle) => {
+            const percent = Math.round((downloaded / total) * 100);
+            globalBackgroundJobQueue.updateProgress(bgJob.id, percent, `Bezig met downloaden: ${downloaded}/${total} bestanden (${percent}%). Momenteel: "${currentTitle.slice(0, 30)}..."`);
+          });
+          globalBackgroundJobQueue.updateProgress(bgJob.id, 100, "Alle PDF-documenten succesvol gedownload en lokaal opgeslagen!");
+          return result;
+        },
+        { initiatedBy: req.user?.username || "raadslid", initialAction: "Starten bulk download Hoogeveen raadsstukken..." }
+      );
+
+      return res.json({
+        success: true,
+        message: isDuplicate ? "Bulk-download taak is al actief op de achtergrond!" : "Bulk-download taak succesvol gestart op de achtergrond!",
+        jobId: job.id,
+        isDuplicate,
+        job,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: "Fout bij starten van bulk download: " + err.message });
+    }
+  });
+
   // Dedicated Hoogeveen Dossierverdeler Endpoint
   app.post("/api/dossiers/hoogeveen/distribute", requireAuth, requireCouncilOrAdmin, async (_req: any, res: any) => {
     res.setHeader("Content-Type", "application/json");
@@ -13797,15 +13830,20 @@ Sitemap: ${baseUrl}/sitemap.xml
   // Download complete restructuring execution log
   app.get(["/api/council/classification-log/download", "/api/council/classification-log.txt"], optionalAuth, (req: any, res: any) => {
     try {
-      const logPath = path.join(process.cwd(), "public", "data", "last_restructuring_execution.log");
+      const targetMunicipality = resolveRequestMunicipality(req);
+      const isHoogeveen = targetMunicipality === "hoogeveen";
+      const logPath = isHoogeveen
+        ? path.join(process.cwd(), "public", "data", "hoogeveen", "last_restructuring_execution_hoogeveen.log")
+        : path.join(process.cwd(), "public", "data", "last_restructuring_execution.log");
+
       if (!fs.existsSync(logPath)) {
         res.setHeader("Content-Type", "text/plain; charset=utf-8");
-        return res.send("Nog geen herstructureringslog beschikbaar. Druk op 'Alles Herstructureren' om een sessie te starten.");
+        return res.send("Nog geen herstructureringslog beschikbaar. Druk op 'Vergaderstukken Nu Ophalen' of 'Dossiers Verdelen' om een sessie te starten.");
       }
       const content = fs.readFileSync(logPath, "utf-8");
       const dateStr = new Date().toISOString().slice(0, 10);
       res.setHeader("Content-Type", "text/plain; charset=utf-8");
-      res.setHeader("Content-Disposition", `attachment; filename="herstructurering_uitvoeringslog_${dateStr}.txt"`);
+      res.setHeader("Content-Disposition", `attachment; filename="hoogeveen_herstructurering_uitvoeringslog_${dateStr}.txt"`);
       res.send(content);
     } catch (err: any) {
       console.error("[LOG DOWNLOAD ERROR]:", err);

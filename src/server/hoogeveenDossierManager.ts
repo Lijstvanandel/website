@@ -260,6 +260,35 @@ export async function distributeHoogeveenDossiers(): Promise<{
 
   const resultDossiers = Array.from(dossierMap.values());
 
+  // Generate detailed execution log specifically for Hoogeveen
+  const logLines: string[] = [];
+  logLines.push(`=============================================================================`);
+  logLines.push(`GEMEENTE HOOGEVEEN DOSSIERVERDELER & RESTRUCTURERING UITVOERINGSLOG`);
+  logLines.push(`Uitgevoerd op: ${new Date().toLocaleString("nl-NL")}`);
+  logLines.push(`Totaal verwerkte Hoogeveen agendapunten: ${hoogeveenTopics.length}`);
+  logLines.push(`Totaal gedistribueerde raadsdocumenten: ${totalDocsCount}`);
+  logLines.push(`=============================================================================\n`);
+
+  for (const hDos of resultDossiers) {
+    logLines.push(`[HOOFDDOSSIER] ${hDos.title} (${hDos.documentsCount} documenten)`);
+    logLines.push(`  -> Toegewezen wijken: ${hDos.wijken.join(", ") || "Gemeentebreed"}`);
+    if (hDos.subdossiers && hDos.subdossiers.length > 0) {
+      logLines.push(`  -> Subdossiers:`);
+      for (const sub of hDos.subdossiers) {
+        logLines.push(`     * [SUBD_ITEM] "${sub.title}" (${sub.documentsCount} documenten)`);
+        logLines.push(`       Wijken: ${sub.wijken.join(", ")}`);
+      }
+    }
+    logLines.push("");
+  }
+
+  try {
+    const hoogeveenLogFile = path.join(HOOGEVEEN_DATA_DIR, "last_restructuring_execution_hoogeveen.log");
+    fs.writeFileSync(hoogeveenLogFile, logLines.join("\n"), "utf-8");
+  } catch (logErr: any) {
+    console.warn("[HOOGEVEEN DOSSIERVERDELER] Kon uitvoeringslog niet opslaan:", logErr?.message);
+  }
+
   // Store metadata JSON
   try {
     fs.writeFileSync(HOOGEVEEN_METADATA_JSON, JSON.stringify(resultDossiers, null, 2), "utf-8");

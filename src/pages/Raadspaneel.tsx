@@ -248,6 +248,7 @@ export default function Raadspaneel() {
   const [councilMembers, setCouncilMembers] = useState<{ id: string; username: string; fullName: string; role?: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [isScraping, setIsScraping] = useState(false);
+  const [isBulkDownloading, setIsBulkDownloading] = useState(false);
   const [isDiffChecking, setIsDiffChecking] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -475,6 +476,28 @@ export default function Raadspaneel() {
       toast.error(err.message || "Fout bij scrapen");
     } finally {
       setIsScraping(false);
+    }
+  };
+
+  // Trigger PDF Bulk Download for Hoogeveen
+  const handleTriggerBulkDownload = async () => {
+    if (!token) return;
+    setIsBulkDownloading(true);
+    try {
+      const res = await fetch("/api/council/hoogeveen/bulk-download-pdfs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+      });
+      const data = await parseApiResponse(res);
+      if (!res.ok) throw new Error(data.error || "Bulk-download starten mislukt");
+      toast.success("Bulk-download van alle raadsdocumenten (2021-2026) succesvol gestart op de achtergrond! De bestanden worden nu live gedownload naar de server.");
+    } catch (err: any) {
+      toast.error(err.message || "Fout bij starten van bulk-download");
+    } finally {
+      setIsBulkDownloading(false);
     }
   };
 
@@ -1172,6 +1195,18 @@ export default function Raadspaneel() {
                   <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isScraping ? "animate-spin" : ""}`} />
                   {isScraping ? "Scrapen..." : "Vergaderstukken Nu Ophalen"}
                 </Button>
+                {portalConfig.isPortalMode && (
+                  <Button
+                    onClick={handleTriggerBulkDownload}
+                    disabled={isBulkDownloading || isScraping || isDiffChecking}
+                    variant="default"
+                    className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold h-9 rounded-xl shadow-sm cursor-pointer"
+                    title="Download alle 2.944 PDF raadsdocumenten (2021-2026) fysiek naar de server"
+                  >
+                    <Download className={`w-3.5 h-3.5 mr-1.5 ${isBulkDownloading ? "animate-pulse" : ""}`} />
+                    {isBulkDownloading ? "Download starten..." : "PDF Bulk-Download (2021-2026)"}
+                  </Button>
+                )}
               </>
             )}
             {isAuthenticated ? (
