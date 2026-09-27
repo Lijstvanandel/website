@@ -47,6 +47,7 @@ import { EditSubdossierModal } from "./EditSubdossierModal";
 import { CreateSubdossierModal } from "./CreateSubdossierModal";
 import { DistributeDocumentsModal } from "./DistributeDocumentsModal";
 import { SubdossierDetailView } from "./SubdossierDetailView";
+import { ErrorBoundary } from "../ErrorBoundary";
 import { getSubdossierClientThumbnail } from "@/lib/dossierClientUtils";
 import type { Dossier, DossierDocument, GraphNode, GraphEdge, DossierSubdossier } from "@/types/dossier";
 import { toast } from "sonner";
@@ -646,28 +647,40 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
   if (activeSubdossierObj && dossier) {
     return (
       <div id="subdossier-standalone-container" className="space-y-6">
-        <SubdossierDetailView
-          hoofddossier={dossier}
-          subdossier={activeSubdossierObj}
-          allDossierDocuments={dossier.documents || []}
-          onBackToHoofddossier={handleBackFromSubdossier}
-          onBackToOverview={onBack}
-          onOpenDocumentViewer={openDocumentViewer}
-          onOpenDocumentEditor={openDocumentEditor}
-          onOpenAddDocument={(subTitle, mode) => {
-            setAddDocInitialMode(mode);
-            setIsAddDocOpen(true);
-          }}
-          onEditSubdossier={(sub) => {
-            setActiveSubdossierForEdit(sub);
-            setIsEditSubdossierOpen(true);
-          }}
-          isCouncilOrAdmin={isCouncilOrAdmin}
-          user={user}
-          favoritesSet={favoritesSet}
-          onToggleFavorite={handleToggleFavorite}
-          initialTab={subdossierInitialTab}
-        />
+        <ErrorBoundary
+          fallback={
+            <div className="p-8 text-center bg-card border border-border rounded-xl space-y-4">
+              <h3 className="font-display text-xl text-foreground">Subdossier kon niet worden geladen</h3>
+              <p className="text-sm text-muted-foreground">Er trad een onverwachte fout op bij het laden van dit subdossier.</p>
+              <Button onClick={handleBackFromSubdossier} variant="outline" size="sm">
+                Terug naar hoofddossier
+              </Button>
+            </div>
+          }
+        >
+          <SubdossierDetailView
+            hoofddossier={dossier}
+            subdossier={activeSubdossierObj}
+            allDossierDocuments={dossier.documents || []}
+            onBackToHoofddossier={handleBackFromSubdossier}
+            onBackToOverview={onBack}
+            onOpenDocumentViewer={openDocumentViewer}
+            onOpenDocumentEditor={openDocumentEditor}
+            onOpenAddDocument={(subTitle, mode) => {
+              setAddDocInitialMode(mode);
+              setIsAddDocOpen(true);
+            }}
+            onEditSubdossier={(sub) => {
+              setActiveSubdossierForEdit(sub);
+              setIsEditSubdossierOpen(true);
+            }}
+            isCouncilOrAdmin={isCouncilOrAdmin}
+            user={user}
+            favoritesSet={favoritesSet}
+            onToggleFavorite={handleToggleFavorite}
+            initialTab={subdossierInitialTab}
+          />
+        </ErrorBoundary>
 
         {/* Global Modals for Standalone Subdossier View */}
         <DossierDocumentViewer

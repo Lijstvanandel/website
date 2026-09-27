@@ -230,8 +230,8 @@ export default function Dashboard() {
         (applyWijk && (
           p.wijkSlug === applyWijk ||
           p.id === `wijk-${applyWijk}` ||
-          p.wijkNaam.toLowerCase() === applyWijk.toLowerCase() ||
-          p.wijkNaam.toLowerCase().includes(applyWijk.toLowerCase())
+          (p.wijkNaam && p.wijkNaam.toLowerCase() === String(applyWijk).toLowerCase()) ||
+          (p.wijkNaam && p.wijkNaam.toLowerCase().includes(String(applyWijk).toLowerCase()))
         ))
       );
 
@@ -650,15 +650,16 @@ export default function Dashboard() {
     }
   };
 
-  const currentEmail = user.email || (user.username.includes("@") ? user.username : `${user.username.toLowerCase()}@leden.lijstvanandel.nl`);
+  const currentEmail = user?.email || (user?.username ? (user.username.includes("@") ? user.username : `${user.username.toLowerCase()}@leden.lijstvanandel.nl`) : "");
 
   // Filtered positions for full overview modal
   const filteredPositions = allPositions.filter((pos) => {
+    const ps = (positionsSearch || "").toLowerCase();
     const matchesSearch =
-      pos.title.toLowerCase().includes(positionsSearch.toLowerCase()) ||
-      pos.wijkNaam.toLowerCase().includes(positionsSearch.toLowerCase()) ||
-      pos.category.toLowerCase().includes(positionsSearch.toLowerCase()) ||
-      pos.description.toLowerCase().includes(positionsSearch.toLowerCase());
+      (pos.title && pos.title.toLowerCase().includes(ps)) ||
+      (pos.wijkNaam && pos.wijkNaam.toLowerCase().includes(ps)) ||
+      (pos.category && pos.category.toLowerCase().includes(ps)) ||
+      (pos.description && pos.description.toLowerCase().includes(ps));
 
     const matchesCategory =
       positionsCategoryFilter === "all" ||

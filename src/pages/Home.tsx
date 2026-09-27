@@ -24,7 +24,7 @@ const formatDateSafe = (dateStr?: string) => {
 };
 
 const normalizeSlug = (s: string): string => {
-  const clean = s
+  const clean = String(s || "")
     .toLowerCase()
     .replace(/[,]/g, "")
     .replace(/[^a-z0-9]+/g, "-")

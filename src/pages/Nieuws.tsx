@@ -69,15 +69,16 @@ export default function Nieuws() {
               Alle Berichten ({news.length})
             </button>
             {categories.map((cat) => {
+              const catName = String(cat?.name || "");
               const count = news.filter(
-                (n) => n.category?.toLowerCase() === cat.name.toLowerCase()
+                (n) => String(n.category || "").toLowerCase() === catName.toLowerCase()
               ).length;
               return (
                 <button
-                  key={cat.id}
-                  onClick={() => setSelectedCategory(cat.name)}
+                  key={cat.id || catName}
+                  onClick={() => setSelectedCategory(catName)}
                   className={`px-4 py-2 rounded-full text-xs font-semibold uppercase tracking-wider transition-all flex items-center gap-1.5 ${
-                    selectedCategory.toLowerCase() === cat.name.toLowerCase()
+                    String(selectedCategory || "").toLowerCase() === catName.toLowerCase()
                       ? "bg-primary text-primary-foreground shadow-sm scale-105"
                       : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
                   }`}

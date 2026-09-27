@@ -62,7 +62,7 @@ export const EditDocumentModal: React.FC<EditDocumentModalProps> = ({
       setDatum(document.datum || "");
       const docSub = document.subdossier || "";
       const isKnownSub = availableSubdossiers.some(
-        (s) => s.title.toLowerCase() === docSub.toLowerCase()
+        (s) => String(s?.title || "").toLowerCase() === String(docSub || "").toLowerCase()
       );
       if (isKnownSub || !docSub) {
         setSubdossier(docSub);

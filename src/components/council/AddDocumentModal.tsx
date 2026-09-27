@@ -104,7 +104,7 @@ export const AddDocumentModal: React.FC<AddDocumentModalProps> = ({
 
   if (!isOpen || !dossier) return null;
 
-  const existingFileNames = new Set(dossier.documents.map((d) => d.bestandsnaam.toLowerCase()));
+  const existingFileNames = new Set((dossier.documents || []).map((d) => String(d?.bestandsnaam || "").toLowerCase()));
 
   // File selection for new upload
   const handleFileChange = (selectedFile: File) => {
@@ -232,10 +232,10 @@ export const AddDocumentModal: React.FC<AddDocumentModalProps> = ({
     if (!catalogSearch.trim()) return true;
     const q = catalogSearch.toLowerCase();
     return (
-      d.titel.toLowerCase().includes(q) ||
-      d.bestandsnaam.toLowerCase().includes(q) ||
-      d.dossier.toLowerCase().includes(q) ||
-      d.datum?.includes(q)
+      (d.titel && String(d.titel).toLowerCase().includes(q)) ||
+      (d.bestandsnaam && String(d.bestandsnaam).toLowerCase().includes(q)) ||
+      (d.dossier && String(d.dossier).toLowerCase().includes(q)) ||
+      (d.datum && String(d.datum).includes(q))
     );
   });
 
@@ -586,7 +586,7 @@ export const AddDocumentModal: React.FC<AddDocumentModalProps> = ({
             ) : (
               <div className="max-h-72 overflow-y-auto rounded-2xl border border-border divide-y divide-border bg-background">
                 {filteredCatalog.map((doc, idx) => {
-                  const isAlreadyInDossier = existingFileNames.has(doc.bestandsnaam.toLowerCase());
+                  const isAlreadyInDossier = existingFileNames.has(String(doc?.bestandsnaam || "").toLowerCase());
                   const isSelected = selectedDocIds.has(doc.bestandsnaam);
 
                   return (

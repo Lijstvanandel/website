@@ -636,7 +636,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
       sessionStorage.getItem("token");
     if (!token) return;
 
-    const fnKey = doc.bestandsnaam.toLowerCase().trim();
+    const fnKey = String(doc?.bestandsnaam || doc?.id || "").toLowerCase().trim();
     const willBeFav = !favoritesSet.has(fnKey);
 
     // Optimistic state

@@ -377,7 +377,10 @@ export default function Raadspaneel() {
       if (res.status === 401 || res.status === 403) {
         throw new Error("Uw inlogsessie is verlopen of niet geldig. Log opnieuw in.");
       }
-      throw new Error("De server is momenteel bezig met initialiseren of herstarten. Gegevens worden geladen...");
+      if (res.status === 404) {
+        throw new Error("De opgevraagde gegevens zijn niet gevonden op de server.");
+      }
+      throw new Error("SERVER_WARMING_UP");
     }
 
     try {
@@ -393,6 +396,7 @@ export default function Raadspaneel() {
   const fetchCouncilData = useCallback(async (quiet = false, retryCount = 0) => {
     if (!token) return;
     if (!quiet && retryCount === 0) setLoading(true);
+    let isRetrying = false;
     try {
       const res = await fetch(`/api/council/topics?portal=${portalConfig.tenantId}&municipality=${portalConfig.tenantId}`, {
         headers: {
@@ -423,17 +427,20 @@ export default function Raadspaneel() {
         }
       }
     } catch (err: any) {
-      // If server was temporarily warming up / restarting, retry once automatically without showing error toast
-      if (retryCount < 2 && (err?.message?.includes("initialiseren") || err?.message?.includes("herstarten"))) {
+      if (retryCount < 3 && (err?.message?.includes("SERVER_WARMING_UP") || err?.message?.includes("initialiseren") || err?.message?.includes("herstarten"))) {
+        isRetrying = true;
         setTimeout(() => {
           fetchCouncilData(true, retryCount + 1);
         }, 1200);
         return;
       }
       console.error(err);
-      if (!quiet) toast.error(err.message || "Fout bij inladen");
+      const friendlyMsg = err?.message === "SERVER_WARMING_UP"
+        ? "De server is bezig met inladen. Vernieuw de pagina over enkele seconden."
+        : err?.message || "Fout bij inladen";
+      if (!quiet) toast.error(friendlyMsg);
     } finally {
-      if (!quiet && retryCount === 0) setLoading(false);
+      if (!isRetrying && !quiet) setLoading(false);
     }
   }, [token, selectedTopicId, searchParams, portalConfig.tenantId]);
 
@@ -1104,18 +1111,18 @@ export default function Raadspaneel() {
       // Search
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const matchTitle = t.title.toLowerCase().includes(q);
-        const matchDesc = (t.description || "").toLowerCase().includes(q);
-        const matchMeeting = t.meetingTitle.toLowerCase().includes(q);
-        const matchAssigned = (t.assignedName || t.assignedTo || "").toLowerCase().includes(q);
-        const matchDocs = t.documents.some((d) => d.title.toLowerCase().includes(q));
-        const matchNotes = t.notes.some((n) => n.note.toLowerCase().includes(q));
+        const matchTitle = Boolean(t.title && String(t.title).toLowerCase().includes(q));
+        const matchDesc = Boolean(t.description && String(t.description).toLowerCase().includes(q));
+        const matchMeeting = Boolean(t.meetingTitle && String(t.meetingTitle).toLowerCase().includes(q));
+        const matchAssigned = Boolean((t.assignedName || t.assignedTo) && String(t.assignedName || t.assignedTo).toLowerCase().includes(q));
+        const matchDocs = (t.documents || []).some((d) => d?.title && String(d.title).toLowerCase().includes(q));
+        const matchNotes = (t.notes || []).some((n) => n?.note && String(n.note).toLowerCase().includes(q));
         const matchStandpunten = (t.matchedStandpunten || []).some(
           (m) =>
-            m.standpuntTitel.toLowerCase().includes(q) ||
-            m.explanation.toLowerCase().includes(q) ||
-            m.hoofdstukTitel.toLowerCase().includes(q) ||
-            (m.matchedKeywords || []).some((kw) => kw.toLowerCase().includes(q))
+            (m?.standpuntTitel && String(m.standpuntTitel).toLowerCase().includes(q)) ||
+            (m?.explanation && String(m.explanation).toLowerCase().includes(q)) ||
+            (m?.hoofdstukTitel && String(m.hoofdstukTitel).toLowerCase().includes(q)) ||
+            (m?.matchedKeywords || []).some((kw) => kw && String(kw).toLowerCase().includes(q))
         );
         if (!matchTitle && !matchDesc && !matchMeeting && !matchAssigned && !matchDocs && !matchNotes && !matchStandpunten) {
           return false;

@@ -96,8 +96,8 @@ export const SubdossierDetailView: React.FC<SubdossierDetailViewProps> = ({
 
   // All documents strictly belonging to this subdossier
   const subDocs = useMemo(() => {
-    const targetSlug = slugify(subdossier.slug || subdossier.title);
-    const targetTitle = (subdossier.title || "").toLowerCase().trim();
+    const targetSlug = slugify(subdossier?.slug || subdossier?.title || "");
+    const targetTitle = (subdossier?.title || "").toLowerCase().trim();
 
     return (allDossierDocuments || []).filter((doc) => {
       const docSub = (doc.subdossier || "").toLowerCase().trim();
@@ -200,20 +200,26 @@ export const SubdossierDetailView: React.FC<SubdossierDetailViewProps> = ({
     // Connect documents that share specific entities
     for (let i = 0; i < subDocs.length; i++) {
       const docA = subDocs[i];
-      const entA = (docA.entiteiten || []).map((e) => e.toLowerCase().trim()).filter((e) => e.length > 2);
+      const fnA = docA?.bestandsnaam || docA?.id || `doc-${i}`;
+      const entA = (docA?.entiteiten || [])
+        .map((e) => (typeof e === "string" ? e.toLowerCase().trim() : ""))
+        .filter((e) => e.length > 2);
 
       for (let j = i + 1; j < subDocs.length; j++) {
         const docB = subDocs[j];
-        const entB = (docB.entiteiten || []).map((e) => e.toLowerCase().trim()).filter((e) => e.length > 2);
+        const fnB = docB?.bestandsnaam || docB?.id || `doc-${j}`;
+        const entB = (docB?.entiteiten || [])
+          .map((e) => (typeof e === "string" ? e.toLowerCase().trim() : ""))
+          .filter((e) => e.length > 2);
         const commonEnts = entA.filter((e) => entB.includes(e));
 
         if (commonEnts.length > 0) {
-          const key = [docA.bestandsnaam, docB.bestandsnaam].sort().join("|||");
+          const key = [fnA, fnB].sort().join("|||");
           if (!edgeKeySet.has(key)) {
             edgeKeySet.add(key);
             edges.push({
-              source: docA.bestandsnaam,
-              target: docB.bestandsnaam,
+              source: fnA,
+              target: fnB,
               label: `Onderwerp: ${commonEnts.slice(0, 2).join(", ")}`,
               reasons: commonEnts,
             });
@@ -221,8 +227,8 @@ export const SubdossierDetailView: React.FC<SubdossierDetailViewProps> = ({
         }
 
         // Direct mention in relaties
-        const relStr = Array.isArray(docA.relaties) ? docA.relaties.join(" ") : docA.relaties || "";
-        if (relStr && (relStr.includes(docB.bestandsnaam) || relStr.includes(docB.titel))) {
+        const relStr = Array.isArray(docA?.relaties) ? docA.relaties.join(" ") : String(docA?.relaties || "");
+        if (relStr && ((docB?.bestandsnaam && relStr.includes(docB.bestandsnaam)) || (docB?.titel && relStr.includes(docB.titel)))) {
           const key = [docA.bestandsnaam, docB.bestandsnaam].sort().join("|||");
           if (!edgeKeySet.has(key)) {
             edgeKeySet.add(key);
@@ -270,10 +276,10 @@ export const SubdossierDetailView: React.FC<SubdossierDetailViewProps> = ({
       const q = docSearch.toLowerCase();
       list = list.filter(
         (d) =>
-          d.titel.toLowerCase().includes(q) ||
-          d.bestandsnaam.toLowerCase().includes(q) ||
-          d.datum?.toLowerCase().includes(q) ||
-          d.entiteiten?.some((e) => e.toLowerCase().includes(q))
+          (d.titel && d.titel.toLowerCase().includes(q)) ||
+          (d.bestandsnaam && d.bestandsnaam.toLowerCase().includes(q)) ||
+          (d.datum && d.datum.toLowerCase().includes(q)) ||
+          (d.entiteiten && d.entiteiten.some((e) => typeof e === "string" && e.toLowerCase().includes(q)))
       );
     }
 
@@ -281,9 +287,9 @@ export const SubdossierDetailView: React.FC<SubdossierDetailViewProps> = ({
       const tf = typeFilter.toLowerCase();
       list = list.filter(
         (d) =>
-          d.type?.toLowerCase().includes(tf) ||
-          d.titel.toLowerCase().includes(tf) ||
-          d.bestandsnaam.toLowerCase().includes(tf)
+          ((d as any).type && String((d as any).type).toLowerCase().includes(tf)) ||
+          (d.titel && d.titel.toLowerCase().includes(tf)) ||
+          (d.bestandsnaam && d.bestandsnaam.toLowerCase().includes(tf))
       );
     }
 
@@ -909,7 +915,7 @@ export const SubdossierDetailView: React.FC<SubdossierDetailViewProps> = ({
                       type="button"
                       onClick={(e) => onToggleFavorite(doc, e)}
                       className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
-                        favoritesSet.has(doc.bestandsnaam.toLowerCase().trim())
+                        favoritesSet.has(String(doc?.bestandsnaam || doc?.id || "").toLowerCase().trim())
                           ? "bg-amber-500/20 text-amber-500"
                           : "hover:bg-muted text-muted-foreground hover:text-foreground"
                       }`}
@@ -917,7 +923,7 @@ export const SubdossierDetailView: React.FC<SubdossierDetailViewProps> = ({
                     >
                       <Star
                         className={`w-4 h-4 ${
-                          favoritesSet.has(doc.bestandsnaam.toLowerCase().trim())
+                          favoritesSet.has(String(doc?.bestandsnaam || doc?.id || "").toLowerCase().trim())
                             ? "fill-amber-500 text-amber-500"
                             : ""
                         }`}
@@ -1074,10 +1080,11 @@ export const SubdossierDetailView: React.FC<SubdossierDetailViewProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {subdossier.wijken.map((wijkNaam, idx) => {
                 // Documents specifically linked to this wijk in this subdossier
+                const targetWijk = String(wijkNaam || "").toLowerCase();
                 const wijkDocs = subDocs.filter(
                   (d) =>
-                    (d.wijk_of_kern && d.wijk_of_kern.toLowerCase().includes(wijkNaam.toLowerCase())) ||
-                    d.wijken?.some((w) => w.toLowerCase().includes(wijkNaam.toLowerCase()))
+                    (d.wijk_of_kern && String(d.wijk_of_kern).toLowerCase().includes(targetWijk)) ||
+                    d.wijken?.some((w) => String(w || "").toLowerCase().includes(targetWijk))
                 );
 
                 return (

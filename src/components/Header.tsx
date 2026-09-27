@@ -145,7 +145,7 @@ export const Header = () => {
     return "Steenwijkerland";
   }, [location.pathname, apiWijkenMap]);
 
-  const portalConfig = getPortalConfig();
+  const portalConfig = getPortalConfig(location.pathname);
 
   return (
     <>

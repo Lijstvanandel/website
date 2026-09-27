@@ -198,11 +198,15 @@ const Bestuur = () => {
               const allDocs = (data.organisatieDocs && data.organisatieDocs.length > 0)
                 ? data.organisatieDocs
                 : defaultDocs;
-              const matched = allDocs.find((d: OrganisatieDoc) => 
-                d.id === docParam || 
-                d.titel.toLowerCase().includes(docParam.toLowerCase()) ||
-                (docParam.toLowerCase().includes("statut") && d.titel.toLowerCase().includes("statut"))
-              );
+              const matched = allDocs.find((d: OrganisatieDoc) => {
+                const docTitel = String(d?.titel || "").toLowerCase();
+                const dp = String(docParam || "").toLowerCase();
+                return (
+                  d.id === docParam || 
+                  docTitel.includes(dp) ||
+                  (dp.includes("statut") && docTitel.includes("statut"))
+                );
+              });
               if (matched) {
                 handleOpenDocViewer(matched);
               }

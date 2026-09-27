@@ -14725,6 +14725,10 @@ Sitemap: ${baseUrl}/sitemap.xml
           </html>
         `);
       }
+      // Force NO CACHE for index.html
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       return renderHtmlWithSeo(req, res, html);
     });
   }

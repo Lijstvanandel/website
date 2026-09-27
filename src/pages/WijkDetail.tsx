@@ -829,13 +829,13 @@ const WijkDetail = () => {
               const allSubs = activeHoofddossier.subdossiers || [];
               
               // Filter by search query
-              const query = subSearch.toLowerCase().trim();
+              const query = (subSearch || "").toLowerCase().trim();
               const filteredSubs = allSubs.filter((sub) => {
                 if (!query) return true;
                 return (
-                  sub.title.toLowerCase().includes(query) ||
-                  (sub.description && sub.description.toLowerCase().includes(query)) ||
-                  (sub.tags && sub.tags.some((t) => t.toLowerCase().includes(query)))
+                  (sub?.title && String(sub.title).toLowerCase().includes(query)) ||
+                  (sub?.description && String(sub.description).toLowerCase().includes(query)) ||
+                  (sub?.tags && sub.tags.some((t) => t && String(t).toLowerCase().includes(query)))
                 );
               });
 
@@ -1097,10 +1097,11 @@ const WijkDetail = () => {
                                 activeHoofddossier.thumbnail
                               );
                             // Docs in this subdossier
+                            const subTitle = String(sub?.title || "").toLowerCase();
                             const subDocs = (activeHoofddossier.documents || []).filter(
                               (sd) =>
-                                (sd.subdossier || "Algemeen").toLowerCase() === sub.title.toLowerCase() ||
-                                (sd.subdossier || "").toLowerCase().includes(sub.title.toLowerCase())
+                                (sd.subdossier || "Algemeen").toLowerCase() === subTitle ||
+                                (sd.subdossier || "").toLowerCase().includes(subTitle)
                             );
 
                             return (

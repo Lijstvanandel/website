@@ -59,15 +59,15 @@ export const DistributeDocumentsModal: React.FC<DistributeDocumentsModalProps> =
 
   const filteredDocs = (dossier.documents || []).filter((d) => {
     if (currentSubFilter !== "all") {
-      const docSub = d.subdossier || dossier.title;
-      if (docSub.toLowerCase() !== currentSubFilter.toLowerCase()) return false;
+      const docSub = d.subdossier || dossier.title || "";
+      if (String(docSub).toLowerCase() !== String(currentSubFilter).toLowerCase()) return false;
     }
     if (!docSearch.trim()) return true;
     const q = docSearch.toLowerCase();
     return (
-      d.titel.toLowerCase().includes(q) ||
-      d.bestandsnaam.toLowerCase().includes(q) ||
-      (d.subdossier || "").toLowerCase().includes(q)
+      (d.titel && String(d.titel).toLowerCase().includes(q)) ||
+      (d.bestandsnaam && String(d.bestandsnaam).toLowerCase().includes(q)) ||
+      (d.subdossier && String(d.subdossier).toLowerCase().includes(q))
     );
   });
 
@@ -282,7 +282,7 @@ export const DistributeDocumentsModal: React.FC<DistributeDocumentsModalProps> =
                 filteredDocs.map((doc) => {
                   const isChecked = selectedDocIds.has(doc.bestandsnaam);
                   const isAlreadyInTarget =
-                    doc.subdossier?.toLowerCase() === effectiveTargetTitle.toLowerCase();
+                    String(doc.subdossier || "").toLowerCase() === String(effectiveTargetTitle || "").toLowerCase();
 
                   return (
                     <div

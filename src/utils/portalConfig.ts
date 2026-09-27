@@ -16,7 +16,7 @@ export interface PortalConfig {
   risSystemName: string;
 }
 
-export function getPortalConfig(): PortalConfig {
+export function getPortalConfig(currentPathname?: string): PortalConfig {
   if (typeof window === "undefined") {
     return {
       isPortalMode: false,
@@ -32,6 +32,27 @@ export function getPortalConfig(): PortalConfig {
   const hostname = window.location.hostname.toLowerCase();
   const searchParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
   const queryParam = searchParams.get("portal")?.toLowerCase() || searchParams.get("tenant")?.toLowerCase() || searchParams.get("muni")?.toLowerCase();
+  const pathname = (currentPathname || window.location.pathname || "").toLowerCase().split("?")[0].split("#")[0];
+
+  // Explicit Steenwijkerland party & neighborhood routes where portal mode is NEVER active
+  const isSteenwijkerlandRoute =
+    pathname.startsWith("/wijk-en-kernen") ||
+    pathname.startsWith("/wijken-en/kernen") ||
+    pathname.startsWith("/wijken") ||
+    pathname.startsWith("/standpunten") ||
+    pathname.startsWith("/raadsleden") ||
+    pathname.startsWith("/bestuur") ||
+    pathname.startsWith("/steunfractie") ||
+    pathname.startsWith("/mensen") ||
+    pathname.startsWith("/nieuws") ||
+    pathname.startsWith("/agenda") ||
+    pathname.startsWith("/contact") ||
+    pathname.startsWith("/doneren") ||
+    pathname.startsWith("/doneer") ||
+    pathname.startsWith("/partijprogramma") ||
+    pathname.startsWith("/peilingen") ||
+    pathname.startsWith("/polls") ||
+    pathname === "/";
 
   if (queryParam) {
     try {
@@ -42,15 +63,22 @@ export function getPortalConfig(): PortalConfig {
   }
 
   const storedTenant = typeof localStorage !== "undefined" ? localStorage.getItem("portal_tenant") : null;
-  const portalParam = queryParam || storedTenant;
 
   // Check if Hoogeveen domain or test param
-  const isHoogeveen =
+  const isHoogeveenDomain =
     hostname.includes("hoogeveen.") ||
     hostname.includes("hgv.") ||
-    hostname.startsWith("hoogeveen-") ||
-    portalParam === "hoogeveen" ||
-    portalParam === "hgv";
+    hostname.startsWith("hoogeveen-");
+
+  // Hoogeveen portal mode is active if:
+  // 1) Hostname is Hoogeveen domain
+  // 2) OR query param explicitly sets portal=hoogeveen
+  // 3) OR storedTenant is hoogeveen AND we are on a council workspace route (/raadspaneel or /dossiers) AND NOT on a Steenwijkerland party/wijk route
+  const isHoogeveen =
+    isHoogeveenDomain ||
+    queryParam === "hoogeveen" ||
+    queryParam === "hgv" ||
+    (storedTenant === "hoogeveen" && !isSteenwijkerlandRoute && (pathname.startsWith("/raadspaneel") || pathname.startsWith("/dossiers")));
 
   if (isHoogeveen) {
     return {
@@ -62,6 +90,15 @@ export function getPortalConfig(): PortalConfig {
       shortCode: "hgv",
       risSystemName: "Gemeenteraad Hoogeveen",
     };
+  }
+
+  // Auto-reset storedTenant if on a Steenwijkerland party/wijk route
+  if (isSteenwijkerlandRoute && storedTenant === "hoogeveen" && !queryParam) {
+    try {
+      localStorage.setItem("portal_tenant", "steenwijkerland");
+    } catch {
+      // ignore
+    }
   }
 
   // Default to standard Steenwijkerland party site

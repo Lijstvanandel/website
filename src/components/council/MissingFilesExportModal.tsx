@@ -281,25 +281,25 @@ export const MissingFilesExportModal: React.FC<MissingFilesExportModalProps> = (
       }
       if (!q) return true;
       return (
-        item.bestandsnaam.toLowerCase().includes(q) ||
-        item.titel.toLowerCase().includes(q) ||
-        item.dossiers.some((d) => d.title.toLowerCase().includes(q))
+        (item.bestandsnaam && String(item.bestandsnaam).toLowerCase().includes(q)) ||
+        (item.titel && String(item.titel).toLowerCase().includes(q)) ||
+        (item.dossiers && item.dossiers.some((d) => d?.title && String(d.title).toLowerCase().includes(q)))
       );
     });
   }, [uniqueMissingFiles, search, selectedDossier]);
 
   const filteredDetailedDocs = useMemo(() => {
-    const q = search.toLowerCase().trim();
+    const q = (search || "").toLowerCase().trim();
     return missingDocuments.filter((doc) => {
       if (selectedDossier !== "all" && doc.dossier !== selectedDossier) {
         return false;
       }
       if (!q) return true;
       return (
-        doc.bestandsnaam.toLowerCase().includes(q) ||
-        doc.titel.toLowerCase().includes(q) ||
-        doc.dossier.toLowerCase().includes(q) ||
-        (doc.dossierCategory && doc.dossierCategory.toLowerCase().includes(q))
+        (doc.bestandsnaam && String(doc.bestandsnaam).toLowerCase().includes(q)) ||
+        (doc.titel && String(doc.titel).toLowerCase().includes(q)) ||
+        (doc.dossier && String(doc.dossier).toLowerCase().includes(q)) ||
+        (doc.dossierCategory && String(doc.dossierCategory).toLowerCase().includes(q))
       );
     });
   }, [missingDocuments, search, selectedDossier]);
