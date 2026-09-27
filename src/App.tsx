@@ -14,12 +14,14 @@ import { ScrollToTop } from "./components/ScrollToTop";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { getPortalConfig } from "./utils/portalConfig";
 
-// Eager load primary landing page for instant FCP / LCP
+// Eager load primary public pages for instant FCP / LCP and zero chunk-loading failures
 import Home from "./pages/Home";
+import WijkenEnKernen from "./pages/WijkenEnKernen";
+import WijkDetail from "./pages/WijkDetail";
 
 // Self-healing lazy loading helper to prevent blank pages or chunk loading failures.
 // Retries the import once if a transient network/compile hiccup occurred.
-// If it still fails, it throws so ErrorBoundary can render a clean error recovery UI with a manual retry button.
+// If it still fails, reloads the page once to pull fresh Vite bundles.
 function safeLazy<T extends React.ComponentType<any>>(
   importFn: () => Promise<{ default: T }>
 ) {
@@ -33,13 +35,21 @@ function safeLazy<T extends React.ComponentType<any>>(
         return await importFn();
       } catch (secondError) {
         console.error("Fout bij laden van pagina-onderdeel:", secondError);
+        if (typeof window !== "undefined" && typeof sessionStorage !== "undefined") {
+          const reloadKey = "chunk_reload_" + window.location.pathname;
+          if (!sessionStorage.getItem(reloadKey)) {
+            sessionStorage.setItem(reloadKey, "1");
+            window.location.reload();
+            return new Promise<{ default: T }>(() => {});
+          }
+        }
         throw secondError;
       }
     }
   });
 }
 
-// Lazy-load all sub-routes with self-healing capabilities
+// Lazy-load sub-routes with self-healing capabilities
 const Raadsleden = safeLazy(() => import("./pages/Raadsleden"));
 const FractielidVideos = safeLazy(() => import("./pages/FractielidVideos"));
 const VideoRedirect = safeLazy(() => import("./pages/VideoRedirect"));
@@ -51,8 +61,6 @@ const Agenda = safeLazy(() => import("./pages/Agenda"));
 const AgendaDetail = safeLazy(() => import("./pages/AgendaDetail"));
 const Nieuws = safeLazy(() => import("./pages/Nieuws"));
 const NieuwsDetail = safeLazy(() => import("./pages/NieuwsDetail"));
-const WijkenEnKernen = safeLazy(() => import("./pages/WijkenEnKernen"));
-const WijkDetail = safeLazy(() => import("./pages/WijkDetail"));
 const NotFound = safeLazy(() => import("./pages/NotFound"));
 const Login = safeLazy(() => import("./pages/Login"));
 const Register = safeLazy(() => import("./pages/Register"));
