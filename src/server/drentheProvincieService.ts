@@ -533,40 +533,54 @@ export async function startDrentheSync(years: number[] = [2021, 2022, 2023, 2024
         syncState.currentYear = year;
         addLog(`Jaargang ${year} scannen op drentsparlement.nl...`, "info");
 
-        // We check both Statencommissie and Provinciale Staten
-        const organs = ["Statencommissie", "Provinciale-Staten"];
+        // Check all parliamentary organs for Drenthe across all years
+        const organs = [
+          "Statencommissie",
+          "Provinciale-Staten-PS",
+          "Statencommissie-Omgevingsbeleid-OGB",
+          "Statencommissie-Financien-Cultuur-Bestuur-en-Economie-FCBE",
+          "Algemene-commissievergadering",
+        ];
+
         for (const organ of organs) {
           if (abortController?.signal.aborted) break;
           const organUrl = `https://www.drentsparlement.nl/Vergaderingen/${organ}/${year}`;
           const html = await fetchHtml(organUrl);
-          if (!html) {
-            addLog(`Geen vergaderoverzicht gevonden voor ${organ} ${year}`, "info");
+          if (!html || html.includes("foutpagina")) {
             continue;
           }
 
-          // Parse meeting links: e.g. href="https://www.drentsparlement.nl/Vergaderingen/Statencommissie/2026/21-oktober/09:30"
-          const meetingLinkRegex = /href=["'](https:\/\/www\.drentsparlement\.nl\/Vergaderingen\/[^"']+\/\d{4}\/[^"']+\/[^"']+)["']/gi;
+          // Parse meeting links: support both relative (/Vergaderingen/...) and absolute (https://...)
+          const meetingLinkRegex = /href=["'](\/?Vergaderingen\/[^"']+\/\d{4}\/[^"']+\/[^"']+)["']/gi;
           const meetingUrls = new Set<string>();
           let match;
           while ((match = meetingLinkRegex.exec(html)) !== null) {
-            const url = match[1].replace(/#.*$/, "").replace(/\/alle-documenten\/?$/, "");
-            if (url.includes(`/${year}/`)) {
-              meetingUrls.add(url);
+            let rawUrl = match[1].replace(/#.*$/, "").replace(/\/alle-documenten\/?$/, "");
+            if (rawUrl.includes(`/${year}/`)) {
+              if (!rawUrl.startsWith("http")) {
+                rawUrl = `https://www.drentsparlement.nl${rawUrl.startsWith("/") ? "" : "/"}${rawUrl}`;
+              }
+              meetingUrls.add(rawUrl);
             }
           }
 
-          addLog(`${meetingUrls.size} vergaderingen gevonden voor ${organ} (${year})`, "info");
-          syncState.totalMeetingsFound += meetingUrls.size;
+          if (meetingUrls.size > 0) {
+            addLog(`${meetingUrls.size} vergaderingen gevonden voor ${organ} (${year})`, "info");
+            syncState.totalMeetingsFound += meetingUrls.size;
+          }
 
           for (const meetingUrl of meetingUrls) {
             if (abortController?.signal.aborted) break;
 
             // Throttle between meetings
-            await sleep(1500);
+            await sleep(1200);
 
             const allDocsUrl = `${meetingUrl}/alle-documenten`;
             syncState.currentAction = `Vergadering ${path.basename(meetingUrl)} analyseren...`;
-            const meetingHtml = (await fetchHtml(allDocsUrl)) || (await fetchHtml(meetingUrl));
+            let meetingHtml = await fetchHtml(allDocsUrl);
+            if (!meetingHtml || meetingHtml.includes("foutpagina")) {
+              meetingHtml = await fetchHtml(meetingUrl);
+            }
             if (!meetingHtml) continue;
 
             syncState.processedMeetings++;
@@ -600,7 +614,12 @@ export async function startDrentheSync(years: number[] = [2021, 2022, 2023, 2024
 
             while ((docMatch = docItemRegex.exec(meetingHtml)) !== null) {
               const docId = docMatch[1].trim();
-              const rawTitle = docMatch[2].replace(/<span[^>]*class=["']file-type["'][\s\S]*?<\/span>/gi, "").replace(/<[^>]+>/g, "").trim();
+              const rawTitle = docMatch[2]
+                .replace(/<span[^>]*class=["']file-type["'][\s\S]*?<\/span>/gi, "")
+                .replace(/\(pdf\)/gi, "")
+                .replace(/<[^>]+>/g, "")
+                .replace(/[\r\n\t]+/g, " ")
+                .trim();
               const cleanDocTitle = sanitizeCleanText(rawTitle);
               let pdfUrl = docMatch[3].trim();
               if (pdfUrl.startsWith("/")) {
@@ -619,7 +638,11 @@ export async function startDrentheSync(years: number[] = [2021, 2022, 2023, 2024
                 if (pdfUrl.startsWith("/")) {
                   pdfUrl = `https://www.drentsparlement.nl${pdfUrl}`;
                 }
-                const rawTitle = gMatch[2].replace(/<[^>]+>/g, "").trim();
+                const rawTitle = gMatch[2]
+                  .replace(/<[^>]+>/g, "")
+                  .replace(/\(pdf\)/gi, "")
+                  .replace(/[\r\n\t]+/g, " ")
+                  .trim();
                 const cleanDocTitle = sanitizeCleanText(rawTitle) || path.basename(pdfUrl, ".pdf");
                 const docId = `${year}_${path.basename(meetingUrl)}_${gIdx++}`;
                 foundInMeeting.push({ docId, title: cleanDocTitle, pdfUrl });
