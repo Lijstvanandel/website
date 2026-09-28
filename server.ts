@@ -11069,7 +11069,7 @@ Sitemap: ${baseUrl}/sitemap.xml
         idempotencyKey,
         async (bgJob) => {
           globalBackgroundJobQueue.updateProgress(bgJob.id, 25, isHoogeveen ? "Ophalen vergaderingen Hoogeveen (NotuBiz)..." : "Ophalen vergaderingen van iBabs...");
-          const summary = isHoogeveen ? await scrapeCouncilAgendasHoogeveen() : await scrapeCouncilAgendas(undefined, { isManual: true });
+          const summary = isHoogeveen ? await scrapeCouncilAgendasHoogeveen([2025, 2026]) : await scrapeCouncilAgendas(undefined, { isManual: true });
           globalBackgroundJobQueue.updateProgress(bgJob.id, 80, isHoogeveen ? "Dossierverdeling Hoogeveen uitvoeren..." : "Topic categorisatie...");
           if (isHoogeveen) {
             try {

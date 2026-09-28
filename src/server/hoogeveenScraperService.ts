@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { CouncilAgendaTopic, CouncilDocument, CouncilTopicDiffAlert } from "../types/council.js";
-import { getDbFromSqlite, saveDbToSqlite, initDatabase } from "./sqliteDatabase.js";
+import { getDbFromSqlite, saveDbToSqlite, initDatabase, persistSqlite } from "./sqliteDatabase.js";
 import { notifyDocumentDiffDetected } from "./pushService.js";
 import { detectHoogeveenWijken } from "./hoogeveenTaxonomy.js";
 import { sanitizeCleanText, isCorruptOrHtmlGarbage } from "./scraperContractValidator.js";
@@ -158,7 +158,7 @@ function scheduleNextHoogeveenWatchdogScrape(delayMs: number) {
 /**
  * Scrapes meetings and agenda topics autonomously for Gemeente Hoogeveen via NotuBiz API (Org 572)
  */
-export async function scrapeCouncilAgendasHoogeveen(yearsToScrape: number[] = [2021, 2022, 2023, 2024, 2025, 2026]) {
+export async function scrapeCouncilAgendasHoogeveen(yearsToScrape: number[] = [2025, 2026]) {
   console.log(`[HOOGEVEEN SCRAPER] Start scraping voor Gemeente Hoogeveen (jaren: ${yearsToScrape.join(", ")})...`);
   await initDatabase();
 
@@ -192,28 +192,66 @@ export async function scrapeCouncilAgendasHoogeveen(yearsToScrape: number[] = [2
 
   const allEvents: any[] = eventsData.events;
   
-  // Collect all meeting IDs (including child meetings inside assemblies)
-  const meetingEvents: { id: string }[] = [];
+  type MeetingToProcess = {
+    id: string;
+    parentTitle?: string;
+    assemblyId?: string;
+    planningDate?: string;
+  };
+
+  // Collect meetings: extract individual meetings and resolve assembly sub-meetings
+  const meetingEvents: MeetingToProcess[] = [];
+  const assembliesToResolve: any[] = [];
+
   for (const e of allEvents) {
-    if (e.type === "meeting" || e.event_type_data) {
+    if (e.type === "assembly") {
+      assembliesToResolve.push(e);
+    } else if (e.type === "meeting") {
+      const pDate = e.plannings?.[0]?.start_date || e.creation_date;
       if (!meetingEvents.some((m) => m.id === String(e.id))) {
-        meetingEvents.push({ id: String(e.id) });
-      }
-    } else if (e.type === "assembly") {
-      try {
-        const assData = await fetchWithRetryJson(`${NOTUBIZ_API_BASE}/events/assemblies/${e.id}?format=json&version=1.17.0`, {}, 2, 12000);
-        if (assData) {
-          const subMeetings = assData.assembly?.meetings || [];
-          for (const sm of subMeetings) {
-            if (!meetingEvents.some((m) => m.id === String(sm.id))) {
-              meetingEvents.push({ id: String(sm.id) });
-            }
-          }
-        }
-      } catch {
-        // ignore assembly fetch failure
+        meetingEvents.push({ id: String(e.id), planningDate: pDate });
       }
     }
+  }
+
+  // Resolve assemblies in parallel batches of 5
+  const assemblyBatchSize = 5;
+  for (let i = 0; i < assembliesToResolve.length; i += assemblyBatchSize) {
+    const aBatch = assembliesToResolve.slice(i, i + assemblyBatchSize);
+    await Promise.all(
+      aBatch.map(async (e) => {
+        try {
+          const assData = await fetchWithRetryJson(
+            `${NOTUBIZ_API_BASE}/events/assemblies/${e.id}?format=json&version=1.17.0`,
+            {},
+            2,
+            12000
+          );
+          if (assData && assData.assembly) {
+            const ass = assData.assembly;
+            const assemblyTitle =
+              ass.attributes?.find((a: any) => a.id === 1)?.value ||
+              e.attributes?.find((a: any) => a.id === 1)?.value ||
+              "Raadsavond parallel";
+            const assDate = ass.plannings?.[0]?.start_date || e.plannings?.[0]?.start_date || ass.creation_date;
+            const subMeetings = ass.meetings || [];
+            for (const sm of subMeetings) {
+              const smId = String(sm.id);
+              if (!meetingEvents.some((m) => m.id === smId)) {
+                meetingEvents.push({
+                  id: smId,
+                  parentTitle: assemblyTitle,
+                  assemblyId: String(e.id),
+                  planningDate: sm.plannings?.[0]?.start_date || assDate,
+                });
+              }
+            }
+          }
+        } catch {
+          // ignore assembly fetch failure
+        }
+      })
+    );
   }
 
   console.log(`[HOOGEVEEN SCRAPER] ${meetingEvents.length} vergaderingen/sessies gevonden op NotuBiz. Detailgegevens ophalen...`);
@@ -248,15 +286,19 @@ export async function scrapeCouncilAgendasHoogeveen(yearsToScrape: number[] = [2
 
           // Determine title
           const titleAttr = meeting.attributes?.find((a: any) => a.id === 1)?.value || meeting.description || "Raadsvergadering Hoogeveen";
-          const pageTitle = sanitizeCleanText(titleAttr) || "Raadsvergadering Hoogeveen";
+          const subTitle = sanitizeCleanText(titleAttr) || "Raadsvergadering Hoogeveen";
+          const pageTitle = event.parentTitle && event.parentTitle !== subTitle
+            ? `${event.parentTitle} - ${subTitle}`
+            : subTitle;
 
           // Determine date
           let meetingDateIso = "";
           let meetingDateDisplay = "";
-          if (meeting.plannings && meeting.plannings.length > 0 && meeting.plannings[0].start_date) {
-            meetingDateIso = meeting.plannings[0].start_date.slice(0, 10);
+          const startDate = meeting.plannings?.[0]?.start_date || event.planningDate;
+          if (startDate) {
+            meetingDateIso = startDate.slice(0, 10);
             try {
-              const d = new Date(meeting.plannings[0].start_date);
+              const d = new Date(startDate);
               meetingDateDisplay = d.toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
             } catch {
               meetingDateDisplay = meetingDateIso;
@@ -530,6 +572,7 @@ export async function scrapeCouncilAgendasHoogeveen(yearsToScrape: number[] = [2
 
   db.councilScrapeSummaryHoogeveen = summary;
   saveDbToSqlite(db);
+  persistSqlite();
 
   console.log(`[HOOGEVEEN SCRAPER] Voltooid! ${hoogeveenTopicsList.length} Hoogeveen agendapunten opgeslagen (${bespreekstukkenFound} bespreekstukken).`);
 
