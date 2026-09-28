@@ -1,6 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const sharp = require('sharp');
 
 const publicDir = path.join(__dirname, '..', 'public');
 const srcAssetsDir = path.join(__dirname, '..', 'src', 'assets');
@@ -12,6 +11,14 @@ if (
   fs.existsSync(path.join(publicDir, 'pwa-maskable-512x512.png'))
 ) {
   console.log('✅ PWA icons already exist. Skipping icon generation.');
+  process.exit(0);
+}
+
+let sharp;
+try {
+  sharp = require('sharp');
+} catch (_err) {
+  console.log('⚠️ Sharp is not installed or available. Skipping PWA icon generation.');
   process.exit(0);
 }
 // Scaled and centered with ample padding so the entire shape fits completely inside the circle without getting clipped

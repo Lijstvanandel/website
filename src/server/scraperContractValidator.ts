@@ -116,8 +116,21 @@ export function validateIbabsHtmlContract(
     return recordFailure("ibabs_steenwijkerland", "EMPTY_PAYLOAD", "Lege HTML respons ontvangen van iBabs", url);
   }
 
-  // Check 1: Anti-bot / Cloudflare / 403 blocks
-  if (isCorruptOrHtmlGarbage(html) && !html.includes("agenda-item") && !html.includes("panel-title")) {
+  // Check 1: Anti-bot / Cloudflare / 403 blocks (explicit challenge pages)
+  const lower = html.toLowerCase();
+  const isExplicitBlockOrChallenge =
+    (lower.includes("cf-browser-verification") ||
+      lower.includes("challenge-platform") ||
+      lower.includes("access denied") ||
+      lower.includes("403 forbidden") ||
+      lower.includes("502 bad gateway") ||
+      lower.includes("just a moment...") ||
+      lower.includes("inloggen vereist")) &&
+    !html.includes("agenda-link") &&
+    !html.includes("agenda-item") &&
+    !html.includes("/Agenda/Index/");
+
+  if (isExplicitBlockOrChallenge) {
     return recordFailure(
       "ibabs_steenwijkerland",
       "BLOCKED_OR_CHALLENGE",
@@ -128,7 +141,7 @@ export function validateIbabsHtmlContract(
   }
 
   // Check 2: Minimum size
-  if (html.length < 250) {
+  if (html.length < 200) {
     return recordFailure(
       "ibabs_steenwijkerland",
       "EMPTY_PAYLOAD",
@@ -138,20 +151,23 @@ export function validateIbabsHtmlContract(
     );
   }
 
-  // Check 3: Essential structural anchors
+  // Check 3: Essential structural anchors (covers both index lists and meeting detail pages)
   const hasAgendaStructures =
     html.includes("agenda-item") ||
+    html.includes("agenda-link") ||
     html.includes("meeting-link") ||
     html.includes("/Agenda/Index/") ||
     html.includes("/Vergadering/") ||
     html.includes("panel-title") ||
-    html.includes("panel-id");
+    html.includes("panel-id") ||
+    html.includes("list-group-item") ||
+    html.includes("agendatype");
 
-  if (!hasAgendaStructures && !html.includes("Geen agendapunten gevonden")) {
+  if (!hasAgendaStructures && !html.includes("Geen agendapunten gevonden") && !html.includes("Geen vergaderingen gevonden")) {
     return recordFailure(
       "ibabs_steenwijkerland",
       "LAYOUT_CHANGED",
-      "Verwachte CSS/DOM-structuren (.agenda-item / panel-title) ontbreken. Portal lay-out is waarschijnlijk gewijzigd!",
+      "Verwachte CSS/DOM-structuren (.agenda-item / .agenda-link / /Agenda/Index/) ontbreken. Portal lay-out is waarschijnlijk gewijzigd!",
       url,
       html.slice(0, 300)
     );
@@ -254,19 +270,43 @@ function recordFailure(
  */
 function recordSuccess(provider: ScraperProvider): void {
   const hp = providerHealth[provider];
+  if (!hp) return;
   hp.consecutiveFailures = 0;
   hp.lastSuccessAt = new Date().toISOString();
-  if (hp.status !== "CIRCUIT_OPEN") {
-    hp.status = "HEALTHY";
-    hp.circuitOpenReason = undefined;
-  }
+  hp.status = "HEALTHY";
+  hp.circuitOpenReason = undefined;
 }
 
 /**
  * Check if the circuit is open for a given provider (meaning writes must be rejected).
+ * Supports automatic cooloff period (5 minutes) and manual overrides.
  */
-export function isScraperCircuitOpen(provider: ScraperProvider): boolean {
-  return providerHealth[provider]?.status === "CIRCUIT_OPEN";
+export function isScraperCircuitOpen(provider: ScraperProvider, isManualTrigger = false): boolean {
+  const hp = providerHealth[provider];
+  if (!hp) return false;
+
+  // If manual trigger, automatically reset circuit to allow a fresh live probe
+  if (isManualTrigger) {
+    hp.status = "HEALTHY";
+    hp.consecutiveFailures = 0;
+    hp.circuitOpenReason = undefined;
+    return false;
+  }
+
+  if (hp.status !== "CIRCUIT_OPEN") {
+    return false;
+  }
+
+  // Auto cool-off: after 5 minutes (300,000 ms), allow a half-open probe attempt
+  if (hp.lastFailureAt) {
+    const elapsedMs = Date.now() - new Date(hp.lastFailureAt).getTime();
+    if (elapsedMs > 5 * 60 * 1000) {
+      console.log(`[CIRCUIT BREAKER HALF-OPEN: ${provider.toUpperCase()}] Auto cool-off verstreken (${Math.round(elapsedMs / 1000)}s), proefpoging toegestaan.`);
+      return false;
+    }
+  }
+
+  return true;
 }
 
 /**

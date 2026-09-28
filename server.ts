@@ -2284,6 +2284,9 @@ async function startServer() {
     const candidatePaths = [
       path.join(uploadsPath, "documents", safeFilename),
       path.join(distUploadsPath, "documents", safeFilename),
+      path.join(uploadsPath, "documents", "hoogeveen", safeFilename),
+      path.join(process.cwd(), "uploads", "documents", "hoogeveen", safeFilename),
+      path.join(distUploadsPath, "documents", "hoogeveen", safeFilename),
       path.join(uploadsPath, safeFilename),
       path.join(distUploadsPath, safeFilename),
       path.join(uploadsPath, "stemgedrag", safeFilename),
@@ -11066,7 +11069,7 @@ Sitemap: ${baseUrl}/sitemap.xml
         idempotencyKey,
         async (bgJob) => {
           globalBackgroundJobQueue.updateProgress(bgJob.id, 25, isHoogeveen ? "Ophalen vergaderingen Hoogeveen (NotuBiz)..." : "Ophalen vergaderingen van iBabs...");
-          const summary = isHoogeveen ? await scrapeCouncilAgendasHoogeveen() : await scrapeCouncilAgendas();
+          const summary = isHoogeveen ? await scrapeCouncilAgendasHoogeveen() : await scrapeCouncilAgendas(undefined, { isManual: true });
           globalBackgroundJobQueue.updateProgress(bgJob.id, 80, isHoogeveen ? "Dossierverdeling Hoogeveen uitvoeren..." : "Topic categorisatie...");
           if (isHoogeveen) {
             try {
@@ -11091,7 +11094,7 @@ Sitemap: ${baseUrl}/sitemap.xml
         });
       }
 
-      const summary = isHoogeveen ? await scrapeCouncilAgendasHoogeveen() : await scrapeCouncilAgendas();
+      const summary = isHoogeveen ? await scrapeCouncilAgendasHoogeveen() : await scrapeCouncilAgendas(undefined, { isManual: true });
       if (isHoogeveen) {
         try {
           await distributeHoogeveenDossiers();
@@ -11257,7 +11260,7 @@ Sitemap: ${baseUrl}/sitemap.xml
   app.post("/api/council/diff-check-now", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
     res.setHeader("Content-Type", "application/json");
     try {
-      const summary = await scrapeCouncilAgendas();
+      const summary = await scrapeCouncilAgendas(undefined, { isManual: true });
       const db = getDb();
       const topics = db.councilAgendaTopics || [];
       const topicsWithDumps = topics.filter((t: any) => t.hasRecentDump || t.hasDocumentDiff);
@@ -12704,7 +12707,7 @@ Sitemap: ${baseUrl}/sitemap.xml
           totalSubdossiers,
           totalDocuments: uniqueDocsSet.size,
           totalUploadedFiles: uniqueUploadedSet.size,
-          physicalFilesOnDisk: diskStats.totalFiles,
+          physicalFilesOnDisk: targetMunicipality === "hoogeveen" ? (diskStats.hoogeveenCount || uniqueUploadedSet.size) : diskStats.totalFiles,
           missingFilesCount: Math.max(0, uniqueDocsSet.size - uniqueUploadedSet.size),
           classifiedSuccessCount: aiProcessedCount,
           unclassifiedFailCount,

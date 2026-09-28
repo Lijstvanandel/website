@@ -261,7 +261,16 @@ export async function distributeHoogeveenDossiers(options: { force?: boolean; li
     });
   }
 
-  const HOOGEVEEN_DOCUMENTS_DIR = path.join(process.cwd(), "uploads", "documents", "hoogeveen");
+  const HOOGEVEEN_DOCUMENTS_DIR = path.join(process.cwd(), "public", "uploads", "documents", "hoogeveen");
+  const ALT_HOOGEVEEN_DOCUMENTS_DIR = path.join(process.cwd(), "uploads", "documents", "hoogeveen");
+
+  // Ensure directories exist
+  try {
+    if (!fs.existsSync(HOOGEVEEN_DOCUMENTS_DIR)) fs.mkdirSync(HOOGEVEEN_DOCUMENTS_DIR, { recursive: true });
+    if (!fs.existsSync(ALT_HOOGEVEEN_DOCUMENTS_DIR)) fs.mkdirSync(ALT_HOOGEVEEN_DOCUMENTS_DIR, { recursive: true });
+  } catch (_e) {
+    // ignore
+  }
 
   // Iterate over topics and distribute
   for (let i = 0; i < hoogeveenTopics.length; i++) {
@@ -312,7 +321,9 @@ export async function distributeHoogeveenDossiers(options: { force?: boolean; li
 
       const possibleFilePaths = [
         path.join(HOOGEVEEN_DOCUMENTS_DIR, expectedFilename),
+        path.join(ALT_HOOGEVEEN_DOCUMENTS_DIR, expectedFilename),
         path.join(process.cwd(), "public", "uploads", "documents", "hoogeveen", expectedFilename),
+        path.join(process.cwd(), "uploads", "documents", "hoogeveen", expectedFilename),
         path.join(process.cwd(), "dist", "uploads", "documents", "hoogeveen", expectedFilename),
       ];
 
@@ -328,23 +339,31 @@ export async function distributeHoogeveenDossiers(options: { force?: boolean; li
       const localPublicUrl = `/uploads/documents/hoogeveen/${expectedFilename}`;
       const finalDocUrl = isLocalCached ? localPublicUrl : doc.url;
 
-      const dDoc: DossierDocument = {
+      const dDoc: any = {
         id: `hg_doc_${doc.id}`,
+        bestandsnaam: expectedFilename,
+        titel: doc.title || "Raadsdocument Hoogeveen",
         title: doc.title || "Raadsdocument Hoogeveen",
         url: finalDocUrl,
+        fileUrl: finalDocUrl,
         fileType: doc.fileType || "PDF",
         fileSize: doc.fileSize || "1.2 MB",
+        datum: topic.meetingDate || new Date().toISOString().slice(0, 10),
         date: topic.meetingDate || new Date().toISOString().slice(0, 10),
+        dossier: hoofddossier,
         dossierId: parentDossier.id,
         dossierSlug: parentDossier.slug,
         hoofddossier,
         subdossier: subTitle,
         wijkOfKern: detectedWijken[0] || "Gemeentebreed",
+        wijk_of_kern: detectedWijken[0] || "Gemeentebreed",
         wijken: detectedWijken,
         municipality: "hoogeveen",
         source: "NotuBiz Hoogeveen",
         vergadering: topic.meetingTitle,
         fileExists: isLocalCached,
+        entiteiten: detectedWijken,
+        relaties: [],
       };
 
       parentDossier.documents.push(dDoc);
@@ -397,15 +416,18 @@ export async function distributeHoogeveenDossiers(options: { force?: boolean; li
     const dates = (d.documents || []).map((doc: any) => doc.datum).filter(Boolean).sort();
     const startDate = dates.length > 0 ? dates[0] : null;
     const endDate = dates.length > 0 ? dates[dates.length - 1] : null;
+    const uploadedCount = (d.documents || []).filter((doc: any) => doc.fileExists).length;
 
     return {
       ...d,
       dateRange: d.dateRange || { start: startDate, end: endDate },
       documentCount: d.documents?.length || 0,
       documentsCount: d.documents?.length || 0,
+      uploadedCount,
       subdossiersCount: d.subdossiers?.length || 0,
       subdossiers: (d.subdossiers || []).map((sub: any) => {
         const subDates = (sub.documents || []).map((doc: any) => doc.datum).filter(Boolean).sort();
+        const subUploaded = (sub.documents || []).filter((doc: any) => doc.fileExists).length;
         return {
           ...sub,
           dateRange: sub.dateRange || {
@@ -414,6 +436,7 @@ export async function distributeHoogeveenDossiers(options: { force?: boolean; li
           },
           documentCount: sub.documents?.length || 0,
           documentsCount: sub.documents?.length || 0,
+          uploadedCount: subUploaded,
         };
       }),
     };
@@ -555,22 +578,203 @@ export function generateHoogeveenMetadataCsv(filterType: "all" | "processed" | "
   return [header.join(","), ...rows].join("\n");
 }
 
+let cachedHoogeveenScan: {
+  existingFilesSet: Set<string>;
+  idToFilenameMap: Map<string, string>;
+  totalPhysicalFiles: number;
+  timestamp: number;
+} | null = null;
+
+/**
+ * Scans physical Hoogeveen document storage on disk to dynamically identify present files
+ */
+export function scanHoogeveenPhysicalFiles(forceRefresh = false): {
+  existingFilesSet: Set<string>;
+  idToFilenameMap: Map<string, string>;
+  totalPhysicalFiles: number;
+} {
+  const now = Date.now();
+  if (!forceRefresh && cachedHoogeveenScan && now - cachedHoogeveenScan.timestamp < 15000) {
+    return cachedHoogeveenScan;
+  }
+
+  const existingFilesSet = new Set<string>();
+  const idToFilenameMap = new Map<string, string>();
+
+  const searchDirs = [
+    path.join(process.cwd(), "public", "uploads", "documents", "hoogeveen"),
+    path.join(process.cwd(), "uploads", "documents", "hoogeveen"),
+    path.join(process.cwd(), "dist", "uploads", "documents", "hoogeveen"),
+  ];
+
+  for (const dir of searchDirs) {
+    try {
+      if (fs.existsSync(dir)) {
+        const entries = fs.readdirSync(dir);
+        for (const filename of entries) {
+          const lower = filename.toLowerCase();
+          if (lower.endsWith(".json") || lower.endsWith(".log") || lower.endsWith(".csv") || lower.startsWith(".")) continue;
+          existingFilesSet.add(lower);
+
+          // Extract docId from e.g. "hoogeveen_doc_12345_v1.pdf", "hoogeveen_doc_12345.pdf", or "12345.pdf"
+          const m = lower.match(/(?:hoogeveen_doc_)?([a-z0-9_-]+?)(?:_v\d+)?\.pdf$/);
+          if (m && m[1]) {
+            idToFilenameMap.set(m[1], filename);
+            idToFilenameMap.set(`hg_doc_${m[1]}`, filename);
+          }
+          // Also extract purely numeric IDs from any filename (e.g. 10044204)
+          const numMatch = lower.match(/\b(\d{6,10})\b/);
+          if (numMatch && numMatch[1]) {
+            idToFilenameMap.set(numMatch[1], filename);
+            idToFilenameMap.set(`hg_doc_${numMatch[1]}`, filename);
+          }
+        }
+      }
+    } catch (_e) {
+      // ignore
+    }
+  }
+
+  cachedHoogeveenScan = {
+    existingFilesSet,
+    idToFilenameMap,
+    totalPhysicalFiles: existingFilesSet.size,
+    timestamp: now,
+  };
+
+  return cachedHoogeveenScan;
+}
+
 /**
  * Safely loads Hoogeveen dossiers from JSON file, KV store, or database
+ * and dynamically reconciles fileExists and uploadedCount against physical disk presence.
  */
 export function getHoogeveenDossiers(): Dossier[] {
+  let dossiers: Dossier[] = [];
   try {
     if (fs.existsSync(HOOGEVEEN_METADATA_JSON)) {
       const data = JSON.parse(fs.readFileSync(HOOGEVEEN_METADATA_JSON, "utf-8"));
-      if (Array.isArray(data) && data.length > 0) return data;
+      if (Array.isArray(data) && data.length > 0) dossiers = data;
     }
   } catch (err) {
     console.warn("[HOOGEVEEN DOSSIERS READ WARN]:", err);
   }
-  const kv = getKv("hoogeveenDossiers");
-  if (Array.isArray(kv) && kv.length > 0) return kv;
-  const db = getDbFromSqlite();
-  return Array.isArray(db.hoogeveenDossiers) ? db.hoogeveenDossiers : [];
+  if (!dossiers || dossiers.length === 0) {
+    const kv = getKv("hoogeveenDossiers");
+    if (Array.isArray(kv) && kv.length > 0) {
+      dossiers = kv;
+    } else {
+      const db = getDbFromSqlite();
+      dossiers = Array.isArray(db.hoogeveenDossiers) ? db.hoogeveenDossiers : [];
+    }
+  }
+
+  // Scan physical files on disk for live reconciliation
+  const { existingFilesSet, idToFilenameMap } = scanHoogeveenPhysicalFiles();
+
+  return dossiers.map((dossier) => {
+    let dossierUploaded = 0;
+    const syncedDocs = (dossier.documents || []).map((doc: any) => {
+      const rawId = String(doc.id || "").replace(/^hg_doc_/, "").trim();
+      let numericId = rawId;
+      if (doc.url && typeof doc.url === "string") {
+        const urlMatch = doc.url.match(/\/document\/(\d+)/);
+        if (urlMatch && urlMatch[1]) numericId = urlMatch[1];
+      }
+
+      const expectedV1 = `hoogeveen_doc_${rawId}_v1.pdf`.toLowerCase();
+      const expectedV1Num = `hoogeveen_doc_${numericId}_v1.pdf`.toLowerCase();
+      const expectedNoV = `hoogeveen_doc_${rawId}.pdf`.toLowerCase();
+      const expectedNoVNum = `hoogeveen_doc_${numericId}.pdf`.toLowerCase();
+      const expectedRawPdf = `${rawId}.pdf`.toLowerCase();
+      const expectedRawNumPdf = `${numericId}.pdf`.toLowerCase();
+      const expectedBestand = doc.bestandsnaam ? String(doc.bestandsnaam).toLowerCase() : "";
+      const expectedTitle = doc.title ? String(doc.title).toLowerCase() : "";
+      const expectedTitlePdf = expectedTitle.endsWith(".pdf") ? expectedTitle : `${expectedTitle}.pdf`;
+
+      const actualFromMap =
+        idToFilenameMap.get(rawId) ||
+        idToFilenameMap.get(numericId) ||
+        idToFilenameMap.get(`hg_doc_${rawId}`) ||
+        idToFilenameMap.get(`hg_doc_${numericId}`) ||
+        idToFilenameMap.get(String(doc.id));
+
+      const fileExists = Boolean(
+        actualFromMap ||
+        existingFilesSet.has(expectedV1) ||
+        existingFilesSet.has(expectedV1Num) ||
+        existingFilesSet.has(expectedNoV) ||
+        existingFilesSet.has(expectedNoVNum) ||
+        existingFilesSet.has(expectedRawPdf) ||
+        existingFilesSet.has(expectedRawNumPdf) ||
+        (expectedBestand && existingFilesSet.has(expectedBestand)) ||
+        (expectedTitle && existingFilesSet.has(expectedTitle)) ||
+        (expectedTitlePdf && existingFilesSet.has(expectedTitlePdf))
+      );
+
+      const actualFilename = actualFromMap || doc.bestandsnaam || `hoogeveen_doc_${rawId || numericId}_v1.pdf`;
+      const localUrl = `/uploads/documents/hoogeveen/${actualFilename}`;
+
+      if (fileExists) {
+        dossierUploaded++;
+      }
+
+      return {
+        ...doc,
+        id: doc.id || `hg_doc_${rawId}`,
+        bestandsnaam: actualFilename,
+        titel: doc.titel || doc.title || "Raadsdocument Hoogeveen",
+        title: doc.title || doc.titel || "Raadsdocument Hoogeveen",
+        datum: doc.datum || doc.date || null,
+        date: doc.date || doc.datum || null,
+        dossier: doc.dossier || doc.hoofddossier || dossier.title,
+        hoofddossier: doc.hoofddossier || doc.dossier || dossier.title,
+        subdossier: doc.subdossier || "",
+        wijkOfKern: doc.wijkOfKern || (doc.wijken && doc.wijken[0]) || "Gemeentebreed",
+        wijk_of_kern: doc.wijk_of_kern || doc.wijkOfKern || (doc.wijken && doc.wijken[0]) || "Gemeentebreed",
+        url: fileExists ? localUrl : (doc.url || localUrl),
+        fileUrl: fileExists ? localUrl : (doc.fileUrl || doc.url || localUrl),
+        fileExists,
+      };
+    });
+
+    const syncedSubdossiers = (dossier.subdossiers || []).map((sub: any) => {
+      let subUploaded = 0;
+      const subDocs = (sub.documents || []).map((sdoc: any) => {
+        const rawId = String(sdoc.id || "").replace(/^hg_doc_/, "");
+        const parentMatch = syncedDocs.find((d: any) => String(d.id).replace(/^hg_doc_/, "") === rawId);
+        if (parentMatch) {
+          if (parentMatch.fileExists) subUploaded++;
+          return { ...parentMatch };
+        }
+        const actualFromMap = idToFilenameMap.get(rawId);
+        const fileExists = Boolean(actualFromMap || existingFilesSet.has(`hoogeveen_doc_${rawId}_v1.pdf`.toLowerCase()));
+        if (fileExists) subUploaded++;
+        return {
+          ...sdoc,
+          fileExists,
+        };
+      });
+
+      return {
+        ...sub,
+        documents: subDocs,
+        documentCount: subDocs.length,
+        documentsCount: subDocs.length,
+        uploadedCount: subUploaded,
+      };
+    });
+
+    return {
+      ...dossier,
+      documents: syncedDocs,
+      documentCount: syncedDocs.length,
+      documentsCount: syncedDocs.length,
+      uploadedCount: dossierUploaded,
+      subdossiers: syncedSubdossiers,
+      subdossierCount: syncedSubdossiers.length,
+    };
+  });
 }
 
 /**

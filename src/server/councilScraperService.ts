@@ -164,11 +164,14 @@ export function parseDutchDate(text: string, defaultYear?: number): { dateIso: s
 /**
  * Scrape upcoming agenda meetings from steenwijkerland.bestuurlijkeinformatie.nl
  */
-export async function scrapeCouncilAgendas(yearsToScrape: number[] = [new Date().getFullYear(), new Date().getFullYear() + 1]) {
+export async function scrapeCouncilAgendas(
+  yearsToScrape: number[] = [new Date().getFullYear(), new Date().getFullYear() + 1],
+  options: { isManual?: boolean } = {}
+) {
   console.log(`[RAADSPANEEL SCRAPER] Start scraping voor gemeenteraad Steenwijkerland (jaren: ${yearsToScrape.join(", ")})...`);
   
-  // Circuit Breaker check
-  if (isScraperCircuitOpen("ibabs_steenwijkerland")) {
+  // Circuit Breaker check (manual trigger resets circuit to allow fresh probe)
+  if (isScraperCircuitOpen("ibabs_steenwijkerland", options.isManual)) {
     throw new Error("CIRCUIT_OPEN: iBabs lay-out gewijzigd of geblokkeerd. Schrijfoperaties gepauzeerd ter bescherming van database.");
   }
 

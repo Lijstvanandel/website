@@ -8,12 +8,16 @@ import { sanitizeCleanText, isCorruptOrHtmlGarbage } from "./scraperContractVali
 
 const HOOGEVEEN_ORG_ID = "572";
 const NOTUBIZ_API_BASE = "https://api.notubiz.nl";
-const HOOGEVEEN_DOCUMENTS_DIR = path.join(process.cwd(), "uploads", "documents", "hoogeveen");
+const HOOGEVEEN_DOCUMENTS_DIR = path.join(process.cwd(), "public", "uploads", "documents", "hoogeveen");
+const ALT_HOOGEVEEN_DOCUMENTS_DIR = path.join(process.cwd(), "uploads", "documents", "hoogeveen");
 
 function ensureHoogeveenDocsDir() {
   try {
     if (!fs.existsSync(HOOGEVEEN_DOCUMENTS_DIR)) {
       fs.mkdirSync(HOOGEVEEN_DOCUMENTS_DIR, { recursive: true });
+    }
+    if (!fs.existsSync(ALT_HOOGEVEEN_DOCUMENTS_DIR)) {
+      fs.mkdirSync(ALT_HOOGEVEEN_DOCUMENTS_DIR, { recursive: true });
     }
   } catch {
     // ignore
@@ -63,9 +67,10 @@ export async function downloadHoogeveenDocument(docId: string, version = 1, rawU
   ensureHoogeveenDocsDir();
   const filename = `hoogeveen_doc_${docId}_v${version}.pdf`;
   const localPath = path.join(HOOGEVEEN_DOCUMENTS_DIR, filename);
+  const altPath = path.join(ALT_HOOGEVEEN_DOCUMENTS_DIR, filename);
   const publicUrl = `/uploads/documents/hoogeveen/${filename}`;
 
-  if (fs.existsSync(localPath) && fs.statSync(localPath).size > 100) {
+  if ((fs.existsSync(localPath) && fs.statSync(localPath).size > 100) || (fs.existsSync(altPath) && fs.statSync(altPath).size > 100)) {
     return publicUrl;
   }
 
@@ -283,8 +288,10 @@ export async function scrapeCouncilAgendasHoogeveen(yearsToScrape: number[] = [2
 
               const expectedFilename = `hoogeveen_doc_${docId}_v${version}.pdf`;
               const localFilePath = path.join(HOOGEVEEN_DOCUMENTS_DIR, expectedFilename);
+              const altFilePath = path.join(ALT_HOOGEVEEN_DOCUMENTS_DIR, expectedFilename);
               const localPublicUrl = `/uploads/documents/hoogeveen/${expectedFilename}`;
-              const isLocalCached = fs.existsSync(localFilePath) && fs.statSync(localFilePath).size > 100;
+              const isLocalCached = (fs.existsSync(localFilePath) && fs.statSync(localFilePath).size > 100) ||
+                                    (fs.existsSync(altFilePath) && fs.statSync(altFilePath).size > 100);
               const finalUrl = isLocalCached ? localPublicUrl : remoteUrl;
 
               if (!docLinks.some((d) => d.id === docId)) {
@@ -607,7 +614,9 @@ export async function bulkDownloadHoogeveenPdfs(onProgress?: (downloaded: number
       batch.map(async (item) => {
         const expectedFilename = `hoogeveen_doc_${item.docId}_v${item.version}.pdf`;
         const localFilePath = path.join(HOOGEVEEN_DOCUMENTS_DIR, expectedFilename);
-        const wasAlreadyCached = fs.existsSync(localFilePath) && fs.statSync(localFilePath).size > 100;
+        const altFilePath = path.join(ALT_HOOGEVEEN_DOCUMENTS_DIR, expectedFilename);
+        const wasAlreadyCached = (fs.existsSync(localFilePath) && fs.statSync(localFilePath).size > 100) ||
+                                 (fs.existsSync(altFilePath) && fs.statSync(altFilePath).size > 100);
 
         const localUrl = await downloadHoogeveenDocument(item.docId, item.version, item.url);
         processedCount++;
