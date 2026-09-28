@@ -40,7 +40,9 @@ async function fetchWithRetryJson(url: string, headers: Record<string, string> =
         },
       });
 
-      if (res.status === 404) {
+      // 401/403: Besloten of niet-openbare vergadering (open data heeft geen toegang)
+      // 404/410: Niet meer aanwezig of geannuleerd
+      if (res.status === 401 || res.status === 403 || res.status === 404 || res.status === 410) {
         return null;
       }
 
@@ -56,7 +58,11 @@ async function fetchWithRetryJson(url: string, headers: Record<string, string> =
       }
     }
   }
-  console.warn(`[HOOGEVEEN SCRAPER WARN] Verzoek naar ${url} niet geslaagd na ${maxRetries} pogingen: ${lastError?.message || lastError}`);
+  // Alleen loggen voor niet-vertrouwelijke / niet-geannuleerde vergaderingen
+  const errStr = String(lastError?.message || lastError || "");
+  if (!errStr.includes("401") && !errStr.includes("403") && !errStr.includes("404")) {
+    console.log(`[HOOGEVEEN SCRAPER INFO] Vergadering of data op ${url} niet beschikbaar (${errStr}). Overgeslagen.`);
+  }
   return null;
 }
 
@@ -84,7 +90,7 @@ export async function downloadHoogeveenDocument(docId: string, version = 1, rawU
         },
       });
 
-      if (res.status === 404) return null;
+      if (res.status === 404 || res.status === 401 || res.status === 403 || res.status === 410) return null;
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const arrayBuffer = await res.arrayBuffer();
