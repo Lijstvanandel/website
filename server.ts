@@ -159,6 +159,15 @@ import {
   saveOverijsselMetadata
 } from "./src/server/overijsselNotubizService.js";
 import {
+  startDrentheSync,
+  stopDrentheSync,
+  getDrentheSyncStatus,
+  getSavedDrentheDocuments,
+  saveDrentheMetadata,
+  clearDrentheCache,
+  classifyDrentheDocument
+} from "./src/server/drentheProvincieService.js";
+import {
   startWaterschapSync,
   cancelWaterschapSync,
   getWaterschapSyncStatus,
@@ -14352,6 +14361,111 @@ Sitemap: ${baseUrl}/sitemap.xml
     }
   });
 
+  // ==========================================
+  // 12C. Provincie Drenthe (Drents Parlement) Scraper
+  // ==========================================
+  app.post("/api/council/drenthe/start-sync", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
+    try {
+      const { years } = req.body || {};
+      const status = await startDrentheSync(Array.isArray(years) && years.length > 0 ? years : [2021, 2022, 2023, 2024, 2025, 2026]);
+      res.json({
+        success: true,
+        message: "Synchronisatie Provincie Drenthe (Drents Parlement) gestart",
+        status
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Fout bij starten synchronisatie Drenthe" });
+    }
+  });
+
+  app.post("/api/council/drenthe/stop-sync", requireAuth, requireCouncilOrAdmin, (_req: any, res: any) => {
+    try {
+      const status = stopDrentheSync();
+      res.json({ success: true, status, message: "Synchronisatie Provincie Drenthe gestopt" });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Fout bij stoppen" });
+    }
+  });
+
+  app.get("/api/council/drenthe/sync-status", requireAuth, requireCouncilOrAdmin, (_req: any, res: any) => {
+    try {
+      const status = getDrentheSyncStatus();
+      res.json({ success: true, status });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Fout bij ophalen status" });
+    }
+  });
+
+  app.post("/api/council/drenthe/clear-cache", requireAuth, requireCouncilOrAdmin, (_req: any, res: any) => {
+    try {
+      const result = clearDrentheCache();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Fout bij wissen cache" });
+    }
+  });
+
+  app.get("/api/council/drenthe/export-csv", optionalAuth, (req: any, res: any) => {
+    try {
+      const csvPath = path.join(process.cwd(), "public", "uploads", "documents", "raadsstukken_metadata_drenthe.csv");
+      const rootCsvPath = path.join(process.cwd(), "raadsstukken_metadata_drenthe.csv");
+
+      let targetPath = fs.existsSync(csvPath) ? csvPath : (fs.existsSync(rootCsvPath) ? rootCsvPath : null);
+
+      if (!targetPath) {
+        const items = getSavedDrentheDocuments();
+        if (items.length > 0) {
+          saveDrentheMetadata(items);
+          targetPath = csvPath;
+        }
+      }
+
+      if (!targetPath || !fs.existsSync(targetPath)) {
+        return res.status(404).json({ error: "CSV-bestand nog niet gegenereerd. Start eerst de Drenthe synchronisatie." });
+      }
+
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", 'attachment; filename="raadsstukken_metadata_drenthe.csv"');
+      const stream = fs.createReadStream(targetPath);
+      stream.pipe(res);
+    } catch (err: any) {
+      res.status(500).json({ error: "Fout bij downloaden Drenthe CSV: " + err.message });
+    }
+  });
+
+  app.get("/api/council/drenthe/documents", optionalAuth, (req: any, res: any) => {
+    try {
+      const docs = getSavedDrentheDocuments();
+      const { scope, query, year } = req.query;
+
+      let filtered = docs;
+      if (scope && scope !== "all") {
+        filtered = filtered.filter((d) => d.scope === scope);
+      }
+      if (year && year !== "all") {
+        filtered = filtered.filter((d) => d.datum && d.datum.startsWith(String(year)));
+      }
+      if (query && typeof query === "string") {
+        const qLower = query.toLowerCase();
+        filtered = filtered.filter(
+          (d) =>
+            d.titel.toLowerCase().includes(qLower) ||
+            d.meeting_titel.toLowerCase().includes(qLower) ||
+            d.gremium_naam.toLowerCase().includes(qLower) ||
+            d.reden.toLowerCase().includes(qLower)
+        );
+      }
+
+      res.json({
+        total: filtered.length,
+        allTotal: docs.length,
+        documents: filtered,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "Fout bij ophalen Drenthe documenten: " + err.message });
+    }
+  });
+
   // Waterschap Drents Overijsselse Delta Scraper API Endpoints
   app.post("/api/council/waterschap/start-sync", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
     try {
@@ -14626,7 +14740,22 @@ Sitemap: ${baseUrl}/sitemap.xml
   // Vite middleware for development vs static production serving with SSR meta tags
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
-      server: { middlewareMode: true, allowedHosts: true },
+      server: {
+        middlewareMode: true,
+        allowedHosts: true,
+        watch: {
+          followSymlinks: false,
+          ignored: [
+            "**/uploads/**",
+            "**/public/uploads/**",
+            "**/dist/uploads/**",
+            "**/data/**",
+            "**/*.sqlite*",
+            "**/node_modules/**",
+            "**/.git/**",
+          ],
+        },
+      },
       appType: "custom",
     });
     app.use(vite.middlewares);

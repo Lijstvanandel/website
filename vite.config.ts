@@ -13,6 +13,7 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "0.0.0.0",
     watch: {
+      followSymlinks: false,
       ignored: [
         "**/uploads/**",
         "**/public/uploads/**",
@@ -24,6 +25,10 @@ export default defineConfig(({ mode }) => ({
         "**/*.docx",
         "**/*.xlsx",
         "**/*.csv",
+        "**/node_modules/**",
+        "**/.git/**",
+        "**/database.sqlite*",
+        "**/vault_crm_sensitive.sqlite*",
       ],
     },
     allowedHosts: true,

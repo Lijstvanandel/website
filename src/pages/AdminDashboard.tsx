@@ -80,6 +80,7 @@ import NewsletterManager from "@/components/admin/NewsletterManager";
 import { StellingenManager } from "@/components/admin/StellingenManager";
 import { CouncilAuditManager } from "@/components/admin/CouncilAuditManager";
 import { OverijsselNotubizManager } from "@/components/council/OverijsselNotubizManager";
+import { DrentheProvincieManager } from "@/components/council/DrentheProvincieManager";
 import { WaterschapManager } from "@/components/council/WaterschapManager";
 import { TreasurerManager } from "@/components/admin/TreasurerManager";
 import { SecretaryManager } from "@/components/admin/SecretaryManager";
@@ -1713,7 +1714,10 @@ export default function AdminDashboard() {
             <FileSearch className="w-4 h-4 text-accent" /> Raadsarchief Auditlogs
           </TabsTrigger>
           <TabsTrigger value="overijssel-notubiz" className="gap-2 text-xs text-emerald-600 dark:text-emerald-400">
-            <Building2 className="w-4 h-4" /> Provincie NotuBiz Sync
+            <Building2 className="w-4 h-4" /> Provincie Overijssel Sync
+          </TabsTrigger>
+          <TabsTrigger value="drenthe-provincie" className="gap-2 text-xs text-rose-600 dark:text-rose-400">
+            <Building2 className="w-4 h-4" /> Provincie Drenthe Sync
           </TabsTrigger>
           <TabsTrigger value="waterschap" className="gap-2 text-xs text-blue-600 dark:text-blue-400">
             <Waves className="w-4 h-4" /> Waterschap Sync
@@ -4460,6 +4464,11 @@ export default function AdminDashboard() {
         {/* PROVINCIE OVERIJSSEL NOTUBIZ SCRAPER & EXPORT */}
         <TabsContent value="overijssel-notubiz">
           <OverijsselNotubizManager token={token || effectiveToken} />
+        </TabsContent>
+
+        {/* PROVINCIE DRENTHE (DRENTS PARLEMENT) SCRAPER & EXPORT */}
+        <TabsContent value="drenthe-provincie">
+          <DrentheProvincieManager token={token || effectiveToken} />
         </TabsContent>
 
         {/* WATERSCHAP DRENTS OVERIJSSELSE DELTA SCRAPER */}

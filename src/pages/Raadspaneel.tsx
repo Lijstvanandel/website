@@ -75,6 +75,7 @@ import { SupportDossierPanel } from "@/components/SupportDossierPanel";
 import { SecureDocumentViewer } from "@/components/SecureDocumentViewer";
 import { TopicStandpuntenSection } from "@/components/council/TopicStandpuntenSection";
 import { OverijsselNotubizManager } from "@/components/council/OverijsselNotubizManager";
+import { DrentheProvincieManager } from "@/components/council/DrentheProvincieManager";
 import { WaterschapManager } from "@/components/council/WaterschapManager";
 import { VragenFormulatorWizard } from "@/components/council/VragenFormulatorWizard";
 import { MemberDocument } from "@/types/document";
@@ -214,7 +215,7 @@ export default function Raadspaneel() {
 
   const initialDossierSlug = slug || searchParams.get("dossier") || null;
   const tabParam = searchParams.get("tab");
-  type PanelTabType = "dossiers" | "agenda" | "vragenformulator" | "overijssel" | "waterschap" | "onderzoeken" | "approvals";
+  type PanelTabType = "dossiers" | "agenda" | "vragenformulator" | "overijssel" | "drenthe" | "waterschap" | "onderzoeken" | "approvals";
 
   const activePanelTab: PanelTabType =
     tabParam === "approvals" && isKeyUserOrAdmin
@@ -225,6 +226,8 @@ export default function Raadspaneel() {
       ? "vragenformulator"
       : tabParam === "waterschap" && isAdmin
       ? "waterschap"
+      : (tabParam === "drenthe" || (tabParam === "overijssel" && portalConfig.isPortalMode)) && isAdmin
+      ? "drenthe"
       : tabParam === "overijssel" && isAdmin
       ? "overijssel"
       : tabParam === "agenda" && isCouncilOrAdmin
@@ -270,7 +273,14 @@ export default function Raadspaneel() {
         });
         if (res.ok) {
           const data = await res.json();
-          const runningOrPending = (data.jobs || []).filter((j: any) => j.status === "running" || j.status === "pending");
+          const runningOrPending = (data.jobs || []).filter((j: any) => {
+            const isRunning = j.status === "running" || j.status === "pending";
+            if (!isRunning) return false;
+            if (portalConfig.isPortalMode) {
+              return j.type?.includes("HOOGEVEEN") || j.type === "HOOGEVEEN_PDF_BULK_DOWNLOAD";
+            }
+            return j.type?.includes("IBABS") || (!j.type?.includes("HOOGEVEEN") && !j.type?.includes("NOTUBIZ"));
+          });
           setActiveJobs(runningOrPending);
         }
       } catch {
@@ -1403,18 +1413,33 @@ export default function Raadspaneel() {
 
           {isAdmin && (
             <>
-              <button
-                id="tab-btn-panel-overijssel"
-                onClick={() => setActivePanelTab("overijssel")}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all shrink-0 ${
-                  activePanelTab === "overijssel"
-                    ? "bg-accent text-accent-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground hover:bg-card border border-border/70"
-                }`}
-              >
-                <Building2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                Provincie Overijssel
-              </button>
+              {portalConfig.isPortalMode ? (
+                <button
+                  id="tab-btn-panel-drenthe"
+                  onClick={() => setActivePanelTab("drenthe")}
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all shrink-0 ${
+                    activePanelTab === "drenthe"
+                      ? "bg-accent text-accent-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground hover:bg-card border border-border/70"
+                  }`}
+                >
+                  <Building2 className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                  Provincie Drenthe
+                </button>
+              ) : (
+                <button
+                  id="tab-btn-panel-overijssel"
+                  onClick={() => setActivePanelTab("overijssel")}
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all shrink-0 ${
+                    activePanelTab === "overijssel"
+                      ? "bg-accent text-accent-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground hover:bg-card border border-border/70"
+                  }`}
+                >
+                  <Building2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  Provincie Overijssel
+                </button>
+              )}
 
               <button
                 id="tab-btn-panel-waterschap"
@@ -1557,6 +1582,8 @@ export default function Raadspaneel() {
           />
         ) : activePanelTab === "waterschap" && isAdmin ? (
           <WaterschapManager token={token || undefined} />
+        ) : activePanelTab === "drenthe" && isAdmin ? (
+          <DrentheProvincieManager token={token || undefined} />
         ) : activePanelTab === "overijssel" && isAdmin ? (
           <OverijsselNotubizManager token={token || undefined} />
         ) : isCouncilOrAdmin ? (
@@ -1618,7 +1645,9 @@ export default function Raadspaneel() {
                         <RefreshCw className="w-4 h-4 text-purple-600 dark:text-purple-400 animate-spin" />
                         <span className="font-bold text-foreground">
                           {job.type === "HOOGEVEEN_PDF_BULK_DOWNLOAD"
-                            ? "📥 Bezig met PDF Bulk-Download (2021-2026)..."
+                            ? "📥 Bezig met PDF Bulk-Download Hoogeveen (2021-2026)..."
+                            : job.type === "COUNCIL_IBABS_SYNC" || (!portalConfig.isPortalMode && !job.type?.includes("HOOGEVEEN"))
+                            ? "🔄 Bezig met iBabs Steenwijkerland Synchronisatie..."
                             : "🔄 Bezig met NotuBiz Hoogeveen Synchronisatie..."}
                         </span>
                       </div>
