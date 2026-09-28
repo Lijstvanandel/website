@@ -21,6 +21,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { PushNotificationManager } from "./PushNotificationManager";
+import { fetchWithRetry } from "@/lib/api";
 
 export interface BelafspraakItem {
   id: string;
@@ -75,17 +76,17 @@ export function RaadslidBelafsprakenWidget({ token, currentUser }: Props) {
   const fetchAppointments = useCallback(async () => {
     if (!token) return;
     try {
-      const res = await fetch("/api/belafspraken", {
+      const res = await fetchWithRetry("/api/belafspraken", {
         headers: {
           "Authorization": `Bearer ${token}`
         }
-      });
+      }, 2, 400);
       if (res.ok) {
         const data = await res.json().catch(() => []);
         setAppointments(Array.isArray(data) ? data : []);
       }
-    } catch (err) {
-      console.error("Fout bij ophalen belafspraken:", err);
+    } catch (err: any) {
+      console.warn("[Belafspraken] Kon belafspraken tijdelijk niet ophalen:", err?.message || err);
     } finally {
       setLoading(false);
     }

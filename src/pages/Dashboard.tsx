@@ -46,7 +46,7 @@ import { RaadslidBelafsprakenWidget } from "@/components/RaadslidBelafsprakenWid
 import { MemberCouncilTopicsWidget } from "@/components/MemberCouncilTopicsWidget";
 import { TicketScannerModal } from "@/components/TicketScannerModal";
 import { MemberDocument } from "@/types/document";
-import { fetchWithAuth, safeJson } from "@/lib/api";
+import { fetchWithAuth, fetchWithRetry, safeJson } from "@/lib/api";
 import {
   Dialog,
   DialogContent,
@@ -144,19 +144,19 @@ export default function Dashboard() {
     async function loadDocuments() {
       setDocumentsLoading(true);
       try {
-        const res = await fetch("/api/member-documents", {
+        const res = await fetchWithRetry("/api/member-documents", {
           headers: {
             Authorization: `Bearer ${token}`,
           },
-        });
+        }, 2, 400);
         if (res.ok) {
           const data = await res.json().catch(() => []);
           setMemberDocuments(Array.isArray(data) ? data : []);
         } else if (res.status === 401 || res.status === 403) {
           console.warn("Niet geautoriseerd voor ledendocumenten.");
         }
-      } catch (err) {
-        console.error("Fout bij ophalen van ledendocumenten:", err);
+      } catch (err: any) {
+        console.warn("[Dashboard] Kon ledendocumenten tijdelijk niet laden:", err?.message || err);
       } finally {
         setDocumentsLoading(false);
       }

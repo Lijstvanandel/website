@@ -68,3 +68,24 @@ export async function fetchWithAuth(
 
   return response;
 }
+
+export async function fetchWithRetry(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  retries = 2,
+  backoffMs = 500
+): Promise<Response> {
+  let lastError: any = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetchWithAuth(input, init);
+      return res;
+    } catch (err: any) {
+      lastError = err;
+      if (attempt < retries) {
+        await new Promise((resolve) => setTimeout(resolve, backoffMs * Math.pow(2, attempt)));
+      }
+    }
+  }
+  throw lastError;
+}

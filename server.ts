@@ -2125,6 +2125,14 @@ async function startServer() {
     console.warn("[DOCUMENTS] Kon standaard bestuursdocumenten niet voor-initialiseren:", initDocErr);
   }
 
+  // Global Process Error Resilience: prevent unhandled exceptions or rejected promises from crashing the Node.js server
+  process.on("uncaughtException", (err: any) => {
+    console.error("[SERVER UNCAUGHT EXCEPTION PREVENTED CRASH]", err?.message || err);
+  });
+  process.on("unhandledRejection", (reason: any) => {
+    console.error("[SERVER UNHANDLED REJECTION PREVENTED CRASH]", reason?.message || reason);
+  });
+
   const app = express();
   const PORT = 3000;
   app.set('trust proxy', true);
@@ -9306,30 +9314,35 @@ async function startServer() {
 
   // Authenticated: Get belafspraken for current logged-in user (or all if admin)
   app.get("/api/belafspraken", requireAuth, (req: any, res: any) => {
-    const db = getDb();
-    checkAndUpdateExpiredBelafspraken(db);
+    try {
+      const db = getDb();
+      checkAndUpdateExpiredBelafspraken(db);
 
-    const currentUser = req.user;
-    const all = db.belafspraken || [];
+      const currentUser = req.user;
+      const all = db.belafspraken || [];
 
-    if (currentUser.role === "admin") {
-      return res.json(all);
+      if (currentUser.role === "admin") {
+        return res.json(all);
+      }
+
+      // Check if user is linked to any fractielid
+      const linkedFractielid = (db.fractieleden || []).find((f: any) => 
+        f.linkedUserId === currentUser.id || 
+        (f.linkedUsername && f.linkedUsername.toLowerCase() === currentUser.username.toLowerCase())
+      );
+
+      const myAppointments = all.filter((b: any) => {
+        if (b.linkedUserId && b.linkedUserId === currentUser.id) return true;
+        if (b.linkedUsername && b.linkedUsername.toLowerCase() === currentUser.username.toLowerCase()) return true;
+        if (linkedFractielid && b.fractielidId === linkedFractielid.id) return true;
+        return false;
+      });
+
+      res.json(myAppointments);
+    } catch (err: any) {
+      console.error("[API BELAFSPRAKEN ERROR]", err);
+      res.status(500).json({ error: "Fout bij ophalen van belafspraken: " + (err?.message || err) });
     }
-
-    // Check if user is linked to any fractielid
-    const linkedFractielid = (db.fractieleden || []).find((f: any) => 
-      f.linkedUserId === currentUser.id || 
-      (f.linkedUsername && f.linkedUsername.toLowerCase() === currentUser.username.toLowerCase())
-    );
-
-    const myAppointments = all.filter((b: any) => {
-      if (b.linkedUserId && b.linkedUserId === currentUser.id) return true;
-      if (b.linkedUsername && b.linkedUsername.toLowerCase() === currentUser.username.toLowerCase()) return true;
-      if (linkedFractielid && b.fractielidId === linkedFractielid.id) return true;
-      return false;
-    });
-
-    res.json(myAppointments);
   });
 
   // Authenticated: Update appointment status ('afgehandeld', 'nam niet op', 'niet afgehandeld')
@@ -9871,21 +9884,33 @@ async function startServer() {
   // ==================== EXCLUSIEVE LEDEN DOCUMENTEN ====================
   // Get all documents for authenticated members
   app.get("/api/member-documents", requireAuth, (req: any, res: any) => {
-    const db = getDb();
-    const documents = (db.documents || []).slice().sort((a: any, b: any) => {
-      return new Date(b.date || b.createdAt).getTime() - new Date(a.date || a.createdAt).getTime();
-    });
-    res.json(documents);
+    try {
+      const db = getDb();
+      const documents = (db.documents || []).slice().sort((a: any, b: any) => {
+        const timeA = a?.date || a?.createdAt ? new Date(a.date || a.createdAt).getTime() : 0;
+        const timeB = b?.date || b?.createdAt ? new Date(b.date || b.createdAt).getTime() : 0;
+        return (isNaN(timeB) ? 0 : timeB) - (isNaN(timeA) ? 0 : timeA);
+      });
+      res.json(documents);
+    } catch (err: any) {
+      console.error("[API MEMBER-DOCUMENTS ERROR]", err);
+      res.status(500).json({ error: "Fout bij ophalen van documenten: " + (err?.message || err) });
+    }
   });
 
   // Get single document by ID
   app.get("/api/member-documents/:id", requireAuth, (req: any, res: any) => {
-    const db = getDb();
-    const doc = (db.documents || []).find((d: any) => d.id === req.params.id);
-    if (!doc) {
-      return res.status(404).json({ error: "Document niet gevonden" });
+    try {
+      const db = getDb();
+      const doc = (db.documents || []).find((d: any) => d.id === req.params.id);
+      if (!doc) {
+        return res.status(404).json({ error: "Document niet gevonden" });
+      }
+      res.json(doc);
+    } catch (err: any) {
+      console.error("[API MEMBER-DOCUMENTS/:id ERROR]", err);
+      res.status(500).json({ error: "Fout bij ophalen van document: " + (err?.message || err) });
     }
-    res.json(doc);
   });
 
   // Admin & Secretaris: Get all documents

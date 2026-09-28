@@ -27,6 +27,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { fetchWithRetry } from "@/lib/api";
 
 export interface Belafspraak {
   id: string;
@@ -125,9 +126,9 @@ export function BelafsprakenManager({ token, headers }: Props) {
     try {
       const authHeaders = { Authorization: `Bearer ${activeToken}` };
       const [appRes, fracRes, usersRes] = await Promise.all([
-        fetch("/api/admin/belafspraken", { headers: authHeaders }),
-        fetch("/api/fractieleden"),
-        fetch("/api/admin/users", { headers: authHeaders })
+        fetchWithRetry("/api/admin/belafspraken", { headers: authHeaders }, 2, 400),
+        fetchWithRetry("/api/fractieleden", {}, 2, 400),
+        fetchWithRetry("/api/admin/users", { headers: authHeaders }, 2, 400)
       ]);
 
       if (appRes.ok) {
@@ -153,9 +154,8 @@ export function BelafsprakenManager({ token, headers }: Props) {
         const usersData = await usersRes.json().catch(() => []);
         setUsers(Array.isArray(usersData) ? usersData : []);
       }
-    } catch (err) {
-      console.error("Fout bij ophalen belafspraken data:", err);
-      toast.error("Kon belafspraken niet laden");
+    } catch (err: any) {
+      console.warn("[BelafsprakenManager] Kon belafspraken tijdelijk niet laden:", err?.message || err);
     } finally {
       setLoading(false);
     }
