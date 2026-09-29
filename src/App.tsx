@@ -31,7 +31,6 @@ import Doneren from "./pages/Doneren";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
-import Raadspaneel from "./pages/Raadspaneel";
 
 // Self-healing lazy loading helper to prevent blank pages or chunk loading failures for heavy admin modules.
 // Retries the import with exponential backoff if a transient network/compile hiccup occurred.
@@ -69,6 +68,7 @@ function safeLazy<T extends React.ComponentType<any>>(
 }
 
 // Lazy-load heavier administrative, dashboard and portal sub-routes with self-healing capabilities
+const Raadspaneel = safeLazy(() => import("./pages/Raadspaneel"));
 const FractielidVideos = safeLazy(() => import("./pages/FractielidVideos"));
 const VideoRedirect = safeLazy(() => import("./pages/VideoRedirect"));
 const ResetPassword = safeLazy(() => import("./pages/ResetPassword"));

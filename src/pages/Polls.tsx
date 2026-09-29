@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { motion, AnimatePresence, useMotionValue, useTransform } from "framer-motion";
 import { 
   Sparkles, 
   Check, 
@@ -35,45 +34,55 @@ interface SwipeCardProps {
 }
 
 function SwipeCard({ stelling, onSwipe, isTop }: SwipeCardProps) {
-  const x = useMotionValue(0);
-  // Responsive rotation and visual cues
-  const rotate = useTransform(x, [-180, 180], [-14, 14]);
-  const opacity = useTransform(x, [-220, -140, 0, 140, 220], [0.6, 1, 1, 1, 0.6]);
-  
-  // Badge opacities activate early for snappy visual feedback
-  const likeOpacity = useTransform(x, [12, 60], [0, 1]);
-  const nopeOpacity = useTransform(x, [-12, -60], [0, 1]);
+  const [offsetX, setOffsetX] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const startXRef = useRef(0);
 
-  const handleDragEnd = (_: any, info: any) => {
-    // Highly responsive swipe sensitivity for mobile/touch screens & PWA
-    const offset = info.offset.x;
-    const velocity = info.velocity.x;
-
-    if (offset > 45 || velocity > 300) {
-      onSwipe("eens");
-    } else if (offset < -45 || velocity < -300) {
-      onSwipe("oneens");
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (!isTop) return;
+    setIsDragging(true);
+    startXRef.current = e.clientX;
+    try {
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      // ignore
     }
   };
 
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!isDragging || !isTop) return;
+    const diff = e.clientX - startXRef.current;
+    setOffsetX(diff);
+  };
+
+  const handlePointerUp = () => {
+    if (!isDragging) return;
+    setIsDragging(false);
+    if (offsetX > 60) {
+      onSwipe("eens");
+    } else if (offsetX < -60) {
+      onSwipe("oneens");
+    } else {
+      setOffsetX(0);
+    }
+  };
+
+  const rotate = (offsetX / 180) * 14;
+  const likeOpacity = Math.max(0, Math.min(1, (offsetX - 15) / 50));
+  const nopeOpacity = Math.max(0, Math.min(1, (-offsetX - 15) / 50));
+
   return (
-    <motion.div
+    <div
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
       style={{
-        x: isTop ? x : 0,
-        rotate: isTop ? rotate : 0,
-        opacity: isTop ? opacity : 0.9,
+        transform: `translate3d(${isTop ? offsetX : 0}px, 0, 0) rotate(${isTop ? rotate : 0}deg)`,
+        transition: isDragging ? "none" : "transform 0.25s ease-out, opacity 0.25s ease-out",
         zIndex: isTop ? 10 : 1,
         touchAction: "pan-y"
       }}
-      drag={isTop ? "x" : false}
-      dragConstraints={{ left: 0, right: 0 }}
-      dragElastic={0.85}
-      dragTransition={{ bounceStiffness: 600, bounceDamping: 20 }}
-      onDragEnd={handleDragEnd}
-      whileTap={{ scale: isTop ? 1.01 : 1 }}
-      initial={{ scale: 0.95, opacity: 0, y: 20 }}
-      animate={{ scale: 1, opacity: 1, y: 0 }}
-      exit={{ scale: 0.85, opacity: 0, transition: { duration: 0.18 } }}
       className="absolute inset-0 bg-card rounded-3xl border border-border shadow-2xl overflow-hidden flex flex-col select-none cursor-grab active:cursor-grabbing pointer-events-auto"
     >
       {/* Top Media Image Container */}
@@ -98,21 +107,21 @@ function SwipeCard({ stelling, onSwipe, isTop }: SwipeCardProps) {
         {/* Swipe Indicators on Card overlay */}
         {isTop && (
           <>
-            <motion.div
+            <div
               style={{ opacity: likeOpacity }}
-              className="absolute top-6 right-6 bg-emerald-600 text-white px-4 py-2 rounded-2xl font-display font-black text-xl tracking-wider border-2 border-white shadow-xl rotate-12 flex items-center gap-1.5 pointer-events-none z-20"
+              className="absolute top-6 right-6 bg-emerald-600 text-white px-4 py-2 rounded-2xl font-display font-black text-xl tracking-wider border-2 border-white shadow-xl rotate-12 flex items-center gap-1.5 pointer-events-none z-20 transition-opacity"
             >
               <ThumbsUp className="w-5 h-5 fill-white" />
               EENS
-            </motion.div>
+            </div>
 
-            <motion.div
+            <div
               style={{ opacity: nopeOpacity }}
-              className="absolute top-6 left-6 bg-rose-600 text-white px-4 py-2 rounded-2xl font-display font-black text-xl tracking-wider border-2 border-white shadow-xl -rotate-12 flex items-center gap-1.5 pointer-events-none z-20"
+              className="absolute top-6 left-6 bg-rose-600 text-white px-4 py-2 rounded-2xl font-display font-black text-xl tracking-wider border-2 border-white shadow-xl -rotate-12 flex items-center gap-1.5 pointer-events-none z-20 transition-opacity"
             >
               <ThumbsDown className="w-5 h-5 fill-white" />
               ONEENS
-            </motion.div>
+            </div>
           </>
         )}
       </div>
@@ -142,7 +151,7 @@ function SwipeCard({ stelling, onSwipe, isTop }: SwipeCardProps) {
           </span>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }
 
@@ -576,19 +585,17 @@ export default function Polls() {
               <div className="w-full flex flex-col items-center">
                 {/* Tinder Card Container (Fixed Aspect Ratio) */}
                 <div className="relative w-full h-[470px] sm:h-[500px]">
-                  <AnimatePresence>
-                    {stellingen.slice(currentIndex, currentIndex + 2).reverse().map((stelling) => {
-                      const isTop = stelling.id === currentStelling.id;
-                      return (
-                        <SwipeCard
-                          key={stelling.id}
-                          stelling={stelling}
-                          onSwipe={handleSwipeChoice}
-                          isTop={isTop}
-                        />
-                      );
-                    })}
-                  </AnimatePresence>
+                  {stellingen.slice(currentIndex, currentIndex + 2).reverse().map((stelling) => {
+                    const isTop = stelling.id === currentStelling.id;
+                    return (
+                      <SwipeCard
+                        key={stelling.id}
+                        stelling={stelling}
+                        onSwipe={handleSwipeChoice}
+                        isTop={isTop}
+                      />
+                    );
+                  })}
                 </div>
 
                 {/* Bottom Interactive Swipe Buttons */}

@@ -6,6 +6,7 @@ import {
   sanitizeCleanText,
   isCorruptOrHtmlGarbage,
 } from "./scraperContractValidator.js";
+import { getKv, setKv } from "./sqliteDatabase.js";
 
 try {
   dns.setDefaultResultOrder("ipv4first");
@@ -19,6 +20,10 @@ const DIST_UPLOADS_DIR = path.join(process.cwd(), "dist", "uploads", "documents"
 const CSV_FILE_PUBLIC = path.join(process.cwd(), "public", "uploads", "documents", "raadsstukken_metadata_drenthe.csv");
 const CSV_FILE_ROOT = path.join(process.cwd(), "raadsstukken_metadata_drenthe.csv");
 const JSON_FILE_PUBLIC = path.join(process.cwd(), "public", "uploads", "documents", "raadsstukken_metadata_drenthe.json");
+const SYNC_STATE_FILE = path.join(process.cwd(), "public", "uploads", "documents", "drenthe_sync_state.json");
+
+// Circuit breaker for Gemini quota exhaustion
+let geminiQuotaExhausted = false;
 
 // Utility: sleep throttle (rate-limit protection)
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -112,16 +117,73 @@ let syncState: DrentheSyncProgress = {
 
 let abortController: AbortController | null = null;
 
+function saveSyncStateToDisk() {
+  try {
+    ensureDirectories();
+    fs.writeFileSync(SYNC_STATE_FILE, JSON.stringify(syncState, null, 2), "utf-8");
+    try {
+      setKv("drenthe_sync_state", syncState);
+    } catch {
+      // ignore
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function loadSyncStateFromDisk() {
+  try {
+    // Check SQLite KV store first (most persistent)
+    try {
+      const sqliteState = getKv("drenthe_sync_state");
+      if (sqliteState && typeof sqliteState === "object") {
+        syncState = {
+          ...syncState,
+          ...sqliteState,
+          isRunning: false,
+          logs: Array.isArray(sqliteState.logs) ? sqliteState.logs : [],
+        };
+        return;
+      }
+    } catch {
+      // ignore
+    }
+
+    if (fs.existsSync(SYNC_STATE_FILE)) {
+      const raw = fs.readFileSync(SYNC_STATE_FILE, "utf-8");
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        syncState = {
+          ...syncState,
+          ...parsed,
+          isRunning: false,
+          logs: Array.isArray(parsed.logs) ? parsed.logs : [],
+        };
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+
+// Load persisted state on startup
+loadSyncStateFromDisk();
+
 function addLog(message: string, level: "info" | "success" | "warn" | "error" = "info") {
   const timestamp = new Date().toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   syncState.logs.unshift({ timestamp, message, level });
-  if (syncState.logs.length > 300) syncState.logs.pop();
+  if (syncState.logs.length > 250) syncState.logs.pop();
   console.log(`[DRENTHE SYNC] [${level.toUpperCase()}] ${message}`);
+  saveSyncStateToDisk();
 }
 
 function ensureDirectories() {
   if (!fs.existsSync(UPLOADS_DIR)) {
     fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  }
+  const publicDir = path.dirname(JSON_FILE_PUBLIC);
+  if (!fs.existsSync(publicDir)) {
+    fs.mkdirSync(publicDir, { recursive: true });
   }
   if (!fs.existsSync(DIST_UPLOADS_DIR)) {
     try {
@@ -133,30 +195,62 @@ function ensureDirectories() {
 }
 
 /**
- * Load existing metadata items from JSON file
+ * Load existing metadata items from SQLite KV store or JSON file
  */
 export function getSavedDrentheDocuments(): DrentheDocumentMetadata[] {
   try {
+    // 1. Primary: SQLite KV store (100% persistent)
+    try {
+      const sqliteDocs = getKv("raadsstukken_metadata_drenthe");
+      if (Array.isArray(sqliteDocs) && sqliteDocs.length > 0) {
+        return sqliteDocs;
+      }
+    } catch {
+      // ignore
+    }
+
+    // 2. Secondary: JSON file
     if (fs.existsSync(JSON_FILE_PUBLIC)) {
       const raw = fs.readFileSync(JSON_FILE_PUBLIC, "utf-8");
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        try {
+          setKv("raadsstukken_metadata_drenthe", parsed);
+        } catch {
+          // ignore
+        }
+        return parsed;
+      }
     }
   } catch (e) {
-    console.warn("[DRENTHE] Failed to load JSON metadata:", e);
+    console.warn("[DRENTHE] Failed to load metadata:", e);
   }
   return [];
 }
 
 /**
- * Save metadata list to JSON and CSV
+ * Save metadata list to SQLite KV store, JSON and CSV
  */
 export function saveDrentheMetadata(items: DrentheDocumentMetadata[]): void {
   ensureDirectories();
   try {
-    // Save JSON
-    fs.writeFileSync(JSON_FILE_PUBLIC, JSON.stringify(items, null, 2), "utf-8");
+    // 1. Persist to SQLite KV store (permanent, survival across any rebuilds)
+    try {
+      setKv("raadsstukken_metadata_drenthe", items);
+    } catch {
+      // ignore
+    }
 
-    // Save CSV
+    // 2. Save JSON to public and dist uploads
+    fs.writeFileSync(JSON_FILE_PUBLIC, JSON.stringify(items, null, 2), "utf-8");
+    try {
+      const distJson = path.join(DIST_UPLOADS_DIR, "raadsstukken_metadata_drenthe.json");
+      fs.writeFileSync(distJson, JSON.stringify(items, null, 2), "utf-8");
+    } catch {
+      // ignore
+    }
+
+    // 3. Save CSV
     const csvHeaders = [
       "ID",
       "DocumentID",
@@ -214,7 +308,12 @@ export function saveDrentheMetadata(items: DrentheDocumentMetadata[]): void {
 
     const csvContent = "\uFEFF" + csvRows.join("\r\n"); // UTF-8 BOM for Excel
     fs.writeFileSync(CSV_FILE_PUBLIC, csvContent, "utf-8");
-    fs.writeFileSync(CSV_FILE_ROOT, csvContent, "utf-8");
+    try {
+      const distCsv = path.join(DIST_UPLOADS_DIR, "raadsstukken_metadata_drenthe.csv");
+      fs.writeFileSync(distCsv, csvContent, "utf-8");
+    } catch {
+      // ignore
+    }
   } catch (err) {
     console.error("[DRENTHE] Error saving metadata files:", err);
   }
@@ -347,9 +446,62 @@ export async function classifyDrentheDocument(
     }
   }
 
-  // TRAP 2: Gemini Flash Analyse (voor generieke/provinciebrede titels)
+  // TRAP 2: Regelgebaseerde Provinciale Classificatie (Direct, 0ms latency, geen quota-verbruik)
+  const isProvinciebreedRule =
+    titleLower.includes("agenda") ||
+    titleLower.includes("besluitenlijst") ||
+    titleLower.includes("toezeggingen") ||
+    titleLower.includes("ingekomen stukken") ||
+    titleLower.includes("statenstuk") ||
+    titleLower.includes("verordening") ||
+    titleLower.includes("omgevingsvisie") ||
+    titleLower.includes("omgevingsverordening") ||
+    titleLower.includes("pov") ||
+    titleLower.includes("begroting") ||
+    titleLower.includes("jaarverslag") ||
+    titleLower.includes("jaarrekening") ||
+    titleLower.includes("kadernota") ||
+    titleLower.includes("najaarsnota") ||
+    titleLower.includes("voorjaarsnota") ||
+    titleLower.includes("motie") ||
+    titleLower.includes("amendement") ||
+    titleLower.includes("interpellatie") ||
+    titleLower.includes("beleid") ||
+    titleLower.includes("lelylijn") ||
+    titleLower.includes("nedersaksenlijn") ||
+    titleLower.includes("vechtdal") ||
+    titleLower.includes("wolf") ||
+    titleLower.includes("wolven") ||
+    titleLower.includes("fauna") ||
+    titleLower.includes("stikstof") ||
+    titleLower.includes("drinkwater") ||
+    titleLower.includes("monumentenzorg") ||
+    titleLower.includes("erfgoed") ||
+    titleLower.includes("landbouw") ||
+    titleLower.includes("platteland") ||
+    titleLower.includes("natuur") ||
+    titleLower.includes("woondeal") ||
+    titleLower.includes("woningbouw") ||
+    titleLower.includes("energietransitie") ||
+    titleLower.includes("res") ||
+    titleLower.includes("provincie") ||
+    titleLower.includes("drenthe") ||
+    titleLower.includes("drents") ||
+    titleLower.includes("statencommissie") ||
+    titleLower.includes("provinciale staten");
+
+  if (isProvinciebreedRule) {
+    return {
+      scope: "Provinciebreed",
+      methode: "Regelgebaseerde Provinciale Taxonomy",
+      reden: "Thematisch provinciaal beleid, statenstuk of parlementair document",
+      opslaan: true,
+    };
+  }
+
+  // TRAP 3: Gemini Flash Analyse (voor resterende niet-direct geclassificeerde documenten, quota-veilig)
   const geminiApiKey = process.env.GEMINI_API_KEY;
-  if (geminiApiKey) {
+  if (geminiApiKey && !geminiQuotaExhausted) {
     try {
       const aiClient = new GoogleGenAI({ apiKey: geminiApiKey });
       const promptText = `Je bent een bestuurskundige analist voor de Provincie Drenthe en de Gemeente Hoogeveen.
@@ -399,39 +551,22 @@ Geef antwoord in strikt JSON-formaat:
         opslaan: shouldSave,
       };
     } catch (aiErr: any) {
-      console.warn("[DRENTHE AI CLASSIFIER WARN]:", aiErr?.message || aiErr);
+      const errMsg = String(aiErr?.message || aiErr);
+      if (errMsg.includes("resource_exhausted") || errMsg.includes("quota") || errMsg.includes("429")) {
+        geminiQuotaExhausted = true;
+        console.warn("[DRENTHE AI]: Gemini quota bereikt. Automatisch overgeschakeld op regelgebaseerde classificatie.");
+      } else {
+        console.warn("[DRENTHE AI CLASSIFIER WARN]:", errMsg);
+      }
     }
   }
 
-  // TRAP 3: Fallback vuistregel
-  const isProvinciebreedHeuristic =
-    titleLower.includes("statenstuk") ||
-    titleLower.includes("verordening") ||
-    titleLower.includes("omgevingsvisie") ||
-    titleLower.includes("omgevingsverordening") ||
-    titleLower.includes("begroting") ||
-    titleLower.includes("jaarverslag") ||
-    titleLower.includes("beleid") ||
-    titleLower.includes("lelylijn") ||
-    titleLower.includes("nedersaksenlijn") ||
-    titleLower.includes("vechtdal") ||
-    titleLower.includes("wolf") ||
-    titleLower.includes("wolven") ||
-    titleLower.includes("drinkwater") ||
-    titleLower.includes("monumentenzorg") ||
-    titleLower.includes("landbouw") ||
-    titleLower.includes("platteland") ||
-    titleLower.includes("natuur") ||
-    titleLower.includes("provincie") ||
-    titleLower.includes("drenthe");
-
+  // TRAP 4: Fallback vuistregel
   return {
-    scope: isProvinciebreedHeuristic ? "Provinciebreed" : "Lokaal - Externe Gemeente",
+    scope: "Provinciebreed",
     methode: "Regelgebaseerde Fallback",
-    reden: isProvinciebreedHeuristic
-      ? "Thematisch provinciaal beleid of statenstuk"
-      : "Algemeen document zonder expliciete Hoogeveense of provinciale markering",
-    opslaan: isProvinciebreedHeuristic,
+    reden: "Statencommissie / Provinciale Staten document van algemeen provinciaal belang",
+    opslaan: true,
   };
 }
 
@@ -456,30 +591,37 @@ async function fetchHtml(url: string, timeoutMs = 12000): Promise<string | null>
 }
 
 /**
- * Download a PDF binary file and write to disk
+ * Download a PDF binary file and write to disk (safe and memory-bounded)
  */
 async function downloadPdfFile(url: string, targetPath: string): Promise<Buffer | null> {
   try {
+    if (fs.existsSync(targetPath)) {
+      try {
+        const stats = fs.statSync(targetPath);
+        if (stats.size > 0) return null;
+      } catch {
+        // ignore
+      }
+    }
+
     const res = await fetch(url, {
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(15000),
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/Drenthe-Parlement-Sync/1.0",
         Accept: "application/pdf,*/*",
       },
     });
     if (!res.ok) return null;
+
+    const contentLength = res.headers.get("content-length");
+    if (contentLength && parseInt(contentLength, 10) > 20 * 1024 * 1024) {
+      // Skip files over 20MB to protect memory
+      return null;
+    }
+
     const arrayBuffer = await res.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     fs.writeFileSync(targetPath, buffer);
-
-    // Mirror to dist uploads if directory exists
-    try {
-      const distPath = path.join(DIST_UPLOADS_DIR, path.basename(targetPath));
-      fs.writeFileSync(distPath, buffer);
-    } catch {
-      // ignore
-    }
-
     return buffer;
   } catch (err: any) {
     console.warn(`[DRENTHE DOWNLOAD WARN] ${url}:`, err?.message || err);
@@ -502,6 +644,10 @@ export async function startDrentheSync(years: number[] = [2021, 2022, 2023, 2024
   const existingMap = new Map<string, DrentheDocumentMetadata>();
   existingDocs.forEach((d) => existingMap.set(d.id || d.document_id, d));
 
+  // Preserve existing logs across restarts so user never loses log history
+  const previousLogs = Array.isArray(syncState.logs) ? syncState.logs.slice(0, 150) : [];
+  const startTimestamp = new Date().toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
   syncState = {
     isRunning: true,
     isPaused: false,
@@ -509,19 +655,24 @@ export async function startDrentheSync(years: number[] = [2021, 2022, 2023, 2024
     totalYears: years,
     totalMeetingsFound: 0,
     processedMeetings: 0,
-    totalDocumentsFound: 0,
-    scannedDocuments: 0,
+    totalDocumentsFound: existingDocs.length,
+    scannedDocuments: existingDocs.length,
     savedDocuments: existingDocs.filter((d) => d.opslaan).length,
     excludedDocuments: existingDocs.filter((d) => !d.opslaan).length,
     hoogeveenCount: existingDocs.filter((d) => d.scope === "Lokaal - Hoogeveen").length,
     provinciebreedCount: existingDocs.filter((d) => d.scope === "Provinciebreed").length,
     externCount: existingDocs.filter((d) => d.scope === "Lokaal - Externe Gemeente").length,
     currentAction: "Initialiseren synchronisatie Provincie Drenthe (Drents Parlement)...",
-    logs: [],
+    logs: [
+      { timestamp: startTimestamp, message: `▶ Synchronisatie gestart voor jaargangen: ${years.join(", ")}`, level: "info" },
+      ...previousLogs,
+    ],
     startedAt: new Date().toISOString(),
     completedAt: null,
     error: null,
   };
+
+  saveSyncStateToDisk();
 
   addLog(`Start synchronisatie Provincie Drenthe voor jaargangen: ${years.join(", ")}...`, "info");
 
@@ -654,87 +805,90 @@ export async function startDrentheSync(years: number[] = [2021, 2022, 2023, 2024
             for (const item of foundInMeeting) {
               if (abortController?.signal.aborted) break;
 
-              const docUniqueKey = `drenthe_${item.docId}_${encodeURIComponent(path.basename(item.pdfUrl))}`;
-              syncState.scannedDocuments++;
+              try {
+                const docUniqueKey = `drenthe_${item.docId}_${encodeURIComponent(path.basename(item.pdfUrl))}`;
+                syncState.scannedDocuments++;
 
-              const safeFilename = `${meetingDate}_${item.docId}_${path.basename(item.pdfUrl).replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-              const localPdfPath = path.join(UPLOADS_DIR, safeFilename);
+                const safeFilename = `${meetingDate}_${item.docId}_${path.basename(item.pdfUrl).replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+                const localPdfPath = path.join(UPLOADS_DIR, safeFilename);
 
-              let pdfBuffer: Buffer | null = null;
-              if (fs.existsSync(localPdfPath)) {
-                try {
-                  pdfBuffer = fs.readFileSync(localPdfPath);
-                } catch {
-                  // ignore
-                }
-              }
-
-              // Run 3-tier classification
-              const classification = await classifyDrentheDocument(item.title, pdfBuffer, meetingTitle);
-
-              // If relevant (Lokaal - Hoogeveen of Provinciebreed) and not yet downloaded, fetch physical PDF
-              let fileSize = pdfBuffer ? pdfBuffer.length : 0;
-              if (classification.opslaan && (!pdfBuffer || pdfBuffer.length === 0)) {
-                syncState.currentAction = `Downloaden: "${item.title.slice(0, 45)}..."`;
-                pdfBuffer = await downloadPdfFile(item.pdfUrl, localPdfPath);
-                if (pdfBuffer) {
-                  fileSize = pdfBuffer.length;
-                  // Re-evaluate with PDF text if initial was heuristic
-                  if (classification.methode.includes("Fallback")) {
-                    const reCheck = await classifyDrentheDocument(item.title, pdfBuffer, meetingTitle);
-                    classification.scope = reCheck.scope;
-                    classification.methode = reCheck.methode;
-                    classification.reden = reCheck.reden;
-                    classification.opslaan = reCheck.opslaan;
+                let pdfBuffer: Buffer | null = null;
+                if (fs.existsSync(localPdfPath)) {
+                  try {
+                    pdfBuffer = fs.readFileSync(localPdfPath);
+                  } catch {
+                    // ignore
                   }
                 }
-              }
 
-              const docMeta: DrentheDocumentMetadata = {
-                id: docUniqueKey,
-                document_id: item.docId,
-                version: 1,
-                meeting_id: path.basename(meetingUrl),
-                datum: meetingDate,
-                titel: item.title,
-                meeting_titel: meetingTitle,
-                gremium_naam: organ.replace("-", " "),
-                document_type: item.title.toLowerCase().includes("motie")
-                  ? "Motie"
-                  : item.title.toLowerCase().includes("statenstuk")
-                  ? "Statenstuk"
-                  : item.title.toLowerCase().includes("brief")
-                  ? "Brief"
-                  : "Bijlage",
-                filetype: "pdf",
-                scope: classification.scope,
-                filter_methode: classification.methode,
-                reden: classification.reden,
-                opslaan: classification.opslaan,
-                bestandsnaam: safeFilename,
-                lokaal_pad: `/uploads/documents/drenthe/${safeFilename}`,
-                source_url: item.pdfUrl,
-                grootte_bytes: fileSize,
-                gesynchroniseerd_op: new Date().toISOString(),
-              };
+                // Run 3-tier classification
+                const classification = await classifyDrentheDocument(item.title, pdfBuffer, meetingTitle);
 
-              existingMap.set(docUniqueKey, docMeta);
+                // Auto-download local Hoogeveen documents to local disk for offline preservation; other documents stream on-demand
+                let fileSize = pdfBuffer ? pdfBuffer.length : 0;
+                if (classification.opslaan && classification.scope === "Lokaal - Hoogeveen" && (!pdfBuffer || pdfBuffer.length === 0)) {
+                  syncState.currentAction = `Hoogeveen-stuk downloaden: "${item.title.slice(0, 40)}..."`;
+                  pdfBuffer = await downloadPdfFile(item.pdfUrl, localPdfPath);
+                  if (pdfBuffer) {
+                    fileSize = pdfBuffer.length;
+                  }
+                }
 
-              // Update live counters
-              const allDocsNow = Array.from(existingMap.values());
-              syncState.savedDocuments = allDocsNow.filter((d) => d.opslaan).length;
-              syncState.excludedDocuments = allDocsNow.filter((d) => !d.opslaan).length;
-              syncState.hoogeveenCount = allDocsNow.filter((d) => d.scope === "Lokaal - Hoogeveen").length;
-              syncState.provinciebreedCount = allDocsNow.filter((d) => d.scope === "Provinciebreed").length;
-              syncState.externCount = allDocsNow.filter((d) => d.scope === "Lokaal - Externe Gemeente").length;
+                const docMeta: DrentheDocumentMetadata = {
+                  id: docUniqueKey,
+                  document_id: item.docId,
+                  version: 1,
+                  meeting_id: path.basename(meetingUrl),
+                  datum: meetingDate,
+                  titel: item.title,
+                  meeting_titel: meetingTitle,
+                  gremium_naam: organ.replace("-", " "),
+                  document_type: item.title.toLowerCase().includes("motie")
+                    ? "Motie"
+                    : item.title.toLowerCase().includes("statenstuk")
+                    ? "Statenstuk"
+                    : item.title.toLowerCase().includes("brief")
+                    ? "Brief"
+                    : "Bijlage",
+                  filetype: "pdf",
+                  scope: classification.scope,
+                  filter_methode: classification.methode,
+                  reden: classification.reden,
+                  opslaan: classification.opslaan,
+                  bestandsnaam: safeFilename,
+                  lokaal_pad: `/uploads/documents/drenthe/${safeFilename}`,
+                  source_url: item.pdfUrl,
+                  grootte_bytes: fileSize,
+                  gesynchroniseerd_op: new Date().toISOString(),
+                };
 
-              if (classification.opslaan) {
-                addLog(`[${classification.scope}] ${item.title.slice(0, 60)}... (${classification.methode})`, "success");
+                existingMap.set(docUniqueKey, docMeta);
+
+                // Update live counters
+                const allDocsNow = Array.from(existingMap.values());
+                syncState.savedDocuments = allDocsNow.filter((d) => d.opslaan).length;
+                syncState.excludedDocuments = allDocsNow.filter((d) => !d.opslaan).length;
+                syncState.hoogeveenCount = allDocsNow.filter((d) => d.scope === "Lokaal - Hoogeveen").length;
+                syncState.provinciebreedCount = allDocsNow.filter((d) => d.scope === "Provinciebreed").length;
+                syncState.externCount = allDocsNow.filter((d) => d.scope === "Lokaal - Externe Gemeente").length;
+
+                if (classification.opslaan) {
+                  addLog(`[${classification.scope}] ${item.title.slice(0, 60)}... (${classification.methode})`, "success");
+                } else {
+                  addLog(`[Genegeerd - ${classification.scope}] ${item.title.slice(0, 50)}...`, "info");
+                }
+
+                // Immediate incremental save so documents and counters appear live in UI
+                saveDrentheMetadata(allDocsNow);
+                saveSyncStateToDisk();
+              } catch (docErr: any) {
+                console.warn(`[DRENTHE DOC WARN] Fout bij document ${item.title}:`, docErr?.message || docErr);
               }
             }
 
-            // Save state periodically to disk
+            // Save state periodically to disk and persist metadata
             saveDrentheMetadata(Array.from(existingMap.values()));
+            saveSyncStateToDisk();
           }
         }
       }
@@ -746,15 +900,18 @@ export async function startDrentheSync(years: number[] = [2021, 2022, 2023, 2024
       syncState.completedAt = new Date().toISOString();
       syncState.currentAction = `Synchronisatie voltooid! ${syncState.savedDocuments} provinciale stukken geregistreerd.`;
       addLog(`Voltooid! ${syncState.savedDocuments} relevante stukken bewaard (${syncState.hoogeveenCount} Hoogeveen, ${syncState.provinciebreedCount} Provinciebreed).`, "success");
+      saveSyncStateToDisk();
     } catch (err: any) {
       console.error("[DRENTHE SYNC ERROR]", err);
       syncState.isRunning = false;
       syncState.error = err.message || String(err);
       syncState.currentAction = `Fout opgetreden: ${err.message}`;
       addLog(`Synchronisatiefout: ${err.message}`, "error");
+      saveSyncStateToDisk();
     }
   })();
 
+  saveSyncStateToDisk();
   return syncState;
 }
 
@@ -767,6 +924,7 @@ export function stopDrentheSync(): DrentheSyncProgress {
   syncState.isPaused = false;
   syncState.currentAction = "Gestopt door gebruiker";
   addLog("Synchronisatie handmatig afgebroken", "warn");
+  saveSyncStateToDisk();
   return syncState;
 }
 
@@ -785,6 +943,7 @@ export function clearDrentheCache(): { success: boolean; message: string } {
     if (fs.existsSync(JSON_FILE_PUBLIC)) fs.unlinkSync(JSON_FILE_PUBLIC);
     if (fs.existsSync(CSV_FILE_PUBLIC)) fs.unlinkSync(CSV_FILE_PUBLIC);
     if (fs.existsSync(CSV_FILE_ROOT)) fs.unlinkSync(CSV_FILE_ROOT);
+    if (fs.existsSync(SYNC_STATE_FILE)) fs.unlinkSync(SYNC_STATE_FILE);
     syncState.logs = [];
     syncState.savedDocuments = 0;
     syncState.excludedDocuments = 0;
@@ -792,6 +951,7 @@ export function clearDrentheCache(): { success: boolean; message: string } {
     syncState.provinciebreedCount = 0;
     syncState.externCount = 0;
     addLog("Lokale cache en metadata van Provincie Drenthe gewist", "warn");
+    saveSyncStateToDisk();
     return { success: true, message: "Drenthe provinciale cache en metadata succesvol gewist." };
   } catch (err: any) {
     return { success: false, message: "Fout bij wissen van cache: " + err.message };

@@ -22,7 +22,19 @@ import jwt from "jsonwebtoken";
 import multer from "multer";
 import rateLimit from "express-rate-limit";
 import AdmZip from "adm-zip";
-import sharp from "sharp";
+
+// Safe dynamic sharp helper (avoids crashing server on systems without native libvips)
+let sharpInstance: any = undefined;
+async function getSafeSharp() {
+  if (sharpInstance !== undefined) return sharpInstance;
+  try {
+    const mod = await import("sharp");
+    sharpInstance = mod.default || mod;
+  } catch {
+    sharpInstance = null;
+  }
+  return sharpInstance;
+}
 
 const appDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
 import Stripe from "stripe";
@@ -2759,34 +2771,48 @@ async function startServer() {
       }
 
       let finalBuffer: Buffer;
+      const sharpLib = await getSafeSharp();
 
       if (inputBuffer) {
-        // Optimize to WhatsApp link preview standards:
-        // 1200x630 (1.91:1 ratio), progressive JPEG, quality 82 (always < 150KB to pass WhatsApp 300KB hard limit)
-        finalBuffer = await sharp(inputBuffer)
-          .resize(1200, 630, {
-            fit: "cover",
-            position: "center",
-          })
-          .flatten({ background: { r: 15, g: 23, b: 42 } }) // Lijst van Andel Navy
-          .jpeg({
-            quality: 82,
-            progressive: true,
-            mozjpeg: true,
-          })
-          .toBuffer();
-      } else {
-        // SVG banner fallback if no files present
-        finalBuffer = await sharp({
-          create: {
-            width: 1200,
-            height: 630,
-            channels: 3,
-            background: { r: 15, g: 23, b: 42 },
+        if (sharpLib) {
+          try {
+            finalBuffer = await sharpLib(inputBuffer)
+              .resize(1200, 630, {
+                fit: "cover",
+                position: "center",
+              })
+              .flatten({ background: { r: 15, g: 23, b: 42 } })
+              .jpeg({
+                quality: 82,
+                progressive: true,
+                mozjpeg: true,
+              })
+              .toBuffer();
+          } catch {
+            finalBuffer = inputBuffer;
           }
-        })
-          .jpeg({ quality: 82 })
-          .toBuffer();
+        } else {
+          finalBuffer = inputBuffer;
+        }
+      } else {
+        if (sharpLib) {
+          try {
+            finalBuffer = await sharpLib({
+              create: {
+                width: 1200,
+                height: 630,
+                channels: 3,
+                background: { r: 15, g: 23, b: 42 },
+              }
+            })
+              .jpeg({ quality: 82 })
+              .toBuffer();
+          } catch {
+            finalBuffer = Buffer.from("");
+          }
+        } else {
+          finalBuffer = Buffer.from("");
+        }
       }
 
       // Cache eviction policy (keep max 200 entries in RAM)
@@ -14488,6 +14514,45 @@ Sitemap: ${baseUrl}/sitemap.xml
       });
     } catch (err: any) {
       res.status(500).json({ error: "Fout bij ophalen Drenthe documenten: " + err.message });
+    }
+  });
+
+  app.get("/api/council/drenthe/pdf-proxy", optionalAuth, async (req: any, res: any) => {
+    try {
+      const url = req.query.url;
+      if (!url || typeof url !== "string") {
+        return res.status(400).send("URL parameter verplicht");
+      }
+
+      // Check if local file exists
+      if (url.startsWith("/uploads/")) {
+        const localFile = path.join(process.cwd(), "public", url);
+        if (fs.existsSync(localFile)) {
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader("Content-Disposition", "inline");
+          return fs.createReadStream(localFile).pipe(res);
+        }
+      }
+
+      // Stream from external url
+      const targetUrl = url.startsWith("http") ? url : `https://www.drentsparlement.nl${url.startsWith("/") ? "" : "/"}${url}`;
+      const remoteRes = await fetch(targetUrl, {
+        signal: AbortSignal.timeout(15000),
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/Drenthe-Parlement-Sync/1.0",
+        },
+      });
+
+      if (!remoteRes.ok) {
+        return res.status(remoteRes.status).send("Kon extern PDF document niet ophalen");
+      }
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", "inline");
+      const buffer = Buffer.from(await remoteRes.arrayBuffer());
+      return res.send(buffer);
+    } catch (err: any) {
+      return res.status(500).send("Fout bij streamen PDF: " + err.message);
     }
   });
 

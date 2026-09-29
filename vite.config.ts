@@ -72,15 +72,15 @@ export default defineConfig(({ mode }) => ({
   build: {
     target: "es2022",
     assetsInlineLimit: 0,
-    cssCodeSplit: true,
+    cssCodeSplit: false,
     chunkSizeWarningLimit: 2000,
     emptyOutDir: false,
     copyPublicDir: false,
     sourcemap: false,
-    minify: "esbuild",
+    minify: false,
     reportCompressedSize: false,
     rollupOptions: {
-      maxParallelFileOps: 8,
+      maxParallelFileOps: 1,
       onwarn(warning, warn) {
         if (warning.code === "MODULE_LEVEL_DIRECTIVE" || warning.message?.includes("use client")) return;
         warn(warning);

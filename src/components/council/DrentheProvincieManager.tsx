@@ -152,8 +152,14 @@ export const DrentheProvincieManager: React.FC<DrentheProvincieManagerProps> = (
     fetchStatus();
     fetchDocuments();
 
+    let docPollCounter = 0;
     pollIntervalRef.current = setInterval(() => {
       fetchStatus();
+      docPollCounter++;
+      // Live reload documents list every 5 seconds during active sync
+      if (docPollCounter % 2 === 0) {
+        fetchDocuments();
+      }
     }, 2500);
 
     return () => {
@@ -438,7 +444,7 @@ export const DrentheProvincieManager: React.FC<DrentheProvincieManagerProps> = (
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h3 className="text-lg font-display font-bold text-foreground flex items-center gap-2">
             <FileText className="w-5 h-5 text-rose-600" />
-            Geïndexeerde Provinciale Stukken ({documents.length})
+            Geïndexeerde Provinciale Stukken ({totalDocs > 0 ? totalDocs : documents.length})
           </h3>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -536,7 +542,8 @@ export const DrentheProvincieManager: React.FC<DrentheProvincieManagerProps> = (
                           size="sm"
                           variant="ghost"
                           onClick={() => {
-                            setPreviewDocUrl(doc.lokaal_pad || doc.source_url);
+                            const target = doc.lokaal_pad || doc.source_url;
+                            setPreviewDocUrl(`/api/council/drenthe/pdf-proxy?url=${encodeURIComponent(target)}`);
                             setPreviewDocTitle(doc.titel);
                           }}
                           className="h-7 px-2 text-[11px] font-semibold rounded-lg hover:bg-muted"
