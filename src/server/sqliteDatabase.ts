@@ -421,12 +421,21 @@ export function saveDbToSqlite(data: any) {
           continue; // Unchanged: skip wiping and re-inserting entire table!
         }
         hasChanges = true;
-        // Clear old table and insert updated items
+        // Clear old table and insert updated items safely
         sqliteDb.run(`DELETE FROM ${key};`);
+        const seenIds = new Set<string>();
         for (const item of val) {
           if (!item) continue;
-          const itemId = String(item.id || item.email || item.slug || item.key || crypto.randomUUID());
-          sqliteDb.run(`INSERT INTO ${key} (id, data) VALUES (?, ?)`, [itemId, JSON.stringify(item)]);
+          let itemId = String(item.id || item.email || item.slug || item.key || crypto.randomUUID());
+          // De-duplicate IDs within the array to guarantee UNIQUE constraints are never violated
+          if (seenIds.has(itemId)) {
+            itemId = `${itemId}_${crypto.randomUUID().slice(0, 6)}`;
+            if (typeof item === "object" && item !== null && item.id) {
+              item.id = itemId;
+            }
+          }
+          seenIds.add(itemId);
+          sqliteDb.run(`INSERT OR REPLACE INTO ${key} (id, data) VALUES (?, ?)`, [itemId, JSON.stringify(item)]);
         }
         publicTableSignatures.set(key, currentSig);
       } else if (key === "membershipSettings" && val && typeof val === "object") {
@@ -677,7 +686,7 @@ export function recordCouncilSearchLog(entry: Omit<CouncilSearchLogEntry, "id" |
       ...entry,
       timestamp: new Date().toISOString(),
     };
-    sqliteDb.run("INSERT INTO councilSearchLogs (id, data) VALUES (?, ?)", [
+    sqliteDb.run("INSERT OR REPLACE INTO councilSearchLogs (id, data) VALUES (?, ?)", [
       id,
       JSON.stringify(logItem),
     ]);
@@ -701,7 +710,7 @@ export function recordCouncilDocumentView(entry: Omit<CouncilDocumentViewEntry, 
       ...entry,
       timestamp: new Date().toISOString(),
     };
-    sqliteDb.run("INSERT INTO councilDocumentViews (id, data) VALUES (?, ?)", [
+    sqliteDb.run("INSERT OR REPLACE INTO councilDocumentViews (id, data) VALUES (?, ?)", [
       id,
       JSON.stringify(logItem),
     ]);

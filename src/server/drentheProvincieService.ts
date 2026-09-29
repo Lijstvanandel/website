@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import dns from "node:dns";
+import { GoogleGenAI } from "@google/genai";
 import {
   sanitizeCleanText,
   isCorruptOrHtmlGarbage,
@@ -23,6 +24,15 @@ const SYNC_STATE_FILE = path.join(process.cwd(), "public", "uploads", "documents
 
 // Circuit breaker for Gemini quota exhaustion
 let geminiQuotaExhausted = false;
+
+// Lazy Gemini client initialization
+let geminiClient: GoogleGenAI | null = null;
+function getGemini(): GoogleGenAI | null {
+  if (!geminiClient && process.env.GEMINI_API_KEY) {
+    geminiClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  }
+  return geminiClient;
+}
 
 // Utility: sleep throttle (rate-limit protection)
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -445,7 +455,74 @@ export async function classifyDrentheDocument(
     }
   }
 
-  // TRAP 2: Directe Provinciale Classificatie (0ms latency, 100% deterministisch, geen externe API-afhankelijkheid)
+  // TRAP 2: Inhoudelijke AI Classificatie via Gemini 2.5 Flash
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (apiKey && !geminiQuotaExhausted && introText && introText.trim().length >= 40) {
+    try {
+      const ai = getGemini();
+      if (ai) {
+        const prompt = `Je bent een strenge data-classificeerder voor het raads- en statenarchief van Hoogeveen en Provincie Drenthe.
+Analyseer dit document van het Drents Parlement:
+Titel: "${cleanTitle}"
+Vergadering: "${meetingTitel || 'Drents Parlement'}"
+
+Kies EXACT één van deze drie categorieën:
+1. "Hoogeveen" (Gaat specifiek over gemeente Hoogeveen, dorpen zoals Hollandscheveld, Elim, Pesse, Noordscheschut, etc., of directe belangen voor Hoogeveen)
+2. "Provinciebreed" (Verordeningen, algemeen Drents provinciaal beleid, Omgevingsvisie Drenthe, provinciale begroting, N33/A28/Lelylijn/Nedersaksenlijn, Vechtdallijnen, natuur-, water- en stikstofbeleid voor heel Drenthe)
+3. "Extern" (Gaat uitsluitend specifiek over andere individuele gemeenten buiten Drenthe of lokale kwesties van andere gemeenten zonder provinciaal belang)
+
+Retourneer uitsluitend JSON in dit exacte format: {"scope": "Hoogeveen" | "Provinciebreed" | "Extern", "reden": "Korte toelichting"}
+
+Documenttekst (eerste 2 pagina's):
+${introText.slice(0, 3000)}`;
+
+        const response = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: prompt,
+          config: {
+            temperature: 0.0,
+            responseMimeType: "application/json",
+          },
+        });
+
+        const raw = response.text?.trim() || "";
+        const cleanJson = raw.replace(/```json/gi, "").replace(/```/g, "").trim();
+        const aiOordeel = JSON.parse(cleanJson);
+
+        // Anti-Rate Limit Throttle: 1.5s wachten
+        await sleep(1500);
+
+        if (aiOordeel.scope === "Extern") {
+          console.log(`[DRENTHE AI] Flash classificeert als extern: ${aiOordeel.reden}`);
+          return {
+            scope: "Lokaal - Externe Gemeente",
+            methode: "Gemini 2.5 Flash AI",
+            reden: aiOordeel.reden || "AI classificatie: extern",
+            opslaan: false,
+          };
+        }
+
+        const finalScope = aiOordeel.scope === "Hoogeveen" ? "Lokaal - Hoogeveen" : "Provinciebreed";
+        console.log(`[DRENTHE AI] Flash goedgekeurd: ${finalScope} | Reden: ${aiOordeel.reden}`);
+        return {
+          scope: finalScope,
+          methode: "Gemini 2.5 Flash AI",
+          reden: aiOordeel.reden || `AI classificatie: relevant voor ${finalScope}`,
+          opslaan: true,
+        };
+      }
+    } catch (aiErr: any) {
+      const errMsg = aiErr?.message || String(aiErr);
+      if (errMsg.includes("429") || errMsg.includes("quota") || errMsg.includes("Resource has been exhausted")) {
+        console.warn("[DRENTHE AI] Gemini quota bereikt (429), circuit-breaker ingeschakeld. Automatische fallback naar provinciale taxonomy.");
+        geminiQuotaExhausted = true;
+      } else {
+        console.warn("[DRENTHE AI] Fout bij Gemini classificatie, fallback naar taxonomy:", errMsg);
+      }
+    }
+  }
+
+  // TRAP 3: Directe Provinciale Classificatie (Fallback bij ontbreken van AI-sleutel, quota-uitputting of algemeen provinciaal belang)
   // Alle officiële documenten op de agenda van het Drents Parlement (Provinciale Staten en Statencommissies)
   // die niet specifiek een externe individuele gemeente betreffen, zijn van algemeen provinciaal belang voor Drenthe en Hoogeveen.
   return {
@@ -522,6 +599,9 @@ export async function startDrentheSync(years: number[] = [2021, 2022, 2023, 2024
   if (syncState.isRunning) {
     return syncState;
   }
+
+  // Reset circuit breaker so each sync gets a fresh chance to use AI
+  geminiQuotaExhausted = false;
 
   ensureDirectories();
   abortController = new AbortController();

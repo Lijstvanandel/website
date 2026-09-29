@@ -11026,8 +11026,25 @@ Sitemap: ${baseUrl}/sitemap.xml
     };
   }
 
+  // Helper to determine topic municipality strictly
+  function getTopicMunicipality(topic: any): "steenwijkerland" | "hoogeveen" {
+    if (!topic) return "steenwijkerland";
+    const m = String(topic.municipality || "").toLowerCase().trim();
+    if (m === "hoogeveen" || m === "hgv") return "hoogeveen";
+    if (m === "steenwijkerland" || m === "swl") return "steenwijkerland";
+    if (topic.id && (String(topic.id).startsWith("hg_") || String(topic.id).includes("hoogeveen"))) return "hoogeveen";
+    return "steenwijkerland";
+  }
+
   // Helper to determine active municipality from request context
   function resolveRequestMunicipality(req: any): "steenwijkerland" | "hoogeveen" {
+    // 1. If user is authenticated and NOT admin, their assigned municipality is strictly authoritative!
+    if (req.user && req.user.role !== "admin") {
+      const uMuni = (req.user.municipality || "steenwijkerland").toLowerCase().trim();
+      return uMuni === "hoogeveen" ? "hoogeveen" : "steenwijkerland";
+    }
+
+    // 2. Explicit query parameter (for admin or public)
     const q = String(
       req.query?.municipality ||
       req.query?.portal ||
@@ -11041,24 +11058,26 @@ Sitemap: ${baseUrl}/sitemap.xml
     if (q === "hoogeveen" || q === "hgv") return "hoogeveen";
     if (q === "steenwijkerland" || q === "swl") return "steenwijkerland";
 
+    // 3. Explicit request headers
     const headerTenant = String(req.headers["x-portal-tenant"] || req.headers["x-municipality"] || req.headers["x-tenant"] || "").toLowerCase().trim();
     if (headerTenant === "hoogeveen" || headerTenant === "hgv") return "hoogeveen";
     if (headerTenant === "steenwijkerland" || headerTenant === "swl") return "steenwijkerland";
 
-    const referer = String(req.headers.referer || "").toLowerCase();
-    if (referer.includes("portal=hoogeveen") || referer.includes("tenant=hoogeveen") || referer.includes("muni=hoogeveen") || referer.includes("municipality=hoogeveen")) {
-      return "hoogeveen";
-    }
-
-    const host = String(req.headers["x-forwarded-host"] || req.headers.host || req.headers.origin || "").toLowerCase();
+    // 4. Hostname check (domain based: e.g. hoogeveen.scientiarum.nl)
+    const host = String(req.headers["x-forwarded-host"] || req.headers.host || "").toLowerCase();
     if (host.includes("hoogeveen.") || host.includes("hgv.") || host.startsWith("hoogeveen-")) {
       return "hoogeveen";
     }
+    if (host.includes("steenwijkerland.") || host.includes("swl.")) {
+      return "steenwijkerland";
+    }
 
+    // 5. If user is admin and has an assigned municipality
     if (req.user?.municipality === "hoogeveen") {
       return "hoogeveen";
     }
 
+    // 6. Default to Steenwijkerland (primary party site)
     return "steenwijkerland";
   }
 
@@ -11070,7 +11089,7 @@ Sitemap: ${baseUrl}/sitemap.xml
     
     // Filter agenda topics strictly by municipality
     const scopedRawTopics = rawTopics.filter((t: any) => {
-      const topicMuni = t.municipality || "steenwijkerland";
+      const topicMuni = getTopicMunicipality(t);
       return topicMuni === targetMunicipality;
     });
 
@@ -11090,13 +11109,18 @@ Sitemap: ${baseUrl}/sitemap.xml
       municipality: targetMunicipality,
     };
 
-    // Get list of council members / fractieleden for assignment dropdown (scoped to target municipality, admins visible to all)
+    // Get list of council members / fractieleden for assignment dropdown (strictly scoped to target municipality, no cross-municipality leakage)
     const councilMembers = (db.users || [])
       .filter((u: any) => {
-        const isCouncil = u.role === "raadslid" || u.role === "admin" || u.role === "fractielid";
+        const isCouncil =
+          u.role === "raadslid" ||
+          u.role === "burgerraadslid" ||
+          u.role === "fractielid" ||
+          u.role === "fractievolger" ||
+          u.role === "commissielid" ||
+          u.role === "admin";
         if (!isCouncil) return false;
-        if (u.role === "admin") return true;
-        const userMuni = u.municipality || "steenwijkerland";
+        const userMuni = (u.municipality || "steenwijkerland").toLowerCase().trim();
         return userMuni === targetMunicipality;
       })
       .map((u: any) => ({
@@ -11316,20 +11340,25 @@ Sitemap: ${baseUrl}/sitemap.xml
     return res.json({ success, message: success ? "Taak geannuleerd" : "Kon taak niet annuleren (mogelijk reeds voltooid)" });
   });
 
-  // 2a-2. Manual Diff-Check trigger (iBabs Watchdog on demand)
+  // 2a-2. Manual Diff-Check trigger (Watchdog on demand, strictly per municipality)
   app.post("/api/council/diff-check-now", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
     res.setHeader("Content-Type", "application/json");
     try {
-      const summary = await scrapeCouncilAgendas(undefined, { isManual: true });
+      const targetMunicipality = resolveRequestMunicipality(req);
+      const isHoogeveen = targetMunicipality === "hoogeveen";
+      const summary = isHoogeveen
+        ? await scrapeHoogeveenCouncilAgendas(undefined, { isManual: true })
+        : await scrapeCouncilAgendas(undefined, { isManual: true });
       const db = getDb();
-      const topics = db.councilAgendaTopics || [];
+      const allTopics = db.councilAgendaTopics || [];
+      const topics = allTopics.filter((t: any) => getTopicMunicipality(t) === targetMunicipality);
       const topicsWithDumps = topics.filter((t: any) => t.hasRecentDump || t.hasDocumentDiff);
       
       return res.json({
         success: true,
         message: topicsWithDumps.length > 0
           ? `Diff-check voltooid! ${topicsWithDumps.length} agendapunt(en) met recente updates of 'vrijdagmiddag-dumps' gevonden.`
-          : "Diff-check voltooid: Alle raadsstukken zijn 100% up-to-date met iBabs. Geen nieuwe dumps gedetecteerd.",
+          : `Diff-check voltooid: Alle raadsstukken voor ${isHoogeveen ? "Hoogeveen" : "Steenwijkerland"} zijn 100% up-to-date. Geen nieuwe dumps gedetecteerd.`,
         summary,
         topicsWithDumpsCount: topicsWithDumps.length,
         topics,
@@ -11353,32 +11382,38 @@ Sitemap: ${baseUrl}/sitemap.xml
     return res.json({ success: true, topic: enriched });
   });
 
-  // 2a-4. Dismiss all diff alerts
+  // 2a-4. Dismiss all diff alerts (strictly scoped to municipality)
   app.post("/api/council/dismiss-all-diffs", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
     res.setHeader("Content-Type", "application/json");
+    const targetMunicipality = resolveRequestMunicipality(req);
     const count = dismissAllDiffAlerts(req.user?.username || req.user?.fullName);
     const db = getDb();
     const rawTopics = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
-    const topics = rawTopics.map((t: any) => {
+    const scopedTopics = rawTopics.filter((t: any) => getTopicMunicipality(t) === targetMunicipality);
+    const topics = scopedTopics.map((t: any) => {
       const withMember = enrichTopicWithMemberData(t, db);
       return enrichTopicWithStandpunten(withMember);
     });
     return res.json({ success: true, updatedCount: count, topics });
   });
 
-  // 2b. Clear unassigned scraper topics (preserves assigned topics & notes)
+  // 2b. Clear unassigned scraper topics (preserves assigned topics & notes) strictly for target municipality
   app.post("/api/council/clear-unassigned", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
     res.setHeader("Content-Type", "application/json");
     try {
-      const result = clearUnassignedCouncilTopics();
+      const targetMunicipality = resolveRequestMunicipality(req);
+      const result = clearUnassignedCouncilTopics(targetMunicipality);
       const db = getDb();
+      const allTopics = db.councilAgendaTopics || [];
+      const topics = allTopics.filter((t: any) => getTopicMunicipality(t) === targetMunicipality);
+      const summaryKey = targetMunicipality === "hoogeveen" ? "councilScrapeSummaryHoogeveen" : "councilScrapeSummary";
       return res.json({
         success: true,
         removedCount: result.removedCount,
         remainingCount: result.remainingCount,
-        topics: db.councilAgendaTopics || [],
-        summary: db.councilScrapeSummary,
-        message: `${result.removedCount} onverdeelde onderwerpen gewist. ${result.remainingCount} toegewezen/actieve onderwerpen behouden.`
+        topics,
+        summary: db[summaryKey],
+        message: `${result.removedCount} onverdeelde onderwerpen van ${targetMunicipality === "hoogeveen" ? "Hoogeveen" : "Steenwijkerland"} gewist. ${result.remainingCount} toegewezen/actieve onderwerpen behouden.`
       });
     } catch (err: any) {
       console.error("[RAADSPANEEL CLEAR FOUT]", err);
@@ -11386,7 +11421,7 @@ Sitemap: ${baseUrl}/sitemap.xml
     }
   });
 
-  // 3. Assign topic to council member (Admin or self-assign)
+  // 3. Assign topic to council member (Strict municipality isolation)
   app.patch("/api/council/topics/:topicId/assign", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
     const { topicId } = req.params;
     const { assignedTo } = req.body; // username or null
@@ -11401,10 +11436,23 @@ Sitemap: ${baseUrl}/sitemap.xml
       return res.status(404).json({ error: "Onderwerp niet gevonden" });
     }
 
+    const topicMuni = getTopicMunicipality(topic);
+
     let assignedMemberName: string | null = null;
     let assignedUserObj: any = null;
-    if (assignedTo) {
+    if (assignedTo && assignedTo !== "none") {
       const user = (db.users || []).find((u: any) => u.username === assignedTo || u.id === assignedTo);
+      if (!user) {
+        return res.status(404).json({ error: "Geselecteerd raadslid niet gevonden." });
+      }
+
+      const userMuni = (user.municipality || "steenwijkerland").toLowerCase().trim();
+      if (userMuni !== topicMuni) {
+        return res.status(400).json({
+          error: `Strikte gemeentescheiding: ${user.fullName || user.username} behoort tot gemeente ${userMuni === "hoogeveen" ? "Hoogeveen" : "Steenwijkerland"} en kan niet worden gekoppeld aan een bespreekstuk van ${topicMuni === "hoogeveen" ? "Hoogeveen" : "Steenwijkerland"}.`
+        });
+      }
+
       assignedUserObj = user;
       assignedMemberName = user ? (user.fullName || user.username) : assignedTo;
       topic.assignedTo = user ? user.username : assignedTo;
@@ -12953,7 +13001,7 @@ Sitemap: ${baseUrl}/sitemap.xml
         const topics = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
         const matchingTopic = topics.find((t: any) => {
           if (!t) return false;
-          const topicMuni = t.municipality || "steenwijkerland";
+          const topicMuni = getTopicMunicipality(t);
           if (topicMuni !== targetMunicipality) return false;
           const topicSlug = slugify(t.title || "");
           const expectedDossierSlug = `ondersteuningsdossier-${topicSlug}`;

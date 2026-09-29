@@ -16,7 +16,7 @@ export interface PortalConfig {
   risSystemName: string;
 }
 
-export function getPortalConfig(currentPathname?: string): PortalConfig {
+export function getPortalConfig(currentPathname?: string, currentUser?: any): PortalConfig {
   if (typeof window === "undefined") {
     return {
       isPortalMode: false,
@@ -31,8 +31,17 @@ export function getPortalConfig(currentPathname?: string): PortalConfig {
 
   const hostname = window.location.hostname.toLowerCase();
   const searchParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const queryParam = searchParams.get("portal")?.toLowerCase() || searchParams.get("tenant")?.toLowerCase() || searchParams.get("muni")?.toLowerCase();
+  const queryParam = searchParams.get("portal")?.toLowerCase() || searchParams.get("tenant")?.toLowerCase() || searchParams.get("muni")?.toLowerCase() || searchParams.get("municipality")?.toLowerCase();
   const pathname = (currentPathname || window.location.pathname || "").toLowerCase().split("?")[0].split("#")[0];
+
+  // Try to inspect user
+  let activeUser = currentUser;
+  if (!activeUser && typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem("auth_user") || sessionStorage.getItem("auth_user");
+      if (stored) activeUser = JSON.parse(stored);
+    } catch {}
+  }
 
   // Explicit Steenwijkerland party & neighborhood routes where portal mode is NEVER active
   const isSteenwijkerlandRoute =
@@ -62,23 +71,45 @@ export function getPortalConfig(currentPathname?: string): PortalConfig {
     }
   }
 
-  const storedTenant = typeof localStorage !== "undefined" ? localStorage.getItem("portal_tenant") : null;
-
-  // Check if Hoogeveen domain or test param
   const isHoogeveenDomain =
     hostname.includes("hoogeveen.") ||
     hostname.includes("hgv.") ||
     hostname.startsWith("hoogeveen-");
 
-  // Hoogeveen portal mode is active if:
-  // 1) Hostname is Hoogeveen domain
-  // 2) OR query param explicitly sets portal=hoogeveen
-  // 3) OR storedTenant is hoogeveen AND we are on a council workspace route (/raadspaneel or /dossiers) AND NOT on a Steenwijkerland party/wijk route
+  // Strict User Municipality Priority for regular council members:
+  if (activeUser && activeUser.role !== "admin") {
+    const userMuni = (activeUser.municipality || "steenwijkerland").toLowerCase().trim();
+    if (userMuni === "hoogeveen") {
+      return {
+        isPortalMode: true,
+        tenantId: "hoogeveen",
+        municipalityName: "Hoogeveen",
+        portalTitle: "Raadsportaal Hoogeveen",
+        portalSubtitle: "Digitaal Fractie- & Dossierbeheer",
+        shortCode: "hgv",
+        risSystemName: "Gemeenteraad Hoogeveen",
+      };
+    } else {
+      return {
+        isPortalMode: false,
+        tenantId: "steenwijkerland",
+        municipalityName: "Steenwijkerland",
+        portalTitle: "Lijst van Andel",
+        portalSubtitle: "Steenwijkerland",
+        shortCode: "swl",
+        risSystemName: "Notubiz",
+      };
+    }
+  }
+
+  // For Admin or unauthenticated:
+  const storedTenant = typeof localStorage !== "undefined" ? (localStorage.getItem("raadspaneel_active_municipality") || localStorage.getItem("portal_tenant")) : null;
+
   const isHoogeveen =
     isHoogeveenDomain ||
     queryParam === "hoogeveen" ||
     queryParam === "hgv" ||
-    (storedTenant === "hoogeveen" && !isSteenwijkerlandRoute && (pathname.startsWith("/raadspaneel") || pathname.startsWith("/dossiers")));
+    (!isSteenwijkerlandRoute && storedTenant === "hoogeveen" && (pathname.startsWith("/raadspaneel") || pathname.startsWith("/dossiers")));
 
   if (isHoogeveen) {
     return {
@@ -96,6 +127,7 @@ export function getPortalConfig(currentPathname?: string): PortalConfig {
   if (isSteenwijkerlandRoute && storedTenant === "hoogeveen" && !queryParam) {
     try {
       localStorage.setItem("portal_tenant", "steenwijkerland");
+      localStorage.setItem("raadspaneel_active_municipality", "steenwijkerland");
     } catch {
       // ignore
     }

@@ -555,7 +555,10 @@ export async function scrapeCouncilAgendasHoogeveen(yearsToScrape: number[] = [2
 
   // Safely merge with topics of other municipalities (Steenwijkerland)
   const nonHoogeveenTopics = existingTopicsAll.filter((t: any) => t.municipality !== "hoogeveen");
-  db.councilAgendaTopics = [...nonHoogeveenTopics, ...hoogeveenTopicsList];
+  const topicsMap = new Map<string, CouncilAgendaTopic>();
+  nonHoogeveenTopics.forEach((t) => { if (t?.id) topicsMap.set(t.id, t); });
+  hoogeveenTopicsList.forEach((t) => { if (t?.id) topicsMap.set(t.id, t); });
+  db.councilAgendaTopics = Array.from(topicsMap.values());
 
   const summary = {
     lastScrapedAt: new Date().toISOString(),

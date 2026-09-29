@@ -1588,6 +1588,7 @@ export function createCustomDossier(
     dateRange: payload.dateRange || { start: null, end: null },
     documents: payload.documents || [],
     isCustom: true,
+    municipality: (payload as any).municipality || "steenwijkerland",
     wijkSlug: payload.wijkSlug,
     wijkNaam: payload.wijkNaam,
     createdAt: now,
@@ -1631,6 +1632,7 @@ export function updateDossier(
       end: dates[dates.length - 1] || null,
     },
     isCustom: true,
+    municipality: (updates as any).municipality || (existing as any).municipality || "steenwijkerland",
     updatedAt: new Date().toISOString(),
   };
 

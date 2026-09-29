@@ -506,6 +506,7 @@ export async function scrapeCouncilAgendas(
 
             const updatedTopic: CouncilAgendaTopic = {
               id: topicId,
+              municipality: "steenwijkerland",
               meetingId,
               meetingDate: parsedDate.dateIso,
               meetingDateDisplay: parsedDate.display,
@@ -624,8 +625,12 @@ export async function scrapeCouncilAgendas(
   // Enrich each topic with party policy standpunten matching
   const enrichedFinalList = finalList.map((t) => enrichTopicWithStandpunten(t));
 
-  // Save in SQLite
-  db.councilAgendaTopics = enrichedFinalList;
+  // Save in SQLite - preserving topics from other municipalities (e.g. Hoogeveen)
+  const otherMunicipalitiesTopics = existingTopics.filter((t: any) => t.municipality === "hoogeveen");
+  const topicsMap = new Map<string, CouncilAgendaTopic>();
+  otherMunicipalitiesTopics.forEach((t) => { if (t?.id) topicsMap.set(t.id, t); });
+  enrichedFinalList.forEach((t) => { if (t?.id) topicsMap.set(t.id, t); });
+  db.councilAgendaTopics = Array.from(topicsMap.values());
   db.councilScrapeSummary = {
     lastScrapedAt: new Date().toISOString(),
     totalMeetingsScraped: scrapedMeetingLinks.length,
@@ -848,9 +853,12 @@ export function dismissAllDiffAlerts(username?: string): number {
 /**
  * Clear all unassigned topics, leaving topics that are assigned or have notes/activity intact.
  */
-export function clearUnassignedCouncilTopics(): { removedCount: number; remainingCount: number } {
+export function clearUnassignedCouncilTopics(targetMunicipality: "steenwijkerland" | "hoogeveen" = "steenwijkerland"): { removedCount: number; remainingCount: number } {
   const db = getDbFromSqlite();
-  const existingTopics: CouncilAgendaTopic[] = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
+  const allTopics: CouncilAgendaTopic[] = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
+  
+  const existingTopics = allTopics.filter((t) => (t.municipality || "steenwijkerland") === targetMunicipality);
+  const otherTopics = allTopics.filter((t) => (t.municipality || "steenwijkerland") !== targetMunicipality);
   
   // Keep topics that are assigned to someone OR have notes OR have been marked viewed
   const keptTopics = existingTopics.filter((t) => {
@@ -861,16 +869,24 @@ export function clearUnassignedCouncilTopics(): { removedCount: number; remainin
   });
 
   const removedCount = existingTopics.length - keptTopics.length;
-  db.councilAgendaTopics = keptTopics;
+  db.councilAgendaTopics = [...otherTopics, ...keptTopics];
   
-  if (db.councilScrapeSummary) {
-    db.councilScrapeSummary.totalTopics = keptTopics.length;
-    db.councilScrapeSummary.bespreekstukkenCount = keptTopics.filter((t: any) => t.category === "Oordeelvorming - bespreekstukken" && !t.isArchived).length;
-    db.councilScrapeSummary.archivedCount = keptTopics.filter((t: any) => t.isArchived).length;
+  if (targetMunicipality === "hoogeveen") {
+    if (db.councilScrapeSummaryHoogeveen) {
+      db.councilScrapeSummaryHoogeveen.totalTopics = keptTopics.length;
+      db.councilScrapeSummaryHoogeveen.bespreekstukkenCount = keptTopics.filter((t: any) => t.category === "Oordeelvorming - bespreekstukken" && !t.isArchived).length;
+      db.councilScrapeSummaryHoogeveen.archivedCount = keptTopics.filter((t: any) => t.isArchived).length;
+    }
+  } else {
+    if (db.councilScrapeSummary) {
+      db.councilScrapeSummary.totalTopics = keptTopics.length;
+      db.councilScrapeSummary.bespreekstukkenCount = keptTopics.filter((t: any) => t.category === "Oordeelvorming - bespreekstukken" && !t.isArchived).length;
+      db.councilScrapeSummary.archivedCount = keptTopics.filter((t: any) => t.isArchived).length;
+    }
   }
   
   saveDbToSqlite(db);
-  console.log(`[RAADSPANEEL SCRAPER] ${removedCount} onverdeelde onderwerpen gewist. ${keptTopics.length} behouden.`);
+  console.log(`[RAADSPANEEL SCRAPER] (${targetMunicipality}) ${removedCount} onverdeelde onderwerpen gewist. ${keptTopics.length} behouden.`);
   return { removedCount, remainingCount: keptTopics.length };
 }
 

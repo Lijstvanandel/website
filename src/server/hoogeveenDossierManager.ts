@@ -672,7 +672,7 @@ export function getHoogeveenDossiers(): Dossier[] {
   // Scan physical files on disk for live reconciliation
   const { existingFilesSet, idToFilenameMap } = scanHoogeveenPhysicalFiles();
 
-  return dossiers.map((dossier) => {
+  const mappedDossiers = dossiers.map((dossier) => {
     let dossierUploaded = 0;
     const syncedDocs = (dossier.documents || []).map((doc: any) => {
       const rawId = String(doc.id || "").replace(/^hg_doc_/, "").trim();
@@ -775,6 +775,255 @@ export function getHoogeveenDossiers(): Dossier[] {
       subdossierCount: syncedSubdossiers.length,
     };
   });
+
+  // Enrich with regional documents from Provincie Drenthe and Waterschap WDODelta tailored to wijken and kernen
+  return enrichHoogeveenDossiersWithRegionalDocuments(mappedDossiers);
+}
+
+/**
+ * Enriches Hoogeveen dossiers with relevant documents from Provincie Drenthe and Waterschap WDODelta,
+ * precisely mapped to Hoogeveen's wijken, dorpskernen and thematic policy categories.
+ */
+function enrichHoogeveenDossiersWithRegionalDocuments(dossiers: Dossier[]): Dossier[] {
+  try {
+    const drentheJsonPath = path.join(process.cwd(), "public", "uploads", "documents", "raadsstukken_metadata_drenthe.json");
+    const waterschapJsonPath = path.join(process.cwd(), "public", "uploads", "documents", "raadsstukken_metadata_waterschap.json");
+
+    const regionalDocs: Array<{
+      id: string;
+      title: string;
+      date: string;
+      bestandsnaam: string;
+      fileUrl: string;
+      source: "drenthe" | "waterschap";
+      scope?: string;
+      targetCategory: string;
+      subdossierName: string;
+      detectedWijken: string[];
+      wijkOfKern: string;
+    }> = [];
+
+    // 1. Ingest Provincie Drenthe documents
+    if (fs.existsSync(drentheJsonPath)) {
+      try {
+        const rawDrenthe = fs.readFileSync(drentheJsonPath, "utf-8");
+        const parsedDrenthe = JSON.parse(rawDrenthe);
+        if (Array.isArray(parsedDrenthe)) {
+          for (const item of parsedDrenthe) {
+            // Must be saved and relevant for Hoogeveen or provincial policy
+            if (!item.opslaan && item.scope !== "Lokaal - Hoogeveen") continue;
+
+            const title = item.titel || "";
+            const titleLower = title.toLowerCase();
+            const detectedWijken = detectHoogeveenWijken(title, "", "", "");
+            const wijkOfKern = detectedWijken.length > 0 ? detectedWijken[0] : "Gemeentebreed";
+
+            let targetCategory = "Provincie Drenthe & Regionaal Bestuur";
+            if (
+              titleLower.includes("water") ||
+              titleLower.includes("dijk") ||
+              titleLower.includes("klimaat") ||
+              titleLower.includes("duurzaam") ||
+              titleLower.includes("energie") ||
+              titleLower.includes("res") ||
+              titleLower.includes("wolf") ||
+              titleLower.includes("fauna")
+            ) {
+              targetCategory = "Duurzaamheid, Milieu & Openbare Ruimte";
+            } else if (
+              titleLower.includes("woon") ||
+              titleLower.includes("woning") ||
+              titleLower.includes("omgevingsvisie") ||
+              titleLower.includes("omgevingsverordening") ||
+              titleLower.includes("ruimte") ||
+              titleLower.includes("bouw")
+            ) {
+              targetCategory = "Ruimtelijke Ontwikkeling & Wonen";
+            } else if (
+              titleLower.includes("verkeer") ||
+              titleLower.includes("weg") ||
+              titleLower.includes("a28") ||
+              titleLower.includes("n33") ||
+              titleLower.includes("spoor") ||
+              titleLower.includes("lelylijn") ||
+              titleLower.includes("nedersaksenlijn") ||
+              titleLower.includes("mobiliteit")
+            ) {
+              targetCategory = "Verkeer, Vervoer & Bereikbaarheid";
+            } else if (
+              titleLower.includes("economie") ||
+              titleLower.includes("bedrijf") ||
+              titleLower.includes("landbouw") ||
+              titleLower.includes("mkb") ||
+              titleLower.includes("ondernem") ||
+              titleLower.includes("bollenteelt")
+            ) {
+              targetCategory = "Economie, Werk & Ondernemerschap";
+            } else if (
+              titleLower.includes("cultuur") ||
+              titleLower.includes("sport") ||
+              titleLower.includes("erfgoed") ||
+              titleLower.includes("monument")
+            ) {
+              targetCategory = "Samenleving, Cultuur & Recreatie";
+            } else if (
+              titleLower.includes("sociaal") ||
+              titleLower.includes("zorg") ||
+              titleLower.includes("jeugd") ||
+              titleLower.includes("wmo")
+            ) {
+              targetCategory = "Sociaal Domein, Zorg & Welzijn";
+            }
+
+            const cleanId = String(item.id || item.document_id || Math.random()).replace(/[^a-zA-Z0-9_-]/g, "_");
+            const fileUrl = item.lokaal_pad || `/api/council/drenthe/pdf-proxy?url=${encodeURIComponent(item.source_url || "")}`;
+
+            regionalDocs.push({
+              id: `drenthe_${cleanId}`,
+              title: item.titel,
+              date: item.datum || new Date().toISOString().slice(0, 10),
+              bestandsnaam: item.bestandsnaam || `drenthe_${cleanId}.pdf`,
+              fileUrl,
+              source: "drenthe",
+              scope: item.scope,
+              targetCategory,
+              subdossierName: item.gremium_naam || "Drents Parlement",
+              detectedWijken: detectedWijken.length > 0 ? detectedWijken : ["Gemeentebreed"],
+              wijkOfKern,
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("[HOOGEVEEN DRENTHE MERGE WARN]:", err);
+      }
+    }
+
+    // 2. Ingest Waterschap Drents Overijsselse Delta documents (relevant for Hoogeveen)
+    if (fs.existsSync(waterschapJsonPath)) {
+      try {
+        const rawWs = fs.readFileSync(waterschapJsonPath, "utf-8");
+        const parsedWs = JSON.parse(rawWs);
+        if (Array.isArray(parsedWs)) {
+          for (const item of parsedWs) {
+            const title = item.titel || "";
+            const detectedWijken = detectHoogeveenWijken(title, "", "", "");
+            const wijkOfKern = detectedWijken.length > 0 ? detectedWijken[0] : "Gemeentebreed";
+
+            const cleanId = String(item.id || item.document_id || Math.random()).replace(/[^a-zA-Z0-9_-]/g, "_");
+            const fileUrl = item.lokaal_pad || (item.url ? item.url : `/uploads/documents/waterschap/${item.bestandsnaam || ""}`);
+
+            regionalDocs.push({
+              id: `ws_${cleanId}`,
+              title: item.titel,
+              date: item.datum || new Date().toISOString().slice(0, 10),
+              bestandsnaam: item.bestandsnaam || `waterschap_${cleanId}.pdf`,
+              fileUrl,
+              source: "waterschap",
+              targetCategory: "Duurzaamheid, Milieu & Openbare Ruimte",
+              subdossierName: "Waterschap Drents Overijsselse Delta",
+              detectedWijken: detectedWijken.length > 0 ? detectedWijken : ["Gemeentebreed"],
+              wijkOfKern,
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("[HOOGEVEEN WATERSCHAP MERGE WARN]:", err);
+      }
+    }
+
+    if (regionalDocs.length === 0) return dossiers;
+
+    const resultDossiers = [...dossiers];
+
+    // Find or create "Provincie Drenthe & Regionaal Bestuur" dossier if needed
+    let regionalDossier = resultDossiers.find(
+      (d) => d.slug === "provincie-drenthe-regionaal-bestuur" || d.title.toLowerCase().includes("provincie")
+    );
+    if (!regionalDossier) {
+      regionalDossier = {
+        id: "hg-provincie-drenthe-regionaal",
+        slug: "provincie-drenthe-regionaal-bestuur",
+        title: "Provincie Drenthe & Regionaal Bestuur",
+        description: "Relevante provinciale statenstukken, beleidskaders en besluiten van het Drents Parlement voor de gemeente Hoogeveen en haar dorpen.",
+        category: "Bestuur & Regio",
+        municipality: "hoogeveen",
+        tags: ["Provincie Drenthe", "Drents Parlement", "Regionaal Beleid", "Hoogeveen", "Dorpen"],
+        documents: [],
+        subdossiers: [],
+        documentCount: 0,
+        documentsCount: 0,
+        uploadedCount: 0,
+        subdossierCount: 0,
+      } as any;
+      resultDossiers.push(regionalDossier);
+    }
+
+    // Merge each regional document into matching dossier or fallback to regionalDossier
+    for (const reg of regionalDocs) {
+      let targetDossier = resultDossiers.find(
+        (d) =>
+          d.category?.toLowerCase() === reg.targetCategory.toLowerCase() ||
+          d.title.toLowerCase().includes(reg.targetCategory.toLowerCase())
+      );
+      if (!targetDossier) {
+        targetDossier = regionalDossier;
+      }
+
+      const formattedDoc: any = {
+        id: reg.id,
+        titel: `[${reg.source === "drenthe" ? "Provincie Drenthe" : "Waterschap WDODelta"}] ${reg.title}`,
+        title: `[${reg.source === "drenthe" ? "Provincie Drenthe" : "Waterschap WDODelta"}] ${reg.title}`,
+        bestandsnaam: reg.bestandsnaam,
+        datum: reg.date,
+        date: reg.date,
+        dossier: targetDossier.title,
+        hoofddossier: targetDossier.title,
+        subdossier: reg.subdossierName,
+        wijken: reg.detectedWijken,
+        wijkOfKern: reg.wijkOfKern,
+        wijk_of_kern: reg.wijkOfKern,
+        url: reg.fileUrl,
+        fileUrl: reg.fileUrl,
+        fileExists: true,
+        source: reg.source,
+      };
+
+      if (!targetDossier.documents.some((d: any) => d.id === reg.id || d.bestandsnaam === reg.bestandsnaam)) {
+        targetDossier.documents.push(formattedDoc);
+        targetDossier.documentCount = targetDossier.documents.length;
+        targetDossier.documentsCount = targetDossier.documents.length;
+        targetDossier.uploadedCount = (targetDossier.uploadedCount || 0) + 1;
+      }
+
+      if (!targetDossier.subdossiers) targetDossier.subdossiers = [];
+      let sub = targetDossier.subdossiers.find((s: any) => s.title === reg.subdossierName || s.name === reg.subdossierName);
+      if (!sub) {
+        sub = {
+          id: `sub_${slugify(reg.subdossierName)}`,
+          title: reg.subdossierName,
+          name: reg.subdossierName,
+          slug: slugify(reg.subdossierName),
+          documents: [],
+          documentCount: 0,
+          documentsCount: 0,
+          uploadedCount: 0,
+        };
+        targetDossier.subdossiers.push(sub);
+      }
+      if (!sub.documents.some((d: any) => d.id === reg.id || d.bestandsnaam === reg.bestandsnaam)) {
+        sub.documents.push(formattedDoc);
+        sub.documentCount = sub.documents.length;
+        sub.documentsCount = sub.documents.length;
+        sub.uploadedCount = (sub.uploadedCount || 0) + 1;
+      }
+      targetDossier.subdossierCount = targetDossier.subdossiers.length;
+    }
+
+    return resultDossiers;
+  } catch (err) {
+    console.error("[ENRICH HOOGEVEEN REGIONAL DOCS ERROR]:", err);
+    return dossiers;
+  }
 }
 
 /**

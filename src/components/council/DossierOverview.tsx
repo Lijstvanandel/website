@@ -52,11 +52,13 @@ import {
 interface DossierOverviewProps {
   initialDossierSlug?: string | null;
   initialWijkSlug?: string | null;
+  forcedMunicipality?: "steenwijkerland" | "hoogeveen";
 }
 
 export const DossierOverview: React.FC<DossierOverviewProps> = ({
   initialDossierSlug,
   initialWijkSlug,
+  forcedMunicipality,
 }) => {
   const { user } = useAuth();
   const isAdmin = Boolean(user && user.role === "admin");
@@ -65,8 +67,9 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
   );
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const portalConfig = getPortalConfig();
-  const isHoogeveen = portalConfig.isPortalMode || portalConfig.tenantId === "hoogeveen";
+  const portalConfig = getPortalConfig(undefined, user);
+  const effectiveMuni = forcedMunicipality || (user && user.role !== "admin" ? (user.municipality || "steenwijkerland") : portalConfig.tenantId);
+  const isHoogeveen = effectiveMuni === "hoogeveen";
   const { pageSize, sortBy, setPageSize, setSortBy } = useCouncilPreferences();
 
   const [dossiers, setDossiers] = useState<Dossier[]>([]);
@@ -142,10 +145,9 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
     setLoading(true);
     try {
       const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
-      const portalConfig = getPortalConfig();
       const params = new URLSearchParams({
-        portal: portalConfig.tenantId,
-        municipality: portalConfig.tenantId,
+        portal: effectiveMuni,
+        municipality: effectiveMuni,
         page: page.toString(),
         limit: pageSize.toString(),
         sortBy: sortBy,
@@ -157,7 +159,8 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
 
       const res = await fetch(`/api/council/dossiers?${params.toString()}`, {
         headers: {
-          "x-portal-tenant": portalConfig.tenantId,
+          "x-portal-tenant": effectiveMuni,
+          "x-municipality": effectiveMuni,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       });
@@ -180,7 +183,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, sortBy, search, selectedCategory, hasFilesOnly]);
+  }, [effectiveMuni, page, pageSize, sortBy, search, selectedCategory, hasFilesOnly]);
 
   useEffect(() => {
     fetchDossiers();
