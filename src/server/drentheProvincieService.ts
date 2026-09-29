@@ -1,7 +1,6 @@
 import fs from "fs";
 import path from "path";
 import dns from "node:dns";
-import { GoogleGenAI } from "@google/genai";
 import {
   sanitizeCleanText,
   isCorruptOrHtmlGarbage,
@@ -446,153 +445,13 @@ export async function classifyDrentheDocument(
     }
   }
 
-  // TRAP 2: Regelgebaseerde Provinciale Classificatie (Direct, 0ms latency, geen quota-verbruik)
-  const isProvinciebreedRule =
-    titleLower.includes("agenda") ||
-    titleLower.includes("besluitenlijst") ||
-    titleLower.includes("toezeggingen") ||
-    titleLower.includes("ingekomen") ||
-    titleLower.includes("brief") ||
-    titleLower.includes("memo") ||
-    titleLower.includes("notitie") ||
-    titleLower.includes("mededeling") ||
-    titleLower.includes("zienswijze") ||
-    titleLower.includes("vragen") ||
-    titleLower.includes("verslag") ||
-    titleLower.includes("presentatie") ||
-    titleLower.includes("spreektijden") ||
-    titleLower.includes("lijst") ||
-    titleLower.includes("voorstel") ||
-    titleLower.includes("besluit") ||
-    titleLower.includes("evaluatie") ||
-    titleLower.includes("rapport") ||
-    titleLower.includes("advies") ||
-    titleLower.includes("plan") ||
-    titleLower.includes("statenstuk") ||
-    titleLower.includes("verordening") ||
-    titleLower.includes("omgevingsvisie") ||
-    titleLower.includes("omgevingsverordening") ||
-    titleLower.includes("pov") ||
-    titleLower.includes("begroting") ||
-    titleLower.includes("jaarverslag") ||
-    titleLower.includes("jaarrekening") ||
-    titleLower.includes("kadernota") ||
-    titleLower.includes("najaarsnota") ||
-    titleLower.includes("voorjaarsnota") ||
-    titleLower.includes("motie") ||
-    titleLower.includes("amendement") ||
-    titleLower.includes("interpellatie") ||
-    titleLower.includes("beleid") ||
-    titleLower.includes("coalitieakkoord") ||
-    titleLower.includes("burgerberaad") ||
-    titleLower.includes("luchthaven") ||
-    titleLower.includes("airport") ||
-    titleLower.includes("eelde") ||
-    titleLower.includes("lelylijn") ||
-    titleLower.includes("nedersaksenlijn") ||
-    titleLower.includes("vechtdal") ||
-    titleLower.includes("wolf") ||
-    titleLower.includes("wolven") ||
-    titleLower.includes("fauna") ||
-    titleLower.includes("stikstof") ||
-    titleLower.includes("drinkwater") ||
-    titleLower.includes("monumentenzorg") ||
-    titleLower.includes("erfgoed") ||
-    titleLower.includes("landbouw") ||
-    titleLower.includes("platteland") ||
-    titleLower.includes("natuur") ||
-    titleLower.includes("woondeal") ||
-    titleLower.includes("woningbouw") ||
-    titleLower.includes("energietransitie") ||
-    titleLower.includes("res") ||
-    titleLower.includes("provincie") ||
-    titleLower.includes("drenthe") ||
-    titleLower.includes("drents") ||
-    titleLower.includes("statencommissie") ||
-    titleLower.includes("provinciale staten");
-
-  if (isProvinciebreedRule) {
-    return {
-      scope: "Provinciebreed",
-      methode: "Regelgebaseerde Provinciale Taxonomy",
-      reden: "Thematisch provinciaal beleid, statenstuk of parlementair document",
-      opslaan: true,
-    };
-  }
-
-  // TRAP 3: Gemini Flash Analyse (voor resterende niet-direct geclassificeerde documenten, max 5s timeout)
-  const geminiApiKey = process.env.GEMINI_API_KEY;
-  if (geminiApiKey && !geminiQuotaExhausted) {
-    try {
-      const aiClient = new GoogleGenAI({ apiKey: geminiApiKey });
-      const promptText = `Je bent een bestuurskundige analist voor de Provincie Drenthe en de Gemeente Hoogeveen.
-Beoordeel het volgende document van het Drents Parlement (Provinciale Staten of Statencommissie).
-
-Documenttitel: "${cleanTitle}"
-Vergadering: "${meetingTitel || "Statencommissie / Provinciale Staten Drenthe"}"
-${introText ? `Eerste tekstfragment uit het document:\n"${introText.slice(0, 1500)}"` : ""}
-
-Classificeer het document in exact één van de volgende drie categorieën:
-1. "Lokaal - Hoogeveen" (Directe impact of specifiek betrekking op Hoogeveen, Hollandscheveld, Elim, Pesse, Noordscheschut, Bentinckspark, Buitenvaart, Drents Archief of Zuid-Drenthe)
-2. "Provinciebreed" (Verordeningen, POV / Omgevingsvisie Drenthe, Woondeals Drenthe, Provinciale begroting, Natuurbeheerplan, Wolvenaanpak, Drinkwaterbescherming, Monumentenzorg Drenthe, Landbouw- en plattelandsinitiatieven, Lelylijn, Nedersaksenlijn, N33/A28, Vechtdallijnen, mobiliteit Drenthe)
-3. "Lokaal - Externe Gemeente" (Uitsluitend lokaal belang voor een andere individuele gemeente buiten Hoogeveen zonder provinciaal of Hoogeveens effect)
-
-Geef antwoord in strikt JSON-formaat:
-{
-  "categorie": "Lokaal - Hoogeveen" | "Provinciebreed" | "Lokaal - Externe Gemeente",
-  "reden": "Korte toelichting van 1 zin waarom dit relevant of niet relevant is"
-}`;
-
-      const aiPromise = aiClient.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: [{ role: "user", parts: [{ text: promptText }] }],
-        config: {
-          responseMimeType: "application/json",
-          temperature: 0.1,
-        },
-      });
-
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("AI timeout na 5s")), 5000)
-      );
-
-      const res = await Promise.race([aiPromise, timeoutPromise]);
-
-      const responseText = res.text?.trim() || "{}";
-      const cleanJson = responseText.replace(/^```json\s*/, "").replace(/\s*```$/, "");
-      const aiOordeel = JSON.parse(cleanJson);
-
-      let assignedScope: "Lokaal - Hoogeveen" | "Provinciebreed" | "Lokaal - Externe Gemeente" = "Provinciebreed";
-      if (aiOordeel.categorie === "Lokaal - Hoogeveen") {
-        assignedScope = "Lokaal - Hoogeveen";
-      } else if (aiOordeel.categorie === "Lokaal - Externe Gemeente") {
-        assignedScope = "Lokaal - Externe Gemeente";
-      }
-
-      const shouldSave = assignedScope === "Lokaal - Hoogeveen" || assignedScope === "Provinciebreed";
-
-      return {
-        scope: assignedScope,
-        methode: "Gemini 2.5 Flash AI",
-        reden: aiOordeel.reden || "AI classificatie: relevant voor provincie Drenthe / Hoogeveen",
-        opslaan: shouldSave,
-      };
-    } catch (aiErr: any) {
-      const errMsg = String(aiErr?.message || aiErr);
-      if (errMsg.includes("resource_exhausted") || errMsg.includes("quota") || errMsg.includes("429") || errMsg.includes("timeout")) {
-        geminiQuotaExhausted = true;
-        console.warn("[DRENTHE AI]: Gemini rate-limit/timeout bereikt. Direct overgeschakeld naar snelle taxonomische classificatie.");
-      } else {
-        console.warn("[DRENTHE AI CLASSIFIER WARN]:", errMsg);
-      }
-    }
-  }
-
-  // TRAP 4: Fallback vuistregel
+  // TRAP 2: Directe Provinciale Classificatie (0ms latency, 100% deterministisch, geen externe API-afhankelijkheid)
+  // Alle officiële documenten op de agenda van het Drents Parlement (Provinciale Staten en Statencommissies)
+  // die niet specifiek een externe individuele gemeente betreffen, zijn van algemeen provinciaal belang voor Drenthe en Hoogeveen.
   return {
     scope: "Provinciebreed",
-    methode: "Regelgebaseerde Fallback",
-    reden: "Statencommissie / Provinciale Staten document van algemeen provinciaal belang",
+    methode: "Regelgebaseerde Provinciale Taxonomy",
+    reden: "Officieel parlementair document van algemeen provinciaal belang voor Drenthe",
     opslaan: true,
   };
 }
@@ -910,15 +769,17 @@ export async function startDrentheSync(years: number[] = [2021, 2022, 2023, 2024
                   addLog(`[Genegeerd - ${classification.scope}] ${item.title.slice(0, 50)}...`, "info");
                 }
 
-                // Immediate incremental save so documents and counters appear live in UI
-                saveDrentheMetadata(allDocsNow);
-                saveSyncStateToDisk();
+                // Incremental save every 10 documents to keep UI counters fresh without choking disk I/O
+                if (syncState.scannedDocuments % 10 === 0) {
+                  saveDrentheMetadata(allDocsNow);
+                  saveSyncStateToDisk();
+                }
               } catch (docErr: any) {
                 console.warn(`[DRENTHE DOC WARN] Fout bij document ${item.title}:`, docErr?.message || docErr);
               }
             }
 
-            // Save state periodically to disk and persist metadata
+            // Save state and metadata to disk after completing each meeting
             saveDrentheMetadata(Array.from(existingMap.values()));
             saveSyncStateToDisk();
           }
