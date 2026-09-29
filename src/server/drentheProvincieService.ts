@@ -451,7 +451,23 @@ export async function classifyDrentheDocument(
     titleLower.includes("agenda") ||
     titleLower.includes("besluitenlijst") ||
     titleLower.includes("toezeggingen") ||
-    titleLower.includes("ingekomen stukken") ||
+    titleLower.includes("ingekomen") ||
+    titleLower.includes("brief") ||
+    titleLower.includes("memo") ||
+    titleLower.includes("notitie") ||
+    titleLower.includes("mededeling") ||
+    titleLower.includes("zienswijze") ||
+    titleLower.includes("vragen") ||
+    titleLower.includes("verslag") ||
+    titleLower.includes("presentatie") ||
+    titleLower.includes("spreektijden") ||
+    titleLower.includes("lijst") ||
+    titleLower.includes("voorstel") ||
+    titleLower.includes("besluit") ||
+    titleLower.includes("evaluatie") ||
+    titleLower.includes("rapport") ||
+    titleLower.includes("advies") ||
+    titleLower.includes("plan") ||
     titleLower.includes("statenstuk") ||
     titleLower.includes("verordening") ||
     titleLower.includes("omgevingsvisie") ||
@@ -467,6 +483,11 @@ export async function classifyDrentheDocument(
     titleLower.includes("amendement") ||
     titleLower.includes("interpellatie") ||
     titleLower.includes("beleid") ||
+    titleLower.includes("coalitieakkoord") ||
+    titleLower.includes("burgerberaad") ||
+    titleLower.includes("luchthaven") ||
+    titleLower.includes("airport") ||
+    titleLower.includes("eelde") ||
     titleLower.includes("lelylijn") ||
     titleLower.includes("nedersaksenlijn") ||
     titleLower.includes("vechtdal") ||
@@ -499,7 +520,7 @@ export async function classifyDrentheDocument(
     };
   }
 
-  // TRAP 3: Gemini Flash Analyse (voor resterende niet-direct geclassificeerde documenten, quota-veilig)
+  // TRAP 3: Gemini Flash Analyse (voor resterende niet-direct geclassificeerde documenten, max 5s timeout)
   const geminiApiKey = process.env.GEMINI_API_KEY;
   if (geminiApiKey && !geminiQuotaExhausted) {
     try {
@@ -522,7 +543,7 @@ Geef antwoord in strikt JSON-formaat:
   "reden": "Korte toelichting van 1 zin waarom dit relevant of niet relevant is"
 }`;
 
-      const res = await aiClient.models.generateContent({
+      const aiPromise = aiClient.models.generateContent({
         model: "gemini-2.5-flash",
         contents: [{ role: "user", parts: [{ text: promptText }] }],
         config: {
@@ -530,6 +551,12 @@ Geef antwoord in strikt JSON-formaat:
           temperature: 0.1,
         },
       });
+
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("AI timeout na 5s")), 5000)
+      );
+
+      const res = await Promise.race([aiPromise, timeoutPromise]);
 
       const responseText = res.text?.trim() || "{}";
       const cleanJson = responseText.replace(/^```json\s*/, "").replace(/\s*```$/, "");
@@ -552,9 +579,9 @@ Geef antwoord in strikt JSON-formaat:
       };
     } catch (aiErr: any) {
       const errMsg = String(aiErr?.message || aiErr);
-      if (errMsg.includes("resource_exhausted") || errMsg.includes("quota") || errMsg.includes("429")) {
+      if (errMsg.includes("resource_exhausted") || errMsg.includes("quota") || errMsg.includes("429") || errMsg.includes("timeout")) {
         geminiQuotaExhausted = true;
-        console.warn("[DRENTHE AI]: Gemini quota bereikt. Automatisch overgeschakeld op regelgebaseerde classificatie.");
+        console.warn("[DRENTHE AI]: Gemini rate-limit/timeout bereikt. Direct overgeschakeld naar snelle taxonomische classificatie.");
       } else {
         console.warn("[DRENTHE AI CLASSIFIER WARN]:", errMsg);
       }
@@ -801,6 +828,11 @@ export async function startDrentheSync(years: number[] = [2021, 2022, 2023, 2024
             }
 
             syncState.totalDocumentsFound += foundInMeeting.length;
+            if (foundInMeeting.length > 0) {
+              addLog(`[${organ}] Vergadering ${meetingDate}: ${foundInMeeting.length} documenten gevonden`, "info");
+            } else {
+              addLog(`[${organ}] Vergadering ${meetingDate}: Geen documenten aangetroffen (overgeslagen)`, "info");
+            }
 
             for (const item of foundInMeeting) {
               if (abortController?.signal.aborted) break;

@@ -125,8 +125,8 @@ export const DrentheProvincieManager: React.FC<DrentheProvincieManagerProps> = (
     }
   }, [token]);
 
-  const fetchDocuments = useCallback(async () => {
-    setIsLoadingDocs(true);
+  const fetchDocuments = useCallback(async (isSilent = false) => {
+    if (!isSilent) setIsLoadingDocs(true);
     try {
       const params = new URLSearchParams();
       if (scopeFilter !== "all") params.set("scope", scopeFilter);
@@ -144,21 +144,21 @@ export const DrentheProvincieManager: React.FC<DrentheProvincieManagerProps> = (
     } catch {
       // ignore
     } finally {
-      setIsLoadingDocs(false);
+      if (!isSilent) setIsLoadingDocs(false);
     }
   }, [token, scopeFilter, yearFilter, searchQuery]);
 
   useEffect(() => {
     fetchStatus();
-    fetchDocuments();
+    fetchDocuments(false);
 
     let docPollCounter = 0;
     pollIntervalRef.current = setInterval(() => {
       fetchStatus();
       docPollCounter++;
-      // Live reload documents list every 5 seconds during active sync
+      // Live reload documents list every 5 seconds during active sync silently without blinking the table
       if (docPollCounter % 2 === 0) {
-        fetchDocuments();
+        fetchDocuments(true);
       }
     }, 2500);
 
@@ -167,10 +167,10 @@ export const DrentheProvincieManager: React.FC<DrentheProvincieManagerProps> = (
     };
   }, [fetchStatus, fetchDocuments]);
 
-  // When sync completes or status changes to not running, re-fetch documents
+  // When sync completes or status changes to not running, re-fetch documents silently
   useEffect(() => {
     if (status && !status.isRunning) {
-      fetchDocuments();
+      fetchDocuments(true);
     }
   }, [status?.isRunning, fetchDocuments]);
 
