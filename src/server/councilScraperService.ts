@@ -3,6 +3,7 @@ import { CouncilAgendaTopic, CouncilDocument, CouncilTopicDiffAlert } from "../t
 import { getDbFromSqlite, saveDbToSqlite, initDatabase, persistSqlite } from "./sqliteDatabase.js";
 import { notifyDocumentDiffDetected } from "./pushService.js";
 import { enrichTopicWithStandpunten } from "../lib/standpuntMatcher.js";
+import { invalidateDossierCache, distributeSteenwijkerlandDossiers } from "./dossierManager.js";
 import {
   validateIbabsHtmlContract,
   isScraperCircuitOpen,
@@ -180,56 +181,63 @@ export async function scrapeCouncilAgendas(
 
   const scrapedMeetingLinks: { url: string; dateDisplay: string; year: number }[] = [];
 
+  const AGENDA_TYPES = [
+    { id: "100000059", name: "Politieke Markt" },
+    { id: "100000005", name: "Raadsvergadering" },
+  ];
+
   for (const year of yearsToScrape) {
-    try {
-      const url = `${AGENDAS_API_TEMPLATE}${year}`;
-      console.log(`[RAADSPANEEL SCRAPER] Ophalen agenda index voor jaar ${year} van ${url}`);
-      
-      const res = await fetch(url, {
-        signal: AbortSignal.timeout(15000),
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/1.0",
-          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        },
-      });
-
-      if (!res.ok) {
-        console.warn(`[RAADSPANEEL SCRAPER] Kon index voor ${year} niet ophalen (status: ${res.status})`);
-        continue;
-      }
-
-      const html = await res.text();
-      
-      // Contract check on index response
-      const contract = validateIbabsHtmlContract(html, url);
-      if (!contract.isValid) {
-        console.warn(`[RAADSPANEEL SCRAPER] iBabs contract mismatch op index ${url}: ${contract.reason}`);
-        continue;
-      }
-
-      const $ = cheerio.load(html);
-
-      // Search for links inside .agenda-link or <a href*="/Agenda/Index/">
-      $("li.agenda-link a, a[href*='/Agenda/Index/']").each((_, el) => {
-        const href = $(el).attr("href");
-        if (!href) return;
+    for (const agType of AGENDA_TYPES) {
+      try {
+        const url = `${BASE_URL}/Agenda/RetrieveAgendasForYear?agendatypeId=${agType.id}&year=${year}`;
+        console.log(`[RAADSPANEEL SCRAPER] Ophalen agenda index voor ${agType.name} (${year}) van ${url}`);
         
-        const fullUrl = href.startsWith("http") ? href : `${BASE_URL}${href.startsWith("/") ? "" : "/"}${href}`;
-        // Extract meeting date text
-        const titleText = $(el).find(".agenda-link-title").text() || $(el).text() || "";
-        const cleanTitle = titleText.replace(/\s+/g, " ").trim();
-        
-        if (!scrapedMeetingLinks.some((m) => m.url === fullUrl)) {
-          scrapedMeetingLinks.push({
-            url: fullUrl,
-            dateDisplay: cleanTitle,
-            year,
-          });
+        const res = await fetch(url, {
+          signal: AbortSignal.timeout(15000),
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/1.0",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          },
+        });
+
+        if (!res.ok) {
+          console.warn(`[RAADSPANEEL SCRAPER] Kon index voor ${agType.name} ${year} niet ophalen (status: ${res.status})`);
+          continue;
         }
-      });
-    } catch (err: unknown) {
-      const error = err as Error;
-      console.error(`[RAADSPANEEL SCRAPER] Fout bij ophalen index ${year}:`, error?.message);
+
+        const html = await res.text();
+        
+        // Contract check on index response
+        const contract = validateIbabsHtmlContract(html, url);
+        if (!contract.isValid) {
+          console.warn(`[RAADSPANEEL SCRAPER] iBabs contract mismatch op index ${url}: ${contract.reason}`);
+          continue;
+        }
+
+        const $ = cheerio.load(html);
+
+        // Search for links inside .agenda-link or <a href*="/Agenda/Index/">
+        $("li.agenda-link a, a[href*='/Agenda/Index/']").each((_, el) => {
+          const href = $(el).attr("href");
+          if (!href) return;
+          
+          const fullUrl = href.startsWith("http") ? href : `${BASE_URL}${href.startsWith("/") ? "" : "/"}${href}`;
+          // Extract meeting date text
+          const titleText = $(el).find(".agenda-link-title").text() || $(el).text() || "";
+          const cleanTitle = titleText.replace(/\s+/g, " ").trim();
+          
+          if (!scrapedMeetingLinks.some((m) => m.url === fullUrl)) {
+            scrapedMeetingLinks.push({
+              url: fullUrl,
+              dateDisplay: cleanTitle,
+              year,
+            });
+          }
+        });
+      } catch (err: unknown) {
+        const error = err as Error;
+        console.error(`[RAADSPANEEL SCRAPER] Fout bij ophalen index ${agType.name} ${year}:`, error?.message);
+      }
     }
   }
 
@@ -648,6 +656,14 @@ export async function scrapeCouncilAgendas(
 
   saveDbToSqlite(db);
   console.log(`[RAADSPANEEL SCRAPER] Klaar! ${finalList.length} agendapunten opgeslagen (${bespreekstukkenFound} bespreekstukken, ${archivedCount} gearchiveerd). Diff-alerts: ${totalDiffsDetected} nieuw, ${totalLateDumpsDetected} late dumps.`);
+
+  // Directe automatische synchronisatie en verdeling over de dossiers en subdossiers
+  try {
+    distributeSteenwijkerlandDossiers();
+    console.log("[RAADSPANEEL SCRAPER] Dossierverdeling over sub(dossiers) direct gesynchroniseerd.");
+  } catch (distErr: any) {
+    console.warn("[RAADSPANEEL SCRAPER] Auto-dossierverdeling fout:", distErr?.message);
+  }
 
   // Schedule next watchdog diff-check run adaptively
   scheduleNextWatchdogScrape(adaptive.intervalMs);

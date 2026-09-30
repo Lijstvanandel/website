@@ -291,23 +291,28 @@ export async function distributeHoogeveenDossiers(options: { force?: boolean; li
 
     // Create or find Subdossier for specific issue if it has multiple documents
     const subTitle = topicTitle.replace(/^\d+[.\s-]+/, "").trim();
-    const subSlug = slugify(`hg-${subTitle}`).slice(0, 60);
+    const subSlug = slugify(subTitle);
 
-    let subDossier = parentDossier.subdossiers?.find((sd) => sd.slug === subSlug);
-    if (!subDossier && subTitle.length >= 5) {
+    let subDossier = parentDossier.subdossiers?.find((sd) => sd.slug === subSlug || sd.title.toLowerCase() === subTitle.toLowerCase());
+    if (!subDossier && subTitle.length >= 3) {
       subDossier = {
-        id: `hg_sub_${subSlug}`,
+        id: subSlug,
         slug: subSlug,
         title: subTitle,
+        hoofddossier,
         description: topic.description || `Dossierstukken en besluitvorming rondom ${subTitle}.`,
         category: hoofddossier,
         municipality: "hoogeveen",
         status: "actief",
+        documentCount: 0,
         documentsCount: 0,
+        uploadedCount: 0,
+        dateRange: { start: topic.meetingDate || null, end: topic.meetingDate || null },
         documents: [],
         wijken: detectedWijken,
         updatedAt: topic.meetingDate || new Date().toISOString(),
-        tags: ["Hoogeveen", ...detectedWijken],
+        tags: ["Hoogeveen", hoofddossier, ...detectedWijken],
+        thumbnail: getSubdossierThumbnail(subTitle, hoofddossier),
       };
       parentDossier.subdossiers = parentDossier.subdossiers || [];
       parentDossier.subdossiers.push(subDossier);
@@ -337,7 +342,11 @@ export async function distributeHoogeveenDossiers(options: { force?: boolean; li
 
       const isLocalCached = !!foundPath;
       const localPublicUrl = `/uploads/documents/hoogeveen/${expectedFilename}`;
-      const finalDocUrl = isLocalCached ? localPublicUrl : doc.url;
+      const hasRemoteUrl = Boolean(doc.url && typeof doc.url === "string" && doc.url.startsWith("http"));
+      const proxyUrl = hasRemoteUrl
+        ? `/api/council/document-proxy?url=${encodeURIComponent(doc.url)}&title=${encodeURIComponent(doc.title || expectedFilename)}&filename=${encodeURIComponent(expectedFilename)}`
+        : doc.url;
+      const finalDocUrl = isLocalCached ? localPublicUrl : proxyUrl;
 
       const dDoc: any = {
         id: `hg_doc_${doc.id}`,
@@ -361,7 +370,7 @@ export async function distributeHoogeveenDossiers(options: { force?: boolean; li
         municipality: "hoogeveen",
         source: "NotuBiz Hoogeveen",
         vergadering: topic.meetingTitle,
-        fileExists: isLocalCached,
+        fileExists: isLocalCached || hasRemoteUrl,
         entiteiten: detectedWijken,
         relaties: [],
       };
@@ -372,7 +381,9 @@ export async function distributeHoogeveenDossiers(options: { force?: boolean; li
       if (subDossier) {
         subDossier.documents = subDossier.documents || [];
         subDossier.documents.push(dDoc);
+        subDossier.documentCount = subDossier.documents.length;
         subDossier.documentsCount = subDossier.documents.length;
+        subDossier.uploadedCount = subDossier.documents.filter((d: any) => d.fileExists).length;
       }
 
       if (activeHoogeveenProgress.lastResults.length < 50) {

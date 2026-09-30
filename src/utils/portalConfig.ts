@@ -40,7 +40,9 @@ export function getPortalConfig(currentPathname?: string, currentUser?: any): Po
     try {
       const stored = localStorage.getItem("auth_user") || sessionStorage.getItem("auth_user");
       if (stored) activeUser = JSON.parse(stored);
-    } catch {}
+    } catch (_err) {
+      // ignore JSON parse error
+    }
   }
 
   // Explicit Steenwijkerland party & neighborhood routes where portal mode is NEVER active

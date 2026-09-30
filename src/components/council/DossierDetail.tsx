@@ -573,12 +573,23 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
     let list = dossier.documents;
 
     if (selectedSubdossier) {
-      const target = selectedSubdossier.toLowerCase();
-      list = list.filter(
-        (d) =>
-          (d.subdossier && d.subdossier.toLowerCase() === target) ||
-          slugify(d.subdossier || "") === target
-      );
+      const target = selectedSubdossier.toLowerCase().trim();
+      const targetSlug = slugify(selectedSubdossier);
+      const targetClean = targetSlug.replace(/^hg-/, "");
+      list = list.filter((d) => {
+        if (!d.subdossier) return false;
+        const dSub = d.subdossier.toLowerCase().trim();
+        const dSlug = slugify(d.subdossier);
+        const dClean = dSlug.replace(/^hg-/, "");
+        return (
+          dSub === target ||
+          dSlug === target ||
+          dSlug === targetSlug ||
+          dClean === targetClean ||
+          dSub.includes(target) ||
+          target.includes(dSub)
+        );
+      });
     }
 
     if (selectedWijkFilter) {

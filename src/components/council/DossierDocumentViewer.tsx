@@ -117,7 +117,15 @@ export const DossierDocumentViewer: React.FC<DossierDocumentViewerProps> = ({
     }
   };
 
-  const fileUrl = document.fileUrl || `/uploads/documents/${encodeURIComponent(document.bestandsnaam)}`;
+  const rawTarget = document.fileUrl || (document as any).url;
+  const isAccessible = Boolean(
+    document.fileExists ||
+    rawTarget ||
+    (document.bestandsnaam && !document.bestandsnaam.includes("onbekend"))
+  );
+  const fileUrl = rawTarget?.startsWith("http") && !rawTarget.includes("/api/council/document-proxy")
+    ? `/api/council/document-proxy?url=${encodeURIComponent(rawTarget)}&title=${encodeURIComponent(document.titel)}&filename=${encodeURIComponent(document.bestandsnaam)}`
+    : (rawTarget || `/uploads/documents/${encodeURIComponent(document.bestandsnaam)}`);
 
   return (
     <div
@@ -149,7 +157,7 @@ export const DossierDocumentViewer: React.FC<DossierDocumentViewerProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            {document.fileExists && (
+            {isAccessible && (
               <>
                 <a
                   href={fileUrl}
@@ -215,7 +223,7 @@ export const DossierDocumentViewer: React.FC<DossierDocumentViewerProps> = ({
         <div className="flex-1 flex flex-col md:flex-row min-h-0 bg-background overflow-hidden">
           {/* Main Viewer Area */}
           <div className="flex-1 h-full flex flex-col bg-muted/20 relative min-h-0">
-            {document.fileExists ? (
+            {isAccessible ? (
               <iframe
                 id="dossier-pdf-iframe"
                 src={`${fileUrl}#page=${initialPage || 1}&toolbar=1&navpanes=0`}

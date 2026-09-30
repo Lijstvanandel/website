@@ -352,6 +352,7 @@ export async function getDocumentContent(filename: string): Promise<string> {
 export function normalizeForSearch(text: string): string {
   return (text || "")
     .toLowerCase()
+    .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, "-") // normalize unicode dashes & hyphens
     .replace(/\s+/g, " ")
     .trim();
 }

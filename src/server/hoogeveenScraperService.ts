@@ -5,6 +5,7 @@ import { getDbFromSqlite, saveDbToSqlite, initDatabase, persistSqlite } from "./
 import { notifyDocumentDiffDetected } from "./pushService.js";
 import { detectHoogeveenWijken } from "./hoogeveenTaxonomy.js";
 import { sanitizeCleanText, isCorruptOrHtmlGarbage } from "./scraperContractValidator.js";
+import { distributeHoogeveenDossiers } from "./hoogeveenDossierManager.js";
 
 const HOOGEVEEN_ORG_ID = "572";
 const NOTUBIZ_API_BASE = "https://api.notubiz.nl";
@@ -578,6 +579,14 @@ export async function scrapeCouncilAgendasHoogeveen(yearsToScrape: number[] = [2
   persistSqlite();
 
   console.log(`[HOOGEVEEN SCRAPER] Voltooid! ${hoogeveenTopicsList.length} Hoogeveen agendapunten opgeslagen (${bespreekstukkenFound} bespreekstukken).`);
+
+  // Directe automatische synchronisatie en verdeling over de Hoogeveense (sub)dossiers
+  try {
+    await distributeHoogeveenDossiers();
+    console.log("[HOOGEVEEN SCRAPER] Dossierverdeling over sub(dossiers) direct gesynchroniseerd.");
+  } catch (distErr: any) {
+    console.warn("[HOOGEVEEN SCRAPER] Auto-dossierverdeling waarschuwing:", distErr?.message);
+  }
 
   // Automatically start background download for any new physical PDF files
   setTimeout(() => {

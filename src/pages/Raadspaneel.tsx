@@ -224,7 +224,9 @@ export default function Raadspaneel() {
       if (q === "steenwijkerland" || q === "swl") return "steenwijkerland";
       const stored = localStorage.getItem("raadspaneel_active_municipality");
       if (stored === "hoogeveen" || stored === "steenwijkerland") return stored as any;
-    } catch {}
+    } catch (_err) {
+      // ignore localStorage errors
+    }
     return portalConfig.isPortalMode ? "hoogeveen" : "steenwijkerland";
   });
 
@@ -245,7 +247,9 @@ export default function Raadspaneel() {
     try {
       localStorage.setItem("raadspaneel_active_municipality", targetMuni);
       localStorage.setItem("portal_tenant", targetMuni);
-    } catch {}
+    } catch (_err) {
+      // ignore localStorage errors
+    }
     setSelectedTopicId(null);
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -600,6 +604,33 @@ export default function Raadspaneel() {
       toast.error(err.message || "Fout bij scrapen");
     } finally {
       setIsScraping(false);
+    }
+  };
+
+  const [isSyncingDossiers, setIsSyncingDossiers] = useState(false);
+
+  // Trigger manual dossier synchronization
+  const handleTriggerSyncDossiers = async () => {
+    if (!token) return;
+    setIsSyncingDossiers(true);
+    try {
+      const res = await fetch("/api/council/sync-dossiers", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "x-portal-tenant": portalConfig.tenantId,
+          "x-municipality": portalConfig.tenantId,
+        },
+      });
+      const data = await parseApiResponse(res);
+      if (!res.ok) throw new Error(data.error || "Synchronisatie mislukt");
+      toast.success(data.message || "Dossiers succesvol gesynchroniseerd!");
+      await fetchCouncilData(true);
+    } catch (err: any) {
+      toast.error(err.message || "Fout bij synchroniseren van dossiers");
+    } finally {
+      setIsSyncingDossiers(false);
     }
   };
 
@@ -1351,6 +1382,16 @@ export default function Raadspaneel() {
                 >
                   <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isScraping ? "animate-spin" : ""}`} />
                   {isScraping ? "Scrapen..." : "Vergaderstukken Nu Ophalen"}
+                </Button>
+                <Button
+                  onClick={handleTriggerSyncDossiers}
+                  disabled={isSyncingDossiers || isScraping || isClearing}
+                  variant="outline"
+                  className="border-emerald-600/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 text-xs font-semibold h-9 rounded-xl shadow-xs cursor-pointer"
+                  title="Verdeel alle gescrapede agenda- en bespreekstukken direct over de sub(dossiers)"
+                >
+                  <Layers className={`w-3.5 h-3.5 mr-1.5 ${isSyncingDossiers ? "animate-spin" : ""}`} />
+                  {isSyncingDossiers ? "Synchroniseren..." : "Dossiers Synchroniseren"}
                 </Button>
                 {portalConfig.isPortalMode && (
                   <>

@@ -142,6 +142,8 @@ import {
   syncPhysicalFilesystemDocuments,
   generateMasterMetadataCsv,
   getRawMetadata,
+  distributeSteenwijkerlandDossiers,
+  invalidateDossierCache,
 } from "./src/server/dossierManager.js";
 import {
   compileSupportDossierForTopic,
@@ -2415,6 +2417,23 @@ async function startServer() {
     next();
   });
 
+  // Health and Version Check Endpoints for Platform and Dev Server Watchdog
+  app.get("/api/health", (_req: any, res: any) => {
+    res.status(200).json({ status: "healthy", timestamp: new Date().toISOString() });
+  });
+
+  app.get("/api/version", (_req: any, res: any) => {
+    let versionData: any = { status: "ok", version: "1.0.0", timestamp: new Date().toISOString() };
+    try {
+      const verPath = path.join(process.cwd(), "dist", "version.json");
+      if (fs.existsSync(verPath)) {
+        versionData = { ...versionData, ...JSON.parse(fs.readFileSync(verPath, "utf-8")) };
+      }
+    } catch (_e) {
+      // ignore version read error
+    }
+    res.status(200).json(versionData);
+  });
 
   // Guaranteed document streaming endpoint that Nginx static regex will NEVER intercept (bypasses .pdf static regex)
   // Protected with strict sandbox jail against LFI, SSRF, and sensitive file traversal
@@ -11154,12 +11173,18 @@ Sitemap: ${baseUrl}/sitemap.xml
         async (bgJob) => {
           globalBackgroundJobQueue.updateProgress(bgJob.id, 25, isHoogeveen ? "Ophalen vergaderingen Hoogeveen (NotuBiz)..." : "Ophalen vergaderingen van iBabs...");
           const summary = isHoogeveen ? await scrapeCouncilAgendasHoogeveen([2025, 2026]) : await scrapeCouncilAgendas(undefined, { isManual: true });
-          globalBackgroundJobQueue.updateProgress(bgJob.id, 80, isHoogeveen ? "Dossierverdeling Hoogeveen uitvoeren..." : "Topic categorisatie...");
+          globalBackgroundJobQueue.updateProgress(bgJob.id, 80, isHoogeveen ? "Dossierverdeling Hoogeveen uitvoeren..." : "Topic categorisatie & dossierverdeling...");
           if (isHoogeveen) {
             try {
               await distributeHoogeveenDossiers();
             } catch (dErr: any) {
               console.warn("[HOOGEVEEN DOSSIERVERDELING WARN]:", dErr?.message);
+            }
+          } else {
+            try {
+              distributeSteenwijkerlandDossiers();
+            } catch (dErr: any) {
+              console.warn("[STEENWIJKERLAND DOSSIERVERDELING WARN]:", dErr?.message);
             }
           }
           globalBackgroundJobQueue.updateProgress(bgJob.id, 100, "Scraping en verdeling succesvol afgerond");
@@ -11185,11 +11210,47 @@ Sitemap: ${baseUrl}/sitemap.xml
         } catch (dErr: any) {
           console.warn("[HOOGEVEEN AUTO-DISTRIBUTE]:", dErr?.message);
         }
+      } else {
+        try {
+          distributeSteenwijkerlandDossiers();
+        } catch (dErr: any) {
+          console.warn("[STEENWIJKERLAND AUTO-DISTRIBUTE]:", dErr?.message);
+        }
       }
-      return res.json({ success: true, message: `Agenda's en documenten voor ${isHoogeveen ? "Hoogeveen" : "Steenwijkerland"} succesvol gescraped!`, summary, jobId: job.id });
+      return res.json({ success: true, message: `Agenda's en documenten voor ${isHoogeveen ? "Hoogeveen" : "Steenwijkerland"} succesvol gescraped en verdeeld over dossiers!`, summary, jobId: job.id });
     } catch (err: any) {
       console.error("[RAADSPANEEL SCRAPER FOUT]", err);
       return res.status(500).json({ error: "Fout bij scrapen van vergaderstukken: " + err.message });
+    }
+  });
+
+  // Dedicated Unified Dossier Synchronizer Endpoint
+  app.post("/api/council/sync-dossiers", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
+    res.setHeader("Content-Type", "application/json");
+    try {
+      const targetMunicipality = resolveRequestMunicipality(req);
+      const isHoogeveen = targetMunicipality === "hoogeveen";
+
+      if (isHoogeveen) {
+        const distResult = await distributeHoogeveenDossiers({ force: true });
+        return res.json({
+          success: true,
+          message: `Succesvol gesynchroniseerd: ${distResult.documentsDistributedCount} raadsdocumenten verdeeld over ${distResult.dossiersCount} Hoogeveense dossiers en subdossiers!`,
+          municipality: "hoogeveen",
+          result: distResult,
+        });
+      } else {
+        const distResult = distributeSteenwijkerlandDossiers();
+        return res.json({
+          success: true,
+          message: `Succesvol gesynchroniseerd: ${distResult.topicsDistributedCount} agendapunten en ${distResult.documentsDistributedCount} bespreekstukken verdeeld over ${distResult.dossiersCount} Steenwijkerlandse dossiers en subdossiers!`,
+          municipality: "steenwijkerland",
+          result: distResult,
+        });
+      }
+    } catch (err: any) {
+      console.error("[SYNC DOSSIERS ERROR]:", err);
+      return res.status(500).json({ error: "Fout bij synchroniseren met dossiers: " + err.message });
     }
   });
 

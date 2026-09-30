@@ -279,6 +279,31 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
   const [isBulkStatusDismissed, setIsBulkStatusDismissed] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [copiedAllLogs, setCopiedAllLogs] = useState(false);
+  const [isSyncingAgenda, setIsSyncingAgenda] = useState(false);
+
+  const handleSyncAgendaTopics = async () => {
+    setIsSyncingAgenda(true);
+    try {
+      const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
+      const res = await fetch("/api/council/sync-dossiers", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-portal-tenant": effectiveMuni,
+          "x-municipality": effectiveMuni,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Synchronisatie mislukt");
+      toast.success(data.message || "Agendastukken succesvol gesynchroniseerd met dossiers!");
+      await fetchDossiers();
+    } catch (err: any) {
+      toast.error(err.message || "Fout bij synchroniseren");
+    } finally {
+      setIsSyncingAgenda(false);
+    }
+  };
 
   const fetchBulkStatus = useCallback(async () => {
     const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
@@ -736,6 +761,18 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
 
           {isCouncilOrAdmin && (
             <div className="shrink-0 flex items-center gap-2">
+              <Button
+                id="btn-sync-agenda-topics"
+                onClick={handleSyncAgendaTopics}
+                disabled={isSyncingAgenda}
+                variant="outline"
+                className="border-accent/40 text-accent hover:bg-accent/15 text-xs font-semibold h-9 rounded-xl shadow-xs"
+                title="Synchroniseer alle gescrapede vergaderagenda- en bespreekstukken automatisch naar de sub(dossiers)"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isSyncingAgenda ? "animate-spin" : ""}`} />
+                {isSyncingAgenda ? "Synchroniseren..." : "Agendastukken Synchroniseren"}
+              </Button>
+
               <Button
                 id="btn-open-create-dossier"
                 onClick={() => setIsCreateDossierOpen(true)}
