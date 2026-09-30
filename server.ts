@@ -11064,13 +11064,7 @@ Sitemap: ${baseUrl}/sitemap.xml
 
   // Helper to determine active municipality from request context
   function resolveRequestMunicipality(req: any): "steenwijkerland" | "hoogeveen" {
-    // 1. If user is authenticated and NOT admin, their assigned municipality is strictly authoritative!
-    if (req.user && req.user.role !== "admin") {
-      const uMuni = (req.user.municipality || "steenwijkerland").toLowerCase().trim();
-      return uMuni === "hoogeveen" ? "hoogeveen" : "steenwijkerland";
-    }
-
-    // 2. Explicit query parameter (for admin or public)
+    // 1. Explicit query or body parameter takes priority if provided
     const q = String(
       req.query?.municipality ||
       req.query?.portal ||
@@ -11084,10 +11078,16 @@ Sitemap: ${baseUrl}/sitemap.xml
     if (q === "hoogeveen" || q === "hgv") return "hoogeveen";
     if (q === "steenwijkerland" || q === "swl") return "steenwijkerland";
 
-    // 3. Explicit request headers
+    // 2. Explicit request headers
     const headerTenant = String(req.headers["x-portal-tenant"] || req.headers["x-municipality"] || req.headers["x-tenant"] || "").toLowerCase().trim();
     if (headerTenant === "hoogeveen" || headerTenant === "hgv") return "hoogeveen";
     if (headerTenant === "steenwijkerland" || headerTenant === "swl") return "steenwijkerland";
+
+    // 3. User assigned municipality if authenticated
+    if (req.user && req.user.role !== "admin") {
+      const uMuni = (req.user.municipality || "steenwijkerland").toLowerCase().trim();
+      return uMuni === "hoogeveen" ? "hoogeveen" : "steenwijkerland";
+    }
 
     // 4. Hostname check (domain based: e.g. hoogeveen.scientiarum.nl)
     const host = String(req.headers["x-forwarded-host"] || req.headers.host || "").toLowerCase();
