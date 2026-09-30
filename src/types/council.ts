@@ -206,3 +206,40 @@ export interface CouncilMeetingScrapeSummary {
   nextExpectedCheckAt?: string;
 }
 
+export interface ToezeggingAttachment {
+  id?: string;
+  title: string;
+  url: string;
+  fileType?: string;
+}
+
+export interface ToezeggingItem {
+  id: string; // Numeral ID e.g. "308"
+  rowId: string; // GUID e.g. "abe5123b-609d-4337-8bd4-be0d64f6b84f"
+  datumRaad: string; // "DD-MM-YYYY" or ISO
+  onderwerp: string;
+  toezegging?: string;
+  toelichting?: string;
+  standVanZaken?: string;
+  portefeuillehouder: string;
+  deadline?: string | null;
+  datumAfdoening?: string | null;
+  status: "Afgehandeld" | "Openstaand" | "Verlopen";
+  isAfgedaan: boolean;
+  agendapuntTitle?: string;
+  agendapuntUrl?: string;
+  bijlagen?: ToezeggingAttachment[];
+  municipality: "steenwijkerland" | "hoogeveen";
+  updatedAt: string;
+}
+
+export interface ToezeggingStats {
+  total: number;
+  openstaand: number;
+  afgehandeld: number;
+  verlopen: number;
+  perPortefeuillehouder: Record<string, number>;
+  perJaar: Record<string, number>;
+  lastSyncedAt: string;
+}
+

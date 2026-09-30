@@ -1,6 +1,6 @@
 export interface QuestionDossierSource {
   id: string;
-  type: "notubiz" | "motie" | "wob_woo" | "begroting" | "url" | "anders";
+  type: "notubiz" | "toezegging" | "motie" | "wob_woo" | "begroting" | "url" | "anders";
   title: string;
   reference: string; // URL, document kenmerk of zaaknummer
 }

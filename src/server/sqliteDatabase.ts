@@ -59,6 +59,7 @@ const TABLE_DEFINITIONS: { [table: string]: string } = {
   councilDocumentViews: "CREATE TABLE IF NOT EXISTS councilDocumentViews (id TEXT PRIMARY KEY, data TEXT)",
   customDossiers: "CREATE TABLE IF NOT EXISTS customDossiers (id TEXT PRIMARY KEY, data TEXT)",
   councilResearchItems: "CREATE TABLE IF NOT EXISTS councilResearchItems (id TEXT PRIMARY KEY, data TEXT)",
+  councilToezeggingen: "CREATE TABLE IF NOT EXISTS councilToezeggingen (id TEXT PRIMARY KEY, data TEXT)",
   systemSettings: "CREATE TABLE IF NOT EXISTS systemSettings (id TEXT PRIMARY KEY, data TEXT)",
   treasurerAccounts: "CREATE TABLE IF NOT EXISTS treasurerAccounts (id TEXT PRIMARY KEY, data TEXT)",
   treasurerInvoices: "CREATE TABLE IF NOT EXISTS treasurerInvoices (id TEXT PRIMARY KEY, data TEXT)",
@@ -288,6 +289,7 @@ export function getDbFromSqlite(): any {
     treasurerKascommissie: null,
     treasurerSettings: null,
     councilResearchItems: [],
+    councilToezeggingen: [],
   };
 
   // Public list tables strictly residing in public database.sqlite
@@ -310,6 +312,7 @@ export function getDbFromSqlite(): any {
     "councilDocumentViews",
     "customDossiers",
     "councilResearchItems",
+    "councilToezeggingen",
   ];
 
   for (const table of publicListTables) {
@@ -798,6 +801,10 @@ export function clearCouncilDocumentViews(): boolean {
     console.error("[SQLITE] Error clearing council document views:", err);
     return false;
   }
+}
+
+export function getRawSqliteDb(): any {
+  return sqliteDb;
 }
 
 export {

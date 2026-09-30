@@ -78,6 +78,7 @@ import { OverijsselNotubizManager } from "@/components/council/OverijsselNotubiz
 import { DrentheProvincieManager } from "@/components/council/DrentheProvincieManager";
 import { WaterschapManager } from "@/components/council/WaterschapManager";
 import { VragenFormulatorWizard } from "@/components/council/VragenFormulatorWizard";
+import { ToezeggingenManager } from "@/components/council/ToezeggingenManager";
 import { MemberDocument } from "@/types/document";
 import { CouncilResearchManager } from "@/components/council/CouncilResearchManager";
 
@@ -256,16 +257,18 @@ export default function Raadspaneel() {
       next.set("municipality", targetMuni);
       next.delete("topic");
       return next;
-    });
+    }, { preventScrollReset: true });
   };
 
   const initialDossierSlug = slug || searchParams.get("dossier") || null;
   const tabParam = searchParams.get("tab");
-  type PanelTabType = "dossiers" | "agenda" | "vragenformulator" | "overijssel" | "drenthe" | "waterschap" | "onderzoeken" | "approvals";
+  type PanelTabType = "dossiers" | "agenda" | "toezeggingen" | "vragenformulator" | "overijssel" | "drenthe" | "waterschap" | "onderzoeken" | "approvals";
 
   const activePanelTab: PanelTabType =
     tabParam === "approvals" && isKeyUserOrAdmin
       ? "approvals"
+      : tabParam === "toezeggingen" && isCouncilOrAdmin
+      ? "toezeggingen"
       : tabParam === "onderzoeken" && isCouncilOrAdmin
       ? "onderzoeken"
       : tabParam === "vragenformulator" && isCouncilOrAdmin
@@ -289,7 +292,7 @@ export default function Raadspaneel() {
         next.set("topic", currentTopic);
       }
       return next;
-    });
+    }, { preventScrollReset: true });
   };
 
   const [topics, setTopics] = useState<CouncilAgendaTopic[]>([]);
@@ -399,7 +402,7 @@ export default function Raadspaneel() {
         const next = new URLSearchParams(prev);
         next.set("topic", topicId);
         return next;
-      });
+      }, { preventScrollReset: true });
     } catch (_e) {
       // ignore
     }
@@ -1490,6 +1493,21 @@ export default function Raadspaneel() {
             </button>
           )}
 
+          {isCouncilOrAdmin && (
+            <button
+              id="tab-btn-panel-toezeggingen"
+              onClick={() => setActivePanelTab("toezeggingen")}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all shrink-0 ${
+                activePanelTab === "toezeggingen"
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-card border border-border/70"
+              }`}
+            >
+              <ShieldCheck className="w-4 h-4 text-indigo-400" />
+              LTA Toezeggingen
+            </button>
+          )}
+
           {isKeyUserOrAdmin && (
             <button
               id="tab-btn-panel-approvals"
@@ -1701,6 +1719,13 @@ export default function Raadspaneel() {
           </div>
         ) : activePanelTab === "dossiers" ? (
           <DossierOverview initialDossierSlug={initialDossierSlug} forcedMunicipality={activeMunicipality} />
+        ) : activePanelTab === "toezeggingen" && isCouncilOrAdmin ? (
+          <ToezeggingenManager
+            municipality={activeMunicipality}
+            onNavigateToWizard={(prefill) => {
+              setActivePanelTab("vragenformulator");
+            }}
+          />
         ) : activePanelTab === "onderzoeken" && isCouncilOrAdmin ? (
           <CouncilResearchManager token={token || undefined} />
         ) : activePanelTab === "vragenformulator" && isCouncilOrAdmin ? (
@@ -2081,7 +2106,7 @@ export default function Raadspaneel() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
           {/* Left Column: Agenda List (5 Cols) */}
-          <div className="lg:col-span-5 space-y-3">
+          <div id="agenda-topics-found-section" className="lg:col-span-5 space-y-3">
             <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground px-1">
               <span>Gevonden onderwerpen ({filteredTopics.length})</span>
               <span>Klik om stukken in te zien</span>

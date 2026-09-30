@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   FileQuestion,
   AlertTriangle,
@@ -132,11 +133,17 @@ export const VragenFormulatorWizard: React.FC<VragenFormulatorWizardProps> = ({
   currentUser,
   initialTopic,
 }) => {
+  const [searchParams] = useSearchParams();
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [dossier, setDossier] = useState<WrittenQuestionDossier>(() => {
+    const qTopicTitle = searchParams.get("topicTitle");
+    const qPromisedQuote = searchParams.get("promisedQuote");
+    const qWethouder = searchParams.get("wethouder");
+    const qToezeggingId = searchParams.get("toezeggingId");
+
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
+      if (saved && !qPromisedQuote && !qTopicTitle) {
         const parsed = JSON.parse(saved);
         if (parsed && typeof parsed === "object") {
           return {
@@ -148,7 +155,24 @@ export const VragenFormulatorWizard: React.FC<VragenFormulatorWizardProps> = ({
     } catch (e) {
       console.error("Failed to load saved draft", e);
     }
-    return createDefaultDossier(initialTopic, currentUser);
+
+    const base = createDefaultDossier(initialTopic, currentUser);
+    if (qTopicTitle || qPromisedQuote) {
+      base.title = qTopicTitle ? `Schriftelijke vragen inzake: ${qTopicTitle}` : base.title;
+      base.topicTitle = qTopicTitle || base.topicTitle;
+      base.promisedQuote = qPromisedQuote || base.promisedQuote;
+      if (qToezeggingId || qWethouder) {
+        base.sources = [
+          {
+            id: `toezegging-${qToezeggingId || "src"}`,
+            type: "toezegging",
+            title: `LTA Toezegging #${qToezeggingId || ""}: ${qTopicTitle || ""}`,
+            reference: `Portefeuillehouder: ${qWethouder || "College van B&W"}`,
+          },
+        ];
+      }
+    }
+    return base;
   });
 
   const [savedDossiers, setSavedDossiers] = useState<WrittenQuestionDossier[]>([]);

@@ -194,6 +194,12 @@ import {
   getMissingFilesRepairStatus,
   repairSingleMissingFile,
 } from "./src/server/missingFilesRepairService.js";
+import {
+  syncSteenwijkerlandToezeggingen,
+  queryToezeggingen,
+  getSingleToezegging,
+  getToezeggingenStats,
+} from "./src/server/toezeggingenService.js";
 
 // Ensure .env is explicitly loaded from working directory in case of PM2 or systemd execution
 function ensureEnvLoaded() {
@@ -12254,6 +12260,98 @@ Sitemap: ${baseUrl}/sitemap.xml
   });
 
   // -------------------------------------------------------------
+  // LTA TOEZEGGINGEN (STEENWIJKERLAND & REGIO)
+  // -------------------------------------------------------------
+  app.get("/api/council/toezeggingen", optionalAuth, async (req: any, res: any) => {
+    try {
+      const municipality = resolveRequestMunicipality(req);
+      const status = req.query.status as any;
+      const portefeuillehouder = typeof req.query.portefeuillehouder === "string" ? req.query.portefeuillehouder : undefined;
+      const year = typeof req.query.year === "string" ? req.query.year : undefined;
+      const search = typeof req.query.search === "string" ? req.query.search : undefined;
+      const page = req.query.page ? parseInt(String(req.query.page), 10) : 1;
+      const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 25;
+      const sort = req.query.sort as any;
+
+      let result = queryToezeggingen({
+        municipality,
+        status,
+        portefeuillehouder,
+        year,
+        search,
+        page,
+        limit,
+        sort,
+      });
+
+      // If database has 0 items and municipality is steenwijkerland, kick off automatic initial sync
+      if (result.totalCount === 0 && municipality === "steenwijkerland") {
+        try {
+          await syncSteenwijkerlandToezeggingen({ fetchFullDetails: false });
+          result = queryToezeggingen({
+            municipality,
+            status,
+            portefeuillehouder,
+            year,
+            search,
+            page,
+            limit,
+            sort,
+          });
+        } catch (_e) {
+          // ignore
+        }
+      }
+
+      res.json(result);
+    } catch (err: any) {
+      console.error("[API TOEZEGGINGEN ERROR]:", err);
+      res.status(500).json({ error: "Fout bij ophalen toezeggingen: " + err.message });
+    }
+  });
+
+  app.get("/api/council/toezeggingen/stats", optionalAuth, (req: any, res: any) => {
+    try {
+      const municipality = resolveRequestMunicipality(req);
+      const stats = getToezeggingenStats(municipality);
+      res.json(stats);
+    } catch (err: any) {
+      res.status(500).json({ error: "Fout bij ophalen toezeggingen statistieken" });
+    }
+  });
+
+  app.get("/api/council/toezeggingen/:rowId", optionalAuth, async (req: any, res: any) => {
+    try {
+      const municipality = resolveRequestMunicipality(req);
+      const item = await getSingleToezegging(req.params.rowId, municipality);
+      if (!item) {
+        return res.status(404).json({ error: "Toezegging niet gevonden" });
+      }
+      res.json(item);
+    } catch (err: any) {
+      res.status(500).json({ error: "Fout bij ophalen detail van toezegging" });
+    }
+  });
+
+  app.post("/api/council/toezeggingen/sync", optionalAuth, async (req: any, res: any) => {
+    try {
+      const municipality = resolveRequestMunicipality(req);
+      if (municipality !== "steenwijkerland") {
+        return res.json({ success: true, message: `Geen externe toezeggingen-koppeling voor ${municipality}`, totalFetched: 0 });
+      }
+      const syncResult = await syncSteenwijkerlandToezeggingen({ fetchFullDetails: true });
+      res.json({
+        success: true,
+        message: `Toezeggingen succesvol gesynchroniseerd met iBabs (${syncResult.totalFetched} toezeggingen).`,
+        ...syncResult,
+      });
+    } catch (err: any) {
+      console.error("[TOEZEGGINGEN SYNC ERROR]:", err);
+      res.status(500).json({ error: "Fout bij synchroniseren toezeggingen: " + err.message });
+    }
+  });
+
+  // -------------------------------------------------------------
   // COUNCIL RESEARCH & INVESTIGATIONS ("ONDERZOEKEN")
   // -------------------------------------------------------------
   app.get("/api/council/research", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
@@ -15088,6 +15186,26 @@ Sitemap: ${baseUrl}/sitemap.xml
         console.warn("[DOCUMENTS AUTO-SYNC WARNING]:", syncBootErr);
       }
     })();
+
+    // Non-blocking background sync for Steenwijkerland LTA Toezeggingen after server boot
+    setTimeout(async () => {
+      try {
+        console.log("[LTA AUTO-SYNC] Initialiseren van Steenwijkerland toezeggingen in achtergrond...");
+        await syncSteenwijkerlandToezeggingen({ fetchFullDetails: false });
+      } catch (ltaBootErr) {
+        console.warn("[LTA AUTO-SYNC WARNING]:", ltaBootErr);
+      }
+    }, 5000);
+
+    // Schedule 6-hour recurring sync for LTA toezeggingen
+    setInterval(async () => {
+      try {
+        console.log("[LTA INTERVAL SYNC] Periodieke synchronisatie van Steenwijkerland toezeggingen gestart...");
+        await syncSteenwijkerlandToezeggingen({ fetchFullDetails: false });
+      } catch (err) {
+        console.warn("[LTA INTERVAL SYNC WARNING]:", err);
+      }
+    }, 6 * 60 * 60 * 1000);
   });
 }
 
