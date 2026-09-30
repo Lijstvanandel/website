@@ -3,7 +3,7 @@ import path from "path";
 import { Dossier, DossierDocument, NetworkGraphData, GraphNode, GraphEdge } from "../types/dossier.js";
 import { getDbFromSqlite, saveDbToSqlite, initDatabase, setKv, getKv } from "./sqliteDatabase.js";
 import { HOOGEVEEN_WIJKEN_MATRIX, detectHoogeveenWijken, HoogeveenWijkOrKern } from "./hoogeveenTaxonomy.js";
-import { slugify } from "./dossierManager.js";
+import { slugify, getSubdossierThumbnail } from "./dossierManager.js";
 
 // Storage paths for Hoogeveen dossier data
 const HOOGEVEEN_DATA_DIR = path.join(process.cwd(), "public", "data", "hoogeveen");
@@ -829,7 +829,7 @@ function enrichHoogeveenDossiersWithRegionalDocuments(dossiers: Dossier[]): Doss
             const detectedWijken = detectHoogeveenWijken(title, "", "", "");
             const wijkOfKern = detectedWijken.length > 0 ? detectedWijken[0] : "Gemeentebreed";
 
-            let targetCategory = "Provincie Drenthe & Regionaal Bestuur";
+            let targetCategory = "Bestuur, Veiligheid, Financiën & Dienstverlening";
             if (
               titleLower.includes("water") ||
               titleLower.includes("dijk") ||
@@ -840,7 +840,7 @@ function enrichHoogeveenDossiersWithRegionalDocuments(dossiers: Dossier[]): Doss
               titleLower.includes("wolf") ||
               titleLower.includes("fauna")
             ) {
-              targetCategory = "Duurzaamheid, Milieu & Openbare Ruimte";
+              targetCategory = "Duurzaamheid, Natuur & Energietransitie";
             } else if (
               titleLower.includes("woon") ||
               titleLower.includes("woning") ||
@@ -849,7 +849,7 @@ function enrichHoogeveenDossiersWithRegionalDocuments(dossiers: Dossier[]): Doss
               titleLower.includes("ruimte") ||
               titleLower.includes("bouw")
             ) {
-              targetCategory = "Ruimtelijke Ontwikkeling & Wonen";
+              targetCategory = "Ruimtelijke Ordening, Wonen & Omgevingswet";
             } else if (
               titleLower.includes("verkeer") ||
               titleLower.includes("weg") ||
@@ -860,7 +860,7 @@ function enrichHoogeveenDossiersWithRegionalDocuments(dossiers: Dossier[]): Doss
               titleLower.includes("nedersaksenlijn") ||
               titleLower.includes("mobiliteit")
             ) {
-              targetCategory = "Verkeer, Vervoer & Bereikbaarheid";
+              targetCategory = "Verkeer, Mobiliteit & Bereikbaarheid";
             } else if (
               titleLower.includes("economie") ||
               titleLower.includes("bedrijf") ||
@@ -869,21 +869,25 @@ function enrichHoogeveenDossiersWithRegionalDocuments(dossiers: Dossier[]): Doss
               titleLower.includes("ondernem") ||
               titleLower.includes("bollenteelt")
             ) {
-              targetCategory = "Economie, Werk & Ondernemerschap";
+              targetCategory = "Economie, Bedrijvigheid & Buitenvaart";
             } else if (
               titleLower.includes("cultuur") ||
               titleLower.includes("sport") ||
               titleLower.includes("erfgoed") ||
-              titleLower.includes("monument")
+              titleLower.includes("monument") ||
+              titleLower.includes("toerisme") ||
+              titleLower.includes("recreatie")
             ) {
-              targetCategory = "Samenleving, Cultuur & Recreatie";
+              targetCategory = "Cultuur, Recreatie, Toerisme & Nijstad";
             } else if (
               titleLower.includes("sociaal") ||
               titleLower.includes("zorg") ||
               titleLower.includes("jeugd") ||
-              titleLower.includes("wmo")
+              titleLower.includes("wmo") ||
+              titleLower.includes("onderwijs") ||
+              titleLower.includes("school")
             ) {
-              targetCategory = "Sociaal Domein, Zorg & Welzijn";
+              targetCategory = "Sociaal Domein, Zorg, Jeugd & Onderwijs";
             }
 
             const cleanId = String(item.id || item.document_id || Math.random()).replace(/[^a-zA-Z0-9_-]/g, "_");
