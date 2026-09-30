@@ -196,6 +196,7 @@ import {
 } from "./src/server/missingFilesRepairService.js";
 import {
   syncSteenwijkerlandToezeggingen,
+  syncHoogeveenToezeggingen,
   queryToezeggingen,
   getSingleToezegging,
   getToezeggingenStats,
@@ -12284,22 +12285,12 @@ Sitemap: ${baseUrl}/sitemap.xml
         sort,
       });
 
-      // If database has 0 items and municipality is steenwijkerland, kick off automatic initial sync
-      if (result.totalCount === 0 && municipality === "steenwijkerland") {
-        try {
-          await syncSteenwijkerlandToezeggingen({ fetchFullDetails: false });
-          result = queryToezeggingen({
-            municipality,
-            status,
-            portefeuillehouder,
-            year,
-            search,
-            page,
-            limit,
-            sort,
-          });
-        } catch (_e) {
-          // ignore
+      // If database has 0 items, kick off background sync without blocking the HTTP response
+      if (result.totalCount === 0) {
+        if (municipality === "hoogeveen") {
+          syncHoogeveenToezeggingen().catch((e) => console.warn("[AUTO-SYNC HGV ERR]:", e));
+        } else {
+          syncSteenwijkerlandToezeggingen({ fetchFullDetails: false }).catch((e) => console.warn("[AUTO-SYNC SWL ERR]:", e));
         }
       }
 
@@ -12336,13 +12327,20 @@ Sitemap: ${baseUrl}/sitemap.xml
   app.post("/api/council/toezeggingen/sync", optionalAuth, async (req: any, res: any) => {
     try {
       const municipality = resolveRequestMunicipality(req);
-      if (municipality !== "steenwijkerland") {
-        return res.json({ success: true, message: `Geen externe toezeggingen-koppeling voor ${municipality}`, totalFetched: 0 });
+      let syncResult;
+      let sourceName = "iBabs Publieksportaal";
+
+      if (municipality === "hoogeveen") {
+        syncResult = await syncHoogeveenToezeggingen();
+        sourceName = "Hoogeveen Notubiz Portaal";
+      } else {
+        syncResult = await syncSteenwijkerlandToezeggingen({ fetchFullDetails: true });
+        sourceName = "Steenwijkerland iBabs Portaal";
       }
-      const syncResult = await syncSteenwijkerlandToezeggingen({ fetchFullDetails: true });
+
       res.json({
         success: true,
-        message: `Toezeggingen succesvol gesynchroniseerd met iBabs (${syncResult.totalFetched} toezeggingen).`,
+        message: `Toezeggingen succesvol gesynchroniseerd met ${sourceName} (${syncResult.totalFetched} toezeggingen).`,
         ...syncResult,
       });
     } catch (err: any) {
@@ -15187,11 +15185,14 @@ Sitemap: ${baseUrl}/sitemap.xml
       }
     })();
 
-    // Non-blocking background sync for Steenwijkerland LTA Toezeggingen after server boot
+    // Non-blocking background sync for Steenwijkerland and Hoogeveen LTA Toezeggingen after server boot
     setTimeout(async () => {
       try {
-        console.log("[LTA AUTO-SYNC] Initialiseren van Steenwijkerland toezeggingen in achtergrond...");
-        await syncSteenwijkerlandToezeggingen({ fetchFullDetails: false });
+        console.log("[LTA AUTO-SYNC] Initialiseren van Steenwijkerland en Hoogeveen toezeggingen in achtergrond...");
+        await Promise.all([
+          syncSteenwijkerlandToezeggingen({ fetchFullDetails: false }),
+          syncHoogeveenToezeggingen(),
+        ]);
       } catch (ltaBootErr) {
         console.warn("[LTA AUTO-SYNC WARNING]:", ltaBootErr);
       }
@@ -15200,8 +15201,11 @@ Sitemap: ${baseUrl}/sitemap.xml
     // Schedule 6-hour recurring sync for LTA toezeggingen
     setInterval(async () => {
       try {
-        console.log("[LTA INTERVAL SYNC] Periodieke synchronisatie van Steenwijkerland toezeggingen gestart...");
-        await syncSteenwijkerlandToezeggingen({ fetchFullDetails: false });
+        console.log("[LTA INTERVAL SYNC] Periodieke synchronisatie van Steenwijkerland en Hoogeveen toezeggingen gestart...");
+        await Promise.all([
+          syncSteenwijkerlandToezeggingen({ fetchFullDetails: false }),
+          syncHoogeveenToezeggingen(),
+        ]);
       } catch (err) {
         console.warn("[LTA INTERVAL SYNC WARNING]:", err);
       }

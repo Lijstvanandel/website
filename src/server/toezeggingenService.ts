@@ -8,6 +8,9 @@ const STEENWIJKERLAND_REPORT_API = "https://steenwijkerland.bestuurlijkeinformat
 const STEENWIJKERLAND_ITEM_BASE = "https://steenwijkerland.bestuurlijkeinformatie.nl/Reports/Item/";
 const STEENWIJKERLAND_BASE = "https://steenwijkerland.bestuurlijkeinformatie.nl";
 
+const HOOGEVEEN_TOEZEGGINGEN_URL = "https://hoogeveen.raadsinformatie.nl/modules/3/Toezeggingen/view?month=all&year=all&week=all";
+const HOOGEVEEN_BASE = "https://hoogeveen.raadsinformatie.nl";
+
 const SQLITE_FILE = process.env.DATABASE_PATH || path.join(process.cwd(), "database.sqlite");
 
 export interface ToezeggingBijlage {
@@ -17,9 +20,9 @@ export interface ToezeggingBijlage {
 }
 
 export interface ToezeggingItem {
-  id: string; // e.g. "swl_toezegging_5862cba2-ce1b-4ce9-91a0-47e0a20eef2d"
-  rowId: string; // DT_RowId
-  identity: string; // e.g. "312"
+  id: string; // e.g. "swl_toezegging_5862cba2" or "hgv_toezegging_1206790"
+  rowId: string; // DT_RowId or Notubiz item id
+  identity: string; // e.g. "312" or "1206790"
   datum: string; // "22-09-2026"
   datumIso?: string; // "2026-09-22"
   year?: number;
@@ -98,46 +101,54 @@ function cleanHtmlEntities(text?: string | null): string {
 // In-memory runtime cache for lightning-fast querying
 let memoryToezeggingenCache: ToezeggingItem[] = [];
 let lastSyncTimestamp: string | null = null;
-let isSyncing = false;
+let isSyncingSWL = false;
+let isSyncingHGV = false;
 
 /**
  * Read all toezeggingen from SQLite
  */
 export function getAllToezeggingenFromDb(municipality?: string): ToezeggingItem[] {
   try {
-    if (memoryToezeggingenCache.length > 0) {
-      if (municipality) {
-        return memoryToezeggingenCache.filter((it) => (it.municipality || "steenwijkerland") === municipality);
-      }
-      return memoryToezeggingenCache;
-    }
-
-    const db = getRawSqliteDb();
-    if (db) {
-      const rows = db.exec("SELECT data FROM councilToezeggingen");
-      if (rows.length > 0 && rows[0].values) {
-        memoryToezeggingenCache = rows[0].values.map((v: any) => {
-          try {
-            return JSON.parse(v[0]);
-          } catch {
-            return null;
-          }
-        }).filter(Boolean);
-
-        if (municipality) {
-          return memoryToezeggingenCache.filter((it) => (it.municipality || "steenwijkerland") === municipality);
+    if (memoryToezeggingenCache.length === 0) {
+      const db = getRawSqliteDb();
+      if (db) {
+        const rows = db.exec("SELECT data FROM councilToezeggingen");
+        if (rows.length > 0 && rows[0].values) {
+          memoryToezeggingenCache = rows[0].values.map((v: any) => {
+            try {
+              return JSON.parse(v[0]);
+            } catch {
+              return null;
+            }
+          }).filter(Boolean);
         }
-        return memoryToezeggingenCache;
       }
     }
+
+    if (municipality && municipality !== "all") {
+      const targetMuni = municipality.toLowerCase().trim();
+      return memoryToezeggingenCache.filter((it) => (it.municipality || "steenwijkerland") === targetMuni);
+    }
+    return memoryToezeggingenCache;
   } catch (err) {
     console.warn("[TOEZEGGINGEN DB READ ERROR]:", err);
   }
-  return memoryToezeggingenCache.filter((item) => !municipality || item.municipality === municipality);
+  return memoryToezeggingenCache.filter((item) => !municipality || municipality === "all" || item.municipality === municipality);
 }
 
-export function saveToezeggingenToDb(items: ToezeggingItem[]) {
-  memoryToezeggingenCache = items;
+/**
+ * Save / Merge items into SQLite database and memory cache
+ */
+export function saveToezeggingenToDb(itemsToSave: ToezeggingItem[]) {
+  const map = new Map<string, ToezeggingItem>();
+  for (const existing of memoryToezeggingenCache) {
+    map.set(existing.id, existing);
+  }
+  for (const newIt of itemsToSave) {
+    map.set(newIt.id, newIt);
+  }
+
+  memoryToezeggingenCache = Array.from(map.values());
   lastSyncTimestamp = new Date().toISOString();
 
   try {
@@ -145,7 +156,7 @@ export function saveToezeggingenToDb(items: ToezeggingItem[]) {
     if (db) {
       db.run("CREATE TABLE IF NOT EXISTS councilToezeggingen (id TEXT PRIMARY KEY, data TEXT)");
       db.run("BEGIN TRANSACTION;");
-      for (const item of items) {
+      for (const item of itemsToSave) {
         db.run("INSERT OR REPLACE INTO councilToezeggingen (id, data) VALUES (?, ?)", [
           item.id,
           JSON.stringify(item),
@@ -169,7 +180,7 @@ async function fetchToezeggingDetail(rowId: string): Promise<Partial<ToezeggingI
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
       },
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(6000),
     });
 
     if (!res.ok) return null;
@@ -229,7 +240,7 @@ async function fetchToezeggingDetail(rowId: string): Promise<Partial<ToezeggingI
       bijlagen,
       detailFetched: true,
     };
-  } catch (err: any) {
+  } catch (_err) {
     return null;
   }
 }
@@ -261,6 +272,185 @@ async function promisePool<T, R>(
 }
 
 /**
+ * Synchronize full LTA Toezeggingen list and details from Hoogeveen Notubiz portal
+ */
+export async function syncHoogeveenToezeggingen(): Promise<{
+  totalFetched: number;
+  newCount: number;
+  updatedCount: number;
+  openCount: number;
+  afgedaanCount: number;
+  lastSyncedAt: string;
+}> {
+  if (isSyncingHGV) {
+    console.log("[LTA HOOGEVEEN] Synchronisatie is reeds bezig...");
+    const current = getAllToezeggingenFromDb("hoogeveen");
+    return {
+      totalFetched: current.length,
+      newCount: 0,
+      updatedCount: 0,
+      openCount: current.filter((i) => !i.isAfgedaan).length,
+      afgedaanCount: current.filter((i) => i.isAfgedaan).length,
+      lastSyncedAt: lastSyncTimestamp || new Date().toISOString(),
+    };
+  }
+
+  isSyncingHGV = true;
+  console.log("[LTA HOOGEVEEN] Start synchronisatie met Hoogeveen Notubiz...");
+
+  try {
+    const res = await fetch(HOOGEVEEN_TOEZEGGINGEN_URL, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+      },
+      signal: AbortSignal.timeout(20000),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Hoogeveen Toezeggingen portal gaf HTTP status ${res.status}`);
+    }
+
+    const html = await res.text();
+    const existingMap = new Map<string, ToezeggingItem>();
+    const currentDbItems = getAllToezeggingenFromDb("hoogeveen");
+    for (const item of currentDbItems) {
+      existingMap.set(item.rowId, item);
+    }
+
+    const now = new Date().toISOString();
+    const todayIso = now.slice(0, 10);
+    let newCount = 0;
+    let updatedCount = 0;
+
+    const items: ToezeggingItem[] = [];
+    const trRegex = /<tr data-id="(\d+)"[\s\S]*?<\/tr>/gi;
+    let match;
+
+    while ((match = trRegex.exec(html)) !== null) {
+      const rowId = match[1];
+      const trHtml = match[0];
+      const existing = existingMap.get(rowId);
+
+      const extractFieldText = (dataId: string) => {
+        const ddMatch = trHtml.match(new RegExp(`<dd[^>]*data-id="${dataId}"[^>]*>([\\s\\S]*?)<\\/dd>`, "i"));
+        if (!ddMatch) return "";
+        return cleanHtmlEntities(
+          ddMatch[1]
+            .replace(/<p[^>]*>/gi, "")
+            .replace(/<\/p>/gi, "\n")
+            .replace(/<li[^>]*>/gi, "• ")
+            .replace(/<\/li>/gi, "\n")
+            .replace(/<br\s*\/?>/gi, "\n")
+            .replace(/<[^>]+>/g, " ")
+        );
+      };
+
+      const extractFieldRaw = (dataId: string) => {
+        const ddMatch = trHtml.match(new RegExp(`<dd[^>]*data-id="${dataId}"[^>]*>([\\s\\S]*?)<\\/dd>`, "i"));
+        return ddMatch ? ddMatch[1].trim() : "";
+      };
+
+      const title = extractFieldText("1") || "Toezegging Hoogeveen";
+      const datum = extractFieldText("15");
+      const parsedDatum = parseDutchDate(datum);
+      const toezeggingText = extractFieldText("25") || title;
+      const portefeuillehouder = extractFieldText("23") || "College van B&W";
+      const deadline = extractFieldText("28");
+      const parsedDeadline = parseDutchDate(deadline);
+      const datumAfdoening = extractFieldText("17");
+      const parsedAfdoening = parseDutchDate(datumAfdoening);
+      const toelichtingAfdoening = extractFieldText("31") || extractFieldText("35");
+
+      const isAfgedaan = Boolean(datumAfdoening);
+      let isOverdue = false;
+      if (!isAfgedaan && parsedDeadline?.iso) {
+        if (parsedDeadline.iso < todayIso) {
+          isOverdue = true;
+        }
+      }
+
+      // Agendapunt
+      const agendaDd = extractFieldRaw("54") || extractFieldRaw("22");
+      const agendaLinkMatch = agendaDd.match(/<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
+      const agendapuntTitle = agendaLinkMatch ? cleanHtmlEntities(agendaLinkMatch[2].replace(/<[^>]+>/g, " ")) : extractFieldText("54");
+      const agendapuntUrl = agendaLinkMatch
+        ? agendaLinkMatch[1].startsWith("http")
+          ? agendaLinkMatch[1]
+          : `${HOOGEVEEN_BASE}${agendaLinkMatch[1]}`
+        : "";
+
+      // Attachments
+      const bijlagen: ToezeggingBijlage[] = [];
+      const attachRegex = /<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+      let aMatch;
+      while ((aMatch = attachRegex.exec(trHtml)) !== null) {
+        const href = aMatch[1];
+        if (href.includes("/document/") || href.includes("raadsinformatie.nl/document")) {
+          const bUrl = href.startsWith("http") ? href : `${HOOGEVEEN_BASE}${href}`;
+          const bTitle = cleanHtmlEntities(aMatch[2].replace(/<[^>]+>/g, "")) || "Bijlage document";
+          if (!bijlagen.some((b) => b.url === bUrl)) {
+            bijlagen.push({ title: bTitle, url: bUrl });
+          }
+        }
+      }
+
+      if (!existing) {
+        newCount++;
+      } else {
+        updatedCount++;
+      }
+
+      items.push({
+        id: existing?.id || `hgv_toezegging_${rowId}`,
+        rowId,
+        identity: rowId,
+        datum,
+        datumIso: parsedDatum?.iso,
+        year: parsedDatum?.year || (parsedDatum?.iso ? parseInt(parsedDatum.iso.slice(0, 4), 10) : 2026),
+        title,
+        toezeggingText,
+        toelichting: toelichtingAfdoening,
+        portefeuillehouder,
+        deadline: deadline || null,
+        deadlineIso: parsedDeadline?.iso || null,
+        datumAfdoening: datumAfdoening || null,
+        datumAfdoeningIso: parsedAfdoening?.iso || null,
+        status: isAfgedaan ? "Afgedaan" : "Openstaand",
+        isAfgedaan,
+        isOverdue,
+        standVanZaken: toelichtingAfdoening,
+        agendapuntTitle,
+        agendapuntUrl,
+        bijlagen,
+        municipality: "hoogeveen",
+        detailFetched: true,
+        updatedAt: now,
+        createdAt: existing?.createdAt || now,
+      });
+    }
+
+    console.log(`[LTA HOOGEVEEN] ${items.length} toezeggingen verwerkt van Hoogeveen Notubiz.`);
+    saveToezeggingenToDb(items);
+
+    const openCount = items.filter((i) => !i.isAfgedaan).length;
+    const afgedaanCount = items.filter((i) => i.isAfgedaan).length;
+
+    console.log(`[LTA HOOGEVEEN] Synchronisatie voltooid. Totaal: ${items.length} (Open: ${openCount}, Afgedaan: ${afgedaanCount}).`);
+
+    return {
+      totalFetched: items.length,
+      newCount,
+      updatedCount,
+      openCount,
+      afgedaanCount,
+      lastSyncedAt: now,
+    };
+  } finally {
+    isSyncingHGV = false;
+  }
+}
+
+/**
  * Synchronize full LTA Toezeggingen list and details from Steenwijkerland iBabs portal
  */
 export async function syncSteenwijkerlandToezeggingen(options: {
@@ -274,8 +464,8 @@ export async function syncSteenwijkerlandToezeggingen(options: {
   afgedaanCount: number;
   lastSyncedAt: string;
 }> {
-  if (isSyncing) {
-    console.log("[LTA TOEZEGGINGEN] Synchronisatie is reeds bezig...");
+  if (isSyncingSWL) {
+    console.log("[LTA STEENWIJKERLAND] Synchronisatie is reeds bezig...");
     const current = getAllToezeggingenFromDb("steenwijkerland");
     return {
       totalFetched: current.length,
@@ -287,13 +477,12 @@ export async function syncSteenwijkerlandToezeggingen(options: {
     };
   }
 
-  isSyncing = true;
-  console.log("[LTA TOEZEGGINGEN] Start volledige synchronisatie met Steenwijkerland iBabs...");
+  isSyncingSWL = true;
+  console.log("[LTA STEENWIJKERLAND] Start volledige synchronisatie met Steenwijkerland iBabs...");
   const fetchFullDetails = options.fetchFullDetails !== false;
   const concurrency = options.concurrency || 8;
 
   try {
-    // 1. Fetch all pages of the report
     const rawRows: any[] = [];
     let start = 0;
     const pageSize = 100;
@@ -324,7 +513,7 @@ export async function syncSteenwijkerlandToezeggingen(options: {
       if (start >= recordsTotal) break;
     }
 
-    console.log(`[LTA TOEZEGGINGEN] ${rawRows.length} van totaal ${recordsTotal} toezeggingen rijen opgehaald.`);
+    console.log(`[LTA STEENWIJKERLAND] ${rawRows.length} van totaal ${recordsTotal} toezeggingen rijen opgehaald.`);
 
     const existingMap = new Map<string, ToezeggingItem>();
     const currentDbItems = getAllToezeggingenFromDb("steenwijkerland");
@@ -337,7 +526,6 @@ export async function syncSteenwijkerlandToezeggingen(options: {
     let newCount = 0;
     let updatedCount = 0;
 
-    // 2. Map table data to initial objects
     const baseItems: ToezeggingItem[] = rawRows.map((row) => {
       const existing = existingMap.get(row.DT_RowId);
       const parsedDatum = parseDutchDate(row.datum);
@@ -394,17 +582,15 @@ export async function syncSteenwijkerlandToezeggingen(options: {
       };
     });
 
-    // Save base items immediately so queries return results instantly
     saveToezeggingenToDb(baseItems);
 
-    // 3. Fetch details for items needing detail or if fetchFullDetails is enabled
     if (fetchFullDetails) {
       const itemsToFetchDetails = baseItems.filter(
         (item) => !item.detailFetched || !item.toezeggingText || item.toezeggingText === item.title
       );
 
       if (itemsToFetchDetails.length > 0) {
-        console.log(`[LTA TOEZEGGINGEN] Ophalen detailpagina's voor ${itemsToFetchDetails.length} toezeggingen...`);
+        console.log(`[LTA STEENWIJKERLAND] Ophalen detailpagina's voor ${itemsToFetchDetails.length} toezeggingen...`);
 
         await promisePool(itemsToFetchDetails, concurrency, async (item) => {
           const details = await fetchToezeggingDetail(item.rowId);
@@ -429,18 +615,14 @@ export async function syncSteenwijkerlandToezeggingen(options: {
           }
         });
 
-        // Re-save with updated details
         saveToezeggingenToDb(baseItems);
       }
     }
 
-    // 4. Save to database
-    saveToezeggingenToDb(baseItems);
-
     const openCount = baseItems.filter((i) => !i.isAfgedaan).length;
     const afgedaanCount = baseItems.filter((i) => i.isAfgedaan).length;
 
-    console.log(`[LTA TOEZEGGINGEN] Synchronisatie succesvol voltooid. Totaal: ${baseItems.length} (Open: ${openCount}, Afgedaan: ${afgedaanCount}).`);
+    console.log(`[LTA STEENWIJKERLAND] Synchronisatie succesvol voltooid. Totaal: ${baseItems.length} (Open: ${openCount}, Afgedaan: ${afgedaanCount}).`);
 
     return {
       totalFetched: baseItems.length,
@@ -451,7 +633,7 @@ export async function syncSteenwijkerlandToezeggingen(options: {
       lastSyncedAt: now,
     };
   } finally {
-    isSyncing = false;
+    isSyncingSWL = false;
   }
 }
 
@@ -459,7 +641,7 @@ export async function syncSteenwijkerlandToezeggingen(options: {
  * Query and filter toezeggingen with rich stats
  */
 export function queryToezeggingen(options: ToezeggingQueryOptions = {}) {
-  const municipality = options.municipality || "steenwijkerland";
+  const municipality = (options.municipality || "steenwijkerland").toLowerCase().trim();
   let items = getAllToezeggingenFromDb(municipality);
 
   // Status filter
@@ -548,7 +730,7 @@ export function queryToezeggingen(options: ToezeggingQueryOptions = {}) {
     if (sort === "deadline_asc") {
       const dlA = a.deadlineIso || "9999-99-99";
       const dlB = b.deadlineIso || "9999-99-99";
-      return dlA.localeCompare(dlB);
+      return dlA.localeCompare(dlA);
     }
     if (sort === "deadline_desc") {
       const dlA = a.deadlineIso || "0000-00-00";
@@ -560,7 +742,6 @@ export function queryToezeggingen(options: ToezeggingQueryOptions = {}) {
       const idB = parseInt(b.identity, 10) || 0;
       return idA - idB;
     }
-    // Default: id_desc
     const idA = parseInt(a.identity, 10) || 0;
     const idB = parseInt(b.identity, 10) || 0;
     return idB - idA;
@@ -589,7 +770,7 @@ export async function getSingleToezegging(rowIdOrId: string, municipality?: stri
   const items = getAllToezeggingenFromDb(municipality);
   const found = items.find((i) => i.rowId === rowIdOrId || i.id === rowIdOrId || i.identity === rowIdOrId);
 
-  if (found && !found.detailFetched) {
+  if (found && !found.detailFetched && (found.municipality === "steenwijkerland")) {
     const detail = await fetchToezeggingDetail(found.rowId);
     if (detail) {
       Object.assign(found, detail);

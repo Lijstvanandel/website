@@ -288,11 +288,13 @@ export const ToezeggingenManager: React.FC<ToezeggingenManagerProps> = ({
                 <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
                   LTA Toezeggingenregister
                   <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-200 border border-indigo-400/30 uppercase font-semibold">
-                    {municipality === "steenwijkerland" ? "Steenwijkerland" : municipality}
+                    {municipality === "hoogeveen" ? "Hoogeveen" : "Steenwijkerland"}
                   </span>
                 </h1>
                 <p className="text-sm text-slate-300">
-                  Officiële Lange Termijn Agenda (LTA) toezeggingen van het college van B&W, rechtstreeks gesynchroniseerd met het iBabs Publieksportaal.
+                  {municipality === "hoogeveen"
+                    ? "Officiële Lange Termijn Agenda (LTA) toezeggingen van het college van B&W van Hoogeveen, rechtstreeks gesynchroniseerd met het Notubiz Raadsinformatie Portaal."
+                    : "Officiële Lange Termijn Agenda (LTA) toezeggingen van het college van B&W van Steenwijkerland, rechtstreeks gesynchroniseerd met het iBabs Publieksportaal."}
                 </p>
               </div>
             </div>
@@ -724,11 +726,15 @@ export const ToezeggingenManager: React.FC<ToezeggingenManagerProps> = ({
                   </Button>
 
                   <a
-                    href={`https://steenwijkerland.bestuurlijkeinformatie.nl/Reports/Item/${item.rowId}`}
+                    href={
+                      item.municipality === "hoogeveen"
+                        ? `https://hoogeveen.raadsinformatie.nl/modules/3/Toezeggingen/${item.rowId}`
+                        : `https://steenwijkerland.bestuurlijkeinformatie.nl/Reports/Item/${item.rowId}`
+                    }
                     target="_blank"
                     rel="noreferrer"
                     className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
-                    title="Open in iBabs Publieksportaal"
+                    title={item.municipality === "hoogeveen" ? "Open in Hoogeveen Notubiz" : "Open in iBabs Publieksportaal"}
                   >
                     <ExternalLink className="w-4 h-4" />
                   </a>
@@ -933,13 +939,17 @@ export const ToezeggingenManager: React.FC<ToezeggingenManagerProps> = ({
 
               <DialogFooter className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <a
-                  href={`https://steenwijkerland.bestuurlijkeinformatie.nl/Reports/Item/${selectedItem.rowId}`}
+                  href={
+                    selectedItem.municipality === "hoogeveen"
+                      ? `https://hoogeveen.raadsinformatie.nl/modules/3/Toezeggingen/${selectedItem.rowId}`
+                      : `https://steenwijkerland.bestuurlijkeinformatie.nl/Reports/Item/${selectedItem.rowId}`
+                  }
                   target="_blank"
                   rel="noreferrer"
                   className="text-xs text-slate-500 hover:text-indigo-600 flex items-center gap-1 self-start sm:self-center"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
-                  Bekijk originele pagina in iBabs
+                  Bekijk op origineel portaal ({selectedItem.municipality === "hoogeveen" ? "Notubiz" : "iBabs"})
                 </a>
 
                 <div className="flex items-center gap-2 self-end">
