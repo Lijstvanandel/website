@@ -310,6 +310,24 @@ export async function extractTextFromFile(filePath: string): Promise<string> {
 }
 
 /**
+ * Fast lookup for pre-extracted document text without live PDF parsing.
+ * Returns cached string or null; never runs synchronous or thread-pool PDF parsing.
+ */
+export async function getCachedDocumentContentOnly(filename: string): Promise<string | null> {
+  if (!filename) return null;
+  const key = filename.toLowerCase().trim();
+  if (textCache.has(key)) {
+    return textCache.get(key) || null;
+  }
+  const cachedShard = await readShardFromDisk(key);
+  if (cachedShard) {
+    textCache.set(key, cachedShard);
+    return cachedShard;
+  }
+  return null;
+}
+
+/**
  * Get or extract text content for a document
  */
 export async function getDocumentContent(filename: string): Promise<string> {

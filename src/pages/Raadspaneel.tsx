@@ -133,13 +133,51 @@ const SECTION_HEADER_PATTERNS = [
 function isSectionHeader(rawTitle: string): boolean {
   if (!rawTitle) return true;
   const clean = rawTitle.toLowerCase().replace(/^\d+[.\s-]+/, "").replace(/\s+/g, " ").trim();
-  return SECTION_HEADER_PATTERNS.some((h) => clean === h || clean.startsWith(h));
+  return SECTION_HEADER_PATTERNS.some((h) => clean === h);
 }
 
 function isProceduralTopic(rawTitle: string): boolean {
   if (!rawTitle) return true;
   const clean = rawTitle.toLowerCase().replace(/^\d+[.\s-]+/, "").replace(/\s+/g, " ").trim();
-  return PROCEDURAL_KEYWORDS.some((k) => clean.includes(k));
+  
+  if (
+    clean === "opening" ||
+    clean.startsWith("opening en") ||
+    clean.startsWith("opening van") ||
+    clean === "sluiting" ||
+    clean.startsWith("sluiting van") ||
+    clean === "vaststelling agenda" ||
+    clean === "vaststellen agenda" ||
+    clean === "vaststelling van de agenda" ||
+    clean === "vaststellen van de agenda" ||
+    clean === "spreekrecht" ||
+    clean.startsWith("spreekrecht voor") ||
+    clean.startsWith("spreekrecht burgers") ||
+    clean === "rondvraag" ||
+    clean === "vragenhalfuur" ||
+    clean === "vragenhalfuurtje" ||
+    clean === "vragenkwartier" ||
+    clean.startsWith("gelegenheid om vragen") ||
+    clean.startsWith("gelegenheid tot het stellen van vragen") ||
+    clean.startsWith("vaststelling besluitenlijst") ||
+    clean.startsWith("vaststellen besluitenlijst") ||
+    clean.startsWith("vaststelling van de besluitenlijst") ||
+    clean.startsWith("vaststellen van de besluitenlijst") ||
+    clean.startsWith("vaststelling notulen") ||
+    clean.startsWith("vaststellen notulen") ||
+    clean === "pauze" ||
+    clean === "schorsing" ||
+    clean === "hervatting" ||
+    clean === "mededelingen" ||
+    clean === "ingekomen stukken en mededelingen" ||
+    clean === "beediging" ||
+    clean === "beëdiging" ||
+    clean === "installatie" ||
+    clean === "afscheid"
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function isRawDocumentFileName(rawTitle: string): boolean {
@@ -295,8 +333,23 @@ export default function Raadspaneel() {
     }, { preventScrollReset: true });
   };
 
-  const [topics, setTopics] = useState<CouncilAgendaTopic[]>([]);
-  const [summary, setSummary] = useState<CouncilMeetingScrapeSummary | null>(null);
+  const [topics, setTopics] = useState<CouncilAgendaTopic[]>(() => {
+    try {
+      const cached = safeSessionStorage.getItem(`lva_cached_topics_${activeMunicipality}`) || safeLocalStorage.getItem(`lva_cached_topics_${activeMunicipality}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [];
+  });
+  const [summary, setSummary] = useState<CouncilMeetingScrapeSummary | null>(() => {
+    try {
+      const cached = safeSessionStorage.getItem(`lva_cached_summary_${activeMunicipality}`) || safeLocalStorage.getItem(`lva_cached_summary_${activeMunicipality}`);
+      if (cached) return JSON.parse(cached);
+    } catch {}
+    return null;
+  });
   const [councilMembers, setCouncilMembers] = useState<{ id: string; username: string; fullName: string; role?: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [isScraping, setIsScraping] = useState(false);
@@ -458,6 +511,7 @@ export default function Raadspaneel() {
     let isRetrying = false;
     try {
       const res = await fetch(`/api/council/topics?municipality=${activeMunicipality}&portal=${activeMunicipality}`, {
+        signal: AbortSignal.timeout(25000),
         headers: {
           Authorization: `Bearer ${token}`,
           "x-portal-tenant": activeMunicipality,
@@ -474,8 +528,23 @@ export default function Raadspaneel() {
         const tMuni = (t.municipality || (t.id?.startsWith("hg_") ? "hoogeveen" : "steenwijkerland")).toLowerCase().trim();
         return tMuni === activeMunicipality;
       });
-      setTopics(scopedTopics);
-      setSummary(data.summary || null);
+      if (scopedTopics.length > 0) {
+        setTopics(scopedTopics);
+        try {
+          safeSessionStorage.setItem(`lva_cached_topics_${activeMunicipality}`, JSON.stringify(scopedTopics));
+          safeLocalStorage.setItem(`lva_cached_topics_${activeMunicipality}`, JSON.stringify(scopedTopics));
+        } catch {}
+      } else if (topics.length === 0) {
+        setTopics([]);
+      }
+
+      if (data.summary) {
+        setSummary(data.summary);
+        try {
+          safeSessionStorage.setItem(`lva_cached_summary_${activeMunicipality}`, JSON.stringify(data.summary));
+          safeLocalStorage.setItem(`lva_cached_summary_${activeMunicipality}`, JSON.stringify(data.summary));
+        } catch {}
+      }
 
       // Strictly isolate council members to active municipality
       const rawMembers = Array.isArray(data.councilMembers) ? data.councilMembers : [];
@@ -509,8 +578,27 @@ export default function Raadspaneel() {
         return;
       }
       console.error(err);
+      // Preserve cached data if network times out or server is temporarily unreachable
+      try {
+        const cachedT = safeSessionStorage.getItem(`lva_cached_topics_${activeMunicipality}`) || safeLocalStorage.getItem(`lva_cached_topics_${activeMunicipality}`);
+        if (cachedT) {
+          const parsedT = JSON.parse(cachedT);
+          if (Array.isArray(parsedT) && parsedT.length > 0) {
+            setTopics((prev) => (prev.length === 0 ? parsedT : prev));
+          }
+        }
+        const cachedS = safeSessionStorage.getItem(`lva_cached_summary_${activeMunicipality}`) || safeLocalStorage.getItem(`lva_cached_summary_${activeMunicipality}`);
+        if (cachedS) {
+          const parsedS = JSON.parse(cachedS);
+          if (parsedS) {
+            setSummary((prev) => prev || parsedS);
+          }
+        }
+      } catch {}
       const friendlyMsg = err?.message === "SERVER_WARMING_UP"
         ? "De server is bezig met inladen. Vernieuw de pagina over enkele seconden."
+        : err?.name === "AbortError"
+        ? "De verbinding met de server duurde te lang. Gegevens uit het geheugen worden getoond."
         : err?.message || "Fout bij inladen";
       if (!quiet) toast.error(friendlyMsg);
     } finally {

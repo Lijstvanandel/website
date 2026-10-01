@@ -11108,6 +11108,8 @@ Sitemap: ${baseUrl}/sitemap.xml
   }
 
   // 1. Get all council agenda topics (and scraping status) - strictly isolated per municipality
+  const topicsResponseCache = new Map<string, { timestamp: number; data: any }>();
+
   app.get("/api/council/topics", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
     const db = getDb();
     const targetMunicipality = resolveRequestMunicipality(req);
@@ -11118,6 +11120,13 @@ Sitemap: ${baseUrl}/sitemap.xml
       const topicMuni = getTopicMunicipality(t);
       return topicMuni === targetMunicipality;
     });
+
+    const cacheKey = `${targetMunicipality}_${scopedRawTopics.length}_${(db.users || []).length}`;
+    const cached = topicsResponseCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && (now - cached.timestamp < 30000)) {
+      return res.json(cached.data);
+    }
 
     const topics = scopedRawTopics.map((t: any) => {
       const withMember = enrichTopicWithMemberData(t, db);
@@ -11157,12 +11166,15 @@ Sitemap: ${baseUrl}/sitemap.xml
         municipality: u.municipality || "steenwijkerland",
       }));
 
-    return res.json({
+    const responseData = {
       municipality: targetMunicipality,
       topics,
       summary,
       councilMembers
-    });
+    };
+    topicsResponseCache.set(cacheKey, { timestamp: now, data: responseData });
+
+    return res.json(responseData);
   });
 
   // 2. Trigger manual scrape on demand (Protected by Idempotent Background Job Queue)
@@ -12757,6 +12769,8 @@ Sitemap: ${baseUrl}/sitemap.xml
   // DOSSIERSYSTEEM RAADSPANEEL API ROUTES
   // ==========================================
 
+  const dossierStatsCache = new Map<string, { timestamp: number; categories: string[]; stats: any }>();
+
   // 1. Get all dossiers (with search, category filter, pagination and statistics)
   app.get("/api/council/dossiers", optionalAuth, (req: any, res: any) => {
     try {
@@ -12781,41 +12795,59 @@ Sitemap: ${baseUrl}/sitemap.xml
       const page = Math.max(1, parseInt(req.query.page || "1", 10));
       const limit = Math.max(1, parseInt(req.query.limit || "12", 10));
 
-      // Count physical files on disk for transparent server reporting
-      const diskStats = countPhysicalFilesOnDisk();
+      // Use cached dossier statistics to avoid expensive disk/metadata recalculations on every page/search request
+      const statsCacheKey = `${targetMunicipality}_${allDossiers.length}`;
+      let cachedStatsEntry = dossierStatsCache.get(statsCacheKey);
+      const now = Date.now();
 
-      // Telt hoeveel bestanden daadwerkelijk door Gemini AI zijn verwerkt
-      const masterMetadataList = getRawMetadata();
-      const aiProcessedCount = masterMetadataList.filter(m => {
-        if (!m) return false;
-        // MUST have either an explicit AI flag OR a Gemini model signature
-        // We no longer rely on 'relaties' length as it can be populated by other heuristic services
-        return (
-          m.ai_geclassificeerd === true || 
-          (typeof m.ai_model === "string" && m.ai_model.toLowerCase().includes("gemini"))
-        );
-      }).length;
-      const unclassifiedFailCount = masterMetadataList.filter(m => m.dossier === "ONGECLASSIFICEERD_FALEN" || m.subdossier === "Audit & Retry Vereist (DLQ)").length;
+      if (!cachedStatsEntry || (now - cachedStatsEntry.timestamp > 30000)) {
+        const diskStats = countPhysicalFilesOnDisk();
+        const masterMetadataList = getRawMetadata();
+        const aiProcessedCount = targetMunicipality === "hoogeveen" ? 0 : masterMetadataList.filter(m => {
+          if (!m) return false;
+          return (
+            m.ai_geclassificeerd === true || 
+            (typeof m.ai_model === "string" && m.ai_model.toLowerCase().includes("gemini"))
+          );
+        }).length;
+        const unclassifiedFailCount = targetMunicipality === "hoogeveen" ? 0 : masterMetadataList.filter(m => m.dossier === "ONGECLASSIFICEERD_FALEN" || m.subdossier === "Audit & Retry Vereist (DLQ)").length;
 
-      // Extract unique categories and deduplicated document counts
-      const categoriesSet = new Set<string>();
-      const uniqueDocsSet = new Set<string>();
-      const uniqueUploadedSet = new Set<string>();
-      let totalSubdossiers = 0;
-      let totalDocumentLinks = 0;
+        const categoriesSet = new Set<string>();
+        const uniqueDocsSet = new Set<string>();
+        const uniqueUploadedSet = new Set<string>();
+        let totalSubdossiers = 0;
+        let totalDocumentLinks = 0;
 
-      allDossiers.forEach((d) => {
-        if (d.category) categoriesSet.add(d.category);
-        totalDocumentLinks += d.documentCount;
-        totalSubdossiers += (d.subdossiers ? d.subdossiers.length : 0);
-        (d.documents || []).forEach((doc) => {
-          const key = (doc.bestandsnaam || doc.titel || doc.id).toLowerCase().trim();
-          uniqueDocsSet.add(key);
-          if (doc.fileExists) {
-            uniqueUploadedSet.add(key);
-          }
+        allDossiers.forEach((d) => {
+          if (d.category) categoriesSet.add(d.category);
+          totalDocumentLinks += d.documentCount;
+          totalSubdossiers += (d.subdossiers ? d.subdossiers.length : 0);
+          (d.documents || []).forEach((doc: any) => {
+            const key = (doc.bestandsnaam || doc.titel || doc.id).toLowerCase().trim();
+            uniqueDocsSet.add(key);
+            if (doc.fileExists) {
+              uniqueUploadedSet.add(key);
+            }
+          });
         });
-      });
+
+        cachedStatsEntry = {
+          timestamp: now,
+          categories: Array.from(categoriesSet).sort(),
+          stats: {
+            totalDossiers: allDossiers.length,
+            totalSubdossiers,
+            totalDocuments: uniqueDocsSet.size,
+            totalUploadedFiles: uniqueUploadedSet.size,
+            physicalFilesOnDisk: targetMunicipality === "hoogeveen" ? (diskStats.hoogeveenCount || uniqueUploadedSet.size) : diskStats.totalFiles,
+            missingFilesCount: Math.max(0, uniqueDocsSet.size - uniqueUploadedSet.size),
+            classifiedSuccessCount: aiProcessedCount,
+            unclassifiedFailCount,
+            totalDocumentLinks,
+          },
+        };
+        dossierStatsCache.set(statsCacheKey, cachedStatsEntry);
+      }
 
       // Filter & Wijk tailor
       const filtered = allDossiers
@@ -12960,24 +12992,44 @@ Sitemap: ${baseUrl}/sitemap.xml
         }
       }
 
+      const includeDocs = req.query.includeDocuments === "true" || Boolean(wijkSlug);
+      const outputDossiers = includeDocs
+        ? paginatedDossiers
+        : paginatedDossiers.map((d: any) => ({
+            id: d.id,
+            title: d.title,
+            slug: d.slug,
+            category: d.category,
+            description: d.description,
+            thumbnail: d.thumbnail,
+            documentCount: d.documentCount,
+            subdossierCount: d.subdossierCount || (d.subdossiers ? d.subdossiers.length : 0),
+            uploadedCount: d.uploadedCount,
+            dateRange: d.dateRange,
+            tags: d.tags,
+            isCustom: d.isCustom,
+            wijkNaam: d.wijkNaam,
+            wijkSlug: d.wijkSlug,
+            lastModified: d.lastModified,
+            subdossiers: (d.subdossiers || []).map((s: any) => ({
+              id: s.id,
+              title: s.title,
+              slug: s.slug,
+              documentCount: s.documentCount,
+              uploadedCount: s.uploadedCount,
+              thumbnail: s.thumbnail,
+            })),
+            documents: [], // Strip heavy document arrays on overview cards to keep payload under 20KB
+          }));
+
       res.json({
-        dossiers: paginatedDossiers,
+        dossiers: outputDossiers,
         total,
         page,
         totalPages,
         limit,
-        categories: Array.from(categoriesSet).sort(),
-        stats: {
-          totalDossiers: allDossiers.length,
-          totalSubdossiers,
-          totalDocuments: uniqueDocsSet.size,
-          totalUploadedFiles: uniqueUploadedSet.size,
-          physicalFilesOnDisk: targetMunicipality === "hoogeveen" ? (diskStats.hoogeveenCount || uniqueUploadedSet.size) : diskStats.totalFiles,
-          missingFilesCount: Math.max(0, uniqueDocsSet.size - uniqueUploadedSet.size),
-          classifiedSuccessCount: aiProcessedCount,
-          unclassifiedFailCount,
-          totalDocumentLinks,
-        },
+        categories: cachedStatsEntry.categories,
+        stats: cachedStatsEntry.stats,
       });
     } catch (err: any) {
       console.error("[COUNCIL DOSSIERS ERROR]:", err);
@@ -14363,6 +14415,7 @@ Sitemap: ${baseUrl}/sitemap.xml
       const hasFiles = req.query.hasFiles === "true";
       const type = (req.query.type as "all" | "dossiers" | "documents") || "all";
       const userId = req.user?.id;
+      const targetMunicipality = resolveRequestMunicipality(req);
 
       const result = await executeCouncilSearch({
         query,
@@ -14375,6 +14428,7 @@ Sitemap: ${baseUrl}/sitemap.xml
         hasFiles,
         type,
         userId,
+        municipality: targetMunicipality,
       });
 
       // Audit log: record council search queries

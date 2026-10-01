@@ -885,6 +885,11 @@ export function matchStandpuntenForDocument(
  * Enrich a list of topics with standpoints matching on both topic and document level.
  */
 export function enrichTopicWithStandpunten(topic: CouncilAgendaTopic): CouncilAgendaTopic {
+  // Fast-path: If topic already has matchedStandpunten and a summary, skip expensive full-program dynamic re-scanning
+  if (topic.matchedStandpunten && topic.matchedStandpunten.length > 0 && topic.standpuntSummary) {
+    return topic;
+  }
+
   // If user already manually adjusted or set standpoints and we want to preserve manual edits:
   const manualEdits = (topic.matchedStandpunten || []).filter((m) => m.manuallyAdjusted);
   

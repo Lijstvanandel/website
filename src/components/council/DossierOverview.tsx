@@ -43,6 +43,7 @@ import { DossierDocumentViewer } from "./DossierDocumentViewer";
 import type { Dossier, DossierDocument, SearchHit, CouncilSearchResponse, DocumentFavorite } from "@/types/dossier";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
+import { safeLocalStorage, safeSessionStorage } from "@/lib/safeStorage";
 import {
   useCouncilPreferences,
   type SortByOption,
@@ -72,7 +73,16 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
   const isHoogeveen = effectiveMuni === "hoogeveen";
   const { pageSize, sortBy, setPageSize, setSortBy } = useCouncilPreferences();
 
-  const [dossiers, setDossiers] = useState<Dossier[]>([]);
+  const [dossiers, setDossiers] = useState<Dossier[]>(() => {
+    try {
+      const cached = safeSessionStorage.getItem(`lva_cached_dossiers_${effectiveMuni}`) || safeLocalStorage.getItem(`lva_cached_dossiers_${effectiveMuni}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [];
+  });
   const [categories, setCategories] = useState<string[]>([]);
   const [stats, setStats] = useState<{
     totalDossiers: number;
@@ -81,16 +91,25 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
     totalUploadedFiles: number;
     classifiedSuccessCount?: number;
     unclassifiedFailCount?: number;
-  }>({
-    totalDossiers: 0,
-    totalSubdossiers: 0,
-    totalDocuments: 0,
-    totalUploadedFiles: 0,
-    classifiedSuccessCount: 0,
-    unclassifiedFailCount: 0,
+  }>(() => {
+    try {
+      const cached = safeLocalStorage.getItem(`lva_dossier_stats_${effectiveMuni}`) || safeSessionStorage.getItem(`lva_dossier_stats_${effectiveMuni}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && typeof parsed.totalDossiers === "number" && parsed.totalDossiers > 0) return parsed;
+      }
+    } catch {}
+    return {
+      totalDossiers: 0,
+      totalSubdossiers: 0,
+      totalDocuments: 0,
+      totalUploadedFiles: 0,
+      classifiedSuccessCount: 0,
+      unclassifiedFailCount: 0,
+    };
   });
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => dossiers.length === 0);
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [hasFilesOnly, setHasFilesOnly] = useState(false);
@@ -142,7 +161,10 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
   const [activeDossierSlug, setActiveDossierSlug] = useState<string | null>(urlDossier);
 
   const fetchDossiers = useCallback(async () => {
-    setLoading(true);
+    // Only set loading if no cached dossiers are showing to prevent jarring flicker
+    if (dossiers.length === 0) setLoading(true);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
     try {
       const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
       const params = new URLSearchParams({
@@ -158,28 +180,60 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
       });
 
       const res = await fetch(`/api/council/dossiers?${params.toString()}`, {
+        signal: controller.signal,
         headers: {
           "x-portal-tenant": effectiveMuni,
           "x-municipality": effectiveMuni,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       });
+      clearTimeout(timeoutId);
 
       if (!res.ok) {
         throw new Error("Kon dossiers niet ophalen");
       }
 
       const data = await res.json();
-      setDossiers(data.dossiers || []);
+      const received = data.dossiers || [];
+      setDossiers(received);
       setTotalPages(data.totalPages || 1);
       setTotalCount(data.total || 0);
       setCategories(data.categories || []);
       if (data.stats) {
         setStats(data.stats);
+        try {
+          safeLocalStorage.setItem(`lva_dossier_stats_${effectiveMuni}`, JSON.stringify(data.stats));
+        } catch {}
       }
+      try {
+        if (received.length > 0) {
+          safeSessionStorage.setItem(`lva_cached_dossiers_${effectiveMuni}`, JSON.stringify(received));
+        }
+      } catch {}
     } catch (err: any) {
+      clearTimeout(timeoutId);
       console.error(err);
-      toast.error(err.message || "Fout bij ophalen dossiers");
+      // Seamless fallback to cached data so numbers never revert to 0
+      try {
+        const cached = safeSessionStorage.getItem(`lva_cached_dossiers_${effectiveMuni}`);
+        const cachedStats = safeLocalStorage.getItem(`lva_dossier_stats_${effectiveMuni}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0 && dossiers.length === 0) {
+            setDossiers(parsed);
+          }
+        }
+        if (cachedStats) {
+          const parsedStats = JSON.parse(cachedStats);
+          if (parsedStats && parsedStats.totalDossiers > 0) {
+            setStats(parsedStats);
+          }
+        }
+      } catch {}
+      const msg = err.name === "AbortError"
+        ? "Het ophalen van de dossiers duurde langer dan verwacht. Gegevens uit het geheugen worden getoond."
+        : (err.message || "Fout bij ophalen dossiers");
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -570,6 +624,8 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
     }
 
     setSearchLoading(true);
+    const abortController = new AbortController();
+
     const timeoutId = setTimeout(async () => {
       try {
         const token =
@@ -579,6 +635,8 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
           sessionStorage.getItem("token");
 
         const params = new URLSearchParams({
+          municipality: effectiveMuni,
+          portal: effectiveMuni,
           q: searchFilters.query,
           exact: searchFilters.exactPhrase ? "true" : "false",
           startDate: searchFilters.startDate,
@@ -591,7 +649,10 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
         });
 
         const res = await fetch(`/api/council/search?${params.toString()}`, {
+          signal: abortController.signal,
           headers: {
+            "x-portal-tenant": effectiveMuni,
+            "x-municipality": effectiveMuni,
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
         });
@@ -602,15 +663,23 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
         } else {
           setSearchResponse(null);
         }
-      } catch (err) {
-        console.error("Search error:", err);
+      } catch (err: any) {
+        if (err?.name !== "AbortError") {
+          console.error("Search error:", err);
+        }
       } finally {
-        setSearchLoading(false);
+        if (!abortController.signal.aborted) {
+          setSearchLoading(false);
+        }
       }
-    }, 200);
+    }, 250);
 
-    return () => clearTimeout(timeoutId);
+    return () => {
+      clearTimeout(timeoutId);
+      abortController.abort();
+    };
   }, [
+    effectiveMuni,
     isSearchActive,
     searchFilters.query,
     searchFilters.exactPhrase,

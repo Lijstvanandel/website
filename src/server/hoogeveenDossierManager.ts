@@ -656,11 +656,24 @@ export function scanHoogeveenPhysicalFiles(forceRefresh = false): {
   return cachedHoogeveenScan;
 }
 
+let cachedHoogeveenDossiers: Dossier[] | null = null;
+let lastHoogeveenDossiersCacheTime = 0;
+
+export function invalidateHoogeveenDossiersCache(): void {
+  cachedHoogeveenDossiers = null;
+  lastHoogeveenDossiersCacheTime = 0;
+}
+
 /**
  * Safely loads Hoogeveen dossiers from JSON file, KV store, or database
  * and dynamically reconciles fileExists and uploadedCount against physical disk presence.
  */
 export function getHoogeveenDossiers(): Dossier[] {
+  const now = Date.now();
+  if (cachedHoogeveenDossiers && (now - lastHoogeveenDossiersCacheTime < 60000)) {
+    return cachedHoogeveenDossiers;
+  }
+
   let dossiers: Dossier[] = [];
   try {
     if (fs.existsSync(HOOGEVEEN_METADATA_JSON)) {
@@ -788,7 +801,10 @@ export function getHoogeveenDossiers(): Dossier[] {
   });
 
   // Enrich with regional documents from Provincie Drenthe and Waterschap WDODelta tailored to wijken and kernen
-  return enrichHoogeveenDossiersWithRegionalDocuments(mappedDossiers);
+  const result = enrichHoogeveenDossiersWithRegionalDocuments(mappedDossiers);
+  cachedHoogeveenDossiers = result;
+  lastHoogeveenDossiersCacheTime = Date.now();
+  return result;
 }
 
 /**

@@ -1,6 +1,7 @@
 import { getAllDossiers, getDossiers, getDossierBySlug } from "./dossierManager.js";
+import { getHoogeveenDossiers } from "./hoogeveenDossierManager.js";
 import {
-  getDocumentContent,
+  getCachedDocumentContentOnly,
   normalizeForSearch,
   extractExactHitSnippet,
   resolveDocumentPath,
@@ -19,6 +20,7 @@ export interface CouncilSearchParams {
   hasFiles?: boolean;
   type?: "all" | "dossiers" | "documents";
   userId?: string;
+  municipality?: "steenwijkerland" | "hoogeveen";
   page?: number;
   limit?: number;
 }
@@ -74,9 +76,18 @@ export async function executeCouncilSearch(params: CouncilSearchParams): Promise
 
   const userFavorites = params.userId ? getUserFavoriteFilenames(params.userId) : new Set<string>();
 
-  // Fetch all compiled dossiers including custom SQLite entries
+  // Fetch all compiled dossiers including custom SQLite entries according to municipality
+  const targetMunicipality = (params.municipality || "steenwijkerland").toLowerCase().trim() === "hoogeveen" ? "hoogeveen" : "steenwijkerland";
   const db = getDbFromSqlite();
-  const allDossiers = getAllDossiers(db.customDossiers || [], db.deletedDossierSlugs || []);
+  let allDossiers: Dossier[] = [];
+  if (targetMunicipality === "hoogeveen") {
+    const hoogeveenDossiers = getHoogeveenDossiers();
+    const customHoogeveen = (db.customDossiers || []).filter((d: any) => (d.municipality || "").toLowerCase() === "hoogeveen");
+    allDossiers = [...hoogeveenDossiers, ...customHoogeveen];
+  } else {
+    const customSwl = (db.customDossiers || []).filter((d: any) => (d.municipality || "steenwijkerland").toLowerCase() === "steenwijkerland");
+    allDossiers = getAllDossiers(customSwl, db.deletedDossierSlugs || [], db.customSubdossiers || {});
+  }
 
   const matchedHits: SearchHit[] = [];
   const seenHitIds = new Set<string>();
@@ -258,8 +269,8 @@ export async function executeCouncilSearch(params: CouncilSearchParams): Promise
         const hit = extractExactHitSnippet(doc.relaties.join(", "), rawQuery);
         docSnippet = `Relaties: ${hit.snippet}`;
       } else if (doc.fileExists) {
-        // Search inside the physical document file content (e.g. PDF text)
-        const fileContent = await getDocumentContent(doc.bestandsnaam);
+        // Search inside pre-cached document text shards only - never block on live synchronous PDF extraction!
+        const fileContent = await getCachedDocumentContentOnly(doc.bestandsnaam);
         if (fileContent) {
           const hit = extractExactHitSnippet(fileContent, rawQuery);
           if (hit.matched) {
@@ -302,6 +313,12 @@ export async function executeCouncilSearch(params: CouncilSearchParams): Promise
 
   const tookMs = Math.round((performance.now() - startTime) * 10) / 10;
 
+  // Map dossiers to lightweight objects without full document arrays to keep payload small and fast
+  const lightMatchedDossiers = Array.from(matchedDossiersMap.values()).map((d) => ({
+    ...d,
+    documents: [],
+  }));
+
   return {
     query: rawQuery,
     exactPhrase,
@@ -310,7 +327,7 @@ export async function executeCouncilSearch(params: CouncilSearchParams): Promise
     totalDossiers: matchedDossiersMap.size,
     totalDocuments: matchedDocumentsMap.size,
     hits: matchedHits,
-    dossiers: Array.from(matchedDossiersMap.values()),
+    dossiers: lightMatchedDossiers,
     documents: Array.from(matchedDocumentsMap.values()),
   };
 }
