@@ -14404,6 +14404,9 @@ Sitemap: ${baseUrl}/sitemap.xml
 
   // 10. High-speed exact full-text Meilisearch across dossiers and documents
   app.get("/api/council/search", optionalAuth, async (req: any, res: any) => {
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
     try {
       const query = typeof req.query.q === "string" ? req.query.q : "";
       const exactPhrase = req.query.exact !== "false";
