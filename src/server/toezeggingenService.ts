@@ -3,6 +3,10 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import { persistSqlite, schedulePersist, getRawSqliteDb } from "./sqliteDatabase.js";
+import { GoogleGenAI } from "@google/genai";
+import { hoofdstukken } from "../data/partijprogramma.js";
+import { hoofdstukkenHoogeveen } from "../data/partijprogrammaHoogeveen.js";
+import { MatchedStandpunt, TopicStandpuntSummary, StandpuntStance } from "../types/council.js";
 
 const STEENWIJKERLAND_REPORT_API = "https://steenwijkerland.bestuurlijkeinformatie.nl/Reports/GetReportData/18b100eb-2dba-433e-8737-2dc373dd88e1";
 const STEENWIJKERLAND_ITEM_BASE = "https://steenwijkerland.bestuurlijkeinformatie.nl/Reports/Item/";
@@ -12,6 +16,15 @@ const HOOGEVEEN_TOEZEGGINGEN_URL = "https://hoogeveen.raadsinformatie.nl/modules
 const HOOGEVEEN_BASE = "https://hoogeveen.raadsinformatie.nl";
 
 const SQLITE_FILE = process.env.DATABASE_PATH || path.join(process.cwd(), "database.sqlite");
+
+// Lazy Gemini Client
+let geminiClient: GoogleGenAI | null = null;
+function getGemini(): GoogleGenAI | null {
+  if (!geminiClient && process.env.GEMINI_API_KEY) {
+    geminiClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  }
+  return geminiClient;
+}
 
 export interface ToezeggingBijlage {
   title: string;
@@ -43,6 +56,8 @@ export interface ToezeggingItem {
   bijlagen?: ToezeggingBijlage[];
   municipality: string;
   detailFetched?: boolean;
+  matchedStandpunten?: MatchedStandpunt[];
+  standpuntSummary?: TopicStandpuntSummary;
   updatedAt: string;
   createdAt?: string;
 }
@@ -112,8 +127,9 @@ export function getAllToezeggingenFromDb(municipality?: string): ToezeggingItem[
     if (memoryToezeggingenCache.length === 0) {
       const db = getRawSqliteDb();
       if (db) {
+        db.run("CREATE TABLE IF NOT EXISTS councilToezeggingen (id TEXT PRIMARY KEY, data TEXT)");
         const rows = db.exec("SELECT data FROM councilToezeggingen");
-        if (rows.length > 0 && rows[0].values) {
+        if (rows.length > 0 && rows[0].values && rows[0].values.length > 0) {
           memoryToezeggingenCache = rows[0].values.map((v: any) => {
             try {
               return JSON.parse(v[0]);
@@ -121,6 +137,21 @@ export function getAllToezeggingenFromDb(municipality?: string): ToezeggingItem[
               return null;
             }
           }).filter(Boolean);
+        } else {
+          // Database is brand new/empty -> Seed from pre-baked seed file for instant VPS & deployment availability
+          try {
+            const seedFilePath = path.join(process.cwd(), "src", "server", "seedToezeggingen.json");
+            if (fs.existsSync(seedFilePath)) {
+              const seedDataRaw = fs.readFileSync(seedFilePath, "utf8");
+              const seedItems: ToezeggingItem[] = JSON.parse(seedDataRaw);
+              if (Array.isArray(seedItems) && seedItems.length > 0) {
+                console.log(`[LTA SEED] Eerste start: Laden van ${seedItems.length} gebundelde toezeggingen naar database...`);
+                saveToezeggingenToDb(seedItems);
+              }
+            }
+          } catch (seedErr) {
+            console.warn("[LTA SEED ERROR]:", seedErr);
+          }
         }
       }
     }
@@ -670,6 +701,123 @@ export async function syncSteenwijkerlandToezeggingen(options: {
 }
 
 /**
+ * Use Gemini AI to semantically match and link relevant party standpoints to a B&W Promise / Toezegging
+ */
+export async function matchToezeggingWithStandpunten(item: ToezeggingItem): Promise<ToezeggingItem> {
+  if (item.matchedStandpunten && item.matchedStandpunten.length > 0) {
+    return item;
+  }
+
+  const ai = getGemini();
+  if (!ai) {
+    return item;
+  }
+
+  try {
+    const isHoogeveen = item.municipality === "hoogeveen";
+    const activeChapters = isHoogeveen ? hoofdstukkenHoogeveen : hoofdstukken;
+    const partyName = isHoogeveen ? "de lokale fractie" : "Lijst van Andel";
+    const municipalityName = isHoogeveen ? "Hoogeveen" : "Steenwijkerland";
+
+    const programmaLines = [];
+    for (const h of activeChapters) {
+      programmaLines.push(`\n### HOOFDSTUK ${h.nr}: ${h.titel.toUpperCase()}`);
+      for (const s of h.standpunten) {
+        programmaLines.push(`- H${h.nr}.${s.nr}: "${s.titel}" -> ${s.standpunt}`);
+      }
+    }
+    const programmaContext = programmaLines.join("\n");
+
+    const prompt = `Je bent de politieke fractie-analist van ${partyName} in de gemeenteraad van ${municipalityName}.
+Je taak is om een officiële toezegging/belofte van het college van Burgemeester en Wethouders (B&W) te analyseren en te koppelen aan de relevante standpunten uit ons partijprogramma.
+
+TOEZEGGING DETAILS:
+- ID: "${item.identity}"
+- Onderwerp: "${item.title}"
+- Gedane Belofte / Citaat: "${item.toezeggingText}"
+- Portefeuillehouder: "${item.portefeuillehouder}"
+- Stand van Zaken / Toelichting: "${item.toelichting || item.standVanZaken || ""}"
+- Status: "${item.status}" (${item.isAfgedaan ? "Afgedaan" : "Openstaand"})
+
+ONS PARTIJPROGRAMMA:
+${programmaContext}
+
+OPDRACHT:
+Koppel de toezegging aan de meest relevante standpunten uit ons partijprogramma (meestal 1 tot 3 standpunten). Bepaal of deze toezegging een positieve, negatieve of genuanceerde invloed heeft op onze standpunten.
+
+GEEF UITSLUITEND ANTWOORD IN DIT JSON FORMAAT (GEEN MARKDOWN OF ANDERE TEKST):
+{
+  "standpunten": [
+    {
+      "hoofdstukNr": 1-10,
+      "standpuntNr": 1-20,
+      "stance": "positief" | "negatief" | "genuanceerd",
+      "explanation": "Inhoudelijke toelichting waarom deze toezegging raakvlakken heeft met ons standpunt en wat dit betekent voor onze fractiepositionering."
+    }
+  ]
+}`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: {
+        temperature: 0.1,
+        responseMimeType: "application/json",
+      },
+    });
+
+    const raw = response.text?.trim() || "";
+    const cleanJson = raw.replace(/```json/gi, "").replace(/```/g, "").trim();
+
+    if (cleanJson) {
+      const parsed = JSON.parse(cleanJson);
+      if (parsed && Array.isArray(parsed.standpunten)) {
+        const matched: MatchedStandpunt[] = parsed.standpunten.map((sp: any, idx: number) => {
+          const h = activeChapters.find((ch) => ch.nr === Number(sp.hoofdstukNr));
+          const st = h?.standpunten.find((stItem) => stItem.nr === Number(sp.standpuntNr));
+
+          return {
+            id: `${item.id}_ai_h${sp.hoofdstukNr}_s${sp.standpuntNr}_${idx}`,
+            hoofdstukNr: Number(sp.hoofdstukNr),
+            hoofdstukTitel: h ? h.titel : `Hoofdstuk ${sp.hoofdstukNr}`,
+            standpuntNr: Number(sp.standpuntNr),
+            standpuntTitel: st ? st.titel : `Standpunt ${sp.standpuntNr}`,
+            standpuntText: st ? st.standpunt : "",
+            stance: (sp.stance === "positief" || sp.stance === "negatief" || sp.stance === "genuanceerd" ? sp.stance : "genuanceerd") as StandpuntStance,
+            explanation: sp.explanation || "",
+            relevanceScore: 90,
+            matchedKeywords: ["AI Gemini Link"],
+            manuallyAdjusted: false,
+            adjustedBy: "Gemini 2.5 Flash",
+            adjustedAt: new Date().toISOString(),
+          };
+        });
+
+        item.matchedStandpunten = matched;
+
+        const posCount = matched.filter((m) => m.stance === "positief").length;
+        const negCount = matched.filter((m) => m.stance === "negatief").length;
+        const genCount = matched.filter((m) => m.stance === "genuanceerd").length;
+
+        item.standpuntSummary = {
+          total: matched.length,
+          positiefCount: posCount,
+          negatiefCount: negCount,
+          genuanceerdCount: genCount,
+          primaryStance: negCount > 0 ? "negatief" : posCount > 0 ? "positief" : "neutraal",
+          summaryText: `AI-Koppeling: Gekoppeld met ${matched.length} standpunt(en) van de fractie.`,
+          keyArguments: matched.map((m) => m.explanation),
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("[LTA STANDPUNT MATCH ERR]:", err);
+  }
+
+  return item;
+}
+
+/**
  * Query and filter toezeggingen with rich stats
  */
 export function queryToezeggingen(options: ToezeggingQueryOptions = {}) {
@@ -762,7 +910,7 @@ export function queryToezeggingen(options: ToezeggingQueryOptions = {}) {
     if (sort === "deadline_asc") {
       const dlA = a.deadlineIso || "9999-99-99";
       const dlB = b.deadlineIso || "9999-99-99";
-      return dlA.localeCompare(dlA);
+      return dlA.localeCompare(dlB);
     }
     if (sort === "deadline_desc") {
       const dlA = a.deadlineIso || "0000-00-00";
@@ -802,11 +950,28 @@ export async function getSingleToezegging(rowIdOrId: string, municipality?: stri
   const items = getAllToezeggingenFromDb(municipality);
   const found = items.find((i) => i.rowId === rowIdOrId || i.id === rowIdOrId || i.identity === rowIdOrId);
 
-  if (found && !found.detailFetched && (found.municipality === "steenwijkerland")) {
-    const detail = await fetchToezeggingDetail(found.rowId);
-    if (detail) {
-      Object.assign(found, detail);
-      found.detailFetched = true;
+  if (found) {
+    let changed = false;
+    
+    // Fetch details for Steenwijkerland if not loaded yet
+    if (!found.detailFetched && found.municipality === "steenwijkerland") {
+      const detail = await fetchToezeggingDetail(found.rowId);
+      if (detail) {
+        Object.assign(found, detail);
+        found.detailFetched = true;
+        changed = true;
+      }
+    }
+
+    // AI Semantic Standpoint Matching on-demand
+    if (!found.matchedStandpunten || found.matchedStandpunten.length === 0) {
+      await matchToezeggingWithStandpunten(found);
+      if (found.matchedStandpunten && found.matchedStandpunten.length > 0) {
+        changed = true;
+      }
+    }
+
+    if (changed) {
       saveToezeggingenToDb(items);
     }
   }

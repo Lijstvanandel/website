@@ -26,6 +26,7 @@ import {
   Eye,
   ShieldCheck,
   Building,
+  Target,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -188,9 +189,20 @@ export const ToezeggingenManager: React.FC<ToezeggingenManagerProps> = ({
   };
 
   // Click on a toezegging row / card
-  const handleOpenDetail = (item: ToezeggingItem) => {
+  const handleOpenDetail = async (item: ToezeggingItem) => {
     setSelectedItem(item);
     setDetailModalOpen(true);
+
+    try {
+      const res = await fetch(`/api/council/toezeggingen/${item.rowId}?municipality=${municipality}`);
+      if (res.ok) {
+        const enriched = await res.json();
+        setSelectedItem(enriched);
+        setItems((prev) => prev.map((it) => (it.rowId === item.rowId ? enriched : it)));
+      }
+    } catch (err) {
+      console.warn("[LTA DETAIL ENRICH ERR]:", err);
+    }
   };
 
   // Launch written questions wizard pre-filled with this toezegging
@@ -674,6 +686,31 @@ export const ToezeggingenManager: React.FC<ToezeggingenManagerProps> = ({
                 </div>
               )}
 
+              {/* Linked Standpoints Preview */}
+              {item.matchedStandpunten && item.matchedStandpunten.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-1.5 items-center">
+                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 mr-1 flex items-center gap-1">
+                    <Target className="w-3.5 h-3.5 text-indigo-500" />
+                    Raakvlakken:
+                  </span>
+                  {item.matchedStandpunten.map((sp, idx) => (
+                    <span
+                      key={idx}
+                      className={`text-[10px] px-2 py-0.5 rounded-md font-semibold border flex items-center gap-1 ${
+                        sp.stance === "positief"
+                          ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/30"
+                          : sp.stance === "negatief"
+                          ? "bg-rose-50 dark:bg-rose-950/20 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800/30"
+                          : "bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/30"
+                      }`}
+                      title={`${sp.standpuntTitel}: ${sp.explanation}`}
+                    >
+                      H{sp.hoofdstukNr}.{sp.standpuntNr}
+                    </span>
+                  ))}
+                </div>
+              )}
+
               {/* Card Footer Actions */}
               <div className="mt-4 pt-3.5 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-2">
@@ -906,6 +943,59 @@ export const ToezeggingenManager: React.FC<ToezeggingenManagerProps> = ({
                   </h4>
                   <div className="text-sm bg-slate-50 dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-line">
                     {selectedItem.toelichting}
+                  </div>
+                </div>
+              )}
+
+              {/* Linked Standpoints Detail List */}
+              {selectedItem.matchedStandpunten && selectedItem.matchedStandpunten.length > 0 && (
+                <div className="space-y-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                  <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Target className="w-4 h-4 text-indigo-500" />
+                    Politieke Raakvlakken &amp; Standpunten ({selectedItem.matchedStandpunten.length})
+                  </h4>
+                  <div className="space-y-2.5">
+                    {selectedItem.matchedStandpunten.map((sp, spIdx) => (
+                      <div
+                        key={spIdx}
+                        className={`p-3.5 rounded-xl border flex flex-col gap-1.5 ${
+                          sp.stance === "positief"
+                            ? "bg-emerald-50/40 dark:bg-emerald-950/10 border-emerald-200/60 dark:border-emerald-900/30"
+                            : sp.stance === "negatief"
+                            ? "bg-rose-50/40 dark:bg-rose-950/10 border-rose-200/60 dark:border-rose-900/30"
+                            : "bg-amber-50/40 dark:bg-amber-950/10 border-amber-200/60 dark:border-amber-900/30"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                            Hoofdstuk {sp.hoofdstukNr}: {sp.hoofdstukTitel} &bull; Standpunt {sp.standpuntNr}
+                          </span>
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider ${
+                              sp.stance === "positief"
+                                ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300"
+                                : sp.stance === "negatief"
+                                ? "bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300"
+                                : "bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300"
+                            }`}
+                          >
+                            {sp.stance}
+                          </span>
+                        </div>
+                        <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                          {sp.standpuntTitel}
+                        </div>
+                        {sp.standpuntText && (
+                          <div className="text-xs text-slate-500 italic dark:text-slate-400">
+                            &quot;{sp.standpuntText}&quot;
+                          </div>
+                        )}
+                        <div className="text-xs font-medium text-slate-700 dark:text-slate-300 leading-relaxed bg-white/70 dark:bg-slate-950/50 p-2.5 rounded-lg border border-slate-200/50 dark:border-slate-800/40 mt-1">
+                          <span className="font-bold text-slate-900 dark:text-slate-100 block mb-0.5">FractieToelichting:</span>
+                          {sp.explanation}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}

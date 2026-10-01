@@ -82,13 +82,51 @@ export const SECTION_HEADER_PATTERNS = [
 export function isSectionHeader(rawTitle: string): boolean {
   if (!rawTitle) return true;
   const clean = rawTitle.toLowerCase().replace(/^\d+[.\s-]+/, "").replace(/\s+/g, " ").trim();
-  return SECTION_HEADER_PATTERNS.some((h) => clean === h || clean.startsWith(h));
+  return SECTION_HEADER_PATTERNS.some((h) => clean === h);
 }
 
 export function isProceduralTopic(rawTitle: string): boolean {
   if (!rawTitle) return true;
   const clean = rawTitle.toLowerCase().replace(/^\d+[.\s-]+/, "").replace(/\s+/g, " ").trim();
-  return PROCEDURAL_KEYWORDS.some((k) => clean.includes(k));
+  
+  if (
+    clean === "opening" ||
+    clean.startsWith("opening en") ||
+    clean.startsWith("opening van") ||
+    clean === "sluiting" ||
+    clean.startsWith("sluiting van") ||
+    clean === "vaststelling agenda" ||
+    clean === "vaststellen agenda" ||
+    clean === "vaststelling van de agenda" ||
+    clean === "vaststellen van de agenda" ||
+    clean === "spreekrecht" ||
+    clean.startsWith("spreekrecht voor") ||
+    clean.startsWith("spreekrecht burgers") ||
+    clean === "rondvraag" ||
+    clean === "vragenhalfuur" ||
+    clean === "vragenhalfuurtje" ||
+    clean === "vragenkwartier" ||
+    clean.startsWith("gelegenheid om vragen") ||
+    clean.startsWith("gelegenheid tot het stellen van vragen") ||
+    clean.startsWith("vaststelling besluitenlijst") ||
+    clean.startsWith("vaststellen besluitenlijst") ||
+    clean.startsWith("vaststelling van de besluitenlijst") ||
+    clean.startsWith("vaststellen van de besluitenlijst") ||
+    clean.startsWith("vaststelling notulen") ||
+    clean.startsWith("vaststellen notulen") ||
+    clean === "pauze" ||
+    clean === "schorsing" ||
+    clean === "hervatting" ||
+    clean === "mededelingen" ||
+    clean === "ingekomen stukken en mededelingen" ||
+    clean === "beediging" ||
+    clean === "beëdiging" ||
+    clean === "installatie" ||
+    clean === "afscheid"
+  ) {
+    return true;
+  }
+  return false;
 }
 
 export function isRawDocumentFileName(rawTitle: string): boolean {

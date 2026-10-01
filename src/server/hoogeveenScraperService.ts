@@ -588,12 +588,8 @@ export async function scrapeCouncilAgendasHoogeveen(yearsToScrape: number[] = [2
     console.warn("[HOOGEVEEN SCRAPER] Auto-dossierverdeling waarschuwing:", distErr?.message);
   }
 
-  // Automatically start background download for any new physical PDF files
-  setTimeout(() => {
-    bulkDownloadHoogeveenPdfs().catch((err) =>
-      console.warn("[HOOGEVEEN AUTO BULK DOWNLOAD WARN]:", err?.message)
-    );
-  }, 1000);
+  // Bulk download is available on-demand via the admin endpoint /api/council/hoogeveen/bulk-download-pdfs
+  // to avoid consuming excess disk/network bandwidth during automated watchdogs.
 
   // Schedule next watchdog run
   scheduleNextHoogeveenWatchdogScrape(120 * 60 * 1000); // 2 hours
