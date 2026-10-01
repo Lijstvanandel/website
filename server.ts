@@ -15222,13 +15222,42 @@ Sitemap: ${baseUrl}/sitemap.xml
     // Start autonomous council agenda scraper for Hoogeveen
     startHoogeveenCouncilWatchdogScheduler();
 
-    // Auto-verify and sync server documents if disk contains more files than metadata asynchronously
+    // Auto-verify and sync server documents if disk contains unindexed files asynchronously
     (async () => {
       try {
         const diskStats = countPhysicalFilesOnDisk();
         const currentMeta = getRawMetadata();
-        if (diskStats.totalFiles > currentMeta.length) {
-          console.log(`[DOCUMENTS AUTO-SYNC] Server heeft ${diskStats.totalFiles} bestanden op schijf, maar metadata heeft ${currentMeta.length} items. Automatische synchronisatie wordt gestart...`);
+        const knownBaseNames = new Set(currentMeta.map((m) => path.basename(m.bestandsnaam).toLowerCase().trim()));
+
+        let hasUnindexed = false;
+        const scanDirs = [
+          path.join(process.cwd(), "public", "uploads", "documents"),
+          path.join(process.cwd(), "dist", "uploads", "documents"),
+        ].filter((d) => fs.existsSync(d));
+
+        for (const sDir of scanDirs) {
+          try {
+            const entries = fs.readdirSync(sDir);
+            for (const e of entries) {
+              const lower = e.toLowerCase().trim();
+              if (
+                !lower.endsWith(".json") &&
+                !lower.endsWith(".sqlite") &&
+                !lower.endsWith(".csv") &&
+                !lower.endsWith(".log") &&
+                !lower.startsWith(".") &&
+                !knownBaseNames.has(lower)
+              ) {
+                hasUnindexed = true;
+                break;
+              }
+            }
+            if (hasUnindexed) break;
+          } catch (_e) {}
+        }
+
+        if (hasUnindexed || diskStats.totalFiles > currentMeta.length) {
+          console.log(`[DOCUMENTS AUTO-SYNC] Server heeft ongeïndexeerde fysieke documenten op schijf (${diskStats.totalFiles} bestanden). Automatische synchronisatie wordt gestart...`);
           const syncRes = await syncPhysicalFilesystemDocuments();
           console.log(`[DOCUMENTS AUTO-SYNC VOLTOOID]: ${syncRes.message}`);
         } else {

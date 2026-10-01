@@ -278,7 +278,7 @@ export interface PhysicalFileInfo {
   fileUrl?: string;
   fileSize?: number;
 }
-const physicalFilesCache = new Map<string, PhysicalFileInfo>();
+export const physicalFilesCache = new Map<string, PhysicalFileInfo>();
 let physicalFilesScanPromise: Promise<void> | null = null;
 
 const isDocFile = (fn: string) => {
@@ -296,52 +296,69 @@ const isDocFile = (fn: string) => {
 // Asynchronous scanner for all documents on disk - populates in-memory lookup index
 export async function populatePhysicalFilesCacheAsync(): Promise<void> {
   try {
-    if (!fs.existsSync(DOCUMENTS_DIR)) return;
+    const scanDirs = [DOCUMENTS_DIR, DIST_DOCUMENTS_DIR].filter((d) => fs.existsSync(d));
+    if (scanDirs.length === 0) return;
 
-    const rootEntries = await fsp.readdir(DOCUMENTS_DIR, { withFileTypes: true });
-    for (const entry of rootEntries) {
-      if (entry.isFile() && isDocFile(entry.name)) {
-        const fullPath = path.join(DOCUMENTS_DIR, entry.name);
-        try {
-          const st = await fsp.stat(fullPath);
-          const info: PhysicalFileInfo = {
-            exists: true,
-            fileUrl: `/uploads/documents/${encodeURIComponent(entry.name)}`,
-            fileSize: st.size,
-          };
-          physicalFilesCache.set(entry.name.toLowerCase().trim(), info);
-          physicalFilesCache.set(path.basename(entry.name).toLowerCase().trim(), info);
-        } catch (_e) {
-          // ignore stat error
-        }
-      } else if (entry.isDirectory()) {
-        const subDirName = entry.name.toLowerCase();
-        const subDirPath = path.join(DOCUMENTS_DIR, entry.name);
-        try {
-          const subEntries = await fsp.readdir(subDirPath, { withFileTypes: true });
-          for (const sub of subEntries) {
-            if (sub.isFile() && isDocFile(sub.name)) {
-              const subFullPath = path.join(subDirPath, sub.name);
-              try {
-                const subSt = await fsp.stat(subFullPath);
+    for (const baseDir of scanDirs) {
+      const isDist = baseDir === DIST_DOCUMENTS_DIR;
+      const rootEntries = await fsp.readdir(baseDir, { withFileTypes: true }).catch(() => [] as any[]);
+      for (const entry of rootEntries) {
+        if (entry.isFile && entry.isFile() && isDocFile(entry.name)) {
+          const lowerRel = entry.name.toLowerCase().trim();
+          const lowerBase = path.basename(entry.name).toLowerCase().trim();
+          if (physicalFilesCache.has(lowerRel) && physicalFilesCache.get(lowerRel)!.exists) {
+            continue;
+          }
+          const fullPath = path.join(baseDir, entry.name);
+          try {
+            const st = await fsp.stat(fullPath);
+            const info: PhysicalFileInfo = {
+              exists: true,
+              fileUrl: `/uploads/documents/${encodeURIComponent(entry.name)}`,
+              fileSize: st.size,
+            };
+            physicalFilesCache.set(lowerRel, info);
+            physicalFilesCache.set(lowerBase, info);
+          } catch (_e) {
+            // ignore stat error
+          }
+        } else if (entry.isDirectory && entry.isDirectory()) {
+          const subDirName = entry.name.toLowerCase();
+          const subDirPath = path.join(baseDir, entry.name);
+          try {
+            const subEntries = await fsp.readdir(subDirPath, { withFileTypes: true }).catch(() => [] as any[]);
+            for (const sub of subEntries) {
+              if (sub.isFile && sub.isFile() && isDocFile(sub.name)) {
                 const relPath = `${subDirName}/${sub.name}`;
-                const info: PhysicalFileInfo = {
-                  exists: true,
-                  fileUrl: `/uploads/documents/${subDirName}/${encodeURIComponent(sub.name)}`,
-                  fileSize: subSt.size,
-                };
-                physicalFilesCache.set(relPath.toLowerCase().trim(), info);
-                physicalFilesCache.set(sub.name.toLowerCase().trim(), info);
-              } catch (_e) {
-                // ignore stat error
+                const lowerRel = relPath.toLowerCase().trim();
+                const lowerBase = sub.name.toLowerCase().trim();
+                if (physicalFilesCache.has(lowerRel) && physicalFilesCache.get(lowerRel)!.exists) {
+                  continue;
+                }
+                const subFullPath = path.join(subDirPath, sub.name);
+                try {
+                  const subSt = await fsp.stat(subFullPath);
+                  const info: PhysicalFileInfo = {
+                    exists: true,
+                    fileUrl: `/uploads/documents/${subDirName}/${encodeURIComponent(sub.name)}`,
+                    fileSize: subSt.size,
+                  };
+                  physicalFilesCache.set(lowerRel, info);
+                  physicalFilesCache.set(lowerBase, info);
+                } catch (_e) {
+                  // ignore stat error
+                }
               }
             }
+          } catch (_e) {
+            // ignore readdir error
           }
-        } catch (_e) {
-          // ignore readdir error
         }
       }
     }
+    // Invalidate cached dossiers so newly scanned disk files are immediately included
+    invalidateDossierCache();
+    metadataVersion++;
   } catch (err) {
     console.warn("[dossierManager] Fout bij scannen fysieke bestanden:", err);
   }
@@ -349,7 +366,10 @@ export async function populatePhysicalFilesCacheAsync(): Promise<void> {
 
 // Kick off initial non-blocking scan immediately
 setImmediate(() => {
-  physicalFilesScanPromise = populatePhysicalFilesCacheAsync();
+  physicalFilesScanPromise = populatePhysicalFilesCacheAsync().then(() => {
+    invalidateDossierCache();
+    metadataVersion++;
+  });
 });
 
 // Explicit cache invalidation
@@ -707,8 +727,20 @@ export function saveMasterMetadata(items: RaadsstukMetadata[], csvContent?: stri
 
 // Clean document titles for auto-indexed files
 export function cleanDocumentTitle(fileName: string): string {
-  let title = fileName.replace(/\.[a-zA-Z0-9]+$/i, "");
-  title = title.replace(/[-_]+/g, " ");
+  let title = fileName;
+  // Remove trailing scraped file sizes and duplicated .pdf e.g. ".pdf    28 KB.pdf" or " (28 KB)"
+  title = title.replace(/\.pdf\s+\d+\s*(?:kb|mb|bytes)?(?:\.pdf)?$/i, "");
+  title = title.replace(/\s+\d+\s*(?:kb|mb|bytes)\.pdf$/i, "");
+  title = title.replace(/\s*\(\s*\d+\s*(?:kb|mb|bytes)\s*\)(?:\.pdf)?$/i, "");
+  title = title.replace(/\.[a-zA-Z0-9]+$/i, "");
+  title = title.replace(/\.pdf$/i, "");
+  title = title.replace(/\s+\d+\s*(?:kb|mb|bytes)$/i, "");
+  // Remove leading agenda item numbering like "5.0 ", "5. ", "04. "
+  title = title.replace(/^\d+(?:\.\d+)*\s*[-._]?\s*/, "");
+  // Replace underscores and tabs
+  title = title.replace(/[_\t]+/g, " ");
+  // Format dashes cleanly
+  title = title.replace(/\s*-\s*/g, " - ");
   // Remove leading YYYY MM DD or YYYYMMDD
   title = title.replace(/^\b\d{4}\s*\d{2}\s*\d{2}\b\s*/, "");
   title = title.replace(/^\b\d{4}\b\s*/, "");
@@ -863,60 +895,74 @@ export async function syncPhysicalFilesystemDocuments(): Promise<{
   };
 
   try {
-    const rootEntries = await fsp.readdir(DOCUMENTS_DIR, { withFileTypes: true }).catch(() => [] as any[]);
-    let processedEntries = 0;
+    const scanDirs = [DOCUMENTS_DIR, DIST_DOCUMENTS_DIR].filter((d) => fs.existsSync(d));
+    const seenRelPaths = new Set<string>();
 
-    for (const entry of rootEntries) {
-      processedEntries++;
-      if (processedEntries % 100 === 0) {
-        await new Promise((r) => setImmediate(r));
-      }
+    for (const baseDir of scanDirs) {
+      const rootEntries = await fsp.readdir(baseDir, { withFileTypes: true }).catch(() => [] as any[]);
+      let processedEntries = 0;
 
-      if (entry.isFile && entry.isFile() && isDocFile(entry.name)) {
-        const fullPath = path.join(DOCUMENTS_DIR, entry.name);
-        try {
-          const st = await fsp.stat(fullPath);
-          diskFiles.push({
-            fileName: entry.name,
-            subFolder: "",
-            relPath: entry.name,
-            fullPath,
-            fileSize: st.size,
-            mtime: st.mtime,
-          });
-        } catch (_e) {
-          // ignore stat error
+      for (const entry of rootEntries) {
+        processedEntries++;
+        if (processedEntries % 100 === 0) {
+          await new Promise((r) => setImmediate(r));
         }
-      } else if (entry.isDirectory && entry.isDirectory()) {
-        const subDirName = entry.name;
-        const subDirPath = path.join(DOCUMENTS_DIR, subDirName);
-        try {
-          const subEntries = await fsp.readdir(subDirPath, { withFileTypes: true }).catch(() => [] as any[]);
-          for (const sub of subEntries) {
-            if (sub.isFile && sub.isFile() && isDocFile(sub.name)) {
-              const subFullPath = path.join(subDirPath, sub.name);
-              try {
-                const subSt = await fsp.stat(subFullPath);
-                diskFiles.push({
-                  fileName: sub.name,
-                  subFolder: subDirName,
-                  relPath: `${subDirName}/${sub.name}`,
-                  fullPath: subFullPath,
-                  fileSize: subSt.size,
-                  mtime: subSt.mtime,
-                });
-              } catch (_e) {
-                // ignore subSt error
+
+        if (entry.isFile && entry.isFile() && isDocFile(entry.name)) {
+          const lowerRel = entry.name.toLowerCase().trim();
+          if (seenRelPaths.has(lowerRel)) continue;
+          seenRelPaths.add(lowerRel);
+
+          const fullPath = path.join(baseDir, entry.name);
+          try {
+            const st = await fsp.stat(fullPath);
+            diskFiles.push({
+              fileName: entry.name,
+              subFolder: "",
+              relPath: entry.name,
+              fullPath,
+              fileSize: st.size,
+              mtime: st.mtime,
+            });
+          } catch (_e) {
+            // ignore stat error
+          }
+        } else if (entry.isDirectory && entry.isDirectory()) {
+          const subDirName = entry.name;
+          const subDirPath = path.join(baseDir, subDirName);
+          try {
+            const subEntries = await fsp.readdir(subDirPath, { withFileTypes: true }).catch(() => [] as any[]);
+            for (const sub of subEntries) {
+              if (sub.isFile && sub.isFile() && isDocFile(sub.name)) {
+                const relPath = `${subDirName}/${sub.name}`;
+                const lowerRel = relPath.toLowerCase().trim();
+                if (seenRelPaths.has(lowerRel)) continue;
+                seenRelPaths.add(lowerRel);
+
+                const subFullPath = path.join(subDirPath, sub.name);
+                try {
+                  const subSt = await fsp.stat(subFullPath);
+                  diskFiles.push({
+                    fileName: sub.name,
+                    subFolder: subDirName,
+                    relPath,
+                    fullPath: subFullPath,
+                    fileSize: subSt.size,
+                    mtime: subSt.mtime,
+                  });
+                } catch (_e) {
+                  // ignore subSt error
+                }
               }
             }
+          } catch (_e) {
+            // ignore subDir readdir error
           }
-        } catch (_e) {
-          // ignore subDir readdir error
         }
       }
     }
   } catch (err) {
-    console.error("Error reading DOCUMENTS_DIR:", err);
+    console.error("Error reading document directories:", err);
   }
 
   // Load existing metadata
@@ -1096,7 +1142,7 @@ export function getAllDossiers(
     stTopics = [];
   }
   const stDocsCount = stTopics.reduce((acc: number, t: any) => acc + (Array.isArray(t.documents) ? t.documents.length : 0), 0);
-  const cacheKey = `${metadataVersion}_${customLen}_${delKey}_${subCount}_${stTopics.length}_${stDocsCount}`;
+  const cacheKey = `${metadataVersion}_${customLen}_${delKey}_${subCount}_${stTopics.length}_${stDocsCount}_${physicalFilesCache.size}`;
 
   if (cachedAllDossiers && cachedDossiersKey === cacheKey) {
     return cachedAllDossiers;
@@ -1215,6 +1261,59 @@ export function getAllDossiers(
       dossierMap.get(slug)!.docs.push(dDoc);
     });
   });
+
+  // Collect all known filenames from metadata & topics to avoid any duplicates
+  const seenDocFilenames = new Set<string>();
+  for (const group of dossierMap.values()) {
+    for (const d of group.docs) {
+      if (d.bestandsnaam) {
+        seenDocFilenames.add(d.bestandsnaam.toLowerCase().trim());
+        seenDocFilenames.add(path.basename(d.bestandsnaam).toLowerCase().trim());
+      }
+    }
+  }
+
+  // Incorporate any physical documents found on disk that were not in static metadata
+  for (const [key, pInfo] of physicalFilesCache.entries()) {
+    if (!pInfo.exists) continue;
+    const lowerKey = key.toLowerCase().trim();
+    const baseKey = path.basename(key).toLowerCase().trim();
+    if (seenDocFilenames.has(lowerKey) || seenDocFilenames.has(baseKey)) {
+      continue;
+    }
+    seenDocFilenames.add(lowerKey);
+    seenDocFilenames.add(baseKey);
+
+    const cleanTitle = cleanDocumentTitle(baseKey);
+    const date = extractDateFromFilename(baseKey);
+    const subFolder = key.includes("/") ? key.split("/")[0] : "";
+    const detectedTopic = detectDossierAndSubdossier(cleanTitle + " " + baseKey, subFolder);
+    const detectedWijk = detectWijkOrKern(cleanTitle + " " + baseKey) || "Gemeentebreed";
+    const canonicalHoofd = detectedTopic.dossier;
+    const slug = slugify(canonicalHoofd) || "overig";
+
+    if (!dossierMap.has(slug)) {
+      dossierMap.set(slug, { title: canonicalHoofd, docs: [] });
+    }
+
+    const dDoc: DossierDocument = {
+      id: `disk_doc_${slugify(key)}`,
+      bestandsnaam: key,
+      titel: cleanTitle,
+      dossier: canonicalHoofd,
+      subdossier: detectedTopic.subdossier || cleanTitle,
+      wijk_of_kern: detectedWijk,
+      wijken: detectedWijk !== "Gemeentebreed" ? [detectedWijk] : [],
+      datum: date,
+      entiteiten: ["Gemeenteraad Steenwijkerland", detectedTopic.subdossier, detectedWijk].filter(Boolean),
+      relaties: [`Fysiek raadsdocument: ${cleanTitle}`],
+      fileExists: true,
+      fileUrl: pInfo.fileUrl || `/uploads/documents/${encodeURIComponent(key)}`,
+      fileSize: pInfo.fileSize,
+    };
+
+    dossierMap.get(slug)!.docs.push(dDoc);
+  }
 
   let dossiers: Dossier[] = [];
 

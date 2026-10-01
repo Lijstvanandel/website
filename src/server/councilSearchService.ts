@@ -4,6 +4,7 @@ import {
   getCachedDocumentContentOnly,
   normalizeForSearch,
   extractExactHitSnippet,
+  extractTokensHitSnippet,
   resolveDocumentPath,
 } from "./documentTextExtractor.js";
 import { getUserFavoriteFilenames, getDbFromSqlite } from "./sqliteDatabase.js";
@@ -63,9 +64,12 @@ export async function executeCouncilSearch(params: CouncilSearchParams): Promise
   const startTime = performance.now();
 
   const rawQuery = (params.query || "").trim();
-  const exactPhrase = params.exactPhrase !== false; // Default true
+  const exactPhrase = params.exactPhrase !== false; // User toggle (default true)
   const normQuery = normalizeForSearch(rawQuery);
   const typeFilter = params.type || "all";
+
+  // Tokenize query words (minimum 2 chars) for multi-token and flexible matching
+  const queryTokens = normQuery.split(/\s+/).filter((t) => t.length >= 2);
 
   const isoStart = parseDateToIso(params.startDate);
   const isoEnd = parseDateToIso(params.endDate);
@@ -110,13 +114,11 @@ export async function executeCouncilSearch(params: CouncilSearchParams): Promise
     }
 
     // 3. Period / Timeline filter for dossier
-    // "als ik bijvoorbeeld 06-06-2024 als begin selecteer, dat ik dan dossiers krijg waarvan de documenten actief of gestart zijn op de tijdlijn. Voor eind geld hetzelfde."
     let dossierTimelineMatch = true;
     const dStart = dossier.dateRange?.start ? parseDateToIso(dossier.dateRange.start) : null;
     const dEnd = dossier.dateRange?.end ? parseDateToIso(dossier.dateRange.end) : null;
 
     if (isoStart) {
-      // Dossier is active on/after isoStart if its end date >= isoStart or any doc >= isoStart
       const activeAfterStart = (dEnd && dEnd >= isoStart) || dossier.documents.some((d) => d.datum && d.datum >= isoStart);
       if (!activeAfterStart) {
         dossierTimelineMatch = false;
@@ -124,7 +126,6 @@ export async function executeCouncilSearch(params: CouncilSearchParams): Promise
     }
 
     if (isoEnd && dossierTimelineMatch) {
-      // Dossier started on/before isoEnd if its start date <= isoEnd or any doc <= isoEnd
       const activeBeforeEnd = (dStart && dStart <= isoEnd) || dossier.documents.some((d) => d.datum && d.datum <= isoEnd);
       if (!activeBeforeEnd) {
         dossierTimelineMatch = false;
@@ -147,6 +148,7 @@ export async function executeCouncilSearch(params: CouncilSearchParams): Promise
       const normCat = normalizeForSearch(dossier.category);
       const normTags = normalizeForSearch(dossier.tags.join(" "));
 
+      // Level 1: Exact Phrase
       if (normTitle.includes(normQuery)) {
         dossierMatchedQuery = true;
         dossierScore += 100;
@@ -169,6 +171,31 @@ export async function executeCouncilSearch(params: CouncilSearchParams): Promise
         dossierScore += 50;
         dossierMatchField = "dossier";
         dossierSnippet = `Categorie: ${dossier.category}`;
+      } else if (queryTokens.length > 1) {
+        // Level 2: All Tokens match in title or description
+        const allInTitle = queryTokens.every((t) => normTitle.includes(t));
+        const allInDesc = queryTokens.every((t) => normDesc.includes(t));
+        const allInCombo = queryTokens.every((t) => normTitle.includes(t) || normDesc.includes(t) || normTags.includes(t));
+
+        if (allInTitle) {
+          dossierMatchedQuery = true;
+          dossierScore += 85;
+          dossierMatchField = "title";
+          const hit = extractTokensHitSnippet(dossier.title, queryTokens);
+          dossierSnippet = hit.snippet || dossier.description;
+        } else if (allInDesc) {
+          dossierMatchedQuery = true;
+          dossierScore += 65;
+          dossierMatchField = "description";
+          const hit = extractTokensHitSnippet(dossier.description, queryTokens);
+          dossierSnippet = hit.snippet;
+        } else if (allInCombo) {
+          dossierMatchedQuery = true;
+          dossierScore += 55;
+          dossierMatchField = "title";
+          const hit = extractTokensHitSnippet(dossier.title + " " + dossier.description, queryTokens);
+          dossierSnippet = hit.snippet;
+        }
       }
     }
 
@@ -211,10 +238,7 @@ export async function executeCouncilSearch(params: CouncilSearchParams): Promise
       // If no query string, every doc meeting the filters matches
       if (!normQuery) {
         if (typeFilter !== "dossiers") {
-          matchedDocumentsMap.set(doc.bestandsnaam, {
-            ...doc,
-            // If user filtered by date, show within dossier
-          });
+          matchedDocumentsMap.set(doc.bestandsnaam, doc);
           addHit({
             type: "document",
             id: `doc-${doc.id}`,
@@ -233,52 +257,127 @@ export async function executeCouncilSearch(params: CouncilSearchParams): Promise
         continue;
       }
 
-      // Full text & metadata matching with exact phrase
+      // Multi-level exact & token matching across metadata and file content
       const normDocTitle = normalizeForSearch(doc.titel);
       const normDocFilename = normalizeForSearch(doc.bestandsnaam);
+      const normSubdossier = normalizeForSearch(doc.subdossier || "");
       const normEntities = normalizeForSearch(doc.entiteiten.join(" "));
       const normRelations = normalizeForSearch(doc.relaties.join(" "));
+      const combinedDocMeta = `${normDocTitle} ${normDocFilename} ${normSubdossier} ${normEntities} ${normRelations}`;
 
       let docMatched = false;
       let docScore = 0;
       let docMatchField: SearchHit["matchField"] = "title";
       let docSnippet = "";
 
+      // LEVEL 1: Exact phrase match
       if (normDocTitle.includes(normQuery)) {
         docMatched = true;
-        docScore = 95;
+        docScore = 100;
         docMatchField = "title";
         const hit = extractExactHitSnippet(doc.titel, rawQuery);
         docSnippet = hit.snippet;
       } else if (normDocFilename.includes(normQuery)) {
         docMatched = true;
-        docScore = 85;
+        docScore = 95;
         docMatchField = "filename";
         const hit = extractExactHitSnippet(doc.bestandsnaam, rawQuery);
         docSnippet = hit.snippet;
+      } else if (normSubdossier && normSubdossier.includes(normQuery)) {
+        docMatched = true;
+        docScore = 90;
+        docMatchField = "title";
+        const hit = extractExactHitSnippet(doc.subdossier!, rawQuery);
+        docSnippet = `Subdossier: ${hit.snippet}`;
       } else if (normEntities.includes(normQuery)) {
         docMatched = true;
-        docScore = 65;
+        docScore = 70;
         docMatchField = "entities";
         const hit = extractExactHitSnippet(doc.entiteiten.join(", "), rawQuery);
         docSnippet = `Entiteiten: ${hit.snippet}`;
       } else if (normRelations.includes(normQuery)) {
         docMatched = true;
-        docScore = 60;
+        docScore = 65;
         docMatchField = "relations";
         const hit = extractExactHitSnippet(doc.relaties.join(", "), rawQuery);
         docSnippet = `Relaties: ${hit.snippet}`;
-      } else if (doc.fileExists) {
-        // Search inside pre-cached document text shards only - never block on live synchronous PDF extraction!
-        const fileContent = await getCachedDocumentContentOnly(doc.bestandsnaam);
-        if (fileContent) {
-          const hit = extractExactHitSnippet(fileContent, rawQuery);
+      }
+
+      // Check cached text content for exact phrase if not already matched
+      let cachedContent: string | null = null;
+      if (!docMatched && doc.fileExists) {
+        cachedContent = await getCachedDocumentContentOnly(doc.bestandsnaam);
+        if (cachedContent) {
+          const hit = extractExactHitSnippet(cachedContent, rawQuery);
           if (hit.matched) {
             docMatched = true;
             docScore = 80;
             docMatchField = "content";
             docSnippet = hit.snippet;
           }
+        }
+      }
+
+      // LEVEL 2: All query tokens present in document (in any order)
+      if (!docMatched && queryTokens.length > 1) {
+        const allInTitle = queryTokens.every((t) => normDocTitle.includes(t));
+        const allInFilename = queryTokens.every((t) => normDocFilename.includes(t));
+        const allInSubdossier = normSubdossier ? queryTokens.every((t) => normSubdossier.includes(t)) : false;
+        const allInMeta = queryTokens.every((t) => combinedDocMeta.includes(t));
+
+        if (allInTitle) {
+          docMatched = true;
+          docScore = 90;
+          docMatchField = "title";
+          const hit = extractTokensHitSnippet(doc.titel, queryTokens);
+          docSnippet = hit.snippet;
+        } else if (allInFilename) {
+          docMatched = true;
+          docScore = 85;
+          docMatchField = "filename";
+          const hit = extractTokensHitSnippet(doc.bestandsnaam, queryTokens);
+          docSnippet = hit.snippet;
+        } else if (allInSubdossier) {
+          docMatched = true;
+          docScore = 82;
+          docMatchField = "title";
+          const hit = extractTokensHitSnippet(doc.subdossier!, queryTokens);
+          docSnippet = `Subdossier: ${hit.snippet}`;
+        } else if (allInMeta) {
+          docMatched = true;
+          docScore = 75;
+          docMatchField = "title";
+          const hit = extractTokensHitSnippet(doc.titel + " " + (doc.subdossier || "") + " " + doc.entiteiten.join(" "), queryTokens);
+          docSnippet = hit.snippet;
+        } else if (doc.fileExists) {
+          if (!cachedContent) cachedContent = await getCachedDocumentContentOnly(doc.bestandsnaam);
+          if (cachedContent) {
+            const normText = normalizeForSearch(cachedContent);
+            const allInContent = queryTokens.every((t) => normText.includes(t));
+            if (allInContent) {
+              docMatched = true;
+              docScore = 70;
+              docMatchField = "content";
+              const hit = extractTokensHitSnippet(cachedContent, queryTokens);
+              docSnippet = hit.snippet;
+            }
+          }
+        }
+      }
+
+      // LEVEL 3: Flexible partial token match (if exactPhrase is false)
+      if (!docMatched && !exactPhrase && queryTokens.length >= 2) {
+        let matchedCount = 0;
+        for (const t of queryTokens) {
+          if (combinedDocMeta.includes(t)) matchedCount++;
+        }
+        const ratio = matchedCount / queryTokens.length;
+        if (ratio >= 0.5 || (queryTokens.length >= 3 && matchedCount >= 2)) {
+          docMatched = true;
+          docScore = Math.round(50 * ratio);
+          docMatchField = "title";
+          const hit = extractTokensHitSnippet(doc.titel + " " + (doc.subdossier || "") + " " + doc.bestandsnaam, queryTokens);
+          docSnippet = hit.snippet;
         }
       }
 

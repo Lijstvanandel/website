@@ -365,12 +365,15 @@ export async function getDocumentContent(filename: string): Promise<string> {
 }
 
 /**
- * Clean & normalize text for exact phrase matching
+ * Clean & normalize text for search and exact phrase matching.
+ * Replaces punctuation and special symbols with spaces to prevent words from being glued together,
+ * while preserving numbers and letters for high-precision search.
  */
 export function normalizeForSearch(text: string): string {
   return (text || "")
     .toLowerCase()
     .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, "-") // normalize unicode dashes & hyphens
+    .replace(/[.,/#!$%^&*;:{}=\-_`~()[\]\\]/g, " ") // normalize punctuation to spaces so e.g. "5.0" or "visie-binnenstad" splits nicely
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -392,22 +395,38 @@ export function extractExactHitSnippet(
   const cleanFull = fullText.replace(/\r?\n+/g, " ");
   const normFull = cleanFull.toLowerCase();
 
-  const index = normFull.indexOf(normQuery);
+  // Try direct substring match first
+  let index = normFull.indexOf(rawQuery.toLowerCase());
+  let matchLen = rawQuery.length;
+
   if (index === -1) {
-    return { snippet: "", matched: false };
+    index = normFull.indexOf(normQuery);
+    matchLen = normQuery.length;
+  }
+
+  if (index === -1) {
+    // Try without punctuation
+    const strippedFull = normFull.replace(/[.,/#!$%^&*;:{}=\-_`~()[\]\\]/g, " ");
+    const strippedIdx = strippedFull.indexOf(normQuery);
+    if (strippedIdx !== -1) {
+      index = strippedIdx;
+      matchLen = normQuery.length;
+    } else {
+      return { snippet: "", matched: false };
+    }
   }
 
   // Calculate snippet window
-  const half = Math.floor((snippetLength - normQuery.length) / 2);
+  const half = Math.floor((snippetLength - matchLen) / 2);
   const start = Math.max(0, index - half);
-  const end = Math.min(cleanFull.length, index + normQuery.length + half);
+  const end = Math.min(cleanFull.length, index + matchLen + half);
 
   const prefix = start > 0 ? "..." : "";
   const suffix = end < cleanFull.length ? "..." : "";
 
-  const matchedPart = cleanFull.substring(index, index + normQuery.length);
+  const matchedPart = cleanFull.substring(index, index + matchLen);
   const beforePart = cleanFull.substring(start, index);
-  const afterPart = cleanFull.substring(index + normQuery.length, end);
+  const afterPart = cleanFull.substring(index + matchLen, end);
 
   // Return HTML snippet with styled highlight mark
   const snippet = `${prefix}${escapeHtml(beforePart)}<mark class="bg-amber-200 text-amber-950 dark:bg-amber-500/30 dark:text-amber-200 px-1 py-0.5 rounded font-bold">${escapeHtml(
@@ -415,6 +434,53 @@ export function extractExactHitSnippet(
   )}</mark>${escapeHtml(afterPart)}${suffix}`;
 
   return { snippet, matched: true };
+}
+
+/**
+ * Extract context snippet for token-based / multi-word search queries
+ */
+export function extractTokensHitSnippet(
+  fullText: string,
+  queryTokens: string[],
+  snippetLength = 160
+): { snippet: string; matched: boolean } {
+  if (!fullText || !queryTokens || queryTokens.length === 0) return { snippet: "", matched: false };
+  const cleanFull = fullText.replace(/\r?\n+/g, " ");
+  const normFull = cleanFull.toLowerCase();
+
+  const tokenPositions: { token: string; index: number; length: number }[] = [];
+  for (const t of queryTokens) {
+    if (!t || t.length < 2) continue;
+    let idx = normFull.indexOf(t);
+    while (idx !== -1) {
+      tokenPositions.push({ token: t, index: idx, length: t.length });
+      idx = normFull.indexOf(t, idx + t.length);
+    }
+  }
+
+  if (tokenPositions.length === 0) return { snippet: "", matched: false };
+
+  tokenPositions.sort((a, b) => a.index - b.index);
+  const firstPos = tokenPositions[0];
+  const half = Math.floor(snippetLength / 2);
+  const start = Math.max(0, firstPos.index - half);
+  const end = Math.min(cleanFull.length, start + snippetLength);
+
+  let snippet = cleanFull.substring(start, end);
+  const prefix = start > 0 ? "..." : "";
+  const suffix = end < cleanFull.length ? "..." : "";
+
+  for (const t of queryTokens) {
+    if (!t || t.length < 2) continue;
+    const escaped = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const reg = new RegExp(`(${escaped})`, "gi");
+    snippet = snippet.replace(
+      reg,
+      '<mark class="bg-amber-200 text-amber-950 dark:bg-amber-500/30 dark:text-amber-200 px-1 py-0.5 rounded font-bold">$1</mark>'
+    );
+  }
+
+  return { snippet: `${prefix}${snippet}${suffix}`, matched: true };
 }
 
 function escapeHtml(str: string): string {
