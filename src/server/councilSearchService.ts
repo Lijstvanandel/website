@@ -57,6 +57,18 @@ export function parseDateToIso(dateStr?: string | null): string | null {
   return null;
 }
 
+const safeJoin = (val: any): string => {
+  if (!val) return "";
+  if (Array.isArray(val)) return val.filter(Boolean).join(" ");
+  return String(val);
+};
+
+const safeCommaJoin = (val: any): string => {
+  if (!val) return "";
+  if (Array.isArray(val)) return val.filter(Boolean).join(", ");
+  return String(val);
+};
+
 /**
  * Perform Meilisearch-style high speed exact full-text search across dossiers and documents
  */
@@ -65,7 +77,14 @@ export async function executeCouncilSearch(params: CouncilSearchParams): Promise
 
   const rawQuery = (params.query || "").trim();
   const exactPhrase = params.exactPhrase !== false; // User toggle (default true)
-  const normQuery = normalizeForSearch(rawQuery);
+  // Clean query of trailing file artifacts (like ".pdf" or " 28 KB.pdf") for resilient title matching
+  const cleanedQuery = rawQuery
+    .replace(/\.pdf\s+\d+\s*(?:kb|mb|bytes)?(?:\.pdf)?$/i, "")
+    .replace(/\s+\d+\s*(?:kb|mb|bytes)\.pdf$/i, "")
+    .replace(/\.pdf$/i, "")
+    .replace(/\s*\(\s*\d+\s*(?:kb|mb|bytes)\s*\)$/i, "")
+    .trim();
+  const normQuery = normalizeForSearch(cleanedQuery || rawQuery);
   const typeFilter = params.type || "all";
 
   // Tokenize query words (minimum 2 chars) for multi-token and flexible matching
@@ -105,8 +124,8 @@ export async function executeCouncilSearch(params: CouncilSearchParams): Promise
 
   for (const dossier of allDossiers) {
     // 1. Slider filter: documentCount between minFiles and maxFiles
-    if (dossier.documentCount < minFiles) continue;
-    if (maxFiles < 50 && dossier.documentCount > maxFiles) continue;
+    if (minFiles > 0 && dossier.documentCount < minFiles) continue;
+    if (typeof params.maxFiles === "number" && params.maxFiles > 0 && params.maxFiles < 35 && dossier.documentCount > params.maxFiles) continue;
 
     // 2. Category filter
     if (categoryFilter && dossier.category.toLowerCase() !== categoryFilter) {
@@ -261,8 +280,8 @@ export async function executeCouncilSearch(params: CouncilSearchParams): Promise
       const normDocTitle = normalizeForSearch(doc.titel);
       const normDocFilename = normalizeForSearch(doc.bestandsnaam);
       const normSubdossier = normalizeForSearch(doc.subdossier || "");
-      const normEntities = normalizeForSearch(doc.entiteiten.join(" "));
-      const normRelations = normalizeForSearch(doc.relaties.join(" "));
+      const normEntities = normalizeForSearch(safeJoin(doc.entiteiten));
+      const normRelations = normalizeForSearch(safeJoin(doc.relaties));
       const combinedDocMeta = `${normDocTitle} ${normDocFilename} ${normSubdossier} ${normEntities} ${normRelations}`;
 
       let docMatched = false;
@@ -289,17 +308,17 @@ export async function executeCouncilSearch(params: CouncilSearchParams): Promise
         docMatchField = "title";
         const hit = extractExactHitSnippet(doc.subdossier!, rawQuery);
         docSnippet = `Subdossier: ${hit.snippet}`;
-      } else if (normEntities.includes(normQuery)) {
+      } else if (normEntities && normEntities.includes(normQuery)) {
         docMatched = true;
         docScore = 70;
         docMatchField = "entities";
-        const hit = extractExactHitSnippet(doc.entiteiten.join(", "), rawQuery);
+        const hit = extractExactHitSnippet(safeCommaJoin(doc.entiteiten), rawQuery);
         docSnippet = `Entiteiten: ${hit.snippet}`;
-      } else if (normRelations.includes(normQuery)) {
+      } else if (normRelations && normRelations.includes(normQuery)) {
         docMatched = true;
         docScore = 65;
         docMatchField = "relations";
-        const hit = extractExactHitSnippet(doc.relaties.join(", "), rawQuery);
+        const hit = extractExactHitSnippet(safeCommaJoin(doc.relaties), rawQuery);
         docSnippet = `Relaties: ${hit.snippet}`;
       }
 
@@ -347,7 +366,7 @@ export async function executeCouncilSearch(params: CouncilSearchParams): Promise
           docMatched = true;
           docScore = 75;
           docMatchField = "title";
-          const hit = extractTokensHitSnippet(doc.titel + " " + (doc.subdossier || "") + " " + doc.entiteiten.join(" "), queryTokens);
+          const hit = extractTokensHitSnippet(doc.titel + " " + (doc.subdossier || "") + " " + safeJoin(doc.entiteiten), queryTokens);
           docSnippet = hit.snippet;
         } else if (doc.fileExists) {
           if (!cachedContent) cachedContent = await getCachedDocumentContentOnly(doc.bestandsnaam);
@@ -365,8 +384,8 @@ export async function executeCouncilSearch(params: CouncilSearchParams): Promise
         }
       }
 
-      // LEVEL 3: Flexible partial token match (if exactPhrase is false)
-      if (!docMatched && !exactPhrase && queryTokens.length >= 2) {
+      // LEVEL 3: Flexible partial token match (fallback for multi-word search)
+      if (!docMatched && queryTokens.length >= 2) {
         let matchedCount = 0;
         for (const t of queryTokens) {
           if (combinedDocMeta.includes(t)) matchedCount++;
