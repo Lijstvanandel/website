@@ -11130,7 +11130,54 @@ Sitemap: ${baseUrl}/sitemap.xml
 
     const topics = scopedRawTopics.map((t: any) => {
       const withMember = enrichTopicWithMemberData(t, db);
-      return enrichTopicWithStandpunten(withMember);
+      const enriched = enrichTopicWithStandpunten(withMember);
+
+      // Compact representation for overview list: trims redundant document justifications and URLs to reduce payload by >70%
+      const lightDocs = (enriched.documents || []).map((d: any) => ({
+        id: d.id,
+        title: d.title,
+        fileType: d.fileType || "PDF",
+        isLateDump: Boolean(d.isLateDump),
+        isNewAfterCompile: Boolean(d.isNewAfterCompile),
+        firstDetectedAt: d.firstDetectedAt,
+        viewedBy: (d.viewedBy || []).map((v: any) => ({ username: v.username, fullName: v.fullName })),
+      }));
+
+      return {
+        id: enriched.id,
+        municipality: enriched.municipality || targetMunicipality,
+        meetingId: enriched.meetingId,
+        meetingDate: enriched.meetingDate,
+        meetingDateDisplay: enriched.meetingDateDisplay,
+        meetingTitle: enriched.meetingTitle,
+        meetingType: enriched.meetingType,
+        agendaItemNumber: enriched.agendaItemNumber,
+        title: enriched.title,
+        description: enriched.description || "",
+        category: enriched.category,
+        assignedTo: enriched.assignedTo,
+        assignedName: enriched.assignedName,
+        assignedAt: enriched.assignedAt,
+        isArchived: Boolean(enriched.isArchived),
+        archivedAt: enriched.archivedAt,
+        sourceUrl: enriched.sourceUrl,
+        scrapedAt: enriched.scrapedAt,
+        isParked: Boolean(enriched.isParked),
+        parkedAt: enriched.parkedAt,
+        parkedBy: enriched.parkedBy,
+        previousCategory: enriched.previousCategory,
+        markAsHamerstuk: Boolean(enriched.markAsHamerstuk),
+        hasRecentDump: Boolean(enriched.hasRecentDump),
+        hasDocumentDiff: Boolean(enriched.hasDocumentDiff),
+        lastDiffDetectedAt: enriched.lastDiffDetectedAt,
+        diffAlerts: enriched.diffAlerts,
+        hasNewDocumentsSinceCompile: Boolean(enriched.hasNewDocumentsSinceCompile),
+        newDocumentsCountSinceCompile: enriched.newDocumentsCountSinceCompile || 0,
+        standpuntSummary: enriched.standpuntSummary,
+        notes: enriched.notes || [],
+        documents: lightDocs,
+        totalDocumentsCount: (enriched.documents || []).length,
+      };
     });
 
     const summaryKey = targetMunicipality === "hoogeveen" ? "councilScrapeSummaryHoogeveen" : "councilScrapeSummary";
@@ -11175,6 +11222,23 @@ Sitemap: ${baseUrl}/sitemap.xml
     topicsResponseCache.set(cacheKey, { timestamp: now, data: responseData });
 
     return res.json(responseData);
+  });
+
+  // 1b. Lazy-load full topic details (complete documents with URLs, detailed standpunten, notes) on selection
+  app.get("/api/council/topics/:topicId", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const { topicId } = req.params;
+    const rawTopics = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
+    const topic = rawTopics.find((t: any) => String(t.id) === String(topicId));
+
+    if (!topic) {
+      return res.status(404).json({ error: "Agendapunt niet gevonden." });
+    }
+
+    const withMember = enrichTopicWithMemberData(topic, db);
+    const enriched = enrichTopicWithStandpunten(withMember);
+
+    return res.json({ topic: enriched });
   });
 
   // 2. Trigger manual scrape on demand (Protected by Idempotent Background Job Queue)

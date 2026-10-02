@@ -369,15 +369,20 @@ export default function Raadspaneel() {
   const [loadingPendingUsers, setLoadingPendingUsers] = useState(false);
   const [activeJobs, setActiveJobs] = useState<any[]>([]);
 
+  // Intelligent Adaptive Polling for background jobs
   useEffect(() => {
     if (!token || !isCouncilOrAdmin) return;
-    
+
+    let isMounted = true;
+    let timerId: NodeJS.Timeout;
+
     const fetchJobs = async () => {
+      let hasActive = isScraping || isBulkDownloading;
       try {
         const res = await fetch("/api/admin/jobs?limit=5", {
           headers: { Authorization: `Bearer ${token}` }
         });
-        if (res.ok) {
+        if (res.ok && isMounted) {
           const data = await res.json();
           const runningOrPending = (data.jobs || []).filter((j: any) => {
             const isRunning = j.status === "running" || j.status === "pending";
@@ -388,16 +393,27 @@ export default function Raadspaneel() {
             return j.type?.includes("IBABS") || (!j.type?.includes("HOOGEVEEN") && !j.type?.includes("NOTUBIZ"));
           });
           setActiveJobs(runningOrPending);
+          if (runningOrPending.length > 0) {
+            hasActive = true;
+          }
         }
       } catch {
-        // ignore
+        // ignore transient network errors
+      }
+
+      if (isMounted) {
+        // Adaptive polling interval: 3000ms if active jobs or user-initiated action, 20000ms (20s) when idle
+        const nextInterval = hasActive ? 3000 : 20000;
+        timerId = setTimeout(fetchJobs, nextInterval);
       }
     };
 
     fetchJobs();
-    const interval = setInterval(fetchJobs, 3000);
-    return () => clearInterval(interval);
-  }, [token, isCouncilOrAdmin, activeMunicipality]);
+    return () => {
+      isMounted = false;
+      clearTimeout(timerId);
+    };
+  }, [token, isCouncilOrAdmin, activeMunicipality, isScraping, isBulkDownloading]);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -605,12 +621,26 @@ export default function Raadspaneel() {
       } catch {
         // ignore cache fallback error
       }
+      const isTimeout =
+        err?.name === "AbortError" ||
+        err?.name === "TimeoutError" ||
+        String(err?.message || "").toLowerCase().includes("timeout") ||
+        String(err?.message || "").toLowerCase().includes("signal time") ||
+        String(err?.message || "").toLowerCase().includes("aborted");
+
       const friendlyMsg = err?.message === "SERVER_WARMING_UP"
         ? "De server is bezig met inladen. Vernieuw de pagina over enkele seconden."
-        : err?.name === "AbortError"
+        : isTimeout
         ? "De verbinding met de server duurde te lang. Gegevens uit het geheugen worden getoond."
         : err?.message || "Fout bij inladen";
-      if (!quiet) toast.error(friendlyMsg);
+
+      if (!quiet) {
+        if (isTimeout) {
+          toast.info(friendlyMsg);
+        } else {
+          toast.error(friendlyMsg);
+        }
+      }
     } finally {
       if (!isRetrying && !quiet) setLoading(false);
     }
@@ -1121,7 +1151,7 @@ export default function Raadspaneel() {
       const data = await parseApiResponse(res);
       if (!res.ok) throw new Error(data.error || "Kon bekeken-status niet updaten");
 
-      setTopics((prev) => prev.map((t) => (t.id === topicId ? data.topic : t)));
+      if (data.topic) updateSingleTopic(data.topic);
       toast.success(isCurrentlyViewed ? "Gemarkeerd als ongelezen" : "Gemarkeerd als gelezen/bekeken!");
     } catch (err: any) {
       toast.error(err.message || "Fout bij markeren");
@@ -1155,7 +1185,7 @@ export default function Raadspaneel() {
       const data = await parseApiResponse(res);
       if (!res.ok) throw new Error(data.error || "Kon notitie niet opslaan");
 
-      setTopics((prev) => prev.map((t) => (t.id === topicId ? data.topic : t)));
+      if (data.topic) updateSingleTopic(data.topic);
       setNewNoteText("");
       setNoteTargetDocId(null);
       toast.success("Notitie succesvol toegevoegd!");
@@ -1378,10 +1408,68 @@ export default function Raadspaneel() {
     });
   }, [topics, searchQuery, categoryFilter, meetingDateFilter, standpuntFilter, user?.username]);
 
-  // Active selected topic
+  // Virtual list windowing: render initial 20 items and auto-expand on scroll / demand
+  const [visibleTopicsCount, setVisibleTopicsCount] = useState(20);
+
+  // Reset windowing whenever search query or filters change
+  useEffect(() => {
+    setVisibleTopicsCount(20);
+  }, [searchQuery, categoryFilter, meetingDateFilter, standpuntFilter]);
+
+  // In-memory cache for lazy-loaded full topic details (documents with URLs, full standpunten, notes)
+  const [topicDetailsCache, setTopicDetailsCache] = useState<Record<string, CouncilAgendaTopic>>({});
+  const [loadingTopicDetail, setLoadingTopicDetail] = useState(false);
+
+  // Helper to keep both topic list and detail cache in sync on mutations
+  const updateSingleTopic = useCallback((updatedTopic: CouncilAgendaTopic) => {
+    setTopics((prev) => prev.map((t) => (t.id === updatedTopic.id ? updatedTopic : t)));
+    setTopicDetailsCache((prev) => ({ ...prev, [updatedTopic.id]: updatedTopic }));
+  }, []);
+
+  // Active selected topic: merges base topic with loaded detail
   const selectedTopic = useMemo(() => {
-    return topics.find((t) => t.id === selectedTopicId) || filteredTopics[0] || null;
-  }, [topics, selectedTopicId, filteredTopics]);
+    const base = topics.find((t) => t.id === selectedTopicId) || filteredTopics[0] || null;
+    if (!base) return null;
+    const detail = topicDetailsCache[base.id];
+    return detail ? { ...base, ...detail } : base;
+  }, [topics, selectedTopicId, filteredTopics, topicDetailsCache]);
+
+  // Lazy-load complete topic detail on selection if not yet fully cached
+  useEffect(() => {
+    const currentId = selectedTopic?.id;
+    if (!currentId || !token || !isCouncilOrAdmin) return;
+    const cached = topicDetailsCache[currentId];
+    if (cached && Array.isArray(cached.documents) && cached.documents.length > 0 && (cached.documents[0] as any).url) {
+      return;
+    }
+
+    let isMounted = true;
+    setLoadingTopicDetail(true);
+
+    fetch(`/api/council/topics/${currentId}?municipality=${activeMunicipality}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "x-portal-tenant": activeMunicipality,
+        "x-municipality": activeMunicipality,
+      },
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (isMounted && data && data.topic) {
+          setTopicDetailsCache((prev) => ({ ...prev, [currentId]: data.topic }));
+        }
+      })
+      .catch((err) => {
+        console.warn("[TOPIC DETAIL LAZY LOAD WARN]:", err);
+      })
+      .finally(() => {
+        if (isMounted) setLoadingTopicDetail(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedTopic?.id, token, isCouncilOrAdmin, activeMunicipality, topicDetailsCache]);
 
   return (
     <div className="pt-3 sm:pt-4 pb-20 min-h-screen bg-background text-foreground">
@@ -2228,12 +2316,22 @@ export default function Raadspaneel() {
                 </Button>
               </div>
             ) : (
-              <div className="space-y-2.5 max-h-[720px] overflow-y-auto pr-1">
-                {filteredTopics.map((topic) => {
+              <div
+                className="space-y-2.5 max-h-[720px] overflow-y-auto pr-1"
+                onScroll={(e) => {
+                  const target = e.currentTarget;
+                  if (target.scrollTop + target.clientHeight >= target.scrollHeight - 150) {
+                    if (filteredTopics.length > visibleTopicsCount) {
+                      setVisibleTopicsCount((prev) => Math.min(prev + 20, filteredTopics.length));
+                    }
+                  }
+                }}
+              >
+                {filteredTopics.slice(0, visibleTopicsCount).map((topic) => {
                   const isSelected = selectedTopic?.id === topic.id;
                   const isBespreek = topic.category === "Oordeelvorming - bespreekstukken";
-                  const totalDocs = topic.documents.length;
-                  const viewedDocsCount = topic.documents.filter((d) =>
+                  const totalDocs = (topic.documents || []).length;
+                  const viewedDocsCount = (topic.documents || []).filter((d) =>
                     d.viewedBy?.some((v) => v.username === user?.username)
                   ).length;
                   const isFullyViewed = totalDocs > 0 && viewedDocsCount === totalDocs;
@@ -2412,10 +2510,10 @@ export default function Raadspaneel() {
                               </span>
                             </span>
                           )}
-                          {topic.notes.length > 0 && (
+                          {(topic.notes || []).length > 0 && (
                             <span className="flex items-center gap-0.5 text-muted-foreground font-semibold">
                               <MessageSquare className="w-3 h-3 text-accent" />
-                              <span>{topic.notes.length}</span>
+                              <span>{(topic.notes || []).length}</span>
                             </span>
                           )}
                         </div>
@@ -2423,6 +2521,20 @@ export default function Raadspaneel() {
                     </div>
                   );
                 })}
+
+                {filteredTopics.length > visibleTopicsCount && (
+                  <div className="pt-2 text-center">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setVisibleTopicsCount((prev) => Math.min(prev + 20, filteredTopics.length))}
+                      className="w-full text-xs text-muted-foreground hover:text-foreground bg-muted/40 hover:bg-muted/70 border border-dashed border-border py-2.5 rounded-xl transition-all font-semibold"
+                    >
+                      Toon volgende 20 agendapunten ({filteredTopics.length - visibleTopicsCount} resterend)
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -2819,10 +2931,13 @@ export default function Raadspaneel() {
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h3 className="font-display font-bold text-base text-foreground flex items-center gap-2">
                       <FileText className="w-4 h-4 text-accent" />
-                      <span>Bijbehorende Vergaderstukken ({selectedTopic.documents.length})</span>
+                      <span>Bijbehorende Vergaderstukken ({(selectedTopic.documents || []).length})</span>
+                      {loadingTopicDetail && (
+                        <RefreshCw className="w-3 h-3 text-accent animate-spin" title="Documentdetails ophalen..." />
+                      )}
                     </h3>
                     <div className="flex items-center gap-2">
-                      {selectedTopic.documents.length > 0 && (
+                      {(selectedTopic.documents || []).length > 0 && (
                         <Button
                           size="sm"
                           variant="outline"
@@ -2841,13 +2956,13 @@ export default function Raadspaneel() {
                     </div>
                   </div>
 
-                  {selectedTopic.documents.length === 0 ? (
+                  {(selectedTopic.documents || []).length === 0 ? (
                     <div className="p-4 rounded-xl bg-muted/20 border border-dashed border-border text-center text-xs text-muted-foreground">
-                      Geen afzonderlijke PDF bijlagen gekoppeld aan dit agendapunt.
+                      {loadingTopicDetail ? "Bijbehorende stukken inladen..." : "Geen afzonderlijke PDF bijlagen gekoppeld aan dit agendapunt."}
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {selectedTopic.documents.map((doc) => {
+                      {(selectedTopic.documents || []).map((doc) => {
                         const isViewedByMe = doc.viewedBy?.some((v) => v.username === user?.username);
                         const otherViewers = (doc.viewedBy || []).filter((v) => v.username !== user?.username);
 
@@ -3066,7 +3181,7 @@ export default function Raadspaneel() {
                       </label>
 
                       {/* Optioneel koppelen aan document */}
-                      {selectedTopic.documents.length > 0 && (
+                      {(selectedTopic.documents || []).length > 0 && (
                         <div className="w-48">
                           <Select
                             value={noteTargetDocId || "none"}
@@ -3077,7 +3192,7 @@ export default function Raadspaneel() {
                             </SelectTrigger>
                             <SelectContent className="text-xs">
                               <SelectItem value="none">Algemeen agendapunt</SelectItem>
-                              {selectedTopic.documents.map((d) => (
+                              {(selectedTopic.documents || []).map((d) => (
                                 <SelectItem key={d.id} value={d.id}>
                                   {d.title}
                                 </SelectItem>

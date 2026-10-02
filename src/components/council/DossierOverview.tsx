@@ -674,7 +674,12 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
           setSearchResponse(null);
         }
       } catch (err: any) {
-        if (err?.name !== "AbortError") {
+        const isAbortOrTimeout =
+          err?.name === "AbortError" ||
+          err?.name === "TimeoutError" ||
+          String(err?.message || "").toLowerCase().includes("abort") ||
+          String(err?.message || "").toLowerCase().includes("timeout");
+        if (!isAbortOrTimeout) {
           console.error("Search error:", err);
         }
       } finally {
