@@ -346,34 +346,53 @@ export async function syncHoogeveenToezeggingen(): Promise<{
         "Sec-Fetch-User": "?1",
         "Upgrade-Insecure-Requests": "1",
       },
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(25000),
     };
 
-    let res = await fetch(HOOGEVEEN_TOEZEGGINGEN_URL, fetchOptions);
+    let html = "";
+    try {
+      let res = await fetch(HOOGEVEEN_TOEZEGGINGEN_URL, fetchOptions);
 
-    if (!res.ok) {
-      // Retry once after 1 second in case of transient WAF rate-limiting
-      await new Promise((r) => setTimeout(r, 1000));
-      res = await fetch(HOOGEVEEN_TOEZEGGINGEN_URL, fetchOptions);
-    }
-
-    if (!res.ok) {
-      const current = getAllToezeggingenFromDb("hoogeveen");
-      if (current.length > 0) {
-        console.warn(`[LTA HOOGEVEEN] Externe Notubiz server gaf status ${res.status}. Fallback op ${current.length} bestaande database toezeggingen.`);
-        return {
-          totalFetched: current.length,
-          newCount: 0,
-          updatedCount: 0,
-          openCount: current.filter((i) => !i.isAfgedaan).length,
-          afgedaanCount: current.filter((i) => i.isAfgedaan).length,
-          lastSyncedAt: lastSyncTimestamp || new Date().toISOString(),
-        };
+      if (!res.ok) {
+        // Retry once after 1 second in case of transient WAF rate-limiting
+        await new Promise((r) => setTimeout(r, 1000));
+        res = await fetch(HOOGEVEEN_TOEZEGGINGEN_URL, {
+          ...fetchOptions,
+          signal: AbortSignal.timeout(25000),
+        });
       }
-      throw new Error(`Hoogeveen Toezeggingen portal gaf HTTP status ${res.status}`);
+
+      if (!res.ok) {
+        throw new Error(`Externe server gaf HTTP status ${res.status}`);
+      }
+
+      html = await res.text();
+    } catch (fetchErr: any) {
+      const current = getAllToezeggingenFromDb("hoogeveen");
+      const isTimeout = fetchErr?.name === "TimeoutError" || String(fetchErr).includes("timeout");
+      console.log(`[LTA HOOGEVEEN] Externe portal niet direct bereikbaar (${isTimeout ? "time-out" : fetchErr?.message || fetchErr}). Actief met ${current.length} lokale toezeggingen.`);
+      return {
+        totalFetched: current.length,
+        newCount: 0,
+        updatedCount: 0,
+        openCount: current.filter((i) => !i.isAfgedaan).length,
+        afgedaanCount: current.filter((i) => i.isAfgedaan).length,
+        lastSyncedAt: lastSyncTimestamp || new Date().toISOString(),
+      };
     }
 
-    const html = await res.text();
+    if (!html || html.trim().length === 0) {
+      const current = getAllToezeggingenFromDb("hoogeveen");
+      return {
+        totalFetched: current.length,
+        newCount: 0,
+        updatedCount: 0,
+        openCount: current.filter((i) => !i.isAfgedaan).length,
+        afgedaanCount: current.filter((i) => i.isAfgedaan).length,
+        lastSyncedAt: lastSyncTimestamp || new Date().toISOString(),
+      };
+    }
+
     const existingMap = new Map<string, ToezeggingItem>();
     const currentDbItems = getAllToezeggingenFromDb("hoogeveen");
     for (const item of currentDbItems) {
@@ -551,29 +570,42 @@ export async function syncSteenwijkerlandToezeggingen(options: {
     const pageSize = 100;
     let recordsTotal = 0;
 
-    while (true) {
-      const res = await fetch(STEENWIJKERLAND_REPORT_API, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        },
-        body: `draw=1&start=${start}&length=${pageSize}`,
-        signal: AbortSignal.timeout(20000),
-      });
+    try {
+      while (true) {
+        const res = await fetch(STEENWIJKERLAND_REPORT_API, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+          },
+          body: `draw=1&start=${start}&length=${pageSize}`,
+          signal: AbortSignal.timeout(25000),
+        });
 
-      if (!res.ok) {
-        throw new Error(`iBabs Toezeggingen rapport API gaf HTTP status ${res.status}`);
+        if (!res.ok) {
+          throw new Error(`iBabs Toezeggingen rapport API gaf HTTP status ${res.status}`);
+        }
+
+        const payload: any = await res.json();
+        recordsTotal = payload.recordsTotal || 0;
+        const rows: any[] = Array.isArray(payload.data) ? payload.data : [];
+        if (rows.length === 0) break;
+
+        rawRows.push(...rows);
+        start += rows.length;
+        if (start >= recordsTotal) break;
       }
-
-      const payload: any = await res.json();
-      recordsTotal = payload.recordsTotal || 0;
-      const rows: any[] = Array.isArray(payload.data) ? payload.data : [];
-      if (rows.length === 0) break;
-
-      rawRows.push(...rows);
-      start += rows.length;
-      if (start >= recordsTotal) break;
+    } catch (swlFetchErr: any) {
+      const current = getAllToezeggingenFromDb("steenwijkerland");
+      console.log(`[LTA STEENWIJKERLAND] Externe iBabs server niet direct bereikbaar (${swlFetchErr?.name === "TimeoutError" ? "time-out" : swlFetchErr?.message || swlFetchErr}). Actief met ${current.length} lokale toezeggingen.`);
+      return {
+        totalFetched: current.length,
+        newCount: 0,
+        updatedCount: 0,
+        openCount: current.filter((i) => !i.isAfgedaan).length,
+        afgedaanCount: current.filter((i) => i.isAfgedaan).length,
+        lastSyncedAt: lastSyncTimestamp || new Date().toISOString(),
+      };
     }
 
     console.log(`[LTA STEENWIJKERLAND] ${rawRows.length} van totaal ${recordsTotal} toezeggingen rijen opgehaald.`);

@@ -340,14 +340,18 @@ export default function Raadspaneel() {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
-    } catch {}
+    } catch {
+      // ignore storage error
+    }
     return [];
   });
   const [summary, setSummary] = useState<CouncilMeetingScrapeSummary | null>(() => {
     try {
       const cached = safeSessionStorage.getItem(`lva_cached_summary_${activeMunicipality}`) || safeLocalStorage.getItem(`lva_cached_summary_${activeMunicipality}`);
       if (cached) return JSON.parse(cached);
-    } catch {}
+    } catch {
+      // ignore storage error
+    }
     return null;
   });
   const [councilMembers, setCouncilMembers] = useState<{ id: string; username: string; fullName: string; role?: string }[]>([]);
@@ -533,7 +537,9 @@ export default function Raadspaneel() {
         try {
           safeSessionStorage.setItem(`lva_cached_topics_${activeMunicipality}`, JSON.stringify(scopedTopics));
           safeLocalStorage.setItem(`lva_cached_topics_${activeMunicipality}`, JSON.stringify(scopedTopics));
-        } catch {}
+        } catch {
+          // ignore cache write error
+        }
       } else if (topics.length === 0) {
         setTopics([]);
       }
@@ -543,7 +549,9 @@ export default function Raadspaneel() {
         try {
           safeSessionStorage.setItem(`lva_cached_summary_${activeMunicipality}`, JSON.stringify(data.summary));
           safeLocalStorage.setItem(`lva_cached_summary_${activeMunicipality}`, JSON.stringify(data.summary));
-        } catch {}
+        } catch {
+          // ignore cache write error
+        }
       }
 
       // Strictly isolate council members to active municipality
@@ -594,7 +602,9 @@ export default function Raadspaneel() {
             setSummary((prev) => prev || parsedS);
           }
         }
-      } catch {}
+      } catch {
+        // ignore cache fallback error
+      }
       const friendlyMsg = err?.message === "SERVER_WARMING_UP"
         ? "De server is bezig met inladen. Vernieuw de pagina over enkele seconden."
         : err?.name === "AbortError"

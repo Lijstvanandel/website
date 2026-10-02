@@ -11201,7 +11201,7 @@ Sitemap: ${baseUrl}/sitemap.xml
             }
           } else {
             try {
-              distributeSteenwijkerlandDossiers();
+              await distributeSteenwijkerlandDossiers();
             } catch (dErr: any) {
               console.warn("[STEENWIJKERLAND DOSSIERVERDELING WARN]:", dErr?.message);
             }
@@ -11231,7 +11231,7 @@ Sitemap: ${baseUrl}/sitemap.xml
         }
       } else {
         try {
-          distributeSteenwijkerlandDossiers();
+          await distributeSteenwijkerlandDossiers();
         } catch (dErr: any) {
           console.warn("[STEENWIJKERLAND AUTO-DISTRIBUTE]:", dErr?.message);
         }
@@ -11259,7 +11259,7 @@ Sitemap: ${baseUrl}/sitemap.xml
           result: distResult,
         });
       } else {
-        const distResult = distributeSteenwijkerlandDossiers();
+        const distResult = await distributeSteenwijkerlandDossiers();
         return res.json({
           success: true,
           message: `Succesvol gesynchroniseerd: ${distResult.topicsDistributedCount} agendapunten en ${distResult.documentsDistributedCount} bespreekstukken verdeeld over ${distResult.dossiersCount} Steenwijkerlandse dossiers en subdossiers!`,
@@ -12286,7 +12286,7 @@ Sitemap: ${baseUrl}/sitemap.xml
       const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 25;
       const sort = req.query.sort as any;
 
-      let result = queryToezeggingen({
+      const result = queryToezeggingen({
         municipality,
         status,
         portefeuillehouder,
@@ -15256,7 +15256,9 @@ Sitemap: ${baseUrl}/sitemap.xml
               }
             }
             if (hasUnindexed) break;
-          } catch (_e) {}
+          } catch (_e) {
+            // ignore unindexed probe error
+          }
         }
 
         if (hasUnindexed || diskStats.totalFiles > currentMeta.length) {
@@ -15275,12 +15277,18 @@ Sitemap: ${baseUrl}/sitemap.xml
     setTimeout(async () => {
       try {
         console.log("[LTA AUTO-SYNC] Initialiseren van Steenwijkerland en Hoogeveen toezeggingen in achtergrond...");
-        await Promise.all([
+        const results = await Promise.allSettled([
           syncSteenwijkerlandToezeggingen({ fetchFullDetails: false }),
           syncHoogeveenToezeggingen(),
         ]);
-      } catch (ltaBootErr) {
-        console.warn("[LTA AUTO-SYNC WARNING]:", ltaBootErr);
+        results.forEach((res, idx) => {
+          if (res.status === "rejected") {
+            const muniName = idx === 0 ? "Steenwijkerland" : "Hoogeveen";
+            console.warn(`[LTA AUTO-SYNC WAARSCHUWING ${muniName}]:`, res.reason?.message || res.reason);
+          }
+        });
+      } catch (ltaBootErr: any) {
+        console.warn("[LTA AUTO-SYNC WARNING]:", ltaBootErr?.message || ltaBootErr);
       }
     }, 5000);
 
@@ -15288,12 +15296,12 @@ Sitemap: ${baseUrl}/sitemap.xml
     setInterval(async () => {
       try {
         console.log("[LTA INTERVAL SYNC] Periodieke synchronisatie van Steenwijkerland en Hoogeveen toezeggingen gestart...");
-        await Promise.all([
+        await Promise.allSettled([
           syncSteenwijkerlandToezeggingen({ fetchFullDetails: false }),
           syncHoogeveenToezeggingen(),
         ]);
-      } catch (err) {
-        console.warn("[LTA INTERVAL SYNC WARNING]:", err);
+      } catch (err: any) {
+        console.warn("[LTA INTERVAL SYNC WARNING]:", err?.message || err);
       }
     }, 6 * 60 * 60 * 1000);
   });

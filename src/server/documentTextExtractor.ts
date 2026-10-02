@@ -309,6 +309,12 @@ export async function extractTextFromFile(filePath: string): Promise<string> {
   return "";
 }
 
+export function getFastMemoryDocumentContent(filename: string): string | null {
+  if (!filename) return null;
+  const key = filename.toLowerCase().trim();
+  return textCache.get(key) || null;
+}
+
 /**
  * Fast lookup for pre-extracted document text without live PDF parsing.
  * Returns cached string or null; never runs synchronous or thread-pool PDF parsing.

@@ -1,7 +1,9 @@
-import { getAllDossiers, getDossiers, getDossierBySlug } from "./dossierManager.js";
-import { getHoogeveenDossiers } from "./hoogeveenDossierManager.js";
+import { getAllDossiers, getDossiers, getDossierBySlug, slugify, checkFileExists } from "./dossierManager.js";
+import { getHoogeveenDossiers, classifyHoogeveenHoofddossier } from "./hoogeveenDossierManager.js";
+import { normalizeHoofddossier } from "./taxonomyClassifier.js";
 import {
   getCachedDocumentContentOnly,
+  getFastMemoryDocumentContent,
   normalizeForSearch,
   extractExactHitSnippet,
   extractTokensHitSnippet,
@@ -9,6 +11,7 @@ import {
 } from "./documentTextExtractor.js";
 import { getUserFavoriteFilenames, getDbFromSqlite } from "./sqliteDatabase.js";
 import type { Dossier, DossierDocument, SearchHit, CouncilSearchResponse } from "../types/dossier.js";
+import type { CouncilAgendaTopic } from "../types/council.js";
 
 export interface CouncilSearchParams {
   query?: string;
@@ -325,7 +328,7 @@ export async function executeCouncilSearch(params: CouncilSearchParams): Promise
       // Check cached text content for exact phrase if not already matched
       let cachedContent: string | null = null;
       if (!docMatched && doc.fileExists) {
-        cachedContent = await getCachedDocumentContentOnly(doc.bestandsnaam);
+        cachedContent = getFastMemoryDocumentContent(doc.bestandsnaam);
         if (cachedContent) {
           const hit = extractExactHitSnippet(cachedContent, rawQuery);
           if (hit.matched) {
@@ -369,7 +372,7 @@ export async function executeCouncilSearch(params: CouncilSearchParams): Promise
           const hit = extractTokensHitSnippet(doc.titel + " " + (doc.subdossier || "") + " " + safeJoin(doc.entiteiten), queryTokens);
           docSnippet = hit.snippet;
         } else if (doc.fileExists) {
-          if (!cachedContent) cachedContent = await getCachedDocumentContentOnly(doc.bestandsnaam);
+          if (!cachedContent) cachedContent = getFastMemoryDocumentContent(doc.bestandsnaam);
           if (cachedContent) {
             const normText = normalizeForSearch(cachedContent);
             const allInContent = queryTokens.every((t) => normText.includes(t));
@@ -421,6 +424,228 @@ export async function executeCouncilSearch(params: CouncilSearchParams): Promise
         // Also ensure the parent dossier is marked as a hit if type is "all"
         if (!matchedDossiersMap.has(dossier.slug) && typeFilter === "all") {
           matchedDossiersMap.set(dossier.slug, dossier);
+        }
+      }
+    }
+  }
+
+  // 6. Direct search pass across scraped Council Agenda Topics & attached Bespreekstukken documents
+  const allAgendaTopics: CouncilAgendaTopic[] = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
+  const muniAgendaTopics = allAgendaTopics.filter(
+    (t: any) => (t.municipality || "steenwijkerland").toLowerCase().trim() === targetMunicipality
+  );
+
+  for (const topic of muniAgendaTopics) {
+    const topicTitle = (topic.title || "").trim();
+    const topicCat = (topic.category || "").trim();
+    const topicMeeting = (topic.meetingTitle || "").trim();
+    const topicDesc = (topic.description || "").trim();
+    const isBespreek = topicCat.toLowerCase().includes("bespreek") || topicTitle.toLowerCase().includes("bespreek");
+    const normTopicTitle = normalizeForSearch(topicTitle);
+    const normTopicCat = normalizeForSearch(topicCat);
+    const normTopicMeeting = normalizeForSearch(topicMeeting);
+    const normTopicDesc = normalizeForSearch(topicDesc);
+    const combinedTopicMeta = `${normTopicTitle} ${normTopicCat} ${normTopicMeeting} ${normTopicDesc} ${isBespreek ? "bespreekstukken bespreekstuk vergaderagenda" : "vergaderagenda"}`;
+
+    let topicMatched = !normQuery;
+    let topicScore = 0;
+    let topicMatchField: SearchHit["matchField"] = "title";
+    let topicSnippet = "";
+
+    if (normQuery) {
+      if (normTopicTitle.includes(normQuery)) {
+        topicMatched = true;
+        topicScore = 100;
+        topicMatchField = "title";
+        const hit = extractExactHitSnippet(topicTitle, rawQuery);
+        topicSnippet = hit.snippet;
+      } else if (normTopicCat.includes(normQuery) || (normQuery.includes("bespreek") && isBespreek)) {
+        topicMatched = true;
+        topicScore = 95;
+        topicMatchField = "entities";
+        topicSnippet = `Bespreekstuk: ${topicTitle} (${topicCat})`;
+      } else if (normTopicMeeting.includes(normQuery)) {
+        topicMatched = true;
+        topicScore = 80;
+        topicMatchField = "relations";
+        topicSnippet = `Vergaderagenda: ${topicMeeting} • ${topicTitle}`;
+      } else if (normTopicDesc.includes(normQuery)) {
+        topicMatched = true;
+        topicScore = 70;
+        topicMatchField = "description";
+        const hit = extractExactHitSnippet(topicDesc, rawQuery);
+        topicSnippet = hit.snippet;
+      } else if (queryTokens.length > 1) {
+        const allInTopic = queryTokens.every((t) => combinedTopicMeta.includes(t));
+        if (allInTopic) {
+          topicMatched = true;
+          topicScore = 85;
+          topicMatchField = "title";
+          const hit = extractTokensHitSnippet(topicTitle + " " + topicDesc, queryTokens);
+          topicSnippet = hit.snippet;
+        } else if (queryTokens.some((t) => normTopicTitle.includes(t))) {
+          const matchCount = queryTokens.filter((t) => combinedTopicMeta.includes(t)).length;
+          if (matchCount / queryTokens.length >= 0.5) {
+            topicMatched = true;
+            topicScore = 60;
+            topicMatchField = "title";
+            topicSnippet = topicTitle;
+          }
+        }
+      }
+    }
+
+    const topicDocs = Array.isArray(topic.documents) ? topic.documents : [];
+    const canonicalHoofd = targetMunicipality === "hoogeveen"
+      ? classifyHoogeveenHoofddossier(topicTitle, topicDesc)
+      : normalizeHoofddossier(topicCat, topicTitle, topicDesc);
+    const parentSlug = targetMunicipality === "hoogeveen"
+      ? slugify(`hoogeveen-${canonicalHoofd}`)
+      : slugify(canonicalHoofd);
+
+    // 6a. Search each attached document inside this topic
+    for (const doc of topicDocs) {
+      const rawDocTitle = (doc.title || "Vergaderstuk").trim();
+      const isGeneric = !rawDocTitle || /^(raadsvoorstel|bijlage|nota|voorstel|besluit|brief|document|overig|stuk)(\s*[-_.:\d]*)?$/i.test(rawDocTitle);
+      const cleanSubTitle = topicTitle.replace(/^\d+[.\s-]+/, "").trim();
+      const enrichedTitle = isGeneric
+        ? `${rawDocTitle ? `${rawDocTitle} - ` : ""}${cleanSubTitle}`
+        : (rawDocTitle.toLowerCase().includes(cleanSubTitle.toLowerCase().slice(0, 15)) ? rawDocTitle : `${rawDocTitle} (${cleanSubTitle})`);
+
+      const filename = `${slugify(enrichedTitle) || doc.id}.pdf`;
+      const filenameKey = filename.toLowerCase().trim();
+      const hasRemoteUrl = Boolean(doc.url && typeof doc.url === "string" && doc.url.startsWith("http"));
+      const fileCheck = checkFileExists(filename);
+      const fileAvailable = fileCheck.exists || hasRemoteUrl;
+
+      if (hasFilesOnly && !fileAvailable) continue;
+
+      const proxyUrl = hasRemoteUrl
+        ? `/api/council/document-proxy?url=${encodeURIComponent(doc.url)}&title=${encodeURIComponent(enrichedTitle)}&filename=${encodeURIComponent(filename)}`
+        : (fileCheck.fileUrl || doc.url || `/uploads/documents/${filename}`);
+
+      // Determine match on document level or topic level
+      let docMatched = topicMatched;
+      let docScore = topicScore || 85;
+      let docMatchField: SearchHit["matchField"] = topicMatchField;
+      let docSnippet = topicSnippet || `${isBespreek ? "Bespreekstuk" : "Vergaderagenda"} • ${topicMeeting} (${topicTitle})`;
+
+      if (normQuery && !docMatched) {
+        const normDocTitle = normalizeForSearch(rawDocTitle);
+        const normEnriched = normalizeForSearch(enrichedTitle);
+        const normFilename = normalizeForSearch(filename);
+        const docCombo = `${normDocTitle} ${normEnriched} ${normFilename} ${combinedTopicMeta}`;
+
+        if (normDocTitle.includes(normQuery) || normEnriched.includes(normQuery)) {
+          docMatched = true;
+          docScore = 100;
+          docMatchField = "title";
+          const hit = extractExactHitSnippet(enrichedTitle, rawQuery);
+          docSnippet = hit.snippet;
+        } else if (normFilename.includes(normQuery)) {
+          docMatched = true;
+          docScore = 95;
+          docMatchField = "filename";
+          const hit = extractExactHitSnippet(filename, rawQuery);
+          docSnippet = hit.snippet;
+        } else if (queryTokens.length > 1 && queryTokens.every((t) => docCombo.includes(t))) {
+          docMatched = true;
+          docScore = 85;
+          docMatchField = "title";
+          const hit = extractTokensHitSnippet(enrichedTitle + " " + topicTitle, queryTokens);
+          docSnippet = hit.snippet;
+        }
+      }
+
+      if (docMatched && typeFilter !== "dossiers") {
+        const docId = `topic_doc_${doc.id || slugify(enrichedTitle)}`;
+        const hitKey = `doc-${docId}`;
+
+        if (!seenHitIds.has(hitKey) && !matchedDocumentsMap.has(filenameKey)) {
+          const docObj: DossierDocument = {
+            id: docId,
+            bestandsnaam: filename,
+            titel: enrichedTitle,
+            dossier: canonicalHoofd,
+            subdossier: cleanSubTitle,
+            datum: topic.meetingDate || null,
+            entiteiten: ["Gemeenteraad", topicCat, isBespreek ? "Bespreekstukken" : "Vergaderagenda", topicMeeting],
+            relaties: [`Vergadering: ${topicMeeting}`, `Agendapunt: ${topicTitle}`],
+            fileExists: fileAvailable,
+            fileUrl: fileCheck.exists ? (fileCheck.fileUrl || `/uploads/documents/${filename}`) : proxyUrl,
+            fileSize: fileCheck.fileSize || 1200000,
+          };
+          matchedDocumentsMap.set(filenameKey, docObj);
+          addHit({
+            type: "document",
+            id: hitKey,
+            title: enrichedTitle,
+            filename: filename,
+            dossierName: canonicalHoofd,
+            dossierSlug: parentSlug,
+            date: topic.meetingDate || null,
+            matchField: docMatchField,
+            snippet: docSnippet,
+            score: Math.max(docScore, 85),
+            fileExists: fileAvailable,
+            fileUrl: fileCheck.exists ? (fileCheck.fileUrl || `/uploads/documents/${filename}`) : proxyUrl,
+            isFavorite: userFavorites.has(filenameKey),
+          });
+
+          if (!matchedDossiersMap.has(parentSlug) && typeFilter === "all") {
+            const foundDossier = allDossiers.find((d) => d.slug === parentSlug);
+            if (foundDossier) matchedDossiersMap.set(parentSlug, foundDossier);
+          }
+        }
+      }
+    }
+
+    // 6b. If topic has no documents or if user searched directly for topics, surface the agendapunt itself as an entry
+    if (topicMatched && topicDocs.length === 0 && topicTitle.length >= 3 && typeFilter !== "dossiers") {
+      const cleanSubTitle = topicTitle.replace(/^\d+[.\s-]+/, "").trim();
+      const filename = `${slugify(cleanSubTitle) || topic.id}.pdf`;
+      const filenameKey = filename.toLowerCase().trim();
+      const docId = `topic_${topic.id}`;
+      const hitKey = `doc-${docId}`;
+      const topicUrl = topic.sourceUrl || (topic.meetingId ? (targetMunicipality === "hoogeveen" ? `https://hoogeveen.notubiz.nl/vergadering/${topic.meetingId}` : `https://steenwijkerland.bestuurlijkeinformatie.nl/Agenda/Index/${topic.meetingId}`) : undefined);
+      const hasTopicLink = Boolean(topicUrl);
+
+      if (hasFilesOnly && !hasTopicLink) continue;
+
+      if (!seenHitIds.has(hitKey) && !matchedDocumentsMap.has(filenameKey)) {
+        const docObj: DossierDocument = {
+          id: docId,
+          bestandsnaam: filename,
+          titel: `Agendapunt: ${cleanSubTitle}`,
+          dossier: canonicalHoofd,
+          subdossier: cleanSubTitle,
+          datum: topic.meetingDate || null,
+          entiteiten: ["Gemeenteraad", topicCat, isBespreek ? "Bespreekstukken" : "Vergaderagenda", topicMeeting],
+          relaties: [`Vergadering: ${topicMeeting}`, `Agendapunt: ${topicTitle}`],
+          fileExists: hasTopicLink,
+          fileUrl: topicUrl || `/uploads/documents/${filename}`,
+          fileSize: 500000,
+        };
+        matchedDocumentsMap.set(filenameKey, docObj);
+        addHit({
+          type: "document",
+          id: hitKey,
+          title: `Agendapunt: ${cleanSubTitle}`,
+          filename: filename,
+          dossierName: canonicalHoofd,
+          dossierSlug: parentSlug,
+          date: topic.meetingDate || null,
+          matchField: topicMatchField,
+          snippet: topicSnippet || `${isBespreek ? "Bespreekstuk" : "Vergaderagenda"} • ${topicMeeting}`,
+          score: Math.max(topicScore, 80),
+          fileExists: hasTopicLink,
+          fileUrl: topicUrl || `/uploads/documents/${filename}`,
+          isFavorite: userFavorites.has(filenameKey),
+        });
+
+        if (!matchedDossiersMap.has(parentSlug) && typeFilter === "all") {
+          const foundDossier = allDossiers.find((d) => d.slug === parentSlug);
+          if (foundDossier) matchedDossiersMap.set(parentSlug, foundDossier);
         }
       }
     }

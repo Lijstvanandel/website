@@ -204,13 +204,24 @@ export function parseDutchDate(text: string, defaultYear?: number): { dateIso: s
  * Scrape upcoming agenda meetings from steenwijkerland.bestuurlijkeinformatie.nl
  */
 export async function scrapeCouncilAgendas(
-  yearsToScrape: number[] = [new Date().getFullYear(), new Date().getFullYear() + 1],
+  yearsOrOptions?: number[] | { years?: number[]; isManual?: boolean },
   options: { isManual?: boolean } = {}
 ) {
+  let yearsToScrape: number[];
+  let isManual = options?.isManual ?? false;
+  if (Array.isArray(yearsOrOptions)) {
+    yearsToScrape = yearsOrOptions;
+  } else if (yearsOrOptions && typeof yearsOrOptions === "object") {
+    yearsToScrape = Array.isArray(yearsOrOptions.years) ? yearsOrOptions.years : [new Date().getFullYear(), new Date().getFullYear() + 1];
+    if (yearsOrOptions.isManual !== undefined) isManual = yearsOrOptions.isManual;
+  } else {
+    yearsToScrape = [new Date().getFullYear(), new Date().getFullYear() + 1];
+  }
+
   console.log(`[RAADSPANEEL SCRAPER] Start scraping voor gemeenteraad Steenwijkerland (jaren: ${yearsToScrape.join(", ")})...`);
   
   // Circuit Breaker check (manual trigger resets circuit to allow fresh probe)
-  if (isScraperCircuitOpen("ibabs_steenwijkerland", options.isManual)) {
+  if (isScraperCircuitOpen("ibabs_steenwijkerland", isManual)) {
     throw new Error("CIRCUIT_OPEN: iBabs lay-out gewijzigd of geblokkeerd. Schrijfoperaties gepauzeerd ter bescherming van database.");
   }
 
@@ -671,10 +682,10 @@ export async function scrapeCouncilAgendas(
   // Enrich each topic with party policy standpunten matching
   const enrichedFinalList = finalList.map((t) => enrichTopicWithStandpunten(t));
 
-  // Save in SQLite - preserving topics from other municipalities (e.g. Hoogeveen)
-  const otherMunicipalitiesTopics = existingTopics.filter((t: any) => t.municipality === "hoogeveen");
+  // Save in SQLite - preserving all existing topics by id across all municipalities
+  const existingTopicsAll: CouncilAgendaTopic[] = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
   const topicsMap = new Map<string, CouncilAgendaTopic>();
-  otherMunicipalitiesTopics.forEach((t) => { if (t?.id) topicsMap.set(t.id, t); });
+  existingTopicsAll.forEach((t) => { if (t?.id) topicsMap.set(t.id, t); });
   enrichedFinalList.forEach((t) => { if (t?.id) topicsMap.set(t.id, t); });
   db.councilAgendaTopics = Array.from(topicsMap.values());
   db.councilScrapeSummary = {
@@ -697,7 +708,7 @@ export async function scrapeCouncilAgendas(
 
   // Directe automatische synchronisatie en verdeling over de dossiers en subdossiers
   try {
-    distributeSteenwijkerlandDossiers();
+    await distributeSteenwijkerlandDossiers();
     console.log("[RAADSPANEEL SCRAPER] Dossierverdeling over sub(dossiers) direct gesynchroniseerd.");
   } catch (distErr: any) {
     console.warn("[RAADSPANEEL SCRAPER] Auto-dossierverdeling fout:", distErr?.message);

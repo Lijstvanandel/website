@@ -80,7 +80,9 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
-    } catch {}
+    } catch {
+      // ignore JSON parse error
+    }
     return [];
   });
   const [categories, setCategories] = useState<string[]>([]);
@@ -98,7 +100,9 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
         const parsed = JSON.parse(cached);
         if (parsed && typeof parsed.totalDossiers === "number" && parsed.totalDossiers > 0) return parsed;
       }
-    } catch {}
+    } catch {
+      // ignore JSON parse error
+    }
     return {
       totalDossiers: 0,
       totalSubdossiers: 0,
@@ -203,13 +207,17 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
         setStats(data.stats);
         try {
           safeLocalStorage.setItem(`lva_dossier_stats_${effectiveMuni}`, JSON.stringify(data.stats));
-        } catch {}
+        } catch {
+          // ignore storage error
+        }
       }
       try {
         if (received.length > 0) {
           safeSessionStorage.setItem(`lva_cached_dossiers_${effectiveMuni}`, JSON.stringify(received));
         }
-      } catch {}
+      } catch {
+        // ignore storage error
+      }
     } catch (err: any) {
       clearTimeout(timeoutId);
       console.error(err);
@@ -229,7 +237,9 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
             setStats(parsedStats);
           }
         }
-      } catch {}
+      } catch {
+        // ignore storage read error
+      }
       const msg = err.name === "AbortError"
         ? "Het ophalen van de dossiers duurde langer dan verwacht. Gegevens uit het geheugen worden getoond."
         : (err.message || "Fout bij ophalen dossiers");

@@ -125,12 +125,19 @@ export async function syncSteenwijkerlandAgendaToDossiers(): Promise<{
       };
     }
 
+    const isBespreek = (topic.category || "").toLowerCase().includes("bespreek") || topicTitle.toLowerCase().includes("bespreek");
+
     // Ingest each document into master metadata
     for (const doc of docs) {
-      const docTitle = (doc.title || "Vergaderstuk").trim();
-      const safeFilename = `${slugify(docTitle) || doc.id}.pdf`;
+      const rawDocTitle = (doc.title || "Vergaderstuk").trim();
+      const isGeneric = !rawDocTitle || /^(raadsvoorstel|bijlage|nota|voorstel|besluit|brief|document|overig|stuk)(\s*[-_.:\d]*)?$/i.test(rawDocTitle);
+      const enrichedTitle = isGeneric
+        ? `${rawDocTitle ? `${rawDocTitle} - ` : ""}${cleanTopicTitle}`
+        : (rawDocTitle.toLowerCase().includes(cleanTopicTitle.toLowerCase().slice(0, 15)) ? rawDocTitle : `${rawDocTitle} (${cleanTopicTitle})`);
+
+      const safeFilename = `${slugify(enrichedTitle) || doc.id}.pdf`;
       const fileLower = safeFilename.toLowerCase();
-      const titleLower = docTitle.toLowerCase();
+      const titleLower = enrichedTitle.toLowerCase();
       const urlLower = (doc.url || "").toLowerCase().trim();
 
       // Check if already indexed
@@ -141,13 +148,13 @@ export async function syncSteenwijkerlandAgendaToDossiers(): Promise<{
       const metaItem: RaadsstukMetadata = {
         id: `swl_ibabs_${doc.id}`,
         bestandsnaam: safeFilename,
-        titel: docTitle,
+        titel: enrichedTitle,
         dossier: canonicalHoofd,
         subdossier: subTitle,
         wijk_of_kern: detectedWijk || "Gemeentebreed",
         datum: topic.meetingDate || new Date().toISOString().slice(0, 10),
-        entiteiten: `Gemeenteraad Steenwijkerland, ${topic.category}${detectedWijk ? `, ${detectedWijk}` : ""}`,
-        relaties: `Vergaderstuk bij: ${topic.meetingTitle} (${topic.meetingDateDisplay || topic.meetingDate})`,
+        entiteiten: `Gemeenteraad Steenwijkerland, ${topic.category}, ${isBespreek ? "Bespreekstukken" : "Vergaderagenda"}${detectedWijk ? `, ${detectedWijk}` : ""}`,
+        relaties: `Vergaderagenda: ${topic.meetingTitle} (${topic.meetingDateDisplay || topic.meetingDate}), Agendapunt: ${topicTitle}, Categorie: ${topic.category}`,
         bestand_url: doc.url,
       };
 
@@ -156,6 +163,32 @@ export async function syncSteenwijkerlandAgendaToDossiers(): Promise<{
       existingTitlesSet.add(titleLower);
       if (urlLower) existingUrlsSet.add(urlLower);
       newDocsAdded++;
+    }
+
+    // If agenda item has no documents attached, register the topic itself as an entry
+    if (docs.length === 0 && cleanTopicTitle.length >= 3) {
+      const topicFilename = `${slugify(cleanTopicTitle) || topic.id}.pdf`;
+      const fileLower = topicFilename.toLowerCase();
+      const titleLower = `agendapunt: ${cleanTopicTitle.toLowerCase()}`;
+      if (!existingFilesSet.has(fileLower) && !existingTitlesSet.has(titleLower)) {
+        const topicUrl = topic.sourceUrl || (topic.meetingId ? `https://steenwijkerland.bestuurlijkeinformatie.nl/Agenda/Index/${topic.meetingId}` : undefined);
+        const metaItem: RaadsstukMetadata = {
+          id: `swl_topic_${topic.id}`,
+          bestandsnaam: topicFilename,
+          titel: `Agendapunt: ${cleanTopicTitle}`,
+          dossier: canonicalHoofd,
+          subdossier: subTitle,
+          wijk_of_kern: detectedWijk || "Gemeentebreed",
+          datum: topic.meetingDate || new Date().toISOString().slice(0, 10),
+          entiteiten: `Gemeenteraad Steenwijkerland, ${topic.category}, ${isBespreek ? "Bespreekstukken" : "Vergaderagenda"}${detectedWijk ? `, ${detectedWijk}` : ""}`,
+          relaties: `Vergaderagenda: ${topic.meetingTitle} (${topic.meetingDateDisplay || topic.meetingDate}), Agendapunt: ${topicTitle}, Categorie: ${topic.category}`,
+          bestand_url: topicUrl,
+        };
+        masterList.push(metaItem);
+        existingFilesSet.add(fileLower);
+        existingTitlesSet.add(titleLower);
+        newDocsAdded++;
+      }
     }
   }
 

@@ -348,11 +348,18 @@ export async function distributeHoogeveenDossiers(options: { force?: boolean; li
         : doc.url;
       const finalDocUrl = isLocalCached ? localPublicUrl : proxyUrl;
 
+      const isBespreek = (topic.category || "").toLowerCase().includes("bespreek") || topicTitle.toLowerCase().includes("bespreek");
+      const rawDocTitle = (doc.title || "").trim();
+      const isGeneric = !rawDocTitle || /^(raadsvoorstel|bijlage|nota|voorstel|besluit|brief|document|overig|stuk)(\s*[-_.:\d]*)?$/i.test(rawDocTitle);
+      const displayTitle = isGeneric
+        ? `${rawDocTitle ? `${rawDocTitle} - ` : ""}${subTitle}`
+        : (rawDocTitle.toLowerCase().includes(subTitle.toLowerCase().slice(0, 15)) ? rawDocTitle : `${rawDocTitle} (${subTitle})`);
+
       const dDoc: any = {
         id: `hg_doc_${doc.id}`,
         bestandsnaam: expectedFilename,
-        titel: doc.title || "Raadsdocument Hoogeveen",
-        title: doc.title || "Raadsdocument Hoogeveen",
+        titel: displayTitle,
+        title: displayTitle,
         url: finalDocUrl,
         fileUrl: finalDocUrl,
         fileType: doc.fileType || "PDF",
@@ -371,8 +378,18 @@ export async function distributeHoogeveenDossiers(options: { force?: boolean; li
         source: "NotuBiz Hoogeveen",
         vergadering: topic.meetingTitle,
         fileExists: isLocalCached || hasRemoteUrl,
-        entiteiten: detectedWijken,
-        relaties: [],
+        entiteiten: [
+          ...detectedWijken,
+          topic.category,
+          isBespreek ? "Bespreekstukken" : "Vergaderagenda",
+          "Gemeenteraad Hoogeveen",
+          topic.meetingTitle,
+        ].filter(Boolean),
+        relaties: [
+          `Vergaderagenda: ${topic.meetingTitle || "Gemeenteraad"}`,
+          `Agendapunt: ${topicTitle}`,
+          `Categorie: ${topic.category || ""}`,
+        ].filter(Boolean),
       };
 
       parentDossier.documents.push(dDoc);
@@ -394,11 +411,61 @@ export async function distributeHoogeveenDossiers(options: { force?: boolean; li
           timestamp: new Date().toISOString(),
           dossier: hoofddossier,
           subdossier: subTitle,
-          titel: doc.title || topicTitle,
+          titel: displayTitle,
           wijk_of_kern: detectedWijken.join(", ") || "Gemeentebreed",
           entiteiten: detectedWijken.join(", "),
           skos_tags: ["Hoogeveen", hoofddossier, ...detectedWijken],
         });
+      }
+    }
+
+    if (topicDocs.length === 0 && subTitle.length >= 3) {
+      const isBespreek = (topic.category || "").toLowerCase().includes("bespreek") || topicTitle.toLowerCase().includes("bespreek");
+      const expectedFilename = `hoogeveen_topic_${slugify(subTitle)}.pdf`;
+      const topicDoc: any = {
+        id: `hg_topic_${topic.id || i}`,
+        bestandsnaam: expectedFilename,
+        titel: `Agendapunt: ${subTitle}`,
+        title: `Agendapunt: ${subTitle}`,
+        url: topic.sourceUrl || `/uploads/documents/hoogeveen/${expectedFilename}`,
+        fileUrl: topic.sourceUrl || `/uploads/documents/hoogeveen/${expectedFilename}`,
+        fileType: "PDF",
+        fileSize: "0 KB",
+        datum: topic.meetingDate || new Date().toISOString().slice(0, 10),
+        date: topic.meetingDate || new Date().toISOString().slice(0, 10),
+        dossier: hoofddossier,
+        dossierId: parentDossier.id,
+        dossierSlug: parentDossier.slug,
+        hoofddossier,
+        subdossier: subTitle,
+        wijkOfKern: detectedWijken[0] || "Gemeentebreed",
+        wijk_of_kern: detectedWijken[0] || "Gemeentebreed",
+        wijken: detectedWijken,
+        municipality: "hoogeveen",
+        source: "NotuBiz Hoogeveen",
+        vergadering: topic.meetingTitle,
+        fileExists: false,
+        entiteiten: [
+          ...detectedWijken,
+          topic.category,
+          isBespreek ? "Bespreekstukken" : "Vergaderagenda",
+          "Gemeenteraad Hoogeveen",
+          topic.meetingTitle,
+        ].filter(Boolean),
+        relaties: [
+          `Vergaderagenda: ${topic.meetingTitle || "Gemeenteraad"}`,
+          `Agendapunt: ${topicTitle}`,
+          `Categorie: ${topic.category || ""}`,
+        ].filter(Boolean),
+      };
+
+      parentDossier.documents.push(topicDoc);
+      parentDossier.documentsCount++;
+      if (subDossier) {
+        subDossier.documents = subDossier.documents || [];
+        subDossier.documents.push(topicDoc);
+        subDossier.documentCount = subDossier.documents.length;
+        subDossier.documentsCount = subDossier.documents.length;
       }
     }
 
@@ -738,8 +805,18 @@ export function getHoogeveenDossiers(): Dossier[] {
 
       const actualFilename = actualFromMap || doc.bestandsnaam || `hoogeveen_doc_${rawId || numericId}_v1.pdf`;
       const localUrl = `/uploads/documents/hoogeveen/${actualFilename}`;
+      const rawUrl = doc.url || doc.fileUrl;
+      const hasProxy = Boolean(rawUrl && typeof rawUrl === "string" && (rawUrl.startsWith("/api/council/document-proxy") || rawUrl.includes("document-proxy")));
+      const hasRemote = Boolean(rawUrl && typeof rawUrl === "string" && rawUrl.startsWith("http"));
+      const proxyUrl = hasProxy
+        ? rawUrl
+        : hasRemote
+        ? `/api/council/document-proxy?url=${encodeURIComponent(rawUrl)}&title=${encodeURIComponent(doc.title || doc.titel || "Raadsdocument Hoogeveen")}&filename=${encodeURIComponent(actualFilename)}`
+        : localUrl;
 
-      if (fileExists) {
+      const isAvailable = Boolean(fileExists || doc.fileExists || hasProxy || hasRemote);
+
+      if (isAvailable) {
         dossierUploaded++;
       }
 
@@ -756,9 +833,9 @@ export function getHoogeveenDossiers(): Dossier[] {
         subdossier: doc.subdossier || "",
         wijkOfKern: doc.wijkOfKern || (doc.wijken && doc.wijken[0]) || "Gemeentebreed",
         wijk_of_kern: doc.wijk_of_kern || doc.wijkOfKern || (doc.wijken && doc.wijken[0]) || "Gemeentebreed",
-        url: fileExists ? localUrl : (doc.url || localUrl),
-        fileUrl: fileExists ? localUrl : (doc.fileUrl || doc.url || localUrl),
-        fileExists,
+        url: fileExists ? localUrl : (hasProxy || hasRemote ? proxyUrl : localUrl),
+        fileUrl: fileExists ? localUrl : (hasProxy || hasRemote ? proxyUrl : localUrl),
+        fileExists: isAvailable,
       };
     });
 
@@ -772,7 +849,8 @@ export function getHoogeveenDossiers(): Dossier[] {
           return { ...parentMatch };
         }
         const actualFromMap = idToFilenameMap.get(rawId);
-        const fileExists = Boolean(actualFromMap || existingFilesSet.has(`hoogeveen_doc_${rawId}_v1.pdf`.toLowerCase()));
+        const hasRemoteSub = Boolean(sdoc.url && typeof sdoc.url === "string" && sdoc.url.startsWith("http"));
+        const fileExists = Boolean(actualFromMap || existingFilesSet.has(`hoogeveen_doc_${rawId}_v1.pdf`.toLowerCase()) || hasRemoteSub);
         if (fileExists) subUploaded++;
         return {
           ...sdoc,

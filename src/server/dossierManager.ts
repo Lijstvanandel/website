@@ -1163,6 +1163,12 @@ export function getAllDossiers(
     }
 
     const fileCheck = checkFileExists(item.bestandsnaam);
+    const itemRemoteUrl = item.bestand_url || (item as any).url || (item as any).fileUrl;
+    const hasRemoteUrl = Boolean(itemRemoteUrl && typeof itemRemoteUrl === "string" && itemRemoteUrl.startsWith("http"));
+    const proxyUrl = hasRemoteUrl
+      ? `/api/council/document-proxy?url=${encodeURIComponent(itemRemoteUrl)}&title=${encodeURIComponent(item.titel || item.bestandsnaam)}&filename=${encodeURIComponent(item.bestandsnaam)}`
+      : (fileCheck.fileUrl || itemRemoteUrl || `/uploads/documents/${item.bestandsnaam}`);
+
     const entiteiten = item.entiteiten
       ? item.entiteiten.split(",").map((s) => s.trim()).filter(Boolean)
       : [];
@@ -1197,13 +1203,26 @@ export function getAllDossiers(
       datum: item.datum || null,
       entiteiten,
       relaties,
-      fileExists: fileCheck.exists,
-      fileUrl: fileCheck.fileUrl,
-      fileSize: fileCheck.fileSize,
+      fileExists: fileCheck.exists || hasRemoteUrl,
+      fileUrl: fileCheck.exists ? (fileCheck.fileUrl || `/uploads/documents/${item.bestandsnaam}`) : proxyUrl,
+      fileSize: fileCheck.fileSize || 1200000,
     };
 
     dossierMap.get(slug)!.docs.push(doc);
   });
+
+  // Track all filenames already placed in dossierMap to avoid duplicates from stTopics
+  const existingDossierDocKeys = new Set<string>();
+  for (const group of dossierMap.values()) {
+    for (const d of group.docs) {
+      if (d.bestandsnaam) {
+        existingDossierDocKeys.add(d.bestandsnaam.toLowerCase().trim());
+      }
+      if (d.fileUrl && typeof d.fileUrl === "string") {
+        existingDossierDocKeys.add(d.fileUrl.toLowerCase().trim());
+      }
+    }
+  }
 
   // Group and distribute live scraped council agenda topics & attached documents into Steenwijkerland dossiers & subdossiers
   stTopics.forEach((topic: any, tIndex: number) => {
@@ -1220,29 +1239,47 @@ export function getAllDossiers(
 
     const detectedWijk = detectWijkOrKern(topic.title + " " + (topic.description || "")) || "Gemeentebreed";
     const topicDocs: any[] = Array.isArray(topic.documents) ? topic.documents : [];
+    const isBespreek = (topic.category || "").toLowerCase().includes("bespreek") || rawTitle.toLowerCase().includes("bespreek");
 
     topicDocs.forEach((doc: any, dIndex: number) => {
       const docRawId = String(doc.id || `topic_${tIndex}_doc_${dIndex}`);
+      const rawDocTitle = (doc.title || "").trim();
+      const isGeneric = !rawDocTitle || /^(raadsvoorstel|bijlage|nota|voorstel|besluit|brief|document|overig|stuk)(\s*[-_.:\d]*)?$/i.test(rawDocTitle);
+      const displayTitle = isGeneric
+        ? `${rawDocTitle ? `${rawDocTitle} - ` : ""}${subTitle}`
+        : (rawDocTitle.toLowerCase().includes(subTitle.toLowerCase().slice(0, 15)) ? rawDocTitle : `${rawDocTitle} (${subTitle})`);
+
       const cleanFilename = doc.title
-        ? `${slugify(doc.title)}.pdf`
+        ? `${slugify(displayTitle)}.pdf`
         : `steenwijkerland_doc_${docRawId}.pdf`;
+
+      const fnLower = cleanFilename.toLowerCase().trim();
+      const urlLower = (doc.url || "").toLowerCase().trim();
+      if (existingDossierDocKeys.has(fnLower) || (urlLower && existingDossierDocKeys.has(urlLower))) {
+        return;
+      }
+      existingDossierDocKeys.add(fnLower);
+      if (urlLower) existingDossierDocKeys.add(urlLower);
 
       const fileCheck = checkFileExists(cleanFilename);
       const hasRemoteUrl = Boolean(doc.url && typeof doc.url === "string" && doc.url.startsWith("http"));
       const proxyUrl = hasRemoteUrl
-        ? `/api/council/document-proxy?url=${encodeURIComponent(doc.url)}&title=${encodeURIComponent(doc.title || cleanFilename)}&filename=${encodeURIComponent(cleanFilename)}`
+        ? `/api/council/document-proxy?url=${encodeURIComponent(doc.url)}&title=${encodeURIComponent(displayTitle)}&filename=${encodeURIComponent(cleanFilename)}`
         : (fileCheck.fileUrl || doc.url || `/uploads/documents/${cleanFilename}`);
 
       const docEntiteiten = [
         "Gemeenteraad Steenwijkerland",
         topic.meetingTitle,
+        topic.category,
+        isBespreek ? "Bespreekstukken" : "Vergaderagenda",
+        detectedWijk,
         ...(topic.agendaItemNumber ? [`Agendapunt ${topic.agendaItemNumber}`] : []),
       ].filter(Boolean);
 
       const dDoc: DossierDocument = {
         id: `st_doc_${docRawId}`,
         bestandsnaam: cleanFilename,
-        titel: doc.title || subTitle || "Raadsdocument",
+        titel: displayTitle,
         dossier: canonicalHoofd,
         subdossier: subTitle,
         wijk_of_kern: detectedWijk,
@@ -1252,6 +1289,8 @@ export function getAllDossiers(
         relaties: [
           `Vergaderagenda: ${topic.meetingTitle || "Gemeenteraad"}`,
           `Agendapunt: ${topic.title || ""}`,
+          `Categorie: ${topic.category || ""}`,
+          ...(topic.description ? [`Toelichting: ${topic.description.slice(0, 150)}`] : [])
         ].filter(Boolean),
         fileExists: fileCheck.exists || hasRemoteUrl,
         fileUrl: proxyUrl,
@@ -1260,6 +1299,36 @@ export function getAllDossiers(
 
       dossierMap.get(slug)!.docs.push(dDoc);
     });
+
+    if (topicDocs.length === 0 && subTitle.length >= 3) {
+      const cleanFilename = `${slugify(subTitle) || `agendapunt_${tIndex}`}.pdf`;
+      const topicUrl = topic.sourceUrl || (topic.meetingId ? `https://steenwijkerland.bestuurlijkeinformatie.nl/Agenda/Index/${topic.meetingId}` : undefined);
+      const dDoc: DossierDocument = {
+        id: `st_topic_${topic.id || tIndex}`,
+        bestandsnaam: cleanFilename,
+        titel: `Agendapunt: ${subTitle}`,
+        dossier: canonicalHoofd,
+        subdossier: subTitle,
+        wijk_of_kern: detectedWijk,
+        wijken: detectedWijk !== "Gemeentebreed" ? [detectedWijk] : [],
+        datum: topic.meetingDate || null,
+        entiteiten: [
+          "Gemeenteraad Steenwijkerland",
+          topic.meetingTitle,
+          topic.category,
+          isBespreek ? "Bespreekstukken" : "Vergaderagenda",
+          detectedWijk,
+        ].filter(Boolean),
+        relaties: [
+          `Vergaderagenda: ${topic.meetingTitle || "Gemeenteraad"}`,
+          `Agendapunt: ${topic.title || ""}`,
+          `Categorie: ${topic.category || ""}`,
+        ].filter(Boolean),
+        fileExists: false,
+        fileUrl: topicUrl || `/uploads/documents/${cleanFilename}`,
+      };
+      dossierMap.get(slug)!.docs.push(dDoc);
+    }
   });
 
   // Collect all known filenames from metadata & topics to avoid any duplicates
@@ -3037,12 +3106,22 @@ export function generateMissingDocumentsCsv(
  * Synchronizes and distributes all scraped council agenda topics and attached documents
  * into the canonical dossiers and subdossiers, ensuring zero manual uploads needed.
  */
-export function distributeSteenwijkerlandDossiers(): {
+export async function distributeSteenwijkerlandDossiers(): Promise<{
   dossiersCount: number;
   documentsDistributedCount: number;
   topicsDistributedCount: number;
   lastDistributedAt: string;
-} {
+}> {
+  invalidateDossierCache();
+
+  // Perform actual agenda topic and document ingestion into master metadata and custom subdossiers
+  try {
+    const { syncSteenwijkerlandAgendaToDossiers } = await import("./agendaDossierSyncService.js");
+    await syncSteenwijkerlandAgendaToDossiers();
+  } catch (syncErr: any) {
+    console.warn("[STEENWIJKERLAND DOSSIERVERDELER SYNC WARN]:", syncErr?.message);
+  }
+
   invalidateDossierCache();
   let stTopics: any[] = [];
   try {
