@@ -46,6 +46,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { safeLocalStorage, safeSessionStorage } from "@/lib/safeStorage";
+import { indexedDbStorage } from "@/lib/indexedDbStorage";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -289,6 +290,7 @@ export default function Raadspaneel() {
     } catch (_err) {
       // ignore localStorage errors
     }
+    inFlightTopicRequests.current.clear();
     setSelectedTopicId(null);
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -354,7 +356,42 @@ export default function Raadspaneel() {
     }
     return null;
   });
-  const [councilMembers, setCouncilMembers] = useState<{ id: string; username: string; fullName: string; role?: string }[]>([]);
+  const [councilMembers, setCouncilMembers] = useState<{ id: string; username: string; fullName: string; role?: string; municipality?: string }[]>(() => {
+    try {
+      const cached = safeSessionStorage.getItem(`lva_cached_members_${activeMunicipality}`) || safeLocalStorage.getItem(`lva_cached_members_${activeMunicipality}`);
+      if (cached) return JSON.parse(cached);
+    } catch {
+      // ignore storage error
+    }
+    return [];
+  });
+  const inFlightTopicRequests = useRef<Set<string>>(new Set());
+
+  // Asynchronous hydration from IndexedDB (handles 2000+ documents without 5MB quota errors)
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        const idbTopics = await indexedDbStorage.getItem<CouncilAgendaTopic[]>(`lva_idb_topics_${activeMunicipality}`);
+        if (isMounted && Array.isArray(idbTopics) && idbTopics.length > 0) {
+          setTopics((prev) => (prev.length === 0 ? idbTopics : prev));
+        }
+        const idbMembers = await indexedDbStorage.getItem<any[]>(`lva_idb_members_${activeMunicipality}`);
+        if (isMounted && Array.isArray(idbMembers) && idbMembers.length > 0) {
+          setCouncilMembers((prev) => (prev.length === 0 ? idbMembers : prev));
+        }
+        const idbSummary = await indexedDbStorage.getItem<CouncilMeetingScrapeSummary>(`lva_idb_summary_${activeMunicipality}`);
+        if (isMounted && idbSummary) {
+          setSummary((prev) => prev || idbSummary);
+        }
+      } catch {
+        // ignore hydration error
+      }
+    })();
+    return () => {
+      isMounted = false;
+    };
+  }, [activeMunicipality]);
   const [loading, setLoading] = useState(true);
   const [isScraping, setIsScraping] = useState(false);
   const [isBulkDownloading, setIsBulkDownloading] = useState(false);
@@ -446,6 +483,15 @@ export default function Raadspaneel() {
   const [modalNoteText, setModalNoteText] = useState("");
   const [submittingModalNote, setSubmittingModalNote] = useState(false);
   const [showModalNotes, setShowModalNotes] = useState(true);
+  const [isIframeLoading, setIsIframeLoading] = useState(true);
+  const [iframeLoadError, setIframeLoadError] = useState(false);
+
+  useEffect(() => {
+    if (activeDoc) {
+      setIsIframeLoading(true);
+      setIframeLoadError(false);
+    }
+  }, [activeDoc?.doc?.id]);
 
   // Contributions state (Politieke Markt & Raadsvergadering)
   const [isPolitiekeMarktModalOpen, setIsPolitiekeMarktModalOpen] = useState(false);
@@ -480,6 +526,36 @@ export default function Raadspaneel() {
       // ignore
     }
   }, [setSearchParams, activeMunicipality]);
+
+  // Single Source of Truth: update any topic in the authoritative topics array and sync IndexedDB & activeDoc immediately
+  const updateTopic = useCallback((updatedTopic: CouncilAgendaTopic) => {
+    setTopics((prev) => {
+      const next = prev.map((t) => (t.id === updatedTopic.id ? { ...t, ...updatedTopic } : t));
+      indexedDbStorage.setItem(`lva_idb_topics_${activeMunicipality}`, next);
+      try {
+        safeSessionStorage.setItem(`lva_cached_topics_${activeMunicipality}`, JSON.stringify(next));
+      } catch {
+        // ignore storage error
+      }
+      return next;
+    });
+
+    // If activeDoc modal is currently open and viewing this topic, sync activeDoc immediately!
+    setActiveDoc((currentActive) => {
+      if (!currentActive || String(currentActive.topic.id) !== String(updatedTopic.id)) {
+        return currentActive;
+      }
+      const syncedDoc =
+        (updatedTopic.documents || []).find((d: any) => String(d.id) === String(currentActive.doc.id)) ||
+        currentActive.doc;
+      return {
+        doc: syncedDoc,
+        topic: updatedTopic,
+      };
+    });
+  }, [activeMunicipality]);
+
+  const updateSingleTopic = updateTopic;
 
   const [newNoteText, setNewNoteText] = useState("");
   const [submittingNote, setSubmittingNote] = useState(false);
@@ -525,13 +601,36 @@ export default function Raadspaneel() {
     }
   };
 
+  const fetchCouncilMembersOnly = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(`/api/council/members?municipality=${activeMunicipality}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.members) && data.members.length > 0) {
+          setCouncilMembers(data.members);
+          indexedDbStorage.setItem(`lva_idb_members_${activeMunicipality}`, data.members);
+          try {
+            safeSessionStorage.setItem(`lva_cached_members_${activeMunicipality}`, JSON.stringify(data.members));
+          } catch {
+            // ignore cache write error
+          }
+        }
+      }
+    } catch {
+      // ignore silent fetch error
+    }
+  }, [token, activeMunicipality]);
+
   const fetchCouncilData = useCallback(async (quiet = false, retryCount = 0) => {
     if (!token) return;
     if (!quiet && retryCount === 0) setLoading(true);
     let isRetrying = false;
     try {
       const res = await fetch(`/api/council/topics?municipality=${activeMunicipality}&portal=${activeMunicipality}`, {
-        signal: AbortSignal.timeout(25000),
+        signal: AbortSignal.timeout(45000),
         headers: {
           Authorization: `Bearer ${token}`,
           "x-portal-tenant": activeMunicipality,
@@ -550,9 +649,9 @@ export default function Raadspaneel() {
       });
       if (scopedTopics.length > 0) {
         setTopics(scopedTopics);
+        indexedDbStorage.setItem(`lva_idb_topics_${activeMunicipality}`, scopedTopics);
         try {
           safeSessionStorage.setItem(`lva_cached_topics_${activeMunicipality}`, JSON.stringify(scopedTopics));
-          safeLocalStorage.setItem(`lva_cached_topics_${activeMunicipality}`, JSON.stringify(scopedTopics));
         } catch {
           // ignore cache write error
         }
@@ -562,21 +661,30 @@ export default function Raadspaneel() {
 
       if (data.summary) {
         setSummary(data.summary);
+        indexedDbStorage.setItem(`lva_idb_summary_${activeMunicipality}`, data.summary);
         try {
           safeSessionStorage.setItem(`lva_cached_summary_${activeMunicipality}`, JSON.stringify(data.summary));
-          safeLocalStorage.setItem(`lva_cached_summary_${activeMunicipality}`, JSON.stringify(data.summary));
         } catch {
           // ignore cache write error
         }
       }
 
-      // Strictly isolate council members to active municipality
+      // Strictly isolate council members to active municipality (with admin/alle support)
       const rawMembers = Array.isArray(data.councilMembers) ? data.councilMembers : [];
       const scopedMembers = rawMembers.filter((m: any) => {
         const mMuni = (m.municipality || "steenwijkerland").toLowerCase().trim();
-        return mMuni === activeMunicipality;
+        return mMuni === activeMunicipality || mMuni === "alle" || m.role === "admin";
       });
-      setCouncilMembers(scopedMembers);
+      const membersToSet = scopedMembers.length > 0 ? scopedMembers : rawMembers;
+      if (membersToSet.length > 0) {
+        setCouncilMembers(membersToSet);
+        indexedDbStorage.setItem(`lva_idb_members_${activeMunicipality}`, membersToSet);
+        try {
+          safeSessionStorage.setItem(`lva_cached_members_${activeMunicipality}`, JSON.stringify(membersToSet));
+        } catch {
+          // ignore cache write error
+        }
+      }
       
       // Auto-select topic: preserve current selection if valid for this municipality, or fallback to first bespreekstuk
       if (scopedTopics.length > 0) {
@@ -602,25 +710,51 @@ export default function Raadspaneel() {
         return;
       }
       console.error(err);
-      // Preserve cached data if network times out or server is temporarily unreachable
+      // Preserve cached data from IndexedDB / Storage if network times out or server is temporarily unreachable
       try {
-        const cachedT = safeSessionStorage.getItem(`lva_cached_topics_${activeMunicipality}`) || safeLocalStorage.getItem(`lva_cached_topics_${activeMunicipality}`);
-        if (cachedT) {
-          const parsedT = JSON.parse(cachedT);
-          if (Array.isArray(parsedT) && parsedT.length > 0) {
-            setTopics((prev) => (prev.length === 0 ? parsedT : prev));
+        const cachedIdbTopics = await indexedDbStorage.getItem<CouncilAgendaTopic[]>(`lva_idb_topics_${activeMunicipality}`);
+        if (Array.isArray(cachedIdbTopics) && cachedIdbTopics.length > 0) {
+          setTopics((prev) => (prev.length === 0 ? cachedIdbTopics : prev));
+        } else {
+          const cachedT = safeSessionStorage.getItem(`lva_cached_topics_${activeMunicipality}`) || safeLocalStorage.getItem(`lva_cached_topics_${activeMunicipality}`);
+          if (cachedT) {
+            const parsedT = JSON.parse(cachedT);
+            if (Array.isArray(parsedT) && parsedT.length > 0) {
+              setTopics((prev) => (prev.length === 0 ? parsedT : prev));
+            }
           }
         }
-        const cachedS = safeSessionStorage.getItem(`lva_cached_summary_${activeMunicipality}`) || safeLocalStorage.getItem(`lva_cached_summary_${activeMunicipality}`);
-        if (cachedS) {
-          const parsedS = JSON.parse(cachedS);
-          if (parsedS) {
-            setSummary((prev) => prev || parsedS);
+
+        const cachedIdbSummary = await indexedDbStorage.getItem<CouncilMeetingScrapeSummary>(`lva_idb_summary_${activeMunicipality}`);
+        if (cachedIdbSummary) {
+          setSummary((prev) => prev || cachedIdbSummary);
+        } else {
+          const cachedS = safeSessionStorage.getItem(`lva_cached_summary_${activeMunicipality}`) || safeLocalStorage.getItem(`lva_cached_summary_${activeMunicipality}`);
+          if (cachedS) {
+            const parsedS = JSON.parse(cachedS);
+            if (parsedS) setSummary((prev) => prev || parsedS);
+          }
+        }
+
+        const cachedIdbMembers = await indexedDbStorage.getItem<any[]>(`lva_idb_members_${activeMunicipality}`);
+        if (Array.isArray(cachedIdbMembers) && cachedIdbMembers.length > 0) {
+          setCouncilMembers((prev) => (prev.length === 0 ? cachedIdbMembers : prev));
+        } else {
+          const cachedM = safeSessionStorage.getItem(`lva_cached_members_${activeMunicipality}`) || safeLocalStorage.getItem(`lva_cached_members_${activeMunicipality}`);
+          if (cachedM) {
+            const parsedM = JSON.parse(cachedM);
+            if (Array.isArray(parsedM) && parsedM.length > 0) {
+              setCouncilMembers((prev) => (prev.length === 0 ? parsedM : prev));
+            }
           }
         }
       } catch {
         // ignore cache fallback error
       }
+
+      // If members are still missing after cache lookup, fetch them directly
+      fetchCouncilMembersOnly();
+
       const isTimeout =
         err?.name === "AbortError" ||
         err?.name === "TimeoutError" ||
@@ -644,7 +778,13 @@ export default function Raadspaneel() {
     } finally {
       if (!isRetrying && !quiet) setLoading(false);
     }
-  }, [token, activeMunicipality]);
+  }, [token, activeMunicipality, fetchCouncilMembersOnly]);
+
+  useEffect(() => {
+    if (isAuthenticated && isCouncilOrAdmin) {
+      fetchCouncilMembersOnly();
+    }
+  }, [isAuthenticated, isCouncilOrAdmin, activeMunicipality, fetchCouncilMembersOnly]);
 
   useEffect(() => {
     if (isAuthenticated && isCouncilOrAdmin) {
@@ -723,8 +863,8 @@ export default function Raadspaneel() {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
-          "x-portal-tenant": portalConfig.tenantId,
-          "x-municipality": portalConfig.tenantId,
+          "x-portal-tenant": activeMunicipality,
+          "x-municipality": activeMunicipality,
         },
       });
       const data = await parseApiResponse(res);
@@ -750,8 +890,8 @@ export default function Raadspaneel() {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
-          "x-portal-tenant": portalConfig.tenantId,
-          "x-municipality": portalConfig.tenantId,
+          "x-portal-tenant": activeMunicipality,
+          "x-municipality": activeMunicipality,
         },
       });
       const data = await parseApiResponse(res);
@@ -988,7 +1128,8 @@ export default function Raadspaneel() {
       const data = await parseApiResponse(res);
       if (!res.ok) throw new Error(data.error || "Kon toewijzing niet aanpassen");
       
-      setTopics((prev) => prev.map((t) => (t.id === topicId ? data.topic : t)));
+      const updatedTopic = data.topic;
+      updateTopic(updatedTopic);
       toast.success(data.message || "Toewijzing bijgewerkt");
     } catch (err: any) {
       toast.error(err.message || "Fout bij toewijzen");
@@ -1014,7 +1155,7 @@ export default function Raadspaneel() {
       const data = await parseApiResponse(res);
       if (!res.ok) throw new Error(data.error || "Kon bijdrage niet opslaan");
 
-      setTopics((prev) => prev.map((t) => (t.id === topicId ? data.topic : t)));
+      if (data.topic) updateTopic(data.topic);
       setIsPolitiekeMarktModalOpen(false);
       toast.success(
         markAsHamerstuk
@@ -1055,7 +1196,7 @@ export default function Raadspaneel() {
       const data = await parseApiResponse(res);
       if (!res.ok) throw new Error(data.error || "Kon onderwerp niet parkeren");
 
-      setTopics((prev) => prev.map((t) => (t.id === parkTargetTopic.id ? data.topic : t)));
+      if (data.topic) updateTopic(data.topic);
       setIsParkModalOpen(false);
       setParkTargetTopic(null);
       setParkReason("");
@@ -1079,7 +1220,7 @@ export default function Raadspaneel() {
       const data = await parseApiResponse(res);
       if (!res.ok) throw new Error(data.error || "Kon parkering niet opheffen");
 
-      setTopics((prev) => prev.map((t) => (t.id === topicId ? data.topic : t)));
+      if (data.topic) updateTopic(data.topic);
       toast.success(data.message || "Onderwerp teruggezet naar Oordeelvorming - Bespreekstukken!");
     } catch (err: any) {
       toast.error(err.message || "Fout bij terugzetten");
@@ -1104,7 +1245,7 @@ export default function Raadspaneel() {
       const data = await parseApiResponse(res);
       if (!res.ok) throw new Error(data.error || "Kon bijdrage niet opslaan");
 
-      setTopics((prev) => prev.map((t) => (t.id === topicId ? data.topic : t)));
+      if (data.topic) updateTopic(data.topic);
       setIsRaadsvergaderingModalOpen(false);
       toast.success("Bijdrage Raadsvergadering succesvol opgeslagen!");
     } catch (err: any) {
@@ -1127,7 +1268,7 @@ export default function Raadspaneel() {
       });
       const data = await parseApiResponse(res);
       if (res.ok && data.topic) {
-        setTopics((prev) => prev.map((t) => (t.id === topicId ? data.topic : t)));
+        updateTopic(data.topic);
         toast.success("Inbreng bijgewerkt met klemzet-vraag.");
       }
     } catch (e) {
@@ -1151,7 +1292,7 @@ export default function Raadspaneel() {
       const data = await parseApiResponse(res);
       if (!res.ok) throw new Error(data.error || "Kon bekeken-status niet updaten");
 
-      if (data.topic) updateSingleTopic(data.topic);
+      if (data.topic) updateTopic(data.topic);
       toast.success(isCurrentlyViewed ? "Gemarkeerd als ongelezen" : "Gemarkeerd als gelezen/bekeken!");
     } catch (err: any) {
       toast.error(err.message || "Fout bij markeren");
@@ -1185,7 +1326,7 @@ export default function Raadspaneel() {
       const data = await parseApiResponse(res);
       if (!res.ok) throw new Error(data.error || "Kon notitie niet opslaan");
 
-      if (data.topic) updateSingleTopic(data.topic);
+      if (data.topic) updateTopic(data.topic);
       setNewNoteText("");
       setNoteTargetDocId(null);
       toast.success("Notitie succesvol toegevoegd!");
@@ -1216,8 +1357,7 @@ export default function Raadspaneel() {
       const data = await parseApiResponse(res);
       if (!res.ok) throw new Error(data.error || "Kon opmerking niet opslaan");
 
-      setTopics((prev) => prev.map((t) => (t.id === activeDoc.topic.id ? data.topic : t)));
-      setActiveDoc((prev) => (prev ? { ...prev, topic: data.topic } : null));
+      if (data.topic) updateTopic(data.topic);
       setModalNoteText("");
       toast.success("Opmerking bij dit document geplaatst!");
     } catch (err: any) {
@@ -1299,7 +1439,7 @@ export default function Raadspaneel() {
       const data = await parseApiResponse(res);
       if (!res.ok) throw new Error(data.error || "Kon notitie niet verwijderen");
 
-      setTopics((prev) => prev.map((t) => (t.id === topicId ? data.topic : t)));
+      if (data.topic) updateTopic(data.topic);
       toast.success("Notitie verwijderd");
     } catch (err: any) {
       toast.error(err.message || "Fout bij verwijderen");
@@ -1416,37 +1556,26 @@ export default function Raadspaneel() {
     setVisibleTopicsCount(20);
   }, [searchQuery, categoryFilter, meetingDateFilter, standpuntFilter]);
 
-  // In-memory cache for lazy-loaded full topic details (documents with URLs, full standpunten, notes)
-  const [topicDetailsCache, setTopicDetailsCache] = useState<Record<string, CouncilAgendaTopic>>({});
   const [loadingTopicDetail, setLoadingTopicDetail] = useState(false);
 
-  // Helper to keep both topic list and detail cache in sync on mutations
-  const updateSingleTopic = useCallback((updatedTopic: CouncilAgendaTopic) => {
-    setTopics((prev) => prev.map((t) => (t.id === updatedTopic.id ? updatedTopic : t)));
-    setTopicDetailsCache((prev) => ({ ...prev, [updatedTopic.id]: updatedTopic }));
-  }, []);
-
-  // Active selected topic: merges base topic with loaded detail
+  // Active selected topic: directly derived from single source of truth topics
   const selectedTopic = useMemo(() => {
-    const base = topics.find((t) => t.id === selectedTopicId) || filteredTopics[0] || null;
-    if (!base) return null;
-    const detail = topicDetailsCache[base.id];
-    return detail ? { ...base, ...detail } : base;
-  }, [topics, selectedTopicId, filteredTopics, topicDetailsCache]);
+    return topics.find((t) => t.id === selectedTopicId) || filteredTopics[0] || null;
+  }, [topics, selectedTopicId, filteredTopics]);
 
-  // Lazy-load complete topic detail on selection if not yet fully cached
+  // Lazy-load complete topic detail on selection if not yet fully loaded
   useEffect(() => {
     const currentId = selectedTopic?.id;
     if (!currentId || !token || !isCouncilOrAdmin) return;
-    const cached = topicDetailsCache[currentId];
-    if (cached && Array.isArray(cached.documents) && cached.documents.length > 0 && (cached.documents[0] as any).url) {
+    if ((selectedTopic as any).fullDetailsLoaded || inFlightTopicRequests.current.has(currentId)) {
       return;
     }
 
+    inFlightTopicRequests.current.add(currentId);
     let isMounted = true;
     setLoadingTopicDetail(true);
 
-    fetch(`/api/council/topics/${currentId}?municipality=${activeMunicipality}`, {
+    fetch(`/api/council/topics/${encodeURIComponent(currentId)}?municipality=${activeMunicipality}`, {
       headers: {
         Authorization: `Bearer ${token}`,
         "x-portal-tenant": activeMunicipality,
@@ -1456,20 +1585,22 @@ export default function Raadspaneel() {
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (isMounted && data && data.topic) {
-          setTopicDetailsCache((prev) => ({ ...prev, [currentId]: data.topic }));
+          updateTopic({ ...data.topic, fullDetailsLoaded: true });
         }
       })
       .catch((err) => {
         console.warn("[TOPIC DETAIL LAZY LOAD WARN]:", err);
       })
       .finally(() => {
+        // ALWAYS remove from inFlightTopicRequests so temporary network dropouts can be recovered
+        inFlightTopicRequests.current.delete(currentId);
         if (isMounted) setLoadingTopicDetail(false);
       });
 
     return () => {
       isMounted = false;
     };
-  }, [selectedTopic?.id, token, isCouncilOrAdmin, activeMunicipality, topicDetailsCache]);
+  }, [selectedTopic?.id, (selectedTopic as any)?.fullDetailsLoaded, token, isCouncilOrAdmin, activeMunicipality, updateTopic]);
 
   return (
     <div className="pt-3 sm:pt-4 pb-20 min-h-screen bg-background text-foreground">
@@ -2770,8 +2901,10 @@ export default function Raadspaneel() {
                       const topicMuni = (selectedTopic.municipality || (selectedTopic.id?.startsWith("hg_") ? "hoogeveen" : "steenwijkerland")).toLowerCase().trim();
                       const eligibleMembers = councilMembers.filter((m) => {
                         const userMuni = (m.municipality || "steenwijkerland").toLowerCase().trim();
-                        return userMuni === topicMuni;
+                        return userMuni === topicMuni || userMuni === "alle" || m.role === "admin";
                       });
+
+                      const displayMembers = eligibleMembers.length > 0 ? eligibleMembers : councilMembers;
 
                       return (
                         <div className="space-y-1">
@@ -2784,14 +2917,14 @@ export default function Raadspaneel() {
                             </SelectTrigger>
                             <SelectContent className="text-xs">
                               <SelectItem value="none">Geen (Onverdeeld)</SelectItem>
-                              {eligibleMembers.map((m) => (
+                              {displayMembers.map((m) => (
                                 <SelectItem key={m.username} value={m.username}>
                                   {m.fullName} (@{m.username})
                                 </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
-                          {eligibleMembers.length === 0 && (
+                          {displayMembers.length === 0 && (
                             <p className="text-[10px] text-muted-foreground italic">
                               Geen {topicMuni === "hoogeveen" ? "Hoogeveen" : "Steenwijkerland"} (burger)raadsleden geregistreerd.
                             </p>
@@ -2806,9 +2939,7 @@ export default function Raadspaneel() {
                 <TopicStandpuntenSection
                   topic={selectedTopic}
                   token={token}
-                  onTopicUpdated={(updatedTopic) => {
-                    setTopics((prev) => prev.map((t) => (t.id === updatedTopic.id ? updatedTopic : t)));
-                  }}
+                  onTopicUpdated={updateTopic}
                   onOpenDocumentViewer={(doc) => {
                     setActiveDoc({ doc, topic: selectedTopic });
                   }}
@@ -2818,9 +2949,7 @@ export default function Raadspaneel() {
                 <SupportDossierPanel
                   topic={selectedTopic}
                   token={token}
-                  onDossierUpdated={(updatedTopic) => {
-                    setTopics((prev) => prev.map((t) => (t.id === updatedTopic.id ? updatedTopic : t)));
-                  }}
+                  onDossierUpdated={updateTopic}
                   onOpenDocumentViewer={(doc, page) => {
                     setSecureViewerDoc(doc);
                     setSecureViewerPage(page || 1);
@@ -3063,9 +3192,26 @@ export default function Raadspaneel() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => {
-                                  const fullTopic = topicDetailsCache[selectedTopic.id] || selectedTopic;
-                                  const fullDoc = (fullTopic.documents || []).find((d: any) => String(d.id) === String(doc.id)) || doc;
-                                  setActiveDoc({ doc: fullDoc, topic: fullTopic });
+                                  const fullTopic = selectedTopic;
+                                  const cachedDoc = (fullTopic.documents || []).find((d: any) => String(d.id) === String(doc.id));
+                                  const rawUrl = cachedDoc?.url || doc.url || (doc as any).bestand_url || (doc as any).fileUrl || "";
+                                  let effectiveUrl = (rawUrl && rawUrl !== "undefined" && rawUrl !== "null") ? String(rawUrl).trim() : "";
+                                  if (effectiveUrl.startsWith("/")) {
+                                    effectiveUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl${effectiveUrl}`;
+                                  }
+                                  if (!effectiveUrl && doc.id) {
+                                    if (selectedTopic.municipality === "hoogeveen" || selectedTopic.id?.startsWith("hg_") || /^\d+$/.test(String(doc.id))) {
+                                      effectiveUrl = `https://api.notubiz.nl/document/${doc.id}/1`;
+                                    } else {
+                                      effectiveUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl/Document/LoadAgendaItemDocument/${doc.id}`;
+                                    }
+                                  }
+                                  const mergedDoc = {
+                                    ...doc,
+                                    ...(cachedDoc || {}),
+                                    url: effectiveUrl || doc.url || "",
+                                  };
+                                  setActiveDoc({ doc: mergedDoc, topic: fullTopic });
                                 }}
                                 className="h-8 text-xs px-3 border-accent/40 text-accent hover:bg-accent/10 rounded-lg cursor-pointer"
                               >
@@ -3074,23 +3220,41 @@ export default function Raadspaneel() {
                               </Button>
 
                               {/* Direct download link */}
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                asChild={Boolean(doc.url || (doc as any).bestand_url || (doc as any).fileUrl)}
-                                disabled={!(doc.url || (doc as any).bestand_url || (doc as any).fileUrl)}
-                                className="h-8 text-xs px-2.5 text-muted-foreground hover:text-foreground rounded-lg"
-                              >
-                                {(doc.url || (doc as any).bestand_url || (doc as any).fileUrl) ? (
-                                  <a href={doc.url || (doc as any).bestand_url || (doc as any).fileUrl} target="_blank" rel="noreferrer" title="Open originele link">
-                                    <ExternalLink className="w-3.5 h-3.5" />
-                                  </a>
-                                ) : (
-                                  <span title="Originele link niet beschikbaar">
-                                    <ExternalLink className="w-3.5 h-3.5 opacity-40" />
-                                  </span>
-                                )}
-                              </Button>
+                              {(() => {
+                                const rawUrl = doc.url || (doc as any).bestand_url || (doc as any).fileUrl || "";
+                                let effectiveUrl = (rawUrl && rawUrl !== "undefined" && rawUrl !== "null") ? String(rawUrl).trim() : "";
+                                if (effectiveUrl.startsWith("/")) {
+                                  effectiveUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl${effectiveUrl}`;
+                                }
+                                if (!effectiveUrl && doc.id) {
+                                  if (selectedTopic.municipality === "hoogeveen" || selectedTopic.id?.startsWith("hg_") || /^\d+$/.test(String(doc.id))) {
+                                    effectiveUrl = `https://api.notubiz.nl/document/${doc.id}/1`;
+                                  } else {
+                                    effectiveUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl/Document/LoadAgendaItemDocument/${doc.id}`;
+                                  }
+                                }
+                                const isAvailable = Boolean(effectiveUrl);
+
+                                return (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    asChild={isAvailable}
+                                    disabled={!isAvailable}
+                                    className="h-8 text-xs px-2.5 text-muted-foreground hover:text-foreground rounded-lg"
+                                  >
+                                    {isAvailable ? (
+                                      <a href={effectiveUrl} target="_blank" rel="noreferrer" title="Open originele link">
+                                        <ExternalLink className="w-3.5 h-3.5" />
+                                      </a>
+                                    ) : (
+                                      <span title="Originele link niet beschikbaar">
+                                        <ExternalLink className="w-3.5 h-3.5 opacity-40" />
+                                      </span>
+                                    )}
+                                  </Button>
+                                );
+                              })()}
                             </div>
                           </div>
                         );
@@ -3266,11 +3430,8 @@ export default function Raadspaneel() {
 
       {/* Document Viewer Modal Dialog met geïntegreerde Fractie-notities */}
       {activeDoc && (() => {
-        const cachedFullTopic = topicDetailsCache[activeDoc.topic.id];
-        const currentModalTopic = cachedFullTopic || activeDoc.topic || topics.find((t) => String(t.id) === String(activeDoc.topic.id));
+        const currentModalTopic = topics.find((t) => String(t.id) === String(activeDoc.topic.id)) || activeDoc.topic;
         const currentModalDoc =
-          (cachedFullTopic?.documents || []).find((d: any) => String(d.id) === String(activeDoc.doc.id)) ||
-          (activeDoc.topic?.documents || []).find((d: any) => String(d.id) === String(activeDoc.doc.id)) ||
           (currentModalTopic?.documents || []).find((d: any) => String(d.id) === String(activeDoc.doc.id)) ||
           activeDoc.doc;
 
@@ -3288,9 +3449,20 @@ export default function Raadspaneel() {
           (activeDoc.doc as any)?.fileUrl ||
           "";
 
-        const resolvedDocUrl = (rawResolvedUrl && rawResolvedUrl !== "undefined" && rawResolvedUrl !== "null") ? String(rawResolvedUrl).trim() : "";
+        let resolvedDocUrl = (rawResolvedUrl && rawResolvedUrl !== "undefined" && rawResolvedUrl !== "null") ? String(rawResolvedUrl).trim() : "";
+        if (resolvedDocUrl.startsWith("/")) {
+          resolvedDocUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl${resolvedDocUrl}`;
+        }
         const docTitle = currentModalDoc?.title || activeDoc.doc?.title || "Raadsdocument";
         const docId = String(currentModalDoc?.id || activeDoc.doc?.id || "");
+
+        if (!resolvedDocUrl && docId) {
+          if (currentModalTopic?.municipality === "hoogeveen" || String(currentModalTopic?.id || "").startsWith("hg_") || /^\d+$/.test(docId)) {
+            resolvedDocUrl = `https://api.notubiz.nl/document/${docId}/1`;
+          } else {
+            resolvedDocUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl/Document/LoadAgendaItemDocument/${docId}`;
+          }
+        }
 
         const proxyUrl = resolvedDocUrl
           ? `/api/council/document-proxy?url=${encodeURIComponent(resolvedDocUrl)}&documentId=${encodeURIComponent(docId)}&title=${encodeURIComponent(docTitle)}${token ? `&token=${encodeURIComponent(token)}` : ""}`
@@ -3306,7 +3478,7 @@ export default function Raadspaneel() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="px-2 py-0.5 rounded text-[10.5px] font-bold uppercase tracking-wider bg-accent/20 text-accent border border-accent/40">
-                        {currentModalDoc.fileType}
+                        {currentModalDoc.fileType || "PDF"}
                       </span>
                       <span className="text-xs text-muted-foreground truncate">
                         {currentModalTopic.meetingTitle} • {currentModalTopic.meetingDateDisplay || currentModalTopic.meetingDate}
@@ -3358,23 +3530,41 @@ export default function Raadspaneel() {
 
                     <Button
                       size="sm"
-                      variant="secondary"
-                      asChild={isOriginAvailable}
-                      disabled={!isOriginAvailable}
+                      variant="outline"
+                      asChild
                       className="h-8 text-xs"
                     >
-                      {isOriginAvailable ? (
+                      <a href={proxyUrl} target="_blank" rel="noreferrer">
+                        <ExternalLink className="w-3.5 h-3.5 mr-1" />
+                        Nieuw tabblad
+                      </a>
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      asChild
+                      className="h-8 text-xs"
+                    >
+                      <a href={proxyUrl} download>
+                        <Download className="w-3.5 h-3.5 mr-1" />
+                        Downloaden
+                      </a>
+                    </Button>
+
+                    {isOriginAvailable && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        asChild
+                        className="h-8 text-xs"
+                      >
                         <a href={resolvedDocUrl} target="_blank" rel="noreferrer">
                           <ExternalLink className="w-3.5 h-3.5 mr-1" />
                           Origineel
                         </a>
-                      ) : (
-                        <span title="Geen externe bronlink beschikbaar">
-                          <ExternalLink className="w-3.5 h-3.5 mr-1 opacity-50" />
-                          Origineel
-                        </span>
-                      )}
-                    </Button>
+                      </Button>
+                    )}
                   </div>
                 </div>
 
@@ -3430,20 +3620,81 @@ export default function Raadspaneel() {
                 {/* Linkerzijde: Document Iframe */}
                 <div className="flex-1 min-h-[350px] h-full bg-muted/30 rounded-xl overflow-hidden border border-border relative flex flex-col">
                   <div className="px-3 py-1.5 bg-background/80 border-b border-border text-[11px] text-muted-foreground flex items-center justify-between">
-                    <span className="truncate">Beveiligde viewer • {portalConfig.isPortalMode ? "NotuBiz" : "Raadsstuk"}</span>
-                    <a
-                      href={resolvedDocUrl || proxyUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-accent hover:underline inline-flex items-center gap-1 font-semibold shrink-0 ml-2"
-                    >
-                      Direct downloaden <Download className="w-3 h-3" />
-                    </a>
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="truncate">Beveiligde viewer • {portalConfig.isPortalMode ? "NotuBiz" : "Raadsstuk"}</span>
+                      {isIframeLoading && (
+                        <span className="inline-flex items-center gap-1 text-[10px] text-accent font-medium">
+                          <Loader2 className="w-3 h-3 animate-spin" /> Inladen...
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0 ml-2">
+                      <a
+                        href={proxyUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 font-medium text-[11px]"
+                      >
+                        <ExternalLink className="w-3 h-3" /> Nieuw venster
+                      </a>
+                      <a
+                        href={resolvedDocUrl || proxyUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-accent hover:underline inline-flex items-center gap-1 font-semibold text-[11px]"
+                      >
+                        Direct downloaden <Download className="w-3 h-3" />
+                      </a>
+                    </div>
                   </div>
+
+                  {/* Loading overlay indicator */}
+                  {isIframeLoading && (
+                    <div className="absolute inset-0 top-8 bg-background/85 z-10 flex flex-col items-center justify-center p-6 text-center animate-fade-in">
+                      <Loader2 className="w-8 h-8 text-accent animate-spin mb-3" />
+                      <p className="text-xs font-semibold text-foreground">Document wordt veilig opgehaald via raadsproxy...</p>
+                      <p className="text-[11px] text-muted-foreground mt-1 max-w-sm">
+                        Bestanden worden rechtstreeks vanaf het gemeentelijk portaal gestreamd.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Error fallback banner if iframe can't render embedded PDF */}
+                  {iframeLoadError && (
+                    <div className="p-3 bg-amber-500/10 border-b border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 shrink-0" />
+                        <span>Wordt het document niet getoond? Browsers blokkeren soms ingebedde weergave van externe PDFs.</span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <a
+                          href={proxyUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 font-semibold inline-flex items-center gap-1 transition-colors"
+                        >
+                          <ExternalLink className="w-3 h-3" /> Open in nieuw venster
+                        </a>
+                        <a
+                          href={proxyUrl}
+                          download
+                          className="px-2.5 py-1 rounded bg-accent text-accent-foreground font-semibold inline-flex items-center gap-1 transition-colors"
+                        >
+                          <Download className="w-3 h-3" /> Downloaden
+                        </a>
+                      </div>
+                    </div>
+                  )}
+
                   <iframe
                     src={proxyUrl}
                     className="w-full flex-1 border-0 bg-white"
                     title={currentModalDoc.title}
+                    onLoad={() => setIsIframeLoading(false)}
+                    onError={() => {
+                      setIsIframeLoading(false);
+                      setIframeLoadError(true);
+                    }}
                   />
                 </div>
 

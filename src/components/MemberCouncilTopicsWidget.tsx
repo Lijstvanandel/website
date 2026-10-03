@@ -607,9 +607,20 @@ export function MemberCouncilTopicsWidget({ token, currentUser }: MemberCouncilT
           (activeDoc.doc as any)?.bestand_url ||
           (activeDoc.doc as any)?.fileUrl ||
           "";
-        const resolvedDocUrl = (rawResolvedUrl && rawResolvedUrl !== "undefined" && rawResolvedUrl !== "null") ? String(rawResolvedUrl).trim() : "";
+        let resolvedDocUrl = (rawResolvedUrl && rawResolvedUrl !== "undefined" && rawResolvedUrl !== "null") ? String(rawResolvedUrl).trim() : "";
+        if (resolvedDocUrl.startsWith("/")) {
+          resolvedDocUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl${resolvedDocUrl}`;
+        }
         const docTitle = activeDoc.doc?.title || "Raadsdocument";
         const docId = String(activeDoc.doc?.id || "");
+
+        if (!resolvedDocUrl && docId) {
+          if (/^\d+$/.test(docId)) {
+            resolvedDocUrl = `https://api.notubiz.nl/document/${docId}/1`;
+          } else {
+            resolvedDocUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl/Document/LoadAgendaItemDocument/${docId}`;
+          }
+        }
 
         const proxyUrl = resolvedDocUrl
           ? `/api/council/document-proxy?url=${encodeURIComponent(resolvedDocUrl)}&documentId=${encodeURIComponent(docId)}&title=${encodeURIComponent(docTitle)}${token ? `&token=${encodeURIComponent(token)}` : ""}`

@@ -11133,16 +11133,31 @@ Sitemap: ${baseUrl}/sitemap.xml
       const enriched = enrichTopicWithStandpunten(withMember);
 
       // Compact representation for overview list: trims redundant document justifications to reduce payload while preserving direct document URLs
-      const lightDocs = (enriched.documents || []).map((d: any) => ({
-        id: d.id,
-        title: d.title,
-        url: d.url || (d as any).bestand_url || (d as any).fileUrl || "",
-        fileType: d.fileType || "PDF",
-        isLateDump: Boolean(d.isLateDump),
-        isNewAfterCompile: Boolean(d.isNewAfterCompile),
-        firstDetectedAt: d.firstDetectedAt,
-        viewedBy: (d.viewedBy || []).map((v: any) => ({ username: v.username, fullName: v.fullName })),
-      }));
+      const lightDocs = (enriched.documents || []).map((d: any) => {
+        let docUrl = d.url || (d as any).bestand_url || (d as any).fileUrl || "";
+        if (docUrl && docUrl.startsWith("/")) {
+          docUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl${docUrl}`;
+        }
+        if (!docUrl && d.id) {
+          if (enriched.municipality === "hoogeveen" || String(enriched.id || "").startsWith("hg_") || /^\d+$/.test(String(d.id))) {
+            docUrl = `https://api.notubiz.nl/document/${d.id}/1`;
+          } else if (enriched.meetingId) {
+            docUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl/Agenda/Document/${enriched.meetingId}?documentId=${d.id}&agendaItemId=${enriched.agendaItemId || ""}`;
+          } else {
+            docUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl/Document/LoadAgendaItemDocument/${d.id}`;
+          }
+        }
+        return {
+          id: String(d.id),
+          title: d.title,
+          url: docUrl,
+          fileType: d.fileType || "PDF",
+          isLateDump: Boolean(d.isLateDump),
+          isNewAfterCompile: Boolean(d.isNewAfterCompile),
+          firstDetectedAt: d.firstDetectedAt,
+          viewedBy: (d.viewedBy || []).map((v: any) => ({ username: v.username, fullName: v.fullName })),
+        };
+      });
 
       return {
         id: enriched.id,
@@ -11192,7 +11207,7 @@ Sitemap: ${baseUrl}/sitemap.xml
       municipality: targetMunicipality,
     };
 
-    // Get list of council members / fractieleden for assignment dropdown (strictly scoped to target municipality, no cross-municipality leakage)
+    // Get list of council members / fractieleden for assignment dropdown (strictly scoped to target municipality, with admin/alle support)
     const councilMembers = (db.users || [])
       .filter((u: any) => {
         const isCouncil =
@@ -11204,7 +11219,7 @@ Sitemap: ${baseUrl}/sitemap.xml
           u.role === "admin";
         if (!isCouncil) return false;
         const userMuni = (u.municipality || "steenwijkerland").toLowerCase().trim();
-        return userMuni === targetMunicipality;
+        return userMuni === targetMunicipality || userMuni === "alle" || u.role === "admin";
       })
       .map((u: any) => ({
         id: u.id,
@@ -11225,6 +11240,33 @@ Sitemap: ${baseUrl}/sitemap.xml
     return res.json(responseData);
   });
 
+  // 1a-2. Lightweight dedicated endpoint for council members (always available, ultra-fast)
+  app.get("/api/council/members", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const targetMunicipality = resolveRequestMunicipality(req);
+    const councilMembers = (db.users || [])
+      .filter((u: any) => {
+        const isCouncil =
+          u.role === "raadslid" ||
+          u.role === "burgerraadslid" ||
+          u.role === "fractielid" ||
+          u.role === "fractievolger" ||
+          u.role === "commissielid" ||
+          u.role === "admin";
+        if (!isCouncil) return false;
+        const userMuni = (u.municipality || "steenwijkerland").toLowerCase().trim();
+        return userMuni === targetMunicipality || userMuni === "alle" || u.role === "admin";
+      })
+      .map((u: any) => ({
+        id: u.id,
+        username: u.username,
+        fullName: u.fullName || u.username,
+        role: u.role,
+        municipality: u.municipality || "steenwijkerland",
+      }));
+    return res.json({ members: councilMembers });
+  });
+
   // 1b. Lazy-load full topic details (complete documents with URLs, detailed standpunten, notes) on selection
   app.get("/api/council/topics/:topicId", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
     const db = getDb();
@@ -11240,11 +11282,26 @@ Sitemap: ${baseUrl}/sitemap.xml
     const withMember = enrichTopicWithMemberData(topic, db);
     const enriched = enrichTopicWithStandpunten(withMember);
     if (Array.isArray(enriched.documents)) {
-      enriched.documents = enriched.documents.map((d: any) => ({
-        ...d,
-        id: String(d.id),
-        url: d.url || (d as any).bestand_url || (d as any).fileUrl || "",
-      }));
+      enriched.documents = enriched.documents.map((d: any) => {
+        let docUrl = d.url || (d as any).bestand_url || (d as any).fileUrl || "";
+        if (docUrl && docUrl.startsWith("/")) {
+          docUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl${docUrl}`;
+        }
+        if (!docUrl && d.id) {
+          if (enriched.municipality === "hoogeveen" || String(enriched.id || "").startsWith("hg_") || /^\d+$/.test(String(d.id))) {
+            docUrl = `https://api.notubiz.nl/document/${d.id}/1`;
+          } else if (enriched.meetingId) {
+            docUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl/Agenda/Document/${enriched.meetingId}?documentId=${d.id}&agendaItemId=${enriched.agendaItemId || ""}`;
+          } else {
+            docUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl/Document/LoadAgendaItemDocument/${d.id}`;
+          }
+        }
+        return {
+          ...d,
+          id: String(d.id),
+          url: docUrl,
+        };
+      });
     }
 
     return res.json({ topic: enriched });
@@ -11600,7 +11657,7 @@ Sitemap: ${baseUrl}/sitemap.xml
       }
 
       const userMuni = (user.municipality || "steenwijkerland").toLowerCase().trim();
-      if (userMuni !== topicMuni) {
+      if (userMuni !== topicMuni && userMuni !== "alle" && user.role !== "admin") {
         return res.status(400).json({
           error: `Strikte gemeentescheiding: ${user.fullName || user.username} behoort tot gemeente ${userMuni === "hoogeveen" ? "Hoogeveen" : "Steenwijkerland"} en kan niet worden gekoppeld aan een bespreekstuk van ${topicMuni === "hoogeveen" ? "Hoogeveen" : "Steenwijkerland"}.`
         });
@@ -11618,6 +11675,7 @@ Sitemap: ${baseUrl}/sitemap.xml
     }
 
     saveDb(db);
+    topicsResponseCache.clear();
 
     // Send push notification to assigned user if assigned
     if (assignedUserObj) {
@@ -12651,13 +12709,16 @@ Sitemap: ${baseUrl}/sitemap.xml
   // 7. Proxy document to avoid iframe/CORS issues and directly deliver pure PDF
   app.get("/api/council/document-proxy", optionalAuth, async (req: any, res: any) => {
     let rawDocUrl = req.query.url ? String(req.query.url).trim() : "";
+    if (rawDocUrl === "undefined" || rawDocUrl === "null" || rawDocUrl === "[object Object]") {
+      rawDocUrl = "";
+    }
 
-    // Resilient fallback: if url is missing, undefined, null, or literal string "undefined"/"null", attempt lookup by documentId, title, or filename
-    if (!rawDocUrl || rawDocUrl === "undefined" || rawDocUrl === "null") {
-      const queryDocId = req.query.documentId ? String(req.query.documentId).trim() : null;
-      const queryTitle = req.query.title ? String(req.query.title).trim() : null;
-      const queryFilename = req.query.filename ? String(req.query.filename).trim() : null;
+    const queryDocId = req.query.documentId ? String(req.query.documentId).trim() : null;
+    const queryTitle = req.query.title ? String(req.query.title).trim() : null;
+    const queryFilename = req.query.filename ? String(req.query.filename).trim() : null;
 
+    // Resilient fallback: if url is missing, attempt lookup by documentId, title, or filename
+    if (!rawDocUrl) {
       if (queryDocId || queryTitle || queryFilename) {
         const db = getDb();
         const allTopics = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
@@ -12673,7 +12734,7 @@ Sitemap: ${baseUrl}/sitemap.xml
           }
         }
         // Also check db.documents
-        if (!rawDocUrl || rawDocUrl === "undefined" || rawDocUrl === "null") {
+        if (!rawDocUrl) {
           const allDocs = Array.isArray(db.documents) ? db.documents : [];
           const matchedDoc = allDocs.find((d: any) =>
             (queryDocId && String(d.id) === queryDocId) ||
@@ -12683,6 +12744,15 @@ Sitemap: ${baseUrl}/sitemap.xml
           if (matchedDoc && (matchedDoc.fileUrl || matchedDoc.url)) {
             rawDocUrl = matchedDoc.fileUrl || matchedDoc.url;
           }
+        }
+      }
+
+      // If still no url found, but queryDocId exists: construct direct download endpoint
+      if (!rawDocUrl && queryDocId && queryDocId !== "undefined" && queryDocId !== "null") {
+        if (/^\d+$/.test(queryDocId)) {
+          rawDocUrl = `https://api.notubiz.nl/document/${queryDocId}/1`;
+        } else {
+          rawDocUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl/Document/LoadAgendaItemDocument/${queryDocId}`;
         }
       }
     }
