@@ -3062,8 +3062,12 @@ export default function Raadspaneel() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => setActiveDoc({ doc, topic: selectedTopic })}
-                                className="h-8 text-xs px-3 border-accent/40 text-accent hover:bg-accent/10 rounded-lg"
+                                onClick={() => {
+                                  const fullTopic = topicDetailsCache[selectedTopic.id] || selectedTopic;
+                                  const fullDoc = (fullTopic.documents || []).find((d: any) => String(d.id) === String(doc.id)) || doc;
+                                  setActiveDoc({ doc: fullDoc, topic: fullTopic });
+                                }}
+                                className="h-8 text-xs px-3 border-accent/40 text-accent hover:bg-accent/10 rounded-lg cursor-pointer"
                               >
                                 <Eye className="w-3.5 h-3.5 mr-1" />
                                 Inzien
@@ -3073,12 +3077,19 @@ export default function Raadspaneel() {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                asChild
+                                asChild={Boolean(doc.url || (doc as any).bestand_url || (doc as any).fileUrl)}
+                                disabled={!(doc.url || (doc as any).bestand_url || (doc as any).fileUrl)}
                                 className="h-8 text-xs px-2.5 text-muted-foreground hover:text-foreground rounded-lg"
                               >
-                                <a href={doc.url} target="_blank" rel="noreferrer" title="Open originele link">
-                                  <ExternalLink className="w-3.5 h-3.5" />
-                                </a>
+                                {(doc.url || (doc as any).bestand_url || (doc as any).fileUrl) ? (
+                                  <a href={doc.url || (doc as any).bestand_url || (doc as any).fileUrl} target="_blank" rel="noreferrer" title="Open originele link">
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                  </a>
+                                ) : (
+                                  <span title="Originele link niet beschikbaar">
+                                    <ExternalLink className="w-3.5 h-3.5 opacity-40" />
+                                  </span>
+                                )}
                               </Button>
                             </div>
                           </div>
@@ -3255,12 +3266,37 @@ export default function Raadspaneel() {
 
       {/* Document Viewer Modal Dialog met geïntegreerde Fractie-notities */}
       {activeDoc && (() => {
-        const currentModalTopic = topics.find((t) => t.id === activeDoc.topic.id) || activeDoc.topic;
-        const currentModalDoc = currentModalTopic.documents.find((d) => d.id === activeDoc.doc.id) || activeDoc.doc;
-        const isDocViewedByMe = currentModalDoc.viewedBy?.some((v) => v.username === user?.username);
-        const docNotes = currentModalTopic.notes?.filter((n) => n.documentId === currentModalDoc.id) || [];
-        const generalNotes = currentModalTopic.notes?.filter((n) => !n.documentId) || [];
-        const proxyUrl = `/api/council/document-proxy?url=${encodeURIComponent(currentModalDoc.url)}${token ? `&token=${encodeURIComponent(token)}` : ""}`;
+        const cachedFullTopic = topicDetailsCache[activeDoc.topic.id];
+        const currentModalTopic = cachedFullTopic || activeDoc.topic || topics.find((t) => String(t.id) === String(activeDoc.topic.id));
+        const currentModalDoc =
+          (cachedFullTopic?.documents || []).find((d: any) => String(d.id) === String(activeDoc.doc.id)) ||
+          (activeDoc.topic?.documents || []).find((d: any) => String(d.id) === String(activeDoc.doc.id)) ||
+          (currentModalTopic?.documents || []).find((d: any) => String(d.id) === String(activeDoc.doc.id)) ||
+          activeDoc.doc;
+
+        const isDocViewedByMe = currentModalDoc?.viewedBy?.some((v: any) => v.username === user?.username);
+        const docNotes = currentModalTopic?.notes?.filter((n: any) => String(n.documentId) === String(currentModalDoc?.id)) || [];
+        const generalNotes = currentModalTopic?.notes?.filter((n: any) => !n.documentId) || [];
+
+        // Resilient document URL resolution
+        const rawResolvedUrl =
+          currentModalDoc?.url ||
+          (currentModalDoc as any)?.bestand_url ||
+          (currentModalDoc as any)?.fileUrl ||
+          activeDoc.doc?.url ||
+          (activeDoc.doc as any)?.bestand_url ||
+          (activeDoc.doc as any)?.fileUrl ||
+          "";
+
+        const resolvedDocUrl = (rawResolvedUrl && rawResolvedUrl !== "undefined" && rawResolvedUrl !== "null") ? String(rawResolvedUrl).trim() : "";
+        const docTitle = currentModalDoc?.title || activeDoc.doc?.title || "Raadsdocument";
+        const docId = String(currentModalDoc?.id || activeDoc.doc?.id || "");
+
+        const proxyUrl = resolvedDocUrl
+          ? `/api/council/document-proxy?url=${encodeURIComponent(resolvedDocUrl)}&documentId=${encodeURIComponent(docId)}&title=${encodeURIComponent(docTitle)}${token ? `&token=${encodeURIComponent(token)}` : ""}`
+          : `/api/council/document-proxy?documentId=${encodeURIComponent(docId)}&title=${encodeURIComponent(docTitle)}${token ? `&token=${encodeURIComponent(token)}` : ""}`;
+
+        const isOriginAvailable = Boolean(resolvedDocUrl && (resolvedDocUrl.startsWith("http://") || resolvedDocUrl.startsWith("https://")));
 
         return (
           <Dialog open={!!activeDoc} onOpenChange={(open) => !open && setActiveDoc(null)}>
@@ -3320,11 +3356,24 @@ export default function Raadspaneel() {
                       )}
                     </Button>
 
-                    <Button size="sm" variant="secondary" asChild className="h-8 text-xs">
-                      <a href={currentModalDoc.url} target="_blank" rel="noreferrer">
-                        <ExternalLink className="w-3.5 h-3.5 mr-1" />
-                        Origineel
-                      </a>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      asChild={isOriginAvailable}
+                      disabled={!isOriginAvailable}
+                      className="h-8 text-xs"
+                    >
+                      {isOriginAvailable ? (
+                        <a href={resolvedDocUrl} target="_blank" rel="noreferrer">
+                          <ExternalLink className="w-3.5 h-3.5 mr-1" />
+                          Origineel
+                        </a>
+                      ) : (
+                        <span title="Geen externe bronlink beschikbaar">
+                          <ExternalLink className="w-3.5 h-3.5 mr-1 opacity-50" />
+                          Origineel
+                        </span>
+                      )}
                     </Button>
                   </div>
                 </div>
@@ -3381,9 +3430,9 @@ export default function Raadspaneel() {
                 {/* Linkerzijde: Document Iframe */}
                 <div className="flex-1 min-h-[350px] h-full bg-muted/30 rounded-xl overflow-hidden border border-border relative flex flex-col">
                   <div className="px-3 py-1.5 bg-background/80 border-b border-border text-[11px] text-muted-foreground flex items-center justify-between">
-                    <span className="truncate">Beveiligde viewer • Steenwijkerland Raadsstuk</span>
+                    <span className="truncate">Beveiligde viewer • {portalConfig.isPortalMode ? "NotuBiz" : "Raadsstuk"}</span>
                     <a
-                      href={currentModalDoc.url}
+                      href={resolvedDocUrl || proxyUrl}
                       target="_blank"
                       rel="noreferrer"
                       className="text-accent hover:underline inline-flex items-center gap-1 font-semibold shrink-0 ml-2"

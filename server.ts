@@ -11132,10 +11132,11 @@ Sitemap: ${baseUrl}/sitemap.xml
       const withMember = enrichTopicWithMemberData(t, db);
       const enriched = enrichTopicWithStandpunten(withMember);
 
-      // Compact representation for overview list: trims redundant document justifications and URLs to reduce payload by >70%
+      // Compact representation for overview list: trims redundant document justifications to reduce payload while preserving direct document URLs
       const lightDocs = (enriched.documents || []).map((d: any) => ({
         id: d.id,
         title: d.title,
+        url: d.url || (d as any).bestand_url || (d as any).fileUrl || "",
         fileType: d.fileType || "PDF",
         isLateDump: Boolean(d.isLateDump),
         isNewAfterCompile: Boolean(d.isNewAfterCompile),
@@ -11228,8 +11229,9 @@ Sitemap: ${baseUrl}/sitemap.xml
   app.get("/api/council/topics/:topicId", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
     const db = getDb();
     const { topicId } = req.params;
+    const decodedTopicId = decodeURIComponent(String(topicId || ""));
     const rawTopics = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
-    const topic = rawTopics.find((t: any) => String(t.id) === String(topicId));
+    const topic = rawTopics.find((t: any) => String(t.id) === String(topicId) || String(t.id) === decodedTopicId);
 
     if (!topic) {
       return res.status(404).json({ error: "Agendapunt niet gevonden." });
@@ -11237,6 +11239,13 @@ Sitemap: ${baseUrl}/sitemap.xml
 
     const withMember = enrichTopicWithMemberData(topic, db);
     const enriched = enrichTopicWithStandpunten(withMember);
+    if (Array.isArray(enriched.documents)) {
+      enriched.documents = enriched.documents.map((d: any) => ({
+        ...d,
+        id: String(d.id),
+        url: d.url || (d as any).bestand_url || (d as any).fileUrl || "",
+      }));
+    }
 
     return res.json({ topic: enriched });
   });
@@ -12641,14 +12650,57 @@ Sitemap: ${baseUrl}/sitemap.xml
 
   // 7. Proxy document to avoid iframe/CORS issues and directly deliver pure PDF
   app.get("/api/council/document-proxy", optionalAuth, async (req: any, res: any) => {
-    const rawDocUrl = req.query.url;
-    if (!rawDocUrl || typeof rawDocUrl !== "string") {
-      return res.status(400).json({ error: "Geen geldige document URL opgegeven" });
+    let rawDocUrl = req.query.url ? String(req.query.url).trim() : "";
+
+    // Resilient fallback: if url is missing, undefined, null, or literal string "undefined"/"null", attempt lookup by documentId, title, or filename
+    if (!rawDocUrl || rawDocUrl === "undefined" || rawDocUrl === "null") {
+      const queryDocId = req.query.documentId ? String(req.query.documentId).trim() : null;
+      const queryTitle = req.query.title ? String(req.query.title).trim() : null;
+      const queryFilename = req.query.filename ? String(req.query.filename).trim() : null;
+
+      if (queryDocId || queryTitle || queryFilename) {
+        const db = getDb();
+        const allTopics = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
+        for (const t of allTopics) {
+          const matched = (t.documents || []).find((d: any) =>
+            (queryDocId && String(d.id) === queryDocId) ||
+            (queryTitle && d.title?.toLowerCase().trim() === queryTitle.toLowerCase().trim()) ||
+            (queryFilename && d.title?.toLowerCase().includes(queryFilename.toLowerCase().replace(/\.pdf$/i, "")))
+          );
+          if (matched && (matched.url || (matched as any).bestand_url || (matched as any).fileUrl)) {
+            rawDocUrl = matched.url || (matched as any).bestand_url || (matched as any).fileUrl;
+            break;
+          }
+        }
+        // Also check db.documents
+        if (!rawDocUrl || rawDocUrl === "undefined" || rawDocUrl === "null") {
+          const allDocs = Array.isArray(db.documents) ? db.documents : [];
+          const matchedDoc = allDocs.find((d: any) =>
+            (queryDocId && String(d.id) === queryDocId) ||
+            (queryTitle && d.title?.toLowerCase().trim() === queryTitle.toLowerCase().trim()) ||
+            (queryFilename && (d.fileName || d.title)?.toLowerCase().includes(queryFilename.toLowerCase().replace(/\.pdf$/i, "")))
+          );
+          if (matchedDoc && (matchedDoc.fileUrl || matchedDoc.url)) {
+            rawDocUrl = matchedDoc.fileUrl || matchedDoc.url;
+          }
+        }
+      }
+    }
+
+    if (!rawDocUrl || typeof rawDocUrl !== "string" || rawDocUrl === "undefined" || rawDocUrl === "null" || rawDocUrl.trim() === "") {
+      return res.status(400).json({ error: "Geen geldige document URL opgegeven of gevonden voor dit raadstuk." });
     }
 
     try {
       let targetUrl = rawDocUrl.trim();
       const BASE_STEENWIJK = "https://steenwijkerland.bestuurlijkeinformatie.nl";
+
+      // Prepend base URL for relative agenda/document links
+      if (targetUrl.startsWith("/")) {
+        if (!targetUrl.startsWith("/uploads/") && !targetUrl.startsWith("/public/")) {
+          targetUrl = `${BASE_STEENWIJK}${targetUrl}`;
+        }
+      }
 
       // Record document view audit log
       const docTitle = req.query.title ? String(req.query.title) : undefined;
@@ -12705,8 +12757,8 @@ Sitemap: ${baseUrl}/sitemap.xml
         }
       }
 
-      if (targetUrl.startsWith("/")) {
-        targetUrl = `${BASE_STEENWIJK}${targetUrl}`;
+      if (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://")) {
+        return res.status(400).json({ error: "Ongeldige document URL opgegeven." });
       }
 
       // Automatically transform iBabs Agenda/Document URLs with documentId & agendaItemId to direct LoadAgendaItemDocument PDF endpoint
@@ -12764,6 +12816,10 @@ Sitemap: ${baseUrl}/sitemap.xml
         }
       } catch (_e) {
         // Fallback to targetUrl as-is
+      }
+
+      if (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://")) {
+        return res.status(400).json({ error: "Geen geldige doel-URL gevonden om op te halen." });
       }
 
       const response = await fetch(targetUrl, {

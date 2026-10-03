@@ -419,6 +419,28 @@ export function saveDbToSqlite(data: any) {
       }
 
       if (TABLE_DEFINITIONS[key] && Array.isArray(val)) {
+        if (key === "councilAgendaTopics") {
+          // Safeguard: Protect against partial municipality saves wiping other municipality topics
+          try {
+            const existingRows = sqliteDb.exec(`SELECT id, data FROM ${key}`);
+            if (existingRows.length > 0 && existingRows[0].values) {
+              const valIds = new Set(val.map((item: any) => String(item?.id || "")));
+              for (const [rowId, rowData] of existingRows[0].values) {
+                if (!valIds.has(String(rowId))) {
+                  try {
+                    const parsed = JSON.parse(rowData);
+                    val.push(parsed);
+                  } catch {
+                    // ignore
+                  }
+                }
+              }
+            }
+          } catch {
+            // ignore
+          }
+        }
+
         const currentSig = computePublicSignature(val);
         if (publicTableSignatures.get(key) === currentSig) {
           continue; // Unchanged: skip wiping and re-inserting entire table!

@@ -602,7 +602,20 @@ export function MemberCouncilTopicsWidget({ token, currentUser }: MemberCouncilT
 
       {/* Document Viewer Modal */}
       {activeDoc && (() => {
-        const proxyUrl = `/api/council/document-proxy?url=${encodeURIComponent(activeDoc.doc.url)}`;
+        const rawResolvedUrl =
+          activeDoc.doc?.url ||
+          (activeDoc.doc as any)?.bestand_url ||
+          (activeDoc.doc as any)?.fileUrl ||
+          "";
+        const resolvedDocUrl = (rawResolvedUrl && rawResolvedUrl !== "undefined" && rawResolvedUrl !== "null") ? String(rawResolvedUrl).trim() : "";
+        const docTitle = activeDoc.doc?.title || "Raadsdocument";
+        const docId = String(activeDoc.doc?.id || "");
+
+        const proxyUrl = resolvedDocUrl
+          ? `/api/council/document-proxy?url=${encodeURIComponent(resolvedDocUrl)}&documentId=${encodeURIComponent(docId)}&title=${encodeURIComponent(docTitle)}${token ? `&token=${encodeURIComponent(token)}` : ""}`
+          : `/api/council/document-proxy?documentId=${encodeURIComponent(docId)}&title=${encodeURIComponent(docTitle)}${token ? `&token=${encodeURIComponent(token)}` : ""}`;
+
+        const isOriginAvailable = Boolean(resolvedDocUrl && (resolvedDocUrl.startsWith("http://") || resolvedDocUrl.startsWith("https://")));
 
         return (
           <Dialog open={!!activeDoc} onOpenChange={(open) => !open && setActiveDoc(null)}>
@@ -620,22 +633,30 @@ export function MemberCouncilTopicsWidget({ token, currentUser }: MemberCouncilT
                   <Button
                     size="sm"
                     variant="outline"
-                    asChild
+                    asChild={isOriginAvailable}
+                    disabled={!isOriginAvailable}
                     className="text-xs h-8 px-3 border-accent/40 text-accent shrink-0 rounded-lg"
                   >
-                    <a href={activeDoc.doc.url} target="_blank" rel="noreferrer" title="Open originele bronlink">
-                      <ExternalLink className="w-3.5 h-3.5 mr-1" />
-                      Origineel
-                    </a>
+                    {isOriginAvailable ? (
+                      <a href={resolvedDocUrl} target="_blank" rel="noreferrer" title="Open originele bronlink">
+                        <ExternalLink className="w-3.5 h-3.5 mr-1" />
+                        Origineel
+                      </a>
+                    ) : (
+                      <span title="Geen externe bronlink beschikbaar">
+                        <ExternalLink className="w-3.5 h-3.5 mr-1 opacity-50" />
+                        Origineel
+                      </span>
+                    )}
                   </Button>
                 </div>
               </DialogHeader>
 
               <div className="flex-1 min-h-[350px] bg-muted/30 rounded-xl overflow-hidden border border-border relative flex flex-col mt-3">
                 <div className="px-3 py-1.5 bg-background/80 border-b border-border text-[11px] text-muted-foreground flex items-center justify-between">
-                  <span className="truncate">Beveiligde viewer • Steenwijkerland Raadsstuk</span>
+                  <span className="truncate">Beveiligde viewer • Raadsstuk</span>
                   <a
-                    href={activeDoc.doc.url}
+                    href={resolvedDocUrl || proxyUrl}
                     target="_blank"
                     rel="noreferrer"
                     className="text-accent hover:underline inline-flex items-center gap-1 font-semibold shrink-0 ml-2"
