@@ -80,7 +80,17 @@ export const SupportDossierPanel: React.FC<SupportDossierPanelProps> = ({
         },
       });
 
-      const data = await res.json();
+      const responseText = await res.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(responseText);
+      } catch (_jsonErr) {
+        if (!res.ok) {
+          throw new Error(`De server gaf een foutmelding (HTTP ${res.status}). Mogelijk duurde de documentanalyse te lang.`);
+        }
+        throw new Error("Ongeldig antwoord van de server bij het compileren van het dossier.");
+      }
+
       if (!res.ok || !data.success) {
         throw new Error(data.error || "Fout bij het compileren van het ondersteuningsdossier.");
       }
@@ -114,13 +124,22 @@ export const SupportDossierPanel: React.FC<SupportDossierPanelProps> = ({
           Authorization: `Bearer ${effectiveToken}`,
         },
       });
-      const data = await res.json();
+      const responseText = await res.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(responseText);
+      } catch (_jsonErr) {
+        if (!res.ok) {
+          throw new Error(`De server gaf een foutmelding (HTTP ${res.status}).`);
+        }
+        throw new Error("Ongeldig antwoord van de server bij het resetten van het dossier.");
+      }
       if (res.ok && data.success) {
         toast.info("Ondersteuningsdossier gereset.");
         onDossierUpdated(data.topic);
       }
     } catch (err: any) {
-      toast.error("Kon dossier niet resetten.");
+      toast.error(err.message || "Kon dossier niet resetten.");
     } finally {
       setResetting(false);
     }

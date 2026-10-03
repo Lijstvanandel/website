@@ -713,25 +713,35 @@ export async function compileEvidenceAndAnalysis(
     };
   }
 
-  // Extract actual text content from the current topic's documents (the original meeting files)
+  // Extract actual text content from the current topic's documents in parallel (with resilience timeout)
   const originalDocContents: { title: string; filename: string; textExcerpt: string }[] = [];
   const documents = topic.documents || [];
-  for (const doc of documents) {
+  
+  const docExtractPromises = documents.map(async (doc) => {
     try {
-      const fullText = await getCouncilDocumentContent(doc);
+      // 5-second max timeout per document so external HTTP slow responses don't stall the compiler
+      const textPromise = getCouncilDocumentContent(doc);
+      const timeoutPromise = new Promise<string>((resolve) => setTimeout(() => resolve(""), 5000));
+      const fullText = await Promise.race([textPromise, timeoutPromise]);
       if (fullText && fullText.trim().length > 0) {
         const cleaned = fullText.replace(/\s+/g, " ").trim();
         const rawExcerpt = cleaned.length > 5000 ? cleaned.slice(0, 5000) + "... [vervolg weggelaten]" : cleaned;
         const { sanitizedText: excerpt } = sanitizeTextForGemini(rawExcerpt);
-        originalDocContents.push({
+        return {
           title: doc.title,
           filename: `${slugify(doc.title)}.pdf`,
-          textExcerpt: excerpt
-        });
+          textExcerpt: excerpt,
+        };
       }
     } catch (err) {
       console.warn(`[SUPPORT DOSSIER] Failed to extract text for original document ${doc.title}:`, err);
     }
+    return null;
+  });
+
+  const extractedList = await Promise.all(docExtractPromises);
+  for (const item of extractedList) {
+    if (item) originalDocContents.push(item);
   }
 
   // Check if Gemini API is available for real-time grounded extraction
@@ -802,7 +812,8 @@ Antwoord UITSLUITEND in valide JSON (geen markdown quotes of uitleg) met deze ex
   ]
 }`;
 
-      const response = await ai.models.generateContent({
+      // Enforce 12s timeout on Gemini request to prevent gateway timeouts
+      const aiPromise = ai.models.generateContent({
         model: "gemini-2.5-flash",
         contents: prompt,
         config: {
@@ -810,6 +821,11 @@ Antwoord UITSLUITEND in valide JSON (geen markdown quotes of uitleg) met deze ex
           responseMimeType: "application/json",
         },
       });
+      const timeoutPromise = new Promise<any>((_, reject) =>
+        setTimeout(() => reject(new Error("Gemini AI request timed out after 12s")), 12000)
+      );
+
+      const response = await Promise.race([aiPromise, timeoutPromise]);
 
       const text = response.text?.trim() || "";
       if (text) {
@@ -1029,40 +1045,51 @@ export async function compileSupportDossierForTopic(
   // 2. Exact Extraction & AI Analysis
   const analysis = await compileEvidenceAndAnalysis(topic, filtered, matchedTags);
 
-  // 2b. Deep Document Scan & Multiple Party Standpoints Matching with Gemini
-  try {
-    console.log(`[SUPPORT DOSSIER] Scannen van vergaderstukken voor meervoudige partijstandpunten...`);
-    await scanTopicDocumentsAndMatchStandpunten(topic, db);
-  } catch (scanErr) {
-    console.warn(`[SUPPORT DOSSIER] Waarschuwing bij scannen van standpunten:`, scanErr);
-  }
+  // 2b. Standpunten scannen op de achtergrond zodat de dossier-respons onmiddellijk terugkomt
+  scanTopicDocumentsAndMatchStandpunten(topic, db).catch((scanErr) => {
+    console.warn(`[SUPPORT DOSSIER] Waarschuwing bij achtergrond-scannen van standpunten:`, scanErr);
+  });
 
   const topicMuni = (topic.municipality || (topic.id?.startsWith("hg_") ? "hoogeveen" : "steenwijkerland")).toLowerCase().trim();
   const isHgvTopic = topicMuni === "hoogeveen";
 
-  // 3. Ensure Verifiable PDF Files with Real Page Highlights
+  // 3. Ensure Verifiable PDF Files with Real Page Highlights in parallel
+  const pdfPromises: Promise<any>[] = [];
   for (const item of analysis.bewijslast) {
     if (item.sourceDocName) {
-      item.sourceDocUrl = await ensureVerifiablePdfFile(
-        item.sourceDocName,
-        topic.title,
-        item.page || 14,
-        item.quote,
-        item.finding,
-        topicMuni
+      pdfPromises.push(
+        ensureVerifiablePdfFile(
+          item.sourceDocName,
+          topic.title,
+          item.page || 14,
+          item.quote,
+          item.finding,
+          topicMuni
+        ).then((url) => {
+          item.sourceDocUrl = url;
+        }).catch((err) => {
+          console.warn(`[PDF GEN WARN] ${item.sourceDocName}:`, err);
+        })
       );
     }
     if (item.contradictionWith?.sourceDocName) {
-      item.contradictionWith.sourceDocUrl = await ensureVerifiablePdfFile(
-        item.contradictionWith.sourceDocName,
-        topic.title,
-        item.contradictionWith.page || 8,
-        item.contradictionWith.quote,
-        `Tegenstrijdige passage met ${item.sourceDocName}`,
-        topicMuni
+      pdfPromises.push(
+        ensureVerifiablePdfFile(
+          item.contradictionWith.sourceDocName,
+          topic.title,
+          item.contradictionWith.page || 8,
+          item.contradictionWith.quote,
+          `Tegenstrijdige passage met ${item.sourceDocName}`,
+          topicMuni
+        ).then((url) => {
+          item.contradictionWith!.sourceDocUrl = url;
+        }).catch((err) => {
+          console.warn(`[PDF GEN WARN] ${item.contradictionWith?.sourceDocName}:`, err);
+        })
       );
     }
   }
+  await Promise.all(pdfPromises);
 
   // 4. Format Gefilterde Documenten for UI
   const gefilterdeDocumenten = filtered.map((d) => ({
