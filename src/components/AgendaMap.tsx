@@ -3,14 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from "re
 import L from "leaflet";
 import { MapPin, Navigation, Calendar, Lock, CheckCircle2 } from "lucide-react";
 
-// Ensure Leaflet CSS is loaded via CDN link without Vite processing PNG assets
-if (typeof window !== "undefined" && !document.getElementById("leaflet-cdn-css")) {
-  const link = document.createElement("link");
-  link.id = "leaflet-cdn-css";
-  link.rel = "stylesheet";
-  link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-  document.head.appendChild(link);
-}
+import "leaflet/dist/leaflet.css";
 import { Button } from "@/components/ui/button";
 import { extractCity } from "@/lib/utils";
 import { safeJson } from "@/lib/api";

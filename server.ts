@@ -15365,11 +15365,8 @@ Sitemap: ${baseUrl}/sitemap.xml
         return res.status(404).send("Bestand niet gevonden");
       }
 
-      // Reload template if not cached or read fresh
-      let html = cachedIndexHtml;
-      if (!html && fs.existsSync(indexHtmlPath)) {
-        html = fs.readFileSync(indexHtmlPath, "utf-8");
-      }
+      // Always read fresh template from disk if it exists
+      const html = fs.existsSync(indexHtmlPath) ? fs.readFileSync(indexHtmlPath, "utf-8") : cachedIndexHtml;
       if (!html) {
         console.error(`[SERVER FOUT] dist/index.html niet gevonden op ${indexHtmlPath}. Heb je 'npm run build' uitgevoerd?`);
         return res.status(500).send(`

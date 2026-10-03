@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Navigate, Link, useSearchParams, useParams } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { getPortalConfig } from "@/utils/portalConfig";
@@ -282,24 +282,6 @@ export default function Raadspaneel() {
     return adminSelectedMuni;
   }, [user, userMunicipality, searchParams, adminSelectedMuni]);
 
-  const handleSwitchMunicipality = (targetMuni: "steenwijkerland" | "hoogeveen") => {
-    setAdminSelectedMuni(targetMuni);
-    try {
-      localStorage.setItem("raadspaneel_active_municipality", targetMuni);
-      localStorage.setItem("portal_tenant", targetMuni);
-    } catch (_err) {
-      // ignore localStorage errors
-    }
-    inFlightTopicRequests.current.clear();
-    setSelectedTopicId(null);
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      next.set("municipality", targetMuni);
-      next.delete("topic");
-      return next;
-    }, { preventScrollReset: true });
-  };
-
   const initialDossierSlug = slug || searchParams.get("dossier") || null;
   const tabParam = searchParams.get("tab");
   type PanelTabType = "dossiers" | "agenda" | "toezeggingen" | "vragenformulator" | "overijssel" | "drenthe" | "waterschap" | "onderzoeken" | "approvals";
@@ -526,6 +508,24 @@ export default function Raadspaneel() {
       // ignore
     }
   }, [setSearchParams, activeMunicipality]);
+
+  const handleSwitchMunicipality = useCallback((targetMuni: "steenwijkerland" | "hoogeveen") => {
+    setAdminSelectedMuni(targetMuni);
+    try {
+      localStorage.setItem("raadspaneel_active_municipality", targetMuni);
+      localStorage.setItem("portal_tenant", targetMuni);
+    } catch (_err) {
+      // ignore localStorage errors
+    }
+    inFlightTopicRequests.current.clear();
+    setSelectedTopicId(null);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("municipality", targetMuni);
+      next.delete("topic");
+      return next;
+    }, { preventScrollReset: true });
+  }, [setSearchParams]);
 
   // Single Source of Truth: update any topic in the authoritative topics array and sync IndexedDB & activeDoc immediately
   const updateTopic = useCallback((updatedTopic: CouncilAgendaTopic) => {
