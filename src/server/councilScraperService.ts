@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
 import { CouncilAgendaTopic, CouncilDocument, CouncilTopicDiffAlert } from "../types/council.js";
 import { getDbFromSqlite, saveDbToSqlite, initDatabase, persistSqlite } from "./sqliteDatabase.js";
+import { hydrateTopicsWithContributions } from "./councilContributionVault.js";
 import { notifyDocumentDiffDetected } from "./pushService.js";
 import { enrichTopicWithStandpunten } from "../lib/standpuntMatcher.js";
 import { invalidateDossierCache, distributeSteenwijkerlandDossiers } from "./dossierManager.js";
@@ -296,6 +297,11 @@ export async function scrapeCouncilAgendas(
   const existingTopics: CouncilAgendaTopic[] = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
   const existingTopicsMap = new Map<string, CouncilAgendaTopic>();
   for (const t of existingTopics) {
+    // CRITICAL: NEVER filter out topics that have user contributions, notes, assignments, or are parked!
+    if (t.isParked || t.bijdragePolitiekeMarkt || t.bijdrageRaadsvergadering || t.assignedTo || (t.notes && t.notes.length > 0) || t.compiledDossier || t.markAsHamerstuk) {
+      existingTopicsMap.set(t.id, t);
+      continue;
+    }
     if (!isInvalidOrJunkTopic(t.title)) {
       existingTopicsMap.set(t.id, t);
     }
@@ -582,6 +588,7 @@ export async function scrapeCouncilAgendas(
               sourceUrl: meeting.url,
               scrapedAt: new Date().toISOString(),
               // Status & Geparkeerd state
+              status: existing?.status || (existing?.isParked ? "geparkeerd" : (topicCategory.includes("bespreekstuk") ? "bespreekstuk" : "in_behandeling")),
               isParked: existing?.isParked || false,
               parkedReason: existing?.parkedReason,
               parkedAt: existing?.parkedAt || null,
@@ -618,6 +625,11 @@ export async function scrapeCouncilAgendas(
 
   // Purge any older junk entries, procedural remarks, section headers, or loose file records
   for (const [id, topic] of existingTopicsMap.entries()) {
+    // CRITICAL: NEVER purge topics that have been parked, assigned, have notes, or have user contributions!
+    if (topic.isParked || topic.bijdragePolitiekeMarkt || topic.bijdrageRaadsvergadering || topic.assignedTo || (topic.notes && topic.notes.length > 0)) {
+      continue;
+    }
+
     if (isInvalidOrJunkTopic(topic.title)) {
       existingTopicsMap.delete(id);
       continue;
@@ -644,7 +656,8 @@ export async function scrapeCouncilAgendas(
       const mDate = new Date(topic.meetingDate);
       if (!isNaN(mDate.getTime())) {
         const diff = now.getTime() - mDate.getTime();
-        if (diff > SEVEN_DAYS_MS && !topic.isArchived) {
+        // NEVER auto-archive parked topics: parked items are explicitly on hold until unparked!
+        if (diff > SEVEN_DAYS_MS && !topic.isArchived && !topic.isParked) {
           topic.isArchived = true;
           topic.archivedAt = new Date().toISOString();
           archivedCount++;
@@ -687,7 +700,7 @@ export async function scrapeCouncilAgendas(
   const topicsMap = new Map<string, CouncilAgendaTopic>();
   existingTopicsAll.forEach((t) => { if (t?.id) topicsMap.set(t.id, t); });
   enrichedFinalList.forEach((t) => { if (t?.id) topicsMap.set(t.id, t); });
-  db.councilAgendaTopics = Array.from(topicsMap.values());
+  db.councilAgendaTopics = hydrateTopicsWithContributions(Array.from(topicsMap.values()));
   db.councilScrapeSummary = {
     lastScrapedAt: new Date().toISOString(),
     totalMeetingsScraped: scrapedMeetingLinks.length,

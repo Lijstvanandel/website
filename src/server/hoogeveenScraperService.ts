@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { CouncilAgendaTopic, CouncilDocument, CouncilTopicDiffAlert } from "../types/council.js";
 import { getDbFromSqlite, saveDbToSqlite, initDatabase, persistSqlite } from "./sqliteDatabase.js";
+import { hydrateTopicsWithContributions } from "./councilContributionVault.js";
 import { notifyDocumentDiffDetected } from "./pushService.js";
 import { detectHoogeveenWijken } from "./hoogeveenTaxonomy.js";
 import { sanitizeCleanText, isCorruptOrHtmlGarbage } from "./scraperContractValidator.js";
@@ -479,6 +480,7 @@ export async function scrapeCouncilAgendasHoogeveen(yearsToScrape: number[] = [2
               municipality: "hoogeveen",
               wijken: detectedWijken,
               // Status & Geparkeerd state
+              status: existing?.status || (existing?.isParked ? "geparkeerd" : (topicCategory.includes("bespreekstuk") ? "bespreekstuk" : "in_behandeling")),
               isParked: existing?.isParked || false,
               parkedReason: existing?.parkedReason,
               parkedAt: existing?.parkedAt || null,
@@ -536,7 +538,7 @@ export async function scrapeCouncilAgendasHoogeveen(yearsToScrape: number[] = [2
       const mDate = new Date(topic.meetingDate);
       if (!isNaN(mDate.getTime())) {
         const diff = now.getTime() - mDate.getTime();
-        if (diff > SEVEN_DAYS_MS && !topic.isArchived) {
+        if (diff > SEVEN_DAYS_MS && !topic.isArchived && !topic.isParked) {
           topic.isArchived = true;
           topic.archivedAt = new Date().toISOString();
           archivedCount++;
@@ -558,7 +560,7 @@ export async function scrapeCouncilAgendasHoogeveen(yearsToScrape: number[] = [2
   const topicsMap = new Map<string, CouncilAgendaTopic>();
   existingTopicsAll.forEach((t) => { if (t?.id) topicsMap.set(t.id, t); });
   hoogeveenTopicsList.forEach((t) => { if (t?.id) topicsMap.set(t.id, t); });
-  db.councilAgendaTopics = Array.from(topicsMap.values());
+  db.councilAgendaTopics = hydrateTopicsWithContributions(Array.from(topicsMap.values()));
 
   const summary = {
     lastScrapedAt: new Date().toISOString(),

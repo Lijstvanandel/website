@@ -83,6 +83,12 @@ import {
   saveVaultItem,
 } from "./src/server/sqliteDatabase.js";
 import { executeCouncilSearch } from "./src/server/councilSearchService.js";
+import {
+  recordCouncilContribution,
+  exportCouncilContributions,
+  importCouncilContributions,
+  hydrateTopicsWithContributions,
+} from "./src/server/councilContributionVault.js";
 import { normalizeSubdossier } from "./src/server/taxonomyClassifier.js";
 import { indexUploadedFile } from "./src/server/documentTextExtractor.js";
 import {
@@ -3118,8 +3124,8 @@ async function startServer() {
   };
 
   const requireCouncilOrAdmin = (req: any, res: any, next: any) => {
-    if (req.user.role !== 'admin' && req.user.role !== 'key-user' && req.user.role !== 'raadslid' && req.user.role !== 'fractielid' && req.user.role !== 'voorzitter' && req.user.role !== 'bestuur') {
-      return res.status(403).json({ error: "Toegang geweigerd: alleen toegankelijk voor raadsleden, fractieleden of de beheerder." });
+    if (req.user.role !== 'admin' && req.user.role !== 'key-user' && req.user.role !== 'raadslid' && req.user.role !== 'fractielid' && req.user.role !== 'voorzitter' && req.user.role !== 'bestuur' && req.user.role !== 'secretaris' && req.user.role !== 'penningmeester') {
+      return res.status(403).json({ error: "Toegang geweigerd: alleen toegankelijk voor raadsleden, fractieleden of het bestuur." });
     }
     next();
   };
@@ -11341,6 +11347,53 @@ async function startServer() {
     }
   });
 
+  // Importeer en herstel een JSON database export (handig bij migratie naar productie)
+  app.post("/api/admin/system/backup/restore-json", requireAuth, requireAdmin, (req: any, res: any) => {
+    try {
+      const { backupData, mergeMode = "merge" } = req.body;
+      if (!backupData || typeof backupData !== "object") {
+        return res.status(400).json({ error: "Ongeldige JSON back-up data aangeleverd." });
+      }
+
+      const db = getDb();
+      let importedTables = 0;
+
+      for (const [key, val] of Object.entries(backupData)) {
+        if (!Array.isArray(val) && (typeof val !== "object" || val === null)) continue;
+
+        if (Array.isArray(val)) {
+          if (mergeMode === "merge" && Array.isArray(db[key])) {
+            const existingMap = new Map((db[key] as any[]).map((item: any) => [String(item?.id || item?.slug || item?.key), item]));
+            for (const item of val) {
+              const id = String(item?.id || item?.slug || item?.key);
+              if (id) {
+                existingMap.set(id, { ...(existingMap.get(id) || {}), ...item });
+              }
+            }
+            db[key] = Array.from(existingMap.values());
+          } else {
+            db[key] = val;
+          }
+          importedTables++;
+        } else if (typeof val === "object") {
+          db[key] = mergeMode === "merge" && typeof db[key] === "object" ? { ...db[key], ...val } : val;
+          importedTables++;
+        }
+      }
+
+      saveDb(db);
+      persistSqlite();
+
+      res.json({
+        success: true,
+        message: `Back-up succesvol verwerkt! ${importedTables} tabellen gesynchroniseerd met de productiedatabase.`,
+      });
+    } catch (err: any) {
+      console.error("Fout bij importeren van JSON backup:", err);
+      res.status(500).json({ error: "Fout bij importeren van back-up: " + err.message });
+    }
+  });
+
   // Maak direct een lokale snapshot back-up op de server in ./backups/
   app.post("/api/admin/system/backup/snapshot", requireAuth, requireAdmin, async (req: any, res: any) => {
     try {
@@ -11611,8 +11664,11 @@ Sitemap: ${baseUrl}/sitemap.xml
     const targetMunicipality = resolveRequestMunicipality(req);
     const rawTopics = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
     
+    // Always hydrate with vault contributions to guarantee git-immunity and resurrection of past contributions
+    const hydratedTopics = hydrateTopicsWithContributions(rawTopics);
+
     // Filter agenda topics strictly by municipality
-    const scopedRawTopics = rawTopics.filter((t: any) => {
+    const scopedRawTopics = hydratedTopics.filter((t: any) => {
       const topicMuni = getTopicMunicipality(t);
       return topicMuni === targetMunicipality;
     });
@@ -12171,6 +12227,8 @@ Sitemap: ${baseUrl}/sitemap.xml
     }
 
     saveDb(db);
+    recordCouncilContribution(topic);
+    persistSqlite();
     topicsResponseCache.clear();
 
     // Send push notification to assigned user if assigned
@@ -12232,6 +12290,7 @@ Sitemap: ${baseUrl}/sitemap.xml
     });
 
     saveDb(db);
+    recordCouncilContribution(topic);
 
     const enriched = enrichTopicWithStandpunten(enrichTopicWithMemberData(topic, db));
     return res.json({
@@ -12277,6 +12336,7 @@ Sitemap: ${baseUrl}/sitemap.xml
     });
 
     saveDb(db);
+    recordCouncilContribution(topic);
 
     const enriched = enrichTopicWithStandpunten(enrichTopicWithMemberData(topic, db));
     return res.json({
@@ -12387,12 +12447,54 @@ Sitemap: ${baseUrl}/sitemap.xml
     }
 
     saveDb(db);
+    recordCouncilContribution(topic);
 
     return res.json({
       success: true,
       topic,
-      message: "Bijdragen en status succesvol opgeslagen."
+      message: "Bijdragen en status succesvol opgeslagen en permanent beveiligd in de kluis."
     });
+  });
+
+  // 4b-1. Export all council contributions & parked pieces as a git-immune JSON payload
+  app.get("/api/council/contributions/export", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    try {
+      const records = exportCouncilContributions();
+      const dateStr = new Date().toISOString().slice(0, 10);
+      res.setHeader("Content-Disposition", `attachment; filename="raadspaneel-bijdragen-kluis-${dateStr}.json"`);
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.send(JSON.stringify(records, null, 2));
+    } catch (err: any) {
+      res.status(500).json({ error: "Fout bij exporteren: " + err.message });
+    }
+  });
+
+  // 4b-2. Synchronize client-cached contributions to server (auto-heal / restore after git pull)
+  app.post("/api/council/contributions/sync-from-client", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+    try {
+      const { contributions } = req.body;
+      if (!Array.isArray(contributions) || contributions.length === 0) {
+        return res.json({ success: true, importedCount: 0, message: "Geen bijdragen aangeleverd om te synchroniseren." });
+      }
+
+      const { importedCount } = importCouncilContributions(contributions);
+      const db = getDb();
+      if (Array.isArray(db.councilAgendaTopics)) {
+        db.councilAgendaTopics = hydrateTopicsWithContributions(db.councilAgendaTopics);
+        saveDb(db);
+        persistSqlite();
+      }
+
+      topicsResponseCache.clear();
+
+      res.json({
+        success: true,
+        importedCount,
+        message: `${importedCount} bijdrage(n) en geparkeerde stukken succesvol hersteld en gesynchroniseerd met de server.`,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "Fout bij synchroniseren: " + err.message });
+    }
   });
 
   // 4c. Member Dashboard: Get Active Council Topics for Members
@@ -12535,6 +12637,8 @@ Sitemap: ${baseUrl}/sitemap.xml
 
     topic.notes.push(newNote);
     saveDb(db);
+    recordCouncilContribution(topic);
+    persistSqlite();
 
     return res.json({
       success: true,
@@ -12571,6 +12675,8 @@ Sitemap: ${baseUrl}/sitemap.xml
 
     topic.notes.splice(noteIdx, 1);
     saveDb(db);
+    recordCouncilContribution(topic);
+    persistSqlite();
 
     return res.json({
       success: true,

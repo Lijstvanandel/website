@@ -44,6 +44,7 @@ import {
   Check,
   UserPlus,
   ShieldCheck,
+  Upload,
 } from "lucide-react";
 import { safeLocalStorage, safeSessionStorage } from "@/lib/safeStorage";
 import { indexedDbStorage } from "@/lib/indexedDbStorage";
@@ -482,6 +483,12 @@ export default function Raadspaneel() {
   const [raadsvergaderingText, setRaadsvergaderingText] = useState("");
   const [isSavingContribution, setIsSavingContribution] = useState(false);
 
+  // Council Vault & Git Immunity State
+  const [isVaultModalOpen, setIsVaultModalOpen] = useState(false);
+  const [isSyncingVault, setIsSyncingVault] = useState(false);
+  const [isExportingVault, setIsExportingVault] = useState(false);
+  const [isImportingVault, setIsImportingVault] = useState(false);
+
   // Active topic for note dialog or details - strictly scoped per municipality
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(() => {
     try {
@@ -553,9 +560,198 @@ export default function Raadspaneel() {
         topic: updatedTopic,
       };
     });
+
+    // Mirror to persistent browser vault cache if it has user contributions or is parked
+    if (updatedTopic.isParked || updatedTopic.bijdragePolitiekeMarkt || updatedTopic.bijdrageRaadsvergadering || (updatedTopic.notes && updatedTopic.notes.length > 0) || updatedTopic.assignedTo) {
+      try {
+        const raw = localStorage.getItem("lva_council_vault_contributions") || "[]";
+        const list = JSON.parse(raw);
+        const map = new Map(list.map((item: any) => [item.topicId, item]));
+        map.set(updatedTopic.id, {
+          topicId: updatedTopic.id,
+          topicTitle: updatedTopic.title,
+          meetingDate: updatedTopic.meetingDate,
+          municipality: updatedTopic.municipality,
+          bijdragePolitiekeMarkt: updatedTopic.bijdragePolitiekeMarkt,
+          bijdrageRaadsvergadering: updatedTopic.bijdrageRaadsvergadering,
+          isParked: updatedTopic.isParked,
+          parkedReason: updatedTopic.parkedReason,
+          parkedAt: updatedTopic.parkedAt,
+          parkedBy: updatedTopic.parkedBy,
+          notes: updatedTopic.notes,
+          assignedTo: updatedTopic.assignedTo,
+          assignedName: updatedTopic.assignedName,
+          category: updatedTopic.category,
+          status: updatedTopic.status,
+          updatedAt: new Date().toISOString()
+        });
+        localStorage.setItem("lva_council_vault_contributions", JSON.stringify(Array.from(map.values())));
+      } catch (_e) {
+        // ignore
+      }
+    }
   }, [activeMunicipality]);
 
   const updateSingleTopic = updateTopic;
+
+  // Auto-sync client-side vault with server (guarantees survival across git pulls / container rebuilds)
+  const syncLocalVaultWithServer = useCallback(async (serverTopics: CouncilAgendaTopic[]) => {
+    if (!token || !Array.isArray(serverTopics) || serverTopics.length === 0) return;
+
+    try {
+      const cachedVaultRaw = localStorage.getItem("lva_council_vault_contributions");
+      let cachedVault: any[] = [];
+      if (cachedVaultRaw) {
+        try {
+          cachedVault = JSON.parse(cachedVaultRaw);
+        } catch {
+          cachedVault = [];
+        }
+      }
+
+      // Check if any cached items are missing from server
+      const missingOnServer = cachedVault.filter((cached) => {
+        if (!cached || !cached.topicId) return false;
+        const sTopic = serverTopics.find((t) => t.id === cached.topicId);
+        if (!sTopic) return true;
+        if (cached.bijdragePolitiekeMarkt && !sTopic.bijdragePolitiekeMarkt) return true;
+        if (cached.bijdrageRaadsvergadering && !sTopic.bijdrageRaadsvergadering) return true;
+        if (cached.isParked && !sTopic.isParked) return true;
+        if ((cached.notes?.length || 0) > (sTopic.notes?.length || 0)) return true;
+        return false;
+      });
+
+      if (missingOnServer.length > 0) {
+        console.log(`[RAADSKLUIS] 🛡️ ${missingOnServer.length} bijdrage(n) ontbreken op de server (mogelijk na git pull). Automatisch herstellen...`);
+        const res = await fetch("/api/council/contributions/sync-from-client", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ contributions: cachedVault })
+        });
+        const data = await res.json();
+        if (data.success && data.importedCount > 0) {
+          toast.success(`🛡️ Auto-Recovery: ${data.importedCount} bijdrage(n) en geparkeerde stukken automatisch hersteld na git pull!`);
+          fetchCouncilData(true);
+        }
+      }
+
+      // Update local cache with current server state
+      const currentServerContribs = serverTopics
+        .filter((t) => Boolean(t.isParked || t.bijdragePolitiekeMarkt || t.bijdrageRaadsvergadering || (t.notes && t.notes.length > 0) || t.assignedTo))
+        .map((t) => ({
+          topicId: t.id,
+          topicTitle: t.title,
+          meetingDate: t.meetingDate,
+          municipality: t.municipality,
+          bijdragePolitiekeMarkt: t.bijdragePolitiekeMarkt,
+          bijdrageRaadsvergadering: t.bijdrageRaadsvergadering,
+          isParked: t.isParked,
+          parkedReason: t.parkedReason,
+          parkedAt: t.parkedAt,
+          parkedBy: t.parkedBy,
+          notes: t.notes,
+          assignedTo: t.assignedTo,
+          assignedName: t.assignedName,
+          category: t.category,
+          status: t.status,
+          updatedAt: new Date().toISOString()
+        }));
+
+      const mergedMap = new Map();
+      for (const item of cachedVault) {
+        if (item?.topicId) mergedMap.set(item.topicId, item);
+      }
+      for (const item of currentServerContribs) {
+        if (item?.topicId) mergedMap.set(item.topicId, item);
+      }
+      localStorage.setItem("lva_council_vault_contributions", JSON.stringify(Array.from(mergedMap.values())));
+    } catch (vaultErr) {
+      console.warn("[RAADSKLUIS AUTO-SYNC FOUT]:", vaultErr);
+    }
+  }, [token]);
+
+  // Export full JSON vault download
+  const handleExportVaultJson = async () => {
+    if (!token) return;
+    setIsExportingVault(true);
+    try {
+      const res = await fetch("/api/council/contributions/export", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Fout bij ophalen kluisbestand");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `raadspaneel-bijdragen-kluis-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      toast.success("🛡️ Kluisbestand succesvol gedownload!");
+    } catch (err: any) {
+      toast.error(err.message || "Fout bij downloaden van kluisbestand");
+    } finally {
+      setIsExportingVault(false);
+    }
+  };
+
+  // Import JSON vault backup
+  const handleImportVaultJson = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !token) return;
+    setIsImportingVault(true);
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (!Array.isArray(parsed)) throw new Error("Ongeldig kluisbestand: verwacht een JSON-lijst met bijdragen.");
+      const res = await fetch("/api/council/contributions/sync-from-client", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ contributions: parsed })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Fout bij importeren");
+      toast.success(data.message || `Succesvol ${data.importedCount} bijdragen hersteld!`);
+      fetchCouncilData(true);
+    } catch (err: any) {
+      toast.error(err.message || "Fout bij importeren van kluisbestand");
+    } finally {
+      setIsImportingVault(false);
+      e.target.value = "";
+    }
+  };
+
+  // Force manual sync
+  const handleForceSyncVault = async () => {
+    if (!token) return;
+    setIsSyncingVault(true);
+    try {
+      const cachedVaultRaw = localStorage.getItem("lva_council_vault_contributions") || "[]";
+      const cachedVault = JSON.parse(cachedVaultRaw);
+      const res = await fetch("/api/council/contributions/sync-from-client", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ contributions: cachedVault })
+      });
+      const data = await res.json();
+      toast.success(data.message || "Kluis succesvol gesynchroniseerd met de server.");
+      fetchCouncilData(true);
+    } catch (err: any) {
+      toast.error(err.message || "Fout bij synchroniseren");
+    } finally {
+      setIsSyncingVault(false);
+    }
+  };
 
   const [newNoteText, setNewNoteText] = useState("");
   const [submittingNote, setSubmittingNote] = useState(false);
@@ -650,6 +846,7 @@ export default function Raadspaneel() {
       if (scopedTopics.length > 0) {
         setTopics(scopedTopics);
         indexedDbStorage.setItem(`lva_idb_topics_${activeMunicipality}`, scopedTopics);
+        syncLocalVaultWithServer(scopedTopics);
         try {
           safeSessionStorage.setItem(`lva_cached_topics_${activeMunicipality}`, JSON.stringify(scopedTopics));
         } catch {
@@ -1462,18 +1659,24 @@ export default function Raadspaneel() {
     );
   }, [topics]);
 
-  // Parked topics
+  // Parked topics (never hidden by auto-archiving or junk filters)
   const parkedTopics = useMemo(() => {
+    return topics.filter((t) => Boolean(t.isParked));
+  }, [topics]);
+
+  // Topics with debate contributions or notes (politieke markt or raadsvergadering speech)
+  const contributionTopics = useMemo(() => {
     return topics.filter(
-      (t) => !isInvalidOrJunkTopic(t.title) && !t.isArchived && t.isParked
+      (t) => Boolean(t.bijdragePolitiekeMarkt || t.bijdrageRaadsvergadering || (t.notes && t.notes.length > 0))
     );
   }, [topics]);
 
-  // Filtered topics (excluding procedural items & section headers)
+  // Filtered topics (excluding procedural items & section headers UNLESS user contributed, has notes, or is parked)
   const filteredTopics = useMemo(() => {
     return topics.filter((t) => {
-      // Exclude procedural items & headers
-      if (isInvalidOrJunkTopic(t.title)) {
+      // User-authored content, parked state and assignments are strictly git-immune and visible
+      const hasUserData = Boolean(t.isParked || t.bijdragePolitiekeMarkt || t.bijdrageRaadsvergadering || (t.notes && t.notes.length > 0) || t.assignedTo);
+      if (!hasUserData && isInvalidOrJunkTopic(t.title)) {
         return false;
       }
 
@@ -1532,7 +1735,10 @@ export default function Raadspaneel() {
         return !t.isArchived && !t.isParked && t.assignedTo === user?.username;
       }
       if (categoryFilter === "parked") {
-        return !t.isArchived && t.isParked;
+        return Boolean(t.isParked);
+      }
+      if (categoryFilter === "contributions") {
+        return Boolean(t.bijdragePolitiekeMarkt || t.bijdrageRaadsvergadering);
       }
       if (categoryFilter === "unassigned") {
         return !t.isArchived && !t.isParked && !t.assignedTo;
@@ -1712,6 +1918,15 @@ export default function Raadspaneel() {
                 >
                   <Layers className={`w-3.5 h-3.5 mr-1.5 ${isSyncingDossiers ? "animate-spin" : ""}`} />
                   {isSyncingDossiers ? "Synchroniseren..." : "Dossiers Synchroniseren"}
+                </Button>
+                <Button
+                  onClick={() => setIsVaultModalOpen(true)}
+                  variant="outline"
+                  className="border-emerald-600/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 text-xs font-semibold h-9 rounded-xl shadow-xs cursor-pointer"
+                  title="Raadskluis: Beveiliging van fractiebijdragen en geparkeerde stukken tegen git pulls"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 mr-1.5 text-emerald-600 dark:text-emerald-400" />
+                  Kluis & Back-up ({contributionTopics.length + parkedTopics.length})
                 </Button>
                 {portalConfig.isPortalMode && (
                   <>
@@ -2328,6 +2543,12 @@ export default function Raadspaneel() {
                 label: `Geparkeerd (${parkedTopics.length})`,
                 icon: PauseCircle,
                 badge: parkedTopics.length > 0 ? parkedTopics.length : undefined,
+              },
+              {
+                id: "contributions",
+                label: `Mijn Bijdragen (${contributionTopics.length})`,
+                icon: FileText,
+                badge: contributionTopics.length > 0 ? contributionTopics.length : undefined,
               },
               { id: "unassigned", label: "Onverdeeld", icon: Layers },
               { id: "all_active", label: "Alle Actieve Punten", icon: FileCheck },
@@ -4102,6 +4323,131 @@ export default function Raadspaneel() {
         user={user}
         initialPage={secureViewerPage}
       />
+
+      {/* Raadskluis & Git-Immuniteit Dialog */}
+      <Dialog open={isVaultModalOpen} onOpenChange={setIsVaultModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                Git-Immune Raadskluis
+              </span>
+            </div>
+            <DialogTitle className="text-xl font-display font-bold leading-snug">
+              Veilige Raadskluis & Back-up Beheer
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Bescherming van al uw raadsbijdragen, geparkeerde bespreekstukken en fractienotities tegen overschrijving bij git pulls of server-updates.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2 flex-1 min-h-0 overflow-y-auto">
+            {/* Status cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="p-3.5 rounded-xl bg-card border border-border">
+                <div className="text-[11px] text-muted-foreground mb-1">Bewaarde Bijdragen</div>
+                <div className="text-2xl font-bold text-foreground">{contributionTopics.length}</div>
+                <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Beveiligd in kluis</div>
+              </div>
+              <div className="p-3.5 rounded-xl bg-card border border-border">
+                <div className="text-[11px] text-muted-foreground mb-1">Geparkeerde Stukken</div>
+                <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">{parkedTopics.length}</div>
+                <div className="text-[10px] text-muted-foreground">Blijven altijd behouden</div>
+              </div>
+              <div className="p-3.5 rounded-xl bg-card border border-border">
+                <div className="text-[11px] text-muted-foreground mb-1">Browser Auto-Recovery</div>
+                <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">Actief</div>
+                <div className="text-[10px] text-muted-foreground">Herstelt server automatisch</div>
+              </div>
+            </div>
+
+            {/* Redundancy explanation */}
+            <div className="p-3.5 rounded-xl bg-muted/40 border border-border space-y-2 text-xs">
+              <div className="font-semibold text-foreground flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span>3-Voudige Redundantie tegen Dataverlies</span>
+              </div>
+              <p className="text-muted-foreground text-[11.5px] leading-relaxed">
+                Elke fractiebijdrage (Politieke Markt, Raadsvergadering, fractienotitie en parkeerstatus) wordt gelijktijdig opgeslagen in:
+              </p>
+              <ul className="list-disc pl-5 space-y-1 text-[11px] text-foreground/80">
+                <li><strong>De SQLite productiedatabase</strong> (tabel <code className="text-xs bg-muted px-1 py-0.5 rounded">councilContributions</code>)</li>
+                <li><strong>De externe git-veilige serverkluis</strong> (<code className="text-xs bg-muted px-1 py-0.5 rounded">.council_vault/</code> en <code className="text-xs bg-muted px-1 py-0.5 rounded">data/</code>, uitgesloten van git pulls)</li>
+                <li><strong>Uw lokale browser-cache</strong> (bij een herstart of lege database herstelt uw browser de data direct stil op de achtergrond)</li>
+              </ul>
+            </div>
+
+            {/* CLI Instructions banner for the user */}
+            <div className="p-3.5 rounded-xl bg-slate-900 text-slate-100 dark:bg-slate-950 border border-slate-800 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-slate-200">Terminal commando vóór git pull op productieserver:</span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono">Aanbevolen</span>
+              </div>
+              <pre className="p-2.5 rounded-lg bg-black/60 font-mono text-[11px] text-emerald-400 overflow-x-auto select-all">
+npm run backup:council && git pull origin main && npm run restore:council
+              </pre>
+              <p className="text-[10.5px] text-slate-400 leading-normal">
+                Dit commando maakt een momentopname van <code className="text-slate-300">database.sqlite</code>, <code className="text-slate-300">vault_crm_sensitive.sqlite</code>, <code className="text-slate-300">.vault_master.key</code> en de kluisbestanden in <code className="text-slate-300">backups/council_snapshots/</code>. Mocht er na de pull iets ontbreken, dan herstelt het direct de nieuwste staat.
+              </p>
+            </div>
+
+            {/* Quick Action Buttons */}
+            <div className="space-y-2 pt-1">
+              <label className="text-xs font-semibold text-foreground">Directe Kluis-acties:</label>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  onClick={handleExportVaultJson}
+                  disabled={isExportingVault}
+                  variant="outline"
+                  size="sm"
+                  className="text-xs font-semibold gap-1.5 h-8.5"
+                >
+                  <Download className={`w-3.5 h-3.5 ${isExportingVault ? "animate-pulse" : ""}`} />
+                  {isExportingVault ? "Bezig met exporteren..." : "Exporteer Kluis (.json)"}
+                </Button>
+
+                <label className="cursor-pointer">
+                  <input
+                    type="file"
+                    accept=".json"
+                    className="hidden"
+                    onChange={handleImportVaultJson}
+                    disabled={isImportingVault}
+                  />
+                  <span className="inline-flex items-center justify-center gap-1.5 px-3 h-8.5 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground text-xs font-semibold shadow-xs transition-colors">
+                    <Upload className={`w-3.5 h-3.5 ${isImportingVault ? "animate-pulse" : ""}`} />
+                    {isImportingVault ? "Bezig met herstellen..." : "Herstel Back-up (.json)"}
+                  </span>
+                </label>
+
+                <Button
+                  onClick={handleForceSyncVault}
+                  disabled={isSyncingVault}
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs font-semibold gap-1.5 h-8.5 text-muted-foreground hover:text-foreground"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingVault ? "animate-spin" : ""}`} />
+                  {isSyncingVault ? "Synchroniseren..." : "Nu Synchroniseren"}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="pt-3 border-t border-border">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsVaultModalOpen(false)}
+              className="text-xs"
+            >
+              Sluiten
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

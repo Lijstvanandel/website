@@ -12,7 +12,9 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:smtp": "node scripts/test-smtp.cjs"
+    "test:smtp": "node scripts/test-smtp.cjs",
+    "backup:council": "node scripts/backup-council.cjs",
+    "restore:council": "node scripts/restore-council.cjs"
   },
   "dependencies": {
     "@google/genai": "^2.21.0",

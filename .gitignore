@@ -35,6 +35,8 @@ dist/version.json
 # Database, Uploads & Runtime Generated Files
 database.sqlite
 database.sqlite*
+vault_crm_sensitive.sqlite*
+.vault_master.key
 *.sqlite
 *.sqlite-journal
 *.sqlite-wal
@@ -44,9 +46,21 @@ public/uploads/
 public/*.csv
 dist/*.csv
 !src/data/
+src/data/persisted_council_contributions.json
 public/data/*.log
 public/data/*/*.log
 public/data/gemini_quota_tracker.json
 public/data/gemini_dead_letter_queue.jsonl
 *metadata_master*
+
+# Git-Immune Council Vault & Persistent Backups
+.council_vault/
+.council_vault/*
+data/
+data/*
+backups/
+backups/*
+council_contributions_master.json
+*council_contributions*
+
 

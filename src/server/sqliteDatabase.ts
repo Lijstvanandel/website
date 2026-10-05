@@ -17,6 +17,13 @@ import {
   SENSITIVE_TABLE_NAMES,
   SensitiveTable,
 } from "./vaultDatabase.js";
+import {
+  initCouncilContributionVault,
+  recordCouncilContribution,
+  hydrateTopicsWithContributions,
+  exportCouncilContributions,
+  importCouncilContributions,
+} from "./councilContributionVault.js";
 
 const SQLITE_FILE = process.env.DATABASE_PATH || path.join(process.cwd(), "database.sqlite");
 const LEGACY_JSON = path.join(process.cwd(), "db.json");
@@ -54,6 +61,7 @@ const TABLE_DEFINITIONS: { [table: string]: string } = {
   pushLogs: "CREATE TABLE IF NOT EXISTS pushLogs (id TEXT PRIMARY KEY, data TEXT)",
   auditLogs: "CREATE TABLE IF NOT EXISTS auditLogs (id TEXT PRIMARY KEY, data TEXT)",
   councilAgendaTopics: "CREATE TABLE IF NOT EXISTS councilAgendaTopics (id TEXT PRIMARY KEY, data TEXT)",
+  councilContributions: "CREATE TABLE IF NOT EXISTS councilContributions (topicId TEXT PRIMARY KEY, topicTitle TEXT, normalizedTitle TEXT, meetingDate TEXT, municipality TEXT, data TEXT, updatedAt TEXT)",
   documentFavorites: "CREATE TABLE IF NOT EXISTS documentFavorites (id TEXT PRIMARY KEY, data TEXT)",
   councilSearchLogs: "CREATE TABLE IF NOT EXISTS councilSearchLogs (id TEXT PRIMARY KEY, data TEXT)",
   navbarSearchLogs: "CREATE TABLE IF NOT EXISTS navbarSearchLogs (id TEXT PRIMARY KEY, data TEXT)",
@@ -198,6 +206,21 @@ export async function initDatabase() {
     await initVaultDatabase(sqlInstance);
     // Sanitize public database: Migrate any sensitive records to encrypted Vault and purge from public db
     migrateAndSanitizePublicDatabase(sqliteDb);
+    initCouncilContributionVault();
+    try {
+      const contribRows = sqliteDb.exec("SELECT data FROM councilContributions");
+      if (contribRows.length > 0 && contribRows[0].values) {
+        const records = contribRows[0].values.map((v: any) => {
+          try { return JSON.parse(v[0]); } catch { return null; }
+        }).filter(Boolean);
+        if (records.length > 0) {
+          importCouncilContributions(records);
+          console.log(`[SQLITE] 🛡️ ${records.length} raadsbijdragen uit SQLite tabel councilContributions geladen in kluis.`);
+        }
+      }
+    } catch (_loadErr) {
+      // ignore
+    }
     persistSqlite();
   } catch (vaultErr) {
     console.error("[CRM-VAULT INIT FOUT]:", vaultErr);
@@ -336,6 +359,11 @@ export function getDbFromSqlite(): any {
     publicTableSignatures.set(table, computePublicSignature(result[table]));
   }
 
+  // Immuntity layer: Guarantee all user-written contributions & parked topics are preserved
+  if (Array.isArray(result.councilAgendaTopics)) {
+    result.councilAgendaTopics = hydrateTopicsWithContributions(result.councilAgendaTopics);
+  }
+
   // Sensitive tables strictly retrieved from isolated, AES-256-GCM encrypted CRM-Vault
   try {
     result.users = loadVaultTable("users");
@@ -421,7 +449,23 @@ export function saveDbToSqlite(data: any) {
 
       if (TABLE_DEFINITIONS[key] && Array.isArray(val)) {
         if (key === "councilAgendaTopics") {
-          // Safeguard: Protect against partial municipality saves wiping other municipality topics
+          // Safeguard & Vault Sync: Record user-authored contributions & protect from partial wipes
+          try {
+            for (const t of val) {
+              if (t?.id && (t?.bijdragePolitiekeMarkt || t?.bijdrageRaadsvergadering || t?.isParked || (t?.notes && t.notes.length > 0) || t?.compiledDossier || t?.assignedTo || t?.markAsHamerstuk)) {
+                const rec = recordCouncilContribution(t);
+                if (rec) {
+                  sqliteDb.run(
+                    "INSERT OR REPLACE INTO councilContributions (topicId, topicTitle, normalizedTitle, meetingDate, municipality, data, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    [rec.topicId, rec.topicTitle, rec.normalizedTitle, rec.meetingDate || "", rec.municipality, JSON.stringify(rec), rec.updatedAt]
+                  );
+                }
+              }
+            }
+          } catch (_vErr) {
+            // ignore
+          }
+
           try {
             const existingRows = sqliteDb.exec(`SELECT id, data FROM ${key}`);
             if (existingRows.length > 0 && existingRows[0].values) {
