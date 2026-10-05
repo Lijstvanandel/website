@@ -30,6 +30,7 @@ import {
   PlusCircle,
   Layers,
   Table as TableIcon,
+  Video,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,6 +76,15 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
   const [dpHeight, setDpHeight] = useState<string>("520");
   const [dpType, setDpType] = useState<"map" | "chart" | "data">("map");
   const [dpHoverActivate, setDpHoverActivate] = useState<boolean>(true);
+
+  // Video insertion form state
+  const [showVideoModal, setShowVideoModal] = useState<boolean>(false);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoUrl, setVideoUrl] = useState<string>("");
+  const [videoCaption, setVideoCaption] = useState<string>("");
+  const [videoTitle, setVideoTitle] = useState<string>("");
+  const [videoControls, setVideoControls] = useState<boolean>(true);
+  const [videoAutoplay, setVideoAutoplay] = useState<boolean>(false);
 
   // Helper: insert HTML snippet at exact cursor position in textarea, with optional focus position
   const insertAtCursor = (htmlToInsert: string, moveCursorOffset?: number) => {
@@ -322,6 +332,70 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
     toast.success("Dataproduct ingevoegd! Het activeert automatisch bij hover voor snelle laadtijd.");
   };
 
+  // Handle uploading and inserting an MP4 video into the news content
+  const handleInsertVideo = async () => {
+    let finalUrl = videoUrl.trim();
+
+    if (videoFile) {
+      setIsUploading(true);
+      const formData = new FormData();
+      formData.append("video", videoFile);
+
+      try {
+        const token = authContextToken || localStorage.getItem("auth_token") || localStorage.getItem("token") || "";
+        const res = await fetch("/api/admin/news/upload-video", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.url) {
+          throw new Error(data.error || "Uploaden van videobestand mislukt");
+        }
+        finalUrl = data.url;
+        toast.success("MP4 Videobestand succesvol geüpload!");
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Fout bij uploaden video";
+        toast.error(message);
+        setIsUploading(false);
+        return;
+      } finally {
+        setIsUploading(false);
+      }
+    }
+
+    if (!finalUrl) {
+      toast.error("Kies een videobestand (.mp4) of vul een video-URL in.");
+      return;
+    }
+
+    const captionText = videoCaption.trim();
+    const captionHtml = captionText
+      ? `<figcaption class="p-3 text-xs text-muted-foreground text-center italic bg-muted/40 border-t border-border/60">${captionText}</figcaption>`
+      : "";
+
+    const titleAttr = videoTitle.trim() ? `title="${videoTitle.trim().replace(/"/g, '&quot;')}"` : "";
+
+    const videoHtml = `\n<figure class="my-6 rounded-2xl overflow-hidden border border-border/80 shadow-md bg-black/5 dark:bg-black/40">
+  <video ${videoControls ? "controls" : ""} playsinline preload="metadata" ${videoAutoplay ? "autoplay muted" : ""} ${titleAttr} class="w-full max-h-[520px] rounded-xl object-contain bg-black">
+    <source src="${finalUrl}" type="video/mp4" />
+    Uw browser ondersteunt de HTML5 videospeler niet.
+  </video>
+  ${captionHtml}
+</figure>\n<p class="mb-4 leading-relaxed"></p>\n`;
+
+    insertAtCursor(videoHtml);
+    setShowVideoModal(false);
+    setVideoFile(null);
+    setVideoUrl("");
+    setVideoCaption("");
+    setVideoTitle("");
+    toast.success("MP4 Video succesvol ingevoegd in artikel!");
+  };
+
   // Handle importing a .html file directly into the content (either as text or dataproduct prompt)
   const handleHtmlFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -470,6 +544,18 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
             title="Voeg een interactieve .html kaart (Folium/Leaflet) of grafiek (Plotly/Pandas) in"
           >
             <Map className="w-3.5 h-3.5 mr-1.5" /> 📊 Dataproduct / Kaart (.html)
+          </Button>
+
+          {/* Button: Invoegen van MP4 Video */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setShowVideoModal(true)}
+            className="h-8 text-xs font-semibold border-accent/50 bg-accent/15 text-accent hover:bg-accent hover:text-accent-foreground transition-colors"
+            title="Upload en voeg een .mp4 video in met afspeelbediening"
+          >
+            <Video className="w-3.5 h-3.5 mr-1.5" /> 🎥 MP4 Video invoegen
           </Button>
 
           {/* Hidden File input specifically for direct .html import */}
@@ -1087,6 +1173,155 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
                   className="bg-accent text-accent-foreground hover:bg-accent/90 text-xs font-semibold"
                 >
                   {isUploading ? "Uploaden..." : "Dataproduct invoegen"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL: MP4 Video Invoegen ================= */}
+      {showVideoModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-xl shadow-xl max-w-lg w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-accent/20 text-accent flex items-center justify-center">
+                  <Video className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm text-foreground">
+                    MP4 Video Uploaden &amp; Invoegen
+                  </h3>
+                  <p className="text-[11px] text-muted-foreground">
+                    Upload een .mp4 videobestand of geef een directe video-URL op
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowVideoModal(false)}
+                className="text-muted-foreground hover:text-foreground p-1 rounded-md"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Option A: Direct Video Upload (.mp4) */}
+              <div className="p-3.5 rounded-lg border-2 border-dashed border-accent/40 bg-accent/5 hover:bg-accent/10 transition-colors">
+                <label className="block text-xs font-semibold mb-1 text-foreground">
+                  Selecteer .mp4 videobestand vanaf computer
+                </label>
+                <input
+                  type="file"
+                  accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setVideoFile(file);
+                      if (!videoTitle) {
+                        setVideoTitle(file.name.replace(/\.[^/.]+$/, ""));
+                      }
+                    }
+                  }}
+                  className="w-full text-xs text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-accent file:text-accent-foreground hover:file:bg-accent/90 cursor-pointer"
+                />
+                {videoFile && (
+                  <div className="mt-2 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Geselecteerd: {videoFile.name} ({(videoFile.size / (1024 * 1024)).toFixed(1)} MB)
+                  </div>
+                )}
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Ondersteunt .mp4 en .webm bestanden. Wordt automatisch geoptimaliseerd voor HTML5 weergave.
+                </p>
+              </div>
+
+              {/* Option B: Direct URL */}
+              <div>
+                <label className="text-xs font-semibold block mb-1 text-foreground">
+                  Of voer een directe video-URL in
+                </label>
+                <Input
+                  type="url"
+                  placeholder="bijv. /uploads/videos/mijn-video.mp4 of https://..."
+                  value={videoUrl}
+                  onChange={(e) => setVideoUrl(e.target.value)}
+                  disabled={Boolean(videoFile)}
+                  className="text-xs"
+                />
+              </div>
+
+              {/* Title & Caption */}
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-semibold block mb-1 text-foreground">
+                    Videotitel / Beschrijving (optioneel)
+                  </label>
+                  <Input
+                    type="text"
+                    placeholder="bijv. Sammy van Andel licht standpunt over woningbouw toe"
+                    value={videoTitle}
+                    onChange={(e) => setVideoTitle(e.target.value)}
+                    className="text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold block mb-1 text-foreground">
+                    Bijschrift onder videospeler (optioneel)
+                  </label>
+                  <Input
+                    type="text"
+                    placeholder="bijv. Beelden uit de raadsvergadering van 18 april"
+                    value={videoCaption}
+                    onChange={(e) => setVideoCaption(e.target.value)}
+                    className="text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Playback Options */}
+              <div className="grid grid-cols-2 gap-3 p-3 rounded-lg bg-muted/40 border border-border">
+                <label className="flex items-center gap-2 cursor-pointer text-xs">
+                  <input
+                    type="checkbox"
+                    checked={videoControls}
+                    onChange={(e) => setVideoControls(e.target.checked)}
+                    className="rounded text-accent focus:ring-accent w-4 h-4"
+                  />
+                  <span>Bedieningsknoppen (controls)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-xs">
+                  <input
+                    type="checkbox"
+                    checked={videoAutoplay}
+                    onChange={(e) => setVideoAutoplay(e.target.checked)}
+                    className="rounded text-accent focus:ring-accent w-4 h-4"
+                  />
+                  <span>Automatisch afspelen (stil)</span>
+                </label>
+              </div>
+
+              {/* Action buttons */}
+              <div className="pt-3 border-t border-border flex items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowVideoModal(false)}
+                  className="text-xs"
+                >
+                  Annuleren
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={isUploading}
+                  onClick={handleInsertVideo}
+                  className="bg-accent text-accent-foreground hover:bg-accent/90 text-xs font-semibold"
+                >
+                  {isUploading ? "Video Uploaden..." : "MP4 Video Invoegen"}
                 </Button>
               </div>
             </div>

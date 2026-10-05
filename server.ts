@@ -68,10 +68,13 @@ import {
   getUserDocumentFavorites,
   toggleUserDocumentFavorite,
   recordCouncilSearchLog,
+  recordNavbarSearchLog,
   recordCouncilDocumentView,
   getCouncilSearchLogs,
+  getNavbarSearchLogs,
   getCouncilDocumentViews,
   clearCouncilSearchLogs,
+  clearNavbarSearchLogs,
   clearCouncilDocumentViews,
   anonymizeBelafspraakInVault,
   bulkAnonymizeOldBelafsprakenInVault,
@@ -1940,8 +1943,10 @@ const storage = multer.diskStorage({
     const url = req.originalUrl || req.url || '';
     if (file.fieldname === 'img') {
       subfolder = 'public/uploads/fractieleden';
-    } else if (file.fieldname === 'video') {
+    } else if (file.fieldname === 'video' || url.includes('/upload-video') || file.originalname.match(/\.(mp4|webm|mov)$/i)) {
       subfolder = 'public/uploads/videos';
+    } else if (file.fieldname === 'audio' || file.fieldname === 'podcastAudio' || url.includes('/upload-audio') || file.originalname.match(/\.(mp3|m4a|wav|aac|ogg)$/i)) {
+      subfolder = 'public/uploads/podcasts';
     } else if (file.fieldname === 'thumbnail' && url.includes('/videos')) {
       subfolder = 'public/uploads/videos';
     } else if (url.includes('/dataproduct') || file.fieldname === 'dataproduct' || file.originalname.toLowerCase().endsWith('.html') || file.originalname.toLowerCase().endsWith('.htm')) {
@@ -7472,17 +7477,52 @@ async function startServer() {
     res.json(article);
   });
 
-  app.post("/api/admin/news", requireAuth, requireAdmin, upload.fields([{ name: 'thumbnail', maxCount: 1 }, { name: 'header', maxCount: 1 }]), (req: any, res: any) => {
+  app.post("/api/admin/news", requireAuth, requireAdmin, upload.fields([
+    { name: 'thumbnail', maxCount: 1 },
+    { name: 'header', maxCount: 1 },
+    { name: 'video', maxCount: 1 },
+    { name: 'podcastAudio', maxCount: 1 },
+  ]), (req: any, res: any) => {
     const db = getDb();
-    const { title, category, description, content, wijkSlug, wijkNaam, authorId, authorName, authorRole, authorAvatar, isHidden } = req.body;
+    const {
+      title,
+      category,
+      description,
+      content,
+      wijkSlug,
+      wijkNaam,
+      authorId,
+      authorName,
+      authorRole,
+      authorAvatar,
+      isHidden,
+      videoTitle,
+      videoUrl: bodyVideoUrl,
+      isPodcast,
+      podcastAudioUrl: bodyPodcastAudioUrl,
+      podcastTitle,
+      podcastDuration,
+      podcastSpotifyUrl,
+      podcastAppleUrl,
+      podcastViews,
+    } = req.body;
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     const thumbnailUrl = files?.['thumbnail']?.[0] ? `/uploads/news/${files['thumbnail'][0].filename}` : '';
     const headerUrl = files?.['header']?.[0] ? `/uploads/news/${files['header'][0].filename}` : '';
-    
+
+    const videoFile = files?.['video']?.[0];
+    const podcastAudioFile = files?.['podcastAudio']?.[0];
+    if (videoFile) mirrorUploadToDist(path.join("uploads", "videos", videoFile.filename));
+    if (podcastAudioFile) mirrorUploadToDist(path.join("uploads", "podcasts", podcastAudioFile.filename));
+
+    const finalVideoUrl = videoFile ? `/uploads/videos/${videoFile.filename}` : (bodyVideoUrl || '');
+    const finalPodcastAudioUrl = podcastAudioFile ? `/uploads/podcasts/${podcastAudioFile.filename}` : (bodyPodcastAudioUrl || '');
+    const finalIsPodcast = isPodcast === "true" || isPodcast === true || Boolean(finalPodcastAudioUrl);
+
     const newArticle = {
       id: Date.now().toString(),
       title,
-      category: category || "Algemeen",
+      category: category || (finalIsPodcast ? "Podcast" : "Algemeen"),
       description: description || "",
       content: content || "",
       wijkSlug: wijkSlug || "",
@@ -7494,6 +7534,17 @@ async function startServer() {
       authorAvatar: authorAvatar || "",
       thumbnailUrl,
       headerUrl,
+      // Video fields
+      videoUrl: finalVideoUrl,
+      videoTitle: videoTitle || "",
+      // Podcast fields
+      isPodcast: finalIsPodcast,
+      podcastAudioUrl: finalPodcastAudioUrl,
+      podcastTitle: podcastTitle || "",
+      podcastDuration: podcastDuration || "",
+      podcastSpotifyUrl: podcastSpotifyUrl || "",
+      podcastAppleUrl: podcastAppleUrl || "",
+      podcastViews: Number(podcastViews) || 0,
       isHidden: isHidden === "true" || isHidden === true,
       createdAt: new Date().toISOString()
     };
@@ -7502,17 +7553,65 @@ async function startServer() {
     res.status(201).json(newArticle);
   });
 
-  app.put("/api/admin/news/:id", requireAuth, requireAdmin, upload.fields([{ name: 'thumbnail', maxCount: 1 }, { name: 'header', maxCount: 1 }]), (req: any, res: any) => {
+  app.put("/api/admin/news/:id", requireAuth, requireAdmin, upload.fields([
+    { name: 'thumbnail', maxCount: 1 },
+    { name: 'header', maxCount: 1 },
+    { name: 'video', maxCount: 1 },
+    { name: 'podcastAudio', maxCount: 1 },
+  ]), (req: any, res: any) => {
     const db = getDb();
     const index = db.news.findIndex((n: any) => n.id === req.params.id);
     if (index === -1) return res.status(404).json({ error: "Nieuws niet gevonden" });
 
-    const { title, category, description, content, wijkSlug, wijkNaam, authorId, authorName, authorRole, authorAvatar, isHidden } = req.body;
+    const {
+      title,
+      category,
+      description,
+      content,
+      wijkSlug,
+      wijkNaam,
+      authorId,
+      authorName,
+      authorRole,
+      authorAvatar,
+      isHidden,
+      videoTitle,
+      videoUrl: bodyVideoUrl,
+      isPodcast,
+      podcastAudioUrl: bodyPodcastAudioUrl,
+      podcastTitle,
+      podcastDuration,
+      podcastSpotifyUrl,
+      podcastAppleUrl,
+      podcastViews,
+    } = req.body;
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     const current = db.news[index];
 
     const thumbnailUrl = files?.['thumbnail']?.[0] ? `/uploads/news/${files['thumbnail'][0].filename}` : current.thumbnailUrl;
     const headerUrl = files?.['header']?.[0] ? `/uploads/news/${files['header'][0].filename}` : current.headerUrl;
+
+    const videoFile = files?.['video']?.[0];
+    const podcastAudioFile = files?.['podcastAudio']?.[0];
+    if (videoFile) mirrorUploadToDist(path.join("uploads", "videos", videoFile.filename));
+    if (podcastAudioFile) mirrorUploadToDist(path.join("uploads", "podcasts", podcastAudioFile.filename));
+
+    const finalVideoUrl = videoFile
+      ? `/uploads/videos/${videoFile.filename}`
+      : bodyVideoUrl !== undefined
+      ? bodyVideoUrl
+      : current.videoUrl || '';
+
+    const finalPodcastAudioUrl = podcastAudioFile
+      ? `/uploads/podcasts/${podcastAudioFile.filename}`
+      : bodyPodcastAudioUrl !== undefined
+      ? bodyPodcastAudioUrl
+      : current.podcastAudioUrl || '';
+
+    const finalIsPodcast =
+      isPodcast !== undefined
+        ? isPodcast === "true" || isPodcast === true
+        : Boolean(current.isPodcast || finalPodcastAudioUrl);
 
     const parsedIsHidden = isHidden !== undefined ? (isHidden === "true" || isHidden === true) : Boolean(current.isHidden);
 
@@ -7531,11 +7630,38 @@ async function startServer() {
       authorAvatar: authorAvatar !== undefined ? authorAvatar : current.authorAvatar,
       thumbnailUrl,
       headerUrl,
+      // Video fields
+      videoUrl: finalVideoUrl,
+      videoTitle: videoTitle !== undefined ? videoTitle : (current.videoTitle || ''),
+      // Podcast fields
+      isPodcast: finalIsPodcast,
+      podcastAudioUrl: finalPodcastAudioUrl,
+      podcastTitle: podcastTitle !== undefined ? podcastTitle : (current.podcastTitle || ''),
+      podcastDuration: podcastDuration !== undefined ? podcastDuration : (current.podcastDuration || ''),
+      podcastSpotifyUrl: podcastSpotifyUrl !== undefined ? podcastSpotifyUrl : (current.podcastSpotifyUrl || ''),
+      podcastAppleUrl: podcastAppleUrl !== undefined ? podcastAppleUrl : (current.podcastAppleUrl || ''),
+      podcastViews: podcastViews !== undefined ? Number(podcastViews) : (current.podcastViews || 0),
       isHidden: parsedIsHidden,
       updatedAt: new Date().toISOString()
     };
     saveDb(db);
     res.json(db.news[index]);
+  });
+
+  // Track / increment podcast view/play count
+  app.post("/api/news/:id/podcast-view", (req: any, res: any) => {
+    const db = getDb();
+    const index = db.news.findIndex((n: any) => n.id === req.params.id);
+    if (index === -1) return res.status(404).json({ error: "Nieuws niet gevonden" });
+
+    const current = db.news[index];
+    const newViews = (Number(current.podcastViews) || 0) + 1;
+    db.news[index] = {
+      ...current,
+      podcastViews: newViews,
+    };
+    saveDb(db);
+    res.json({ success: true, podcastViews: newViews });
   });
 
   app.patch("/api/admin/news/:id/toggle-visibility", requireAuth, requireAdmin, (req: any, res: any) => {
@@ -7571,6 +7697,46 @@ async function startServer() {
     }
     mirrorUploadToDist(path.join("uploads", "news", req.file.filename));
     const url = `/uploads/news/${req.file.filename}`;
+    res.json({
+      success: true,
+      url,
+      filename: req.file.originalname,
+      size: req.file.size
+    });
+  });
+
+  // Admin: Upload news article video (.mp4, .webm, .mov)
+  app.post("/api/admin/news/upload-video", requireAuth, requireAdmin, upload.single("video"), (req: any, res: any) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "Geen videobestand ontvangen" });
+    }
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    const allowed = [".mp4", ".webm", ".mov", ".m4v"];
+    if (!allowed.includes(ext)) {
+      return res.status(400).json({ error: `Alleen ${allowed.join(", ")} videobestanden zijn toegestaan` });
+    }
+    mirrorUploadToDist(path.join("uploads", "videos", req.file.filename));
+    const url = `/uploads/videos/${req.file.filename}`;
+    res.json({
+      success: true,
+      url,
+      filename: req.file.originalname,
+      size: req.file.size
+    });
+  });
+
+  // Admin: Upload news podcast audio (.mp3, .m4a, .wav, .aac, .ogg)
+  app.post("/api/admin/news/upload-audio", requireAuth, requireAdmin, upload.single("audio"), (req: any, res: any) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "Geen audiobestand ontvangen" });
+    }
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    const allowed = [".mp3", ".m4a", ".wav", ".aac", ".ogg", ".flac"];
+    if (!allowed.includes(ext)) {
+      return res.status(400).json({ error: `Alleen ${allowed.join(", ")} audiobestanden zijn toegestaan` });
+    }
+    mirrorUploadToDist(path.join("uploads", "podcasts", req.file.filename));
+    const url = `/uploads/podcasts/${req.file.filename}`;
     res.json({
       success: true,
       url,
@@ -14696,6 +14862,36 @@ Sitemap: ${baseUrl}/sitemap.xml
     }
   });
 
+  // 10c. Record global navbar search query (news, standpunten, agenda audit log)
+  app.post("/api/navbar/audit/search", optionalAuth, (req: any, res: any) => {
+    try {
+      const { query, resultsCount, countsBreakdown, activeTab, source } = req.body || {};
+      const trimmedQ = String(query || "").trim();
+      if (!trimmedQ) {
+        return res.status(400).json({ error: "Zoekopdracht ontbreekt" });
+      }
+      const user = req.user;
+      const entry = recordNavbarSearchLog({
+        query: trimmedQ,
+        userId: user?.id ? String(user.id) : null,
+        userName: user?.fullName || user?.name || user?.username || "Anonieme Bezoeker",
+        userEmail: user?.email || null,
+        userRole: user?.role || "Bezoeker (Niet ingelogd)",
+        isAnonymous: !user,
+        resultsCount: Number(resultsCount ?? 0),
+        countsBreakdown: countsBreakdown || null,
+        activeTab: String(activeTab || "all"),
+        source: String(source || "navbar"),
+        ip: String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || req.ip || "Onbekend").split(",")[0].trim(),
+        userAgent: req.headers["user-agent"] || "",
+      });
+      res.json({ success: true, entry });
+    } catch (err: any) {
+      console.error("[NAVBAR SEARCH LOG ERROR]:", err);
+      res.status(500).json({ error: "Kon navbar zoekopdracht niet registreren" });
+    }
+  });
+
   // 11. Record council document view (audit log)
   app.post("/api/council/audit/document-view", optionalAuth, (req: any, res: any) => {
     try {
@@ -15141,6 +15337,44 @@ Sitemap: ${baseUrl}/sitemap.xml
   app.delete("/api/admin/council-audit/searches", requireAuth, requireAdmin, handleDeleteCouncilSearchLogs);
   app.delete("/api/admin/council-audit/searches/clear", requireAuth, requireAdmin, handleDeleteCouncilSearchLogs);
 
+  // 13b. Admin Audit: Navbar search logs (news, standpunten, agenda)
+  const handleGetNavbarSearchLogs = (req: any, res: any) => {
+    try {
+      const limit = Math.min(2000, Math.max(1, parseInt(req.query.limit || "500", 10)));
+      const rawLogs = getNavbarSearchLogs(limit);
+      const mappedLogs = rawLogs.map((item: any) => ({
+        ...item,
+        username: item.userName || item.username || "Anonieme Bezoeker",
+        userName: item.userName || item.username || "Anonieme Bezoeker",
+        resultsCount: item.resultsCount ?? 0,
+        createdAt: item.timestamp || item.createdAt || new Date().toISOString(),
+        timestamp: item.timestamp || item.createdAt || new Date().toISOString(),
+        ipAddress: item.ip || item.ipAddress || "—",
+        ip: item.ip || item.ipAddress || "—",
+      }));
+      res.json({ logs: mappedLogs, searches: mappedLogs, total: mappedLogs.length });
+    } catch (err: any) {
+      res.status(500).json({ error: "Fout bij ophalen navbar zoeklogs: " + err.message });
+    }
+  };
+
+  app.get("/api/admin/council-audit/navbar-search-logs", requireAuth, requireCouncilOrAdmin, handleGetNavbarSearchLogs);
+  app.get("/api/admin/council-audit/navbar-searches", requireAuth, requireCouncilOrAdmin, handleGetNavbarSearchLogs);
+
+  const handleDeleteNavbarSearchLogs = (req: any, res: any) => {
+    try {
+      clearNavbarSearchLogs();
+      res.json({ success: true, message: "Navbar zoeklogs succesvol gewist" });
+    } catch (err: any) {
+      res.status(500).json({ error: "Fout bij wissen navbar zoeklogs: " + err.message });
+    }
+  };
+
+  app.delete("/api/admin/council-audit/navbar-search-logs", requireAuth, requireAdmin, handleDeleteNavbarSearchLogs);
+  app.delete("/api/admin/council-audit/navbar-search-logs/clear", requireAuth, requireAdmin, handleDeleteNavbarSearchLogs);
+  app.delete("/api/admin/council-audit/navbar-searches", requireAuth, requireAdmin, handleDeleteNavbarSearchLogs);
+  app.delete("/api/admin/council-audit/navbar-searches/clear", requireAuth, requireAdmin, handleDeleteNavbarSearchLogs);
+
   // 14. Admin Audit: Document view logs (supports /document-views and /views)
   const handleGetCouncilDocumentViews = (req: any, res: any) => {
     try {
@@ -15185,17 +15419,22 @@ Sitemap: ${baseUrl}/sitemap.xml
     try {
       const searchLogs = getCouncilSearchLogs(1000);
       const docViews = getCouncilDocumentViews(1000);
+      const navbarLogs = getNavbarSearchLogs(1000);
 
       const todayStr = new Date().toISOString().slice(0, 10);
 
       const searchesToday = searchLogs.filter((s) => s.timestamp?.startsWith(todayStr)).length;
       const viewsToday = docViews.filter((v) => v.timestamp?.startsWith(todayStr)).length;
+      const navbarSearchesToday = navbarLogs.filter((n) => n.timestamp?.startsWith(todayStr)).length;
 
       const anonSearches = searchLogs.filter((s) => s.isAnonymous).length;
       const userSearches = searchLogs.length - anonSearches;
 
       const anonViews = docViews.filter((v) => v.isAnonymous).length;
       const userViews = docViews.length - anonViews;
+
+      const anonNavbarSearches = navbarLogs.filter((n) => n.isAnonymous).length;
+      const userNavbarSearches = navbarLogs.length - anonNavbarSearches;
 
       // Count top search terms
       const queryCountMap: Record<string, number> = {};
@@ -15239,6 +15478,10 @@ Sitemap: ${baseUrl}/sitemap.xml
         viewsToday,
         anonViews,
         userViews,
+        totalNavbarSearches: navbarLogs.length,
+        navbarSearchesToday,
+        anonNavbarSearches,
+        userNavbarSearches,
         topQueries,
         topDocuments,
       });

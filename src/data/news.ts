@@ -21,6 +21,17 @@ export interface NewsItem {
   wijkSlug?: string;
   wijkNaam?: string;
   isHidden?: boolean;
+  // Video fields
+  videoUrl?: string;
+  videoTitle?: string;
+  // Podcast fields
+  isPodcast?: boolean;
+  podcastAudioUrl?: string;
+  podcastTitle?: string;
+  podcastDuration?: string;
+  podcastViews?: number;
+  podcastSpotifyUrl?: string;
+  podcastAppleUrl?: string;
 }
 
 export const news: NewsItem[] = [

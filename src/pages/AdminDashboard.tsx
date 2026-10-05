@@ -63,6 +63,9 @@ import {
   Loader2,
   Eye,
   EyeOff,
+  Headphones,
+  Mic,
+  Radio,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VideoPlayer } from "@/components/VideoPlayer";
@@ -296,6 +299,24 @@ export default function AdminDashboard() {
   const [nHeader, setNHeader] = useState<File | null>(null);
   const [nIsHidden, setNIsHidden] = useState(false);
   const [editingNewsId, setEditingNewsId] = useState<string | null>(null);
+
+  // Podcast fields
+  const [nIsPodcast, setNIsPodcast] = useState(false);
+  const [nPodcastAudio, setNPodcastAudio] = useState<File | null>(null);
+  const [nPodcastAudioUrl, setNPodcastAudioUrl] = useState("");
+  const [nPodcastTitle, setNPodcastTitle] = useState("");
+  const [nPodcastDuration, setNPodcastDuration] = useState("");
+  const [nPodcastSpotifyUrl, setNPodcastSpotifyUrl] = useState("");
+  const [nPodcastAppleUrl, setNPodcastAppleUrl] = useState("");
+  const [nPodcastViews, setNPodcastViews] = useState(0);
+
+  // Video fields
+  const [nVideo, setNVideo] = useState<File | null>(null);
+  const [nVideoUrl, setNVideoUrl] = useState("");
+  const [nVideoTitle, setNVideoTitle] = useState("");
+  const [isUploadingVideoToContent, setIsUploadingVideoToContent] = useState(false);
+
+  const [newsMediaTypeFilter, setNewsMediaTypeFilter] = useState<"all" | "podcasts" | "videos" | "articles">("all");
 
   // -- State for Event --
   const [eTitle, setETitle] = useState("");
@@ -1209,6 +1230,22 @@ export default function AdminDashboard() {
     setNIsHidden(Boolean(item.isHidden));
     setNThumb(null);
     setNHeader(null);
+
+    // Podcast fields
+    setNIsPodcast(Boolean(item.isPodcast || item.podcastAudioUrl || item.category?.toLowerCase() === "podcast"));
+    setNPodcastAudio(null);
+    setNPodcastAudioUrl(item.podcastAudioUrl || "");
+    setNPodcastTitle(item.podcastTitle || "");
+    setNPodcastDuration(item.podcastDuration || "");
+    setNPodcastSpotifyUrl(item.podcastSpotifyUrl || "");
+    setNPodcastAppleUrl(item.podcastAppleUrl || "");
+    setNPodcastViews(item.podcastViews || 0);
+
+    // Video fields
+    setNVideo(null);
+    setNVideoUrl(item.videoUrl || "");
+    setNVideoTitle(item.videoTitle || "");
+
     toast.info(`Bericht '${item.title}' geladen in editor`);
   };
 
@@ -1223,6 +1260,21 @@ export default function AdminDashboard() {
     setNIsHidden(false);
     setNThumb(null);
     setNHeader(null);
+
+    // Podcast fields
+    setNIsPodcast(false);
+    setNPodcastAudio(null);
+    setNPodcastAudioUrl("");
+    setNPodcastTitle("");
+    setNPodcastDuration("");
+    setNPodcastSpotifyUrl("");
+    setNPodcastAppleUrl("");
+    setNPodcastViews(0);
+
+    // Video fields
+    setNVideo(null);
+    setNVideoUrl("");
+    setNVideoTitle("");
   };
 
   const submitNews = async (e: React.FormEvent) => {
@@ -1241,7 +1293,7 @@ export default function AdminDashboard() {
 
     const formData = new FormData();
     formData.append("title", nTitle);
-    formData.append("category", nCategory || "Algemeen");
+    formData.append("category", nCategory || (nIsPodcast ? "Podcast" : "Algemeen"));
     formData.append("wijkSlug", nWijkSlug);
     formData.append("wijkNaam", selectedWijkObj ? selectedWijkObj.naam : "");
     formData.append("authorId", nAuthorId);
@@ -1253,6 +1305,21 @@ export default function AdminDashboard() {
     formData.append("isHidden", String(nIsHidden));
     if (nThumb) formData.append("thumbnail", nThumb);
     if (nHeader) formData.append("header", nHeader);
+
+    // Podcast fields
+    formData.append("isPodcast", String(nIsPodcast));
+    if (nPodcastAudio) formData.append("podcastAudio", nPodcastAudio);
+    formData.append("podcastAudioUrl", nPodcastAudioUrl);
+    formData.append("podcastTitle", nPodcastTitle);
+    formData.append("podcastDuration", nPodcastDuration);
+    formData.append("podcastSpotifyUrl", nPodcastSpotifyUrl);
+    formData.append("podcastAppleUrl", nPodcastAppleUrl);
+    formData.append("podcastViews", String(nPodcastViews || 0));
+
+    // Video fields
+    if (nVideo) formData.append("video", nVideo);
+    formData.append("videoUrl", nVideoUrl);
+    formData.append("videoTitle", nVideoTitle);
 
     try {
       let res;
@@ -1286,6 +1353,58 @@ export default function AdminDashboard() {
     } catch (error) {
       toast.error("Fout bij opslaan");
     }
+  };
+
+  const handleUploadAndInsertVideoIntoContent = async () => {
+    let targetUrl = nVideoUrl.trim();
+
+    if (nVideo) {
+      setIsUploadingVideoToContent(true);
+      try {
+        const formData = new FormData();
+        formData.append("video", nVideo);
+        const res = await fetch("/api/admin/news/upload-video", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+        });
+        const data = await res.json();
+        if (!res.ok || !data.url) {
+          throw new Error(data.error || "Uploaden van videobestand mislukt");
+        }
+        targetUrl = data.url;
+        setNVideoUrl(data.url);
+        toast.success("Videobestand geüpload naar server!");
+      } catch (err: any) {
+        toast.error(err?.message || "Fout bij uploaden video");
+        setIsUploadingVideoToContent(false);
+        return;
+      } finally {
+        setIsUploadingVideoToContent(false);
+      }
+    }
+
+    if (!targetUrl) {
+      toast.error("Selecteer eerst een .mp4 videobestand of voer een video-URL in.");
+      return;
+    }
+
+    const titleAttr = nVideoTitle.trim() ? `title="${nVideoTitle.trim().replace(/"/g, '&quot;')}"` : "";
+    const captionHtml = nVideoTitle.trim()
+      ? `\n  <figcaption class="p-3 text-xs text-muted-foreground text-center italic bg-muted/40 border-t border-border/60">${nVideoTitle.trim()}</figcaption>`
+      : "";
+
+    const videoSnippet = `\n<figure class="my-6 rounded-2xl overflow-hidden border border-border/80 shadow-md bg-black/5 dark:bg-black/40">
+  <video controls playsinline preload="metadata" ${titleAttr} class="w-full max-h-[520px] rounded-xl object-contain bg-black">
+    <source src="${targetUrl}" type="video/mp4" />
+    Uw browser ondersteunt de HTML5 videospeler niet.
+  </video>${captionHtml}
+</figure>\n<p class="mb-4 leading-relaxed"></p>\n`;
+
+    setNContent((prev) => (prev ? `${prev}\n${videoSnippet}` : videoSnippet));
+    toast.success("MP4 Video succesvol ingevoegd in de artikeltekst!");
   };
 
   const toggleNewsVisibility = async (id: string, currentIsHidden?: boolean) => {
@@ -3098,6 +3217,224 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
+                {/* 1. Podcast Toevoegen aan Nieuwsbericht */}
+                <div className="p-4 rounded-xl border border-purple-500/30 bg-purple-500/5 dark:bg-purple-950/20 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-semibold flex items-center gap-2 text-foreground">
+                      <Headphones className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                      Podcast aflevering toevoegen
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !nIsPodcast;
+                        setNIsPodcast(next);
+                        if (next && (!nCategory || nCategory === "Algemeen")) {
+                          setNCategory("Podcast");
+                        }
+                      }}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                        nIsPodcast ? "bg-purple-600" : "bg-muted"
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                          nIsPodcast ? "translate-x-5" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Koppel een audiobestand (.mp3, .m4a, .wav) of stream-URL aan dit nieuwsbericht. Bezoekers krijgen een interactieve audiospeler en u kunt als beheerder live het aantal weergaven volgen.
+                  </p>
+
+                  {nIsPodcast && (
+                    <div className="space-y-3 pt-2 border-t border-purple-500/20 animate-in fade-in duration-150">
+                      <div>
+                        <label className="text-xs font-semibold block mb-1 text-foreground">
+                          Podcast aflevering titel (optioneel)
+                        </label>
+                        <Input
+                          type="text"
+                          value={nPodcastTitle}
+                          onChange={(e) => setNPodcastTitle(e.target.value)}
+                          placeholder="bijv. Sammy van Andel over woningbouw en binnenstad (Aflevering 4)"
+                          className="text-xs"
+                        />
+                      </div>
+
+                      <div className="grid sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs font-semibold block mb-1 text-foreground">
+                            Upload audiobestand (.mp3, .m4a, .wav)
+                          </label>
+                          <Input
+                            type="file"
+                            accept="audio/*,.mp3,.m4a,.wav,.aac,.ogg"
+                            onChange={(e) => setNPodcastAudio(e.target.files?.[0] || null)}
+                            className="text-xs"
+                          />
+                          {nPodcastAudio && (
+                            <span className="text-[11px] text-purple-600 dark:text-purple-400 font-medium block mt-1">
+                              ✓ Bestand geselecteerd: {nPodcastAudio.name}
+                            </span>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-semibold block mb-1 text-foreground">
+                            Of directe audio-stream URL
+                          </label>
+                          <Input
+                            type="url"
+                            value={nPodcastAudioUrl}
+                            onChange={(e) => setNPodcastAudioUrl(e.target.value)}
+                            placeholder="https://.../podcast.mp3 of /uploads/podcasts/..."
+                            className="text-xs"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-xs font-semibold block mb-1 text-foreground">
+                            Speelduur (optioneel)
+                          </label>
+                          <Input
+                            type="text"
+                            value={nPodcastDuration}
+                            onChange={(e) => setNPodcastDuration(e.target.value)}
+                            placeholder="bijv. 24:15 of 35 min"
+                            className="text-xs"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-semibold block mb-1 text-foreground">
+                            Spotify link (optioneel)
+                          </label>
+                          <Input
+                            type="url"
+                            value={nPodcastSpotifyUrl}
+                            onChange={(e) => setNPodcastSpotifyUrl(e.target.value)}
+                            placeholder="https://open.spotify.com/episode/..."
+                            className="text-xs"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-semibold block mb-1 text-foreground">
+                            Apple Podcasts link (optioneel)
+                          </label>
+                          <Input
+                            type="url"
+                            value={nPodcastAppleUrl}
+                            onChange={(e) => setNPodcastAppleUrl(e.target.value)}
+                            placeholder="https://podcasts.apple.com/..."
+                            className="text-xs"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Weergaventeller voor Beheerder */}
+                      {editingNewsId && (
+                        <div className="p-3 rounded-lg bg-background/80 border border-purple-500/30 flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2">
+                            <Headphones className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                            <span className="font-semibold text-foreground">
+                              Geregistreerde podcast weergaven:
+                            </span>
+                            <span className="font-mono font-bold text-sm text-purple-700 dark:text-purple-300">
+                              {nPodcastViews}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-muted-foreground">
+                            Wordt automatisch verhoogd bij elke luisterbeurt
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Hoofdvideo (.mp4) Bijlage */}
+                <div className="p-4 rounded-xl border border-blue-500/30 bg-blue-500/5 dark:bg-blue-950/20 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-semibold flex items-center gap-2 text-foreground">
+                      <Video className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                      Hoofdvideo (.mp4) toevoegen
+                    </label>
+                    <span className="text-[11px] text-muted-foreground">
+                      Bovenaan artikel of via editor
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Upload een .mp4 videobestand dat direct als videospeler bij het artikel wordt getoond. (U kunt video's ook tussen de tekst invoegen via de editor).
+                  </p>
+
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold block mb-1 text-foreground">
+                        Upload .mp4 videobestand
+                      </label>
+                      <Input
+                        type="file"
+                        accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov"
+                        onChange={(e) => setNVideo(e.target.files?.[0] || null)}
+                        className="text-xs"
+                      />
+                      {nVideo && (
+                        <span className="text-[11px] text-blue-600 dark:text-blue-400 font-medium block mt-1">
+                          ✓ Videobestand geselecteerd: {nVideo.name}
+                        </span>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold block mb-1 text-foreground">
+                        Of directe video-URL (.mp4)
+                      </label>
+                      <Input
+                        type="url"
+                        value={nVideoUrl}
+                        onChange={(e) => setNVideoUrl(e.target.value)}
+                        placeholder="/uploads/videos/... of https://.../video.mp4"
+                        className="text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold block mb-1 text-foreground">
+                      Videotitel (optioneel)
+                    </label>
+                    <Input
+                      type="text"
+                      value={nVideoTitle}
+                      onChange={(e) => setNVideoTitle(e.target.value)}
+                      placeholder="bijv. Videoverslag raadsvergadering 18 april"
+                      className="text-xs"
+                    />
+                  </div>
+
+                  <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-blue-500/20">
+                    <span className="text-[11px] text-muted-foreground">
+                      Wilt u de .mp4 video direct tussen de alinea's van uw artikel plaatsen?
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={isUploadingVideoToContent}
+                      onClick={handleUploadAndInsertVideoIntoContent}
+                      className="h-8 text-xs font-semibold border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300 hover:bg-blue-500 hover:text-white transition-colors cursor-pointer"
+                    >
+                      <Video className="w-3.5 h-3.5 mr-1.5" />
+                      {isUploadingVideoToContent ? "Uploaden & Invoegen..." : "Video Direct Invoegen in Tekst"}
+                    </Button>
+                  </div>
+                </div>
+
                 {/* Zichtbaarheid op website (Zichtbaar / Onzichtbaar) */}
                 <div className="p-3.5 rounded-xl border border-border/80 bg-muted/30 space-y-2">
                   <div className="flex items-center justify-between">
@@ -3181,18 +3518,69 @@ export default function AdminDashboard() {
 
             {/* Overzicht van nieuwsberichten */}
             <div className="lg:col-span-5 bg-card rounded-xl border border-border p-6 shadow-sm">
-              <h2 className="text-2xl font-display mb-2">Gepubliceerd Nieuws ({news.length})</h2>
-              <p className="text-xs text-muted-foreground mb-6">
-                Overzicht van alle geplaatste artikelen.
-              </p>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                <div>
+                  <h2 className="text-2xl font-display mb-1">Gepubliceerd Nieuws ({news.length})</h2>
+                  <p className="text-xs text-muted-foreground">
+                    Overzicht van alle geplaatste artikelen, podcasts en video's.
+                  </p>
+                </div>
+              </div>
+
+              {/* Filter Tabs: Alle / Podcasts / Video's */}
+              <div className="flex items-center gap-1 bg-muted/60 p-1 rounded-xl mb-4 text-xs font-semibold w-fit flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setNewsMediaTypeFilter("all")}
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    newsMediaTypeFilter === "all"
+                      ? "bg-accent text-accent-foreground shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Alle ({news.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewsMediaTypeFilter("podcasts")}
+                  className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
+                    newsMediaTypeFilter === "podcasts"
+                      ? "bg-purple-600 text-white shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Headphones className="w-3 h-3" /> Podcasts ({news.filter((n) => n.isPodcast || n.podcastAudioUrl).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewsMediaTypeFilter("videos")}
+                  className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
+                    newsMediaTypeFilter === "videos"
+                      ? "bg-blue-600 text-white shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Video className="w-3 h-3" /> Video's ({news.filter((n) => Boolean(n.videoUrl)).length})
+                </button>
+              </div>
 
               <div className="space-y-3">
-                {news.length === 0 && (
+                {news.filter((n) => {
+                  if (newsMediaTypeFilter === "podcasts") return n.isPodcast || n.podcastAudioUrl || n.category?.toLowerCase() === "podcast";
+                  if (newsMediaTypeFilter === "videos") return Boolean(n.videoUrl);
+                  return true;
+                }).length === 0 && (
                   <div className="text-sm text-muted-foreground italic py-8 text-center">
-                    Nog geen nieuwsberichten geplaatst.
+                    Geen nieuwsberichten gevonden in deze categorie.
                   </div>
                 )}
-                {news.map((n) => (
+                {news
+                  .filter((n) => {
+                    if (newsMediaTypeFilter === "podcasts") return n.isPodcast || n.podcastAudioUrl || n.category?.toLowerCase() === "podcast";
+                    if (newsMediaTypeFilter === "videos") return Boolean(n.videoUrl);
+                    return true;
+                  })
+                  .map((n) => (
                   <div
                     key={n.id}
                     className={`p-4 border rounded-lg transition-colors flex gap-3 items-start justify-between ${
@@ -3218,6 +3606,18 @@ export default function AdminDashboard() {
                         <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-accent/15 text-accent font-semibold">
                           {n.category || "Algemeen"}
                         </span>
+                        {/* Podcast Badge & Live Weergaventeller */}
+                        {(n.isPodcast || n.podcastAudioUrl) && (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-700 dark:text-purple-300 flex items-center gap-1 border border-purple-500/30" title={`${n.podcastViews || 0} weergaven geregistreerd`}>
+                            <Headphones className="w-2.5 h-2.5" /> Podcast • {n.podcastViews || 0} weergaven
+                          </span>
+                        )}
+                        {/* Video Badge */}
+                        {n.videoUrl && (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-700 dark:text-blue-300 flex items-center gap-1 border border-blue-500/30">
+                            <Video className="w-2.5 h-2.5" /> Video (.mp4)
+                          </span>
+                        )}
                         {n.wijkNaam && (
                           <span className="text-[10px] px-2 py-0.5 rounded-full bg-secondary text-foreground font-medium flex items-center gap-1">
                             <MapPin className="w-2.5 h-2.5 text-accent" /> {n.wijkNaam}

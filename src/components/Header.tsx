@@ -21,6 +21,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { BelafspraakDialog } from "./BelafspraakDialog";
 import { PWAInstallButton } from "./PWAInstallButton";
+import { GlobalSearchNav } from "./GlobalSearchNav";
 import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/context/AuthContext";
 import { ColorBlindMode } from "@/context/AccessibilityContext";
@@ -84,8 +85,15 @@ export const Header = () => {
     setContrastMode,
   } = useAccessibility();
 
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+
   const location = useLocation();
   const partijActive = partijItems.some((i) => location.pathname === i.to);
+
+  // Close search when route changes
+  useEffect(() => {
+    setIsSearchOpen(false);
+  }, [location.pathname, location.search]);
 
   // Dynamic wijk lookup for custom titles saved in database
   const [apiWijkenMap, setApiWijkenMap] = useState<Record<string, string>>({});
@@ -271,8 +279,10 @@ export const Header = () => {
                   </DropdownMenuContent>
                 </DropdownMenu>
 
-                {/* Standard Nav Items */}
-                {navItems.map((item) => (
+                {/* Standard Nav Items - Contact is hidden when search is open */}
+                {navItems
+                  .filter((item) => (isSearchOpen && item.to === "/contact" ? false : true))
+                  .map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}
@@ -311,39 +321,41 @@ export const Header = () => {
               </Link>
             )}
 
-            {/* PWA Install Button */}
-            <PWAInstallButton variant="header" />
+            {/* PWA Install Button - hidden when search is open */}
+            {!isSearchOpen && <PWAInstallButton variant="header" />}
 
-            {/* 3. Authentication Buttons (Logged in vs Guest) */}
+            {/* 3. Authentication Buttons (Logged in vs Guest) - Dashboard hidden when search is open */}
             {isAuthenticated ? (
-              <div className="hidden sm:flex items-center gap-1 shrink-0">
-                <Link to={portalConfig.isPortalMode ? "/raadspaneel" : "/dashboard"}>
+              !isSearchOpen && (
+                <div className="hidden sm:flex items-center gap-1 shrink-0">
+                  <Link to={portalConfig.isPortalMode ? "/raadspaneel" : "/dashboard"}>
+                    <Button
+                      variant="outline"
+                      className="border-accent/40 text-accent hover:bg-accent/15 uppercase tracking-wider text-xs font-semibold px-2 xl:px-3 h-8 sm:h-9 whitespace-nowrap"
+                    >
+                      {portalConfig.isPortalMode ? (
+                        <>
+                          <Building2 className="w-3.5 h-3.5 mr-1" />
+                          <span>Raadspaneel</span>
+                        </>
+                      ) : (
+                        <>
+                          <User className="w-3.5 h-3.5 mr-1" />
+                          <span>Dashboard</span>
+                        </>
+                      )}
+                    </Button>
+                  </Link>
                   <Button
-                    variant="outline"
-                    className="border-accent/40 text-accent hover:bg-accent/15 uppercase tracking-wider text-xs font-semibold px-2 xl:px-3 h-8 sm:h-9 whitespace-nowrap"
+                    variant="ghost"
+                    onClick={logout}
+                    className="uppercase tracking-wider text-xs font-semibold text-muted-foreground hover:text-destructive hover:bg-destructive/10 px-1.5 h-8 sm:h-9 whitespace-nowrap"
+                    title="Uitloggen"
                   >
-                    {portalConfig.isPortalMode ? (
-                      <>
-                        <Building2 className="w-3.5 h-3.5 mr-1" />
-                        <span>Raadspaneel</span>
-                      </>
-                    ) : (
-                      <>
-                        <User className="w-3.5 h-3.5 mr-1" />
-                        <span>Dashboard</span>
-                      </>
-                    )}
+                    <LogOut className="w-4 h-4" />
                   </Button>
-                </Link>
-                <Button
-                  variant="ghost"
-                  onClick={logout}
-                  className="uppercase tracking-wider text-xs font-semibold text-muted-foreground hover:text-destructive hover:bg-destructive/10 px-1.5 h-8 sm:h-9 whitespace-nowrap"
-                  title="Uitloggen"
-                >
-                  <LogOut className="w-4 h-4" />
-                </Button>
-              </div>
+                </div>
+              )
             ) : (
               <Link to="/login" className="hidden sm:inline-flex shrink-0">
                 <Button
@@ -357,6 +369,9 @@ export const Header = () => {
             )}
 
             <div className="hidden xl:block w-[1px] h-5 bg-border mx-0.5" />
+
+            {/* Globale Zoekfunctie (Nieuws, Standpunten, Agenda) */}
+            <GlobalSearchNav isOpen={isSearchOpen} onOpenChange={setIsSearchOpen} />
 
             {/* 4. Tekstgrootte vergroten & verkleinen knoppen (zichtbaar op md+) */}
             <div
@@ -625,8 +640,10 @@ export const Header = () => {
                       </NavLink>
                     ))}
 
-                  {/* Nav Items in Mobile */}
-                  {navItems.map((item) => (
+                  {/* Nav Items in Mobile - Contact is hidden when search is open */}
+                  {navItems
+                    .filter((item) => (isSearchOpen && item.to === "/contact" ? false : true))
+                    .map((item) => (
                     <NavLink
                       key={item.to}
                       to={item.to}
@@ -676,42 +693,48 @@ export const Header = () => {
                   </Link>
                 )}
 
-                <div className="w-full">
-                  <PWAInstallButton variant="header" className="w-full justify-center h-10" />
-                </div>
-
-                {isAuthenticated ? (
-                  <div className="flex flex-col gap-2">
-                    <Link to={portalConfig.isPortalMode ? "/raadspaneel" : "/dashboard"} onClick={() => setMobileOpen(false)}>
-                      <Button
-                        variant="outline"
-                        className="w-full border-accent text-accent hover:bg-accent hover:text-accent-foreground uppercase tracking-wider text-xs font-semibold justify-center"
-                      >
-                        {portalConfig.isPortalMode ? (
-                          <>
-                            <Building2 className="w-4 h-4 mr-2" />
-                            Raadspaneel
-                          </>
-                        ) : (
-                          <>
-                            <User className="w-4 h-4 mr-2" />
-                            Dashboard
-                          </>
-                        )}
-                      </Button>
-                    </Link>
-                    <Button
-                      variant="ghost"
-                      onClick={() => {
-                        logout();
-                        setMobileOpen(false);
-                      }}
-                      className="w-full uppercase tracking-wider text-xs font-semibold text-foreground/80 hover:text-foreground justify-center px-3"
-                    >
-                      <LogOut className="w-4 h-4 mr-2" />
-                      Uitloggen
-                    </Button>
+                {/* App button - hidden when search is open */}
+                {!isSearchOpen && (
+                  <div className="w-full">
+                    <PWAInstallButton variant="header" className="w-full justify-center h-10" />
                   </div>
+                )}
+
+                {/* Dashboard button - hidden when search is open */}
+                {isAuthenticated ? (
+                  !isSearchOpen && (
+                    <div className="flex flex-col gap-2">
+                      <Link to={portalConfig.isPortalMode ? "/raadspaneel" : "/dashboard"} onClick={() => setMobileOpen(false)}>
+                        <Button
+                          variant="outline"
+                          className="w-full border-accent text-accent hover:bg-accent hover:text-accent-foreground uppercase tracking-wider text-xs font-semibold justify-center"
+                        >
+                          {portalConfig.isPortalMode ? (
+                            <>
+                              <Building2 className="w-4 h-4 mr-2" />
+                              Raadspaneel
+                            </>
+                          ) : (
+                            <>
+                              <User className="w-4 h-4 mr-2" />
+                              Dashboard
+                            </>
+                          )}
+                        </Button>
+                      </Link>
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          logout();
+                          setMobileOpen(false);
+                        }}
+                        className="w-full uppercase tracking-wider text-xs font-semibold text-foreground/80 hover:text-foreground justify-center px-3"
+                      >
+                        <LogOut className="w-4 h-4 mr-2" />
+                        Uitloggen
+                      </Button>
+                    </div>
+                  )
                 ) : (
                   <Link to="/login" onClick={() => setMobileOpen(false)} className="w-full">
                     <Button

@@ -17,6 +17,12 @@ import {
   ExternalLink,
   ChevronLeft,
   ChevronRight,
+  Compass,
+  FileQuestion,
+  TrendingUp,
+  Tag,
+  CheckCircle2,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,10 +64,36 @@ interface DocumentViewLog {
   timestamp?: string;
 }
 
+interface NavbarSearchLog {
+  id: string | number;
+  userId?: string | null;
+  username?: string | null;
+  userName?: string | null;
+  userEmail?: string | null;
+  userRole?: string | null;
+  isAnonymous?: boolean;
+  query: string;
+  resultsCount: number;
+  countsBreakdown?: {
+    all: number;
+    nieuws: number;
+    standpunt: number;
+    agenda: number;
+  } | null;
+  activeTab?: string;
+  source?: string;
+  ipAddress?: string | null;
+  ip?: string | null;
+  userAgent?: string;
+  createdAt: string;
+  timestamp?: string;
+}
+
 export const CouncilAuditManager: React.FC = () => {
   const { token: authContextToken } = useAuth();
 
-  const [activeSubTab, setActiveSubTab] = useState<"searches" | "views">("searches");
+  const [activeSubTab, setActiveSubTab] = useState<"navbar-searches" | "searches" | "views">("navbar-searches");
+  const [navbarLogs, setNavbarLogs] = useState<NavbarSearchLog[]>([]);
   const [searchLogs, setSearchLogs] = useState<SearchLog[]>([]);
   const [viewLogs, setViewLogs] = useState<DocumentViewLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,6 +101,8 @@ export const CouncilAuditManager: React.FC = () => {
   // Filters
   const [filterText, setFilterText] = useState("");
   const [userFilter, setUserFilter] = useState<"all" | "auth" | "anon">("all");
+  const [navbarCategoryFilter, setNavbarCategoryFilter] = useState<"all" | "nieuws" | "standpunt" | "agenda">("all");
+  const [navbarHitsFilter, setNavbarHitsFilter] = useState<"all" | "has_hits" | "zero_hits">("all");
 
   // Pagination for logs table
   const [page, setPage] = useState(1);
@@ -91,9 +125,10 @@ export const CouncilAuditManager: React.FC = () => {
     setLoading(true);
     try {
       const headers = getHeaders();
-      const [searchRes, viewRes] = await Promise.all([
+      const [searchRes, viewRes, navbarRes] = await Promise.all([
         fetch("/api/admin/council-audit/searches?limit=500", { headers }),
         fetch("/api/admin/council-audit/document-views?limit=500", { headers }),
+        fetch("/api/admin/council-audit/navbar-searches?limit=1000", { headers }),
       ]);
 
       if (searchRes.ok) {
@@ -109,6 +144,7 @@ export const CouncilAuditManager: React.FC = () => {
         }));
         setSearchLogs(normalized);
       }
+
       if (viewRes.ok) {
         const data = await viewRes.json();
         const raw = data.logs || data.views || [];
@@ -121,6 +157,27 @@ export const CouncilAuditManager: React.FC = () => {
           ipAddress: item.ipAddress || item.ip || "—",
         }));
         setViewLogs(normalized);
+      }
+
+      if (navbarRes.ok) {
+        const data = await navbarRes.json();
+        const raw = data.logs || data.searches || [];
+        const normalized: NavbarSearchLog[] = raw.map((item: any) => ({
+          ...item,
+          id: item.id,
+          username: item.userName || item.username || (item.isAnonymous ? "Anonieme Bezoeker" : "Ingelogde Bezoeker"),
+          userName: item.userName || item.username || (item.isAnonymous ? "Anonieme Bezoeker" : "Ingelogde Bezoeker"),
+          userEmail: item.userEmail || null,
+          userRole: item.userRole || (item.isAnonymous ? "Bezoeker (Niet ingelogd)" : "Lid"),
+          isAnonymous: item.isAnonymous ?? (!item.userId && !item.userEmail),
+          resultsCount: item.resultsCount ?? item.totalHits ?? 0,
+          countsBreakdown: item.countsBreakdown || null,
+          activeTab: item.activeTab || "all",
+          source: item.source || "navbar",
+          createdAt: item.timestamp || item.createdAt || new Date().toISOString(),
+          ipAddress: item.ipAddress || item.ip || "—",
+        }));
+        setNavbarLogs(normalized);
       }
     } catch (err: any) {
       console.error(err);
@@ -137,11 +194,11 @@ export const CouncilAuditManager: React.FC = () => {
   // Reset pagination on tab or filter change
   useEffect(() => {
     setPage(1);
-  }, [activeSubTab, filterText, userFilter, pageSize]);
+  }, [activeSubTab, filterText, userFilter, navbarCategoryFilter, navbarHitsFilter, pageSize]);
 
   // Actions
   const handleClearSearches = async () => {
-    if (!confirm("Weet u zeker dat u alle zoekopdracht logs wilt wissen? Dit kan niet ongedaan gemaakt worden.")) {
+    if (!confirm("Weet u zeker dat u alle raadsarchief zoekopdracht logs wilt wissen? Dit kan niet ongedaan gemaakt worden.")) {
       return;
     }
     try {
@@ -150,7 +207,7 @@ export const CouncilAuditManager: React.FC = () => {
         headers: getHeaders(),
       });
       if (res.ok) {
-        toast.success("Zoekopdracht logs succesvol gewist.");
+        toast.success("Raadsarchief zoekopdracht logs succesvol gewist.");
         setSearchLogs([]);
       } else {
         toast.error("Kon logs niet wissen.");
@@ -180,15 +237,67 @@ export const CouncilAuditManager: React.FC = () => {
     }
   };
 
+  const handleClearNavbarSearches = async () => {
+    if (!confirm("Weet u zeker dat u alle navbar zoekopdracht logs wilt wissen? Dit kan niet ongedaan gemaakt worden.")) {
+      return;
+    }
+    try {
+      const res = await fetch("/api/admin/council-audit/navbar-searches/clear", {
+        method: "DELETE",
+        headers: getHeaders(),
+      });
+      if (res.ok) {
+        toast.success("Navbar zoekopdrachten logs succesvol gewist.");
+        setNavbarLogs([]);
+      } else {
+        toast.error("Kon navbar zoeklogs niet wissen.");
+      }
+    } catch {
+      toast.error("Netwerkfout bij wissen.");
+    }
+  };
+
   // KPI Calculations
   const stats = useMemo(() => {
     const totalSearches = searchLogs.length;
     const totalViews = viewLogs.length;
+    const totalNavbarSearches = navbarLogs.length;
 
+    // Archief
     const anonSearches = searchLogs.filter((s) => !s.username || s.username === "Anoniem").length;
     const authSearches = totalSearches - anonSearches;
 
-    // Top search terms
+    // Navbar
+    const anonNavbarSearches = navbarLogs.filter((s) => s.isAnonymous || s.username === "Anonieme Bezoeker").length;
+    const authNavbarSearches = totalNavbarSearches - anonNavbarSearches;
+    const zeroHitsNavbarSearches = navbarLogs.filter((s) => s.resultsCount === 0).length;
+
+    // Top navbar search terms
+    const navQueryCounts: Record<string, { count: number; zeroHits: number }> = {};
+    navbarLogs.forEach((s) => {
+      const q = (s.query || "").trim().toLowerCase();
+      if (q) {
+        if (!navQueryCounts[q]) {
+          navQueryCounts[q] = { count: 0, zeroHits: 0 };
+        }
+        navQueryCounts[q].count += 1;
+        if (s.resultsCount === 0) {
+          navQueryCounts[q].zeroHits += 1;
+        }
+      }
+    });
+
+    const topNavbarQueries = Object.entries(navQueryCounts)
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, 8);
+
+    // Top zero hit terms (content gaps)
+    const topZeroHits = Object.entries(navQueryCounts)
+      .filter(([, data]) => data.zeroHits > 0)
+      .sort((a, b) => b[1].zeroHits - a[1].zeroHits)
+      .slice(0, 5);
+
+    // Top archief search terms
     const queryCounts: Record<string, number> = {};
     searchLogs.forEach((s) => {
       const q = (s.query || "").trim().toLowerCase();
@@ -207,10 +316,51 @@ export const CouncilAuditManager: React.FC = () => {
       anonSearches,
       authSearches,
       topQueries,
+      totalNavbarSearches,
+      anonNavbarSearches,
+      authNavbarSearches,
+      zeroHitsNavbarSearches,
+      topNavbarQueries,
+      topZeroHits,
     };
-  }, [searchLogs, viewLogs]);
+  }, [searchLogs, viewLogs, navbarLogs]);
 
-  // Filtered search logs
+  // Filtered navbar logs
+  const filteredNavbarLogs = useMemo(() => {
+    return navbarLogs.filter((log) => {
+      const queryMatch = (log.query || "").toLowerCase();
+      const userMatch = (log.username || "").toLowerCase();
+      const roleMatch = (log.userRole || "").toLowerCase();
+      const ipMatch = (log.ipAddress || "").toLowerCase();
+      const emailMatch = (log.userEmail || "").toLowerCase();
+
+      const matchText =
+        !filterText ||
+        queryMatch.includes(filterText.toLowerCase()) ||
+        userMatch.includes(filterText.toLowerCase()) ||
+        roleMatch.includes(filterText.toLowerCase()) ||
+        ipMatch.includes(filterText.toLowerCase()) ||
+        emailMatch.includes(filterText.toLowerCase());
+
+      const isAnon = log.isAnonymous ?? (!log.userId && !log.userEmail);
+      const matchUser =
+        userFilter === "all" ||
+        (userFilter === "anon" && isAnon) ||
+        (userFilter === "auth" && !isAnon);
+
+      const matchCategory =
+        navbarCategoryFilter === "all" || log.activeTab === navbarCategoryFilter;
+
+      const matchHits =
+        navbarHitsFilter === "all" ||
+        (navbarHitsFilter === "has_hits" && log.resultsCount > 0) ||
+        (navbarHitsFilter === "zero_hits" && log.resultsCount === 0);
+
+      return matchText && matchUser && matchCategory && matchHits;
+    });
+  }, [navbarLogs, filterText, userFilter, navbarCategoryFilter, navbarHitsFilter]);
+
+  // Filtered search logs (Archief)
   const filteredSearchLogs = useMemo(() => {
     return searchLogs.filter((log) => {
       const matchText =
@@ -249,15 +399,62 @@ export const CouncilAuditManager: React.FC = () => {
     });
   }, [viewLogs, filterText, userFilter]);
 
-  // Pagination current items
-  const activeItems = activeSubTab === "searches" ? filteredSearchLogs : filteredViewLogs;
+  // Active items based on current tab
+  const activeItems =
+    activeSubTab === "navbar-searches"
+      ? filteredNavbarLogs
+      : activeSubTab === "searches"
+      ? filteredSearchLogs
+      : filteredViewLogs;
+
   const totalPages = Math.ceil(activeItems.length / pageSize) || 1;
   const safePage = Math.min(Math.max(1, page), totalPages);
   const paginatedItems = activeItems.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   // CSV Export
   const handleExportCSV = () => {
-    if (activeSubTab === "searches") {
+    if (activeSubTab === "navbar-searches") {
+      const headers = [
+        "ID",
+        "Tijdstip",
+        "Gebruiker",
+        "E-mail",
+        "Rol",
+        "Status",
+        "Zoekopdracht",
+        "Categorie_Tab",
+        "Totaal_Resultaten",
+        "Hits_Nieuws",
+        "Hits_Standpunten",
+        "Hits_Agenda",
+        "IP_Adres",
+      ];
+      const rows = filteredNavbarLogs.map((l) => [
+        l.id,
+        new Date(l.createdAt).toLocaleString("nl-NL"),
+        `"${(l.username || "").replace(/"/g, '""')}"`,
+        `"${(l.userEmail || "").replace(/"/g, '""')}"`,
+        `"${(l.userRole || "").replace(/"/g, '""')}"`,
+        l.isAnonymous ? "Anoniem" : "Ingelogd",
+        `"${(l.query || "").replace(/"/g, '""')}"`,
+        l.activeTab || "all",
+        l.resultsCount,
+        l.countsBreakdown?.nieuws ?? "",
+        l.countsBreakdown?.standpunt ?? "",
+        l.countsBreakdown?.agenda ?? "",
+        l.ipAddress || "",
+      ]);
+      const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `navbar_zoekopdrachten_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success("Navbar zoekopdrachten geëxporteerd naar CSV.");
+    } else if (activeSubTab === "searches") {
       const headers = ["ID", "Tijdstip", "Gebruiker", "Rol", "Zoekterm", "Resultaten", "Laadtijd ms"];
       const rows = filteredSearchLogs.map((l) => [
         l.id,
@@ -277,6 +474,7 @@ export const CouncilAuditManager: React.FC = () => {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      toast.success("Raadsarchief zoekopdrachten geëxporteerd naar CSV.");
     } else {
       const headers = ["ID", "Tijdstip", "Gebruiker", "Rol", "Bestandsnaam", "Titel", "Dossier", "Bron"];
       const rows = filteredViewLogs.map((l) => [
@@ -298,6 +496,7 @@ export const CouncilAuditManager: React.FC = () => {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      toast.success("Documentweergaven geëxporteerd naar CSV.");
     }
   };
 
@@ -315,8 +514,7 @@ export const CouncilAuditManager: React.FC = () => {
             </h2>
           </div>
           <p className="text-xs text-muted-foreground max-w-2xl">
-            Inzicht in alle zoekopdrachten die worden uitgevoerd in het raadsstukkenarchief en welke raadsdocumenten
-            worden bekeken en gedownload door ingelogde raadsleden, burgers of anonieme bezoekers.
+            Inzicht in alle zoekopdrachten die worden ingetypt op de website (zowel via de globale navbar zoekbalk als in het raadsarchief) en welke raadsdocumenten worden bekeken en gedownload door ingelogde raadsleden, burgers of anonieme bezoekers.
           </p>
         </div>
 
@@ -349,9 +547,44 @@ export const CouncilAuditManager: React.FC = () => {
 
       {/* KPI Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="p-4 rounded-2xl bg-card border border-border shadow-xs">
+        {/* Card 1: Navbar Zoekopdrachten */}
+        <div
+          onClick={() => setActiveSubTab("navbar-searches")}
+          className={`p-4 rounded-2xl bg-card border transition-all cursor-pointer shadow-xs ${
+            activeSubTab === "navbar-searches"
+              ? "border-accent ring-2 ring-accent/20"
+              : "border-border hover:border-accent/40"
+          }`}
+        >
           <div className="flex items-center justify-between text-muted-foreground mb-1">
-            <span className="text-xs font-semibold uppercase tracking-wider">Zoekopdrachten</span>
+            <span className="text-xs font-semibold uppercase tracking-wider">Navbar Zoekopdrachten</span>
+            <Sparkles className="w-4 h-4 text-accent" />
+          </div>
+          <div className="text-2xl font-bold text-foreground">{stats.totalNavbarSearches}</div>
+          <div className="text-[11px] text-muted-foreground mt-1 flex items-center gap-2 flex-wrap">
+            <span className="text-emerald-600 font-medium">✓ {stats.authNavbarSearches} ingelogd</span>
+            <span>•</span>
+            <span>{stats.anonNavbarSearches} anoniem</span>
+            {stats.zeroHitsNavbarSearches > 0 && (
+              <>
+                <span>•</span>
+                <span className="text-amber-600 font-medium">{stats.zeroHitsNavbarSearches} zonder hits</span>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Card 2: Archief Zoekopdrachten */}
+        <div
+          onClick={() => setActiveSubTab("searches")}
+          className={`p-4 rounded-2xl bg-card border transition-all cursor-pointer shadow-xs ${
+            activeSubTab === "searches"
+              ? "border-accent ring-2 ring-accent/20"
+              : "border-border hover:border-accent/40"
+          }`}
+        >
+          <div className="flex items-center justify-between text-muted-foreground mb-1">
+            <span className="text-xs font-semibold uppercase tracking-wider">Archief Zoekopdrachten</span>
             <Search className="w-4 h-4 text-accent" />
           </div>
           <div className="text-2xl font-bold text-foreground">{stats.totalSearches}</div>
@@ -362,7 +595,15 @@ export const CouncilAuditManager: React.FC = () => {
           </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-card border border-border shadow-xs">
+        {/* Card 3: Documenten Bekeken */}
+        <div
+          onClick={() => setActiveSubTab("views")}
+          className={`p-4 rounded-2xl bg-card border transition-all cursor-pointer shadow-xs ${
+            activeSubTab === "views"
+              ? "border-accent ring-2 ring-accent/20"
+              : "border-border hover:border-accent/40"
+          }`}
+        >
           <div className="flex items-center justify-between text-muted-foreground mb-1">
             <span className="text-xs font-semibold uppercase tracking-wider">Documenten Bekeken</span>
             <Eye className="w-4 h-4 text-accent" />
@@ -373,20 +614,40 @@ export const CouncilAuditManager: React.FC = () => {
           </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-card border border-border shadow-xs sm:col-span-2">
+        {/* Card 4: Top Ingetypte Termen (Navbar / Algemeen) */}
+        <div className="p-4 rounded-2xl bg-card border border-border shadow-xs">
           <div className="flex items-center justify-between text-muted-foreground mb-1.5">
-            <span className="text-xs font-semibold uppercase tracking-wider">Veelgezochte Termen</span>
+            <span className="text-xs font-semibold uppercase tracking-wider">Veelgezochte Termen (Navbar)</span>
             <BarChart3 className="w-4 h-4 text-accent" />
           </div>
-          {stats.topQueries.length > 0 ? (
+          {stats.topNavbarQueries.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {stats.topNavbarQueries.map(([term, data]) => (
+                <span
+                  key={term}
+                  onClick={() => {
+                    setActiveSubTab("navbar-searches");
+                    setFilterText(term);
+                  }}
+                  className="px-2 py-0.5 rounded-lg text-xs bg-muted font-medium text-foreground border border-border/70 flex items-center gap-1.5 cursor-pointer hover:border-accent transition-colors"
+                  title={`${data.count}x gezocht (${data.zeroHits}x zonder resultaten)`}
+                >
+                  <span className="font-semibold text-accent">{term}</span>
+                  <span className="text-[10px] bg-background px-1.5 py-0.2 rounded font-mono text-muted-foreground">
+                    {data.count}x
+                  </span>
+                </span>
+              ))}
+            </div>
+          ) : stats.topQueries.length > 0 ? (
             <div className="flex flex-wrap gap-1.5 mt-1">
               {stats.topQueries.map(([term, count]) => (
                 <span
                   key={term}
-                  className="px-2.5 py-1 rounded-xl text-xs bg-muted font-medium text-foreground border border-border/70 flex items-center gap-1.5"
+                  className="px-2 py-0.5 rounded-lg text-xs bg-muted font-medium text-foreground border border-border/70 flex items-center gap-1.5"
                 >
                   <span className="font-semibold text-accent">{term}</span>
-                  <span className="text-[10px] bg-background px-1.5 py-0.2 rounded-md font-mono text-muted-foreground">
+                  <span className="text-[10px] bg-background px-1.5 py-0.2 rounded font-mono text-muted-foreground">
                     {count}x
                   </span>
                 </span>
@@ -398,11 +659,55 @@ export const CouncilAuditManager: React.FC = () => {
         </div>
       </div>
 
+      {/* Special Data Analysis Box for Navbar Search Insights */}
+      {activeSubTab === "navbar-searches" && stats.topZeroHits.length > 0 && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-xs space-y-1">
+            <div className="font-bold text-foreground">
+              Data Analyse &amp; Content Gap Detectie
+            </div>
+            <p className="text-muted-foreground">
+              Bezoekers hebben gezocht naar de volgende onderwerpen waar op dat moment <strong>0 resultaten</strong> voor zijn gevonden. Handig voor de fractie of redactie om hier nieuwsberichten of standpunten over te publiceren:
+            </p>
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {stats.topZeroHits.map(([term, data]) => (
+                <button
+                  key={term}
+                  type="button"
+                  onClick={() => setFilterText(term)}
+                  className="px-2.5 py-1 rounded-lg text-xs bg-background/80 hover:bg-background border border-amber-500/40 font-medium text-foreground flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                >
+                  <span className="font-bold text-amber-700 dark:text-amber-300">"{term}"</span>
+                  <span className="text-[10px] bg-amber-500/20 text-amber-800 dark:text-amber-200 px-1.5 py-0.2 rounded font-mono font-bold">
+                    {data.zeroHits}x 0 hits
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Subtabs Selector & Filter Toolbar */}
       <div className="bg-card rounded-2xl border border-border p-4 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-3">
           {/* Subtab buttons */}
-          <div className="flex items-center gap-1 bg-muted/60 p-1 rounded-xl w-fit">
+          <div className="flex items-center gap-1 bg-muted/60 p-1 rounded-xl w-fit flex-wrap">
+            <button
+              type="button"
+              id="subtab-btn-navbar-searches"
+              onClick={() => setActiveSubTab("navbar-searches")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
+                activeSubTab === "navbar-searches"
+                  ? "bg-accent text-accent-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground hover:bg-background/60"
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Navbar Zoekopdrachten ({filteredNavbarLogs.length})</span>
+            </button>
+
             <button
               type="button"
               id="subtab-btn-searches"
@@ -414,7 +719,7 @@ export const CouncilAuditManager: React.FC = () => {
               }`}
             >
               <Search className="w-3.5 h-3.5" />
-              <span>Zoekopdrachten ({filteredSearchLogs.length})</span>
+              <span>Raadsarchief Zoekopdrachten ({filteredSearchLogs.length})</span>
             </button>
 
             <button
@@ -433,17 +738,29 @@ export const CouncilAuditManager: React.FC = () => {
           </div>
 
           {/* Destructive Clear Logs Button */}
-          {activeSubTab === "searches" ? (
+          {activeSubTab === "navbar-searches" ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleClearNavbarSearches}
+              disabled={navbarLogs.length === 0}
+              className="text-xs text-red-600 hover:text-red-700 hover:bg-red-500/10 border-red-500/20 rounded-xl gap-1.5 h-8 self-end sm:self-auto cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Wis Navbar Zoekgeschiedenis
+            </Button>
+          ) : activeSubTab === "searches" ? (
             <Button
               type="button"
               variant="outline"
               size="sm"
               onClick={handleClearSearches}
               disabled={searchLogs.length === 0}
-              className="text-xs text-red-600 hover:text-red-700 hover:bg-red-500/10 border-red-500/20 rounded-xl gap-1.5 h-8 self-end sm:self-auto"
+              className="text-xs text-red-600 hover:text-red-700 hover:bg-red-500/10 border-red-500/20 rounded-xl gap-1.5 h-8 self-end sm:self-auto cursor-pointer"
             >
               <Trash2 className="w-3.5 h-3.5" />
-              Wis Zoekgeschiedenis
+              Wis Archief Zoekgeschiedenis
             </Button>
           ) : (
             <Button
@@ -452,7 +769,7 @@ export const CouncilAuditManager: React.FC = () => {
               size="sm"
               onClick={handleClearViews}
               disabled={viewLogs.length === 0}
-              className="text-xs text-red-600 hover:text-red-700 hover:bg-red-500/10 border-red-500/20 rounded-xl gap-1.5 h-8 self-end sm:self-auto"
+              className="text-xs text-red-600 hover:text-red-700 hover:bg-red-500/10 border-red-500/20 rounded-xl gap-1.5 h-8 self-end sm:self-auto cursor-pointer"
             >
               <Trash2 className="w-3.5 h-3.5" />
               Wis Documentlogs
@@ -460,8 +777,8 @@ export const CouncilAuditManager: React.FC = () => {
           )}
         </div>
 
-        {/* Filters Bar: Text filter, user status filter, page size selector */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+        {/* Filters Bar: Text filter, user status filter, category filter, hits filter, page size selector */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs flex-wrap">
           <div className="flex flex-wrap items-center gap-2 flex-1">
             <div className="relative min-w-[200px] flex-1 max-w-md">
               <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-muted-foreground" />
@@ -469,7 +786,9 @@ export const CouncilAuditManager: React.FC = () => {
                 value={filterText}
                 onChange={(e) => setFilterText(e.target.value)}
                 placeholder={
-                  activeSubTab === "searches"
+                  activeSubTab === "navbar-searches"
+                    ? "Filter op zoekterm, gebruiker, e-mail of IP..."
+                    : activeSubTab === "searches"
                     ? "Zoek op zoekterm, gebruiker of rol..."
                     : "Zoek op bestandsnaam, dossier of gebruiker..."
                 }
@@ -477,6 +796,7 @@ export const CouncilAuditManager: React.FC = () => {
               />
             </div>
 
+            {/* Ingelogd / Anoniem Filter */}
             <div className="flex items-center gap-1 bg-muted/40 p-0.5 rounded-xl border border-border/60">
               <span className="text-[11px] text-muted-foreground px-2">Gebruiker:</span>
               {(["all", "auth", "anon"] as const).map((type) => (
@@ -484,7 +804,7 @@ export const CouncilAuditManager: React.FC = () => {
                   key={type}
                   type="button"
                   onClick={() => setUserFilter(type)}
-                  className={`px-2 py-1 rounded-lg text-[11px] font-semibold transition-all ${
+                  className={`px-2 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
                     userFilter === type
                       ? "bg-accent text-accent-foreground shadow-xs"
                       : "text-muted-foreground hover:text-foreground"
@@ -494,6 +814,60 @@ export const CouncilAuditManager: React.FC = () => {
                 </button>
               ))}
             </div>
+
+            {/* Categorie / Tab Filter (alleen voor navbar zoekopdrachten) */}
+            {activeSubTab === "navbar-searches" && (
+              <div className="flex items-center gap-1 bg-muted/40 p-0.5 rounded-xl border border-border/60">
+                <span className="text-[11px] text-muted-foreground px-2">Tab:</span>
+                {(["all", "nieuws", "standpunt", "agenda"] as const).map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setNavbarCategoryFilter(cat)}
+                    className={`px-2 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                      navbarCategoryFilter === cat
+                        ? "bg-accent text-accent-foreground shadow-xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {cat === "all"
+                      ? "Alle"
+                      : cat === "nieuws"
+                      ? "Nieuws"
+                      : cat === "standpunt"
+                      ? "Standpunt"
+                      : "Agenda"}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Zero-hits filter (alleen voor navbar) */}
+            {activeSubTab === "navbar-searches" && (
+              <div className="flex items-center gap-1 bg-muted/40 p-0.5 rounded-xl border border-border/60">
+                <span className="text-[11px] text-muted-foreground px-2">Hits:</span>
+                {(
+                  [
+                    { id: "all", label: "Alles" },
+                    { id: "has_hits", label: ">0 Resultaten" },
+                    { id: "zero_hits", label: "0 Resultaten (Gaps)" },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setNavbarHitsFilter(opt.id)}
+                    className={`px-2 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                      navbarHitsFilter === opt.id
+                        ? "bg-accent text-accent-foreground shadow-xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2 self-end md:self-auto">
@@ -513,7 +887,148 @@ export const CouncilAuditManager: React.FC = () => {
 
         {/* Table Content */}
         <div className="overflow-x-auto rounded-xl border border-border">
-          {activeSubTab === "searches" ? (
+          {activeSubTab === "navbar-searches" ? (
+            /* TAB: NAVBAR ZOEKOPDRACHTEN */
+            <table className="w-full text-xs text-left border-collapse">
+              <thead className="bg-muted/50 border-b border-border text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3">Tijdstip</th>
+                  <th className="px-4 py-3">Gebruiker &amp; Status</th>
+                  <th className="px-4 py-3">Ingetypte Zoekopdracht</th>
+                  <th className="px-4 py-3">Categorie</th>
+                  <th className="px-4 py-3">Gevonden Resultaten</th>
+                  <th className="px-4 py-3">IP-adres</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {paginatedItems.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <Sparkles className="w-7 h-7 text-muted-foreground/40" />
+                        <span className="font-medium text-foreground">Geen navbar zoekopdrachten gevonden.</span>
+                        <span className="text-[11px] max-w-sm">
+                          Elke zoekopdracht die een bezoeker of raadslid in de navbar typt (ingelogd of anoniem) wordt hier real-time vastgelegd voor data analyse.
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  (paginatedItems as NavbarSearchLog[]).map((log) => {
+                    const isAnon = log.isAnonymous ?? (!log.userId && !log.userEmail);
+                    const dateFormatted = new Date(log.createdAt).toLocaleString("nl-NL", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                    });
+
+                    return (
+                      <tr key={log.id} className="hover:bg-muted/30 transition-colors">
+                        {/* 1. Tijdstip */}
+                        <td className="px-4 py-3 whitespace-nowrap text-muted-foreground font-mono text-[11px]">
+                          <div className="flex items-center gap-1.5">
+                            <Clock className="w-3 h-3 text-muted-foreground shrink-0" />
+                            <span>{dateFormatted}</span>
+                          </div>
+                        </td>
+
+                        {/* 2. Gebruiker & Status */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {isAnon ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-muted text-[11px] text-muted-foreground font-medium border border-border/80">
+                              <User className="w-3 h-3 opacity-60" /> Anonieme bezoeker
+                            </span>
+                          ) : (
+                            <div className="flex flex-col gap-0.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-semibold text-foreground">{log.username}</span>
+                                {log.userRole && (
+                                  <span className="px-1.5 py-0.2 rounded-md bg-accent/15 text-accent text-[10px] font-semibold uppercase">
+                                    {log.userRole}
+                                  </span>
+                                )}
+                              </div>
+                              {log.userEmail && (
+                                <span className="text-[10px] text-muted-foreground font-mono">
+                                  {log.userEmail}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* 3. Ingetypte Zoekopdracht */}
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2.5 py-1 rounded-lg bg-accent/10 border border-accent/30 text-accent font-mono text-xs font-semibold">
+                              {log.query}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* 4. Geselecteerde Categorie (Tab) */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted text-muted-foreground text-[11px] font-medium border border-border/60 capitalize">
+                            <Tag className="w-3 h-3 text-accent" />
+                            {log.activeTab === "all"
+                              ? "Alle categorieën"
+                              : log.activeTab === "nieuws"
+                              ? "Nieuws"
+                              : log.activeTab === "standpunt"
+                              ? "Standpunten"
+                              : "Agenda"}
+                          </span>
+                        </td>
+
+                        {/* 5. Gevonden Resultaten & Uitsplitsing */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {log.resultsCount === 0 ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-[11px] font-semibold">
+                              <AlertCircle className="w-3 h-3" /> 0 resultaten (Content gap)
+                            </span>
+                          ) : (
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold">
+                                <CheckCircle2 className="w-3 h-3" /> {log.resultsCount} hits
+                              </span>
+                              {log.countsBreakdown && (
+                                <div className="flex items-center gap-1 text-[10px] text-muted-foreground font-mono">
+                                  {log.countsBreakdown.nieuws > 0 && (
+                                    <span className="bg-muted px-1.5 py-0.2 rounded">
+                                      {log.countsBreakdown.nieuws} nieuws
+                                    </span>
+                                  )}
+                                  {log.countsBreakdown.standpunt > 0 && (
+                                    <span className="bg-muted px-1.5 py-0.2 rounded">
+                                      {log.countsBreakdown.standpunt} standpunt
+                                    </span>
+                                  )}
+                                  {log.countsBreakdown.agenda > 0 && (
+                                    <span className="bg-muted px-1.5 py-0.2 rounded">
+                                      {log.countsBreakdown.agenda} agenda
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* 6. IP-adres */}
+                        <td className="px-4 py-3 whitespace-nowrap text-muted-foreground text-[11px] font-mono">
+                          {log.ipAddress || "—"}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          ) : activeSubTab === "searches" ? (
+            /* TAB: RAADSARCHIEF ZOEKOPDRACHTEN */
             <table className="w-full text-xs text-left border-collapse">
               <thead className="bg-muted/50 border-b border-border text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                 <tr>
@@ -588,6 +1103,7 @@ export const CouncilAuditManager: React.FC = () => {
               </tbody>
             </table>
           ) : (
+            /* TAB: BEKEKEN DOCUMENTEN */
             <table className="w-full text-xs text-left border-collapse">
               <thead className="bg-muted/50 border-b border-border text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                 <tr>
@@ -688,7 +1204,7 @@ export const CouncilAuditManager: React.FC = () => {
                 size="sm"
                 disabled={safePage <= 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="h-8 px-2.5 text-xs rounded-xl"
+                className="h-8 px-2.5 text-xs rounded-xl cursor-pointer"
               >
                 <ChevronLeft className="w-3.5 h-3.5 mr-1" />
                 Vorige
@@ -703,7 +1219,7 @@ export const CouncilAuditManager: React.FC = () => {
                 size="sm"
                 disabled={safePage >= totalPages}
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                className="h-8 px-2.5 text-xs rounded-xl"
+                className="h-8 px-2.5 text-xs rounded-xl cursor-pointer"
               >
                 Volgende
                 <ChevronRight className="w-3.5 h-3.5 ml-1" />

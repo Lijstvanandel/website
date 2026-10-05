@@ -56,6 +56,7 @@ const TABLE_DEFINITIONS: { [table: string]: string } = {
   councilAgendaTopics: "CREATE TABLE IF NOT EXISTS councilAgendaTopics (id TEXT PRIMARY KEY, data TEXT)",
   documentFavorites: "CREATE TABLE IF NOT EXISTS documentFavorites (id TEXT PRIMARY KEY, data TEXT)",
   councilSearchLogs: "CREATE TABLE IF NOT EXISTS councilSearchLogs (id TEXT PRIMARY KEY, data TEXT)",
+  navbarSearchLogs: "CREATE TABLE IF NOT EXISTS navbarSearchLogs (id TEXT PRIMARY KEY, data TEXT)",
   councilDocumentViews: "CREATE TABLE IF NOT EXISTS councilDocumentViews (id TEXT PRIMARY KEY, data TEXT)",
   customDossiers: "CREATE TABLE IF NOT EXISTS customDossiers (id TEXT PRIMARY KEY, data TEXT)",
   councilResearchItems: "CREATE TABLE IF NOT EXISTS councilResearchItems (id TEXT PRIMARY KEY, data TEXT)",
@@ -821,6 +822,95 @@ export function clearCouncilDocumentViews(): boolean {
     return true;
   } catch (err) {
     console.error("[SQLITE] Error clearing council document views:", err);
+    return false;
+  }
+}
+
+// ---------------------------------------------------------
+// Global Navbar Search Audit Logging
+// ---------------------------------------------------------
+
+export interface NavbarSearchLogEntry {
+  id: string;
+  query: string;
+  userId?: string | null;
+  userName?: string;
+  userEmail?: string | null;
+  userRole?: string;
+  isAnonymous: boolean;
+  resultsCount: number;
+  countsBreakdown?: {
+    all: number;
+    nieuws: number;
+    standpunt: number;
+    agenda: number;
+  } | null;
+  activeTab?: string;
+  source?: string;
+  ip?: string;
+  userAgent?: string;
+  timestamp: string;
+}
+
+/**
+ * Record a navbar search query event to SQLite audit logs
+ */
+export function recordNavbarSearchLog(entry: Omit<NavbarSearchLogEntry, "id" | "timestamp">): NavbarSearchLogEntry | null {
+  if (!sqliteDb) return null;
+  try {
+    const id = `navsrch_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const logItem: NavbarSearchLogEntry = {
+      id,
+      ...entry,
+      timestamp: new Date().toISOString(),
+    };
+    sqliteDb.run("INSERT OR REPLACE INTO navbarSearchLogs (id, data) VALUES (?, ?)", [
+      id,
+      JSON.stringify(logItem),
+    ]);
+    schedulePersist();
+    return logItem;
+  } catch (err) {
+    console.error("[SQLITE] Error recording navbar search log:", err);
+    return null;
+  }
+}
+
+/**
+ * Retrieve navbar search logs with limit
+ */
+export function getNavbarSearchLogs(limit = 1000): NavbarSearchLogEntry[] {
+  if (!sqliteDb) return [];
+  try {
+    const rows = sqliteDb.exec(`SELECT data FROM navbarSearchLogs ORDER BY rowid DESC LIMIT ${limit}`);
+    if (rows.length > 0 && rows[0].values) {
+      return rows[0].values
+        .map((v: any) => {
+          try {
+            return JSON.parse(v[0]);
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean);
+    }
+  } catch (err) {
+    console.error("[SQLITE] Error retrieving navbar search logs:", err);
+  }
+  return [];
+}
+
+/**
+ * Clear all navbar search logs
+ */
+export function clearNavbarSearchLogs(): boolean {
+  if (!sqliteDb) return false;
+  try {
+    sqliteDb.run("DELETE FROM navbarSearchLogs");
+    schedulePersist();
+    return true;
+  } catch (err) {
+    console.error("[SQLITE] Error clearing navbar search logs:", err);
     return false;
   }
 }

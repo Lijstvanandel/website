@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, Newspaper, MapPin, Tag, Share2, Clock } from "lucide-react";
+import { ArrowRight, Newspaper, MapPin, Tag, Share2, Clock, Headphones, Video, Eye } from "lucide-react";
 import { NewsItem } from "@/data/news";
 import { NewsCategory } from "@/components/CategoryManager";
 import { ShareDialog } from "@/components/ShareDialog";
+import { useAuth } from "@/context/AuthContext";
 
 function getReadingTime(item: NewsItem): number {
   const text = `${item.title || ""} ${item.description || item.excerpt || ""} ${item.content || ""}`;
@@ -13,11 +14,21 @@ function getReadingTime(item: NewsItem): number {
 }
 
 export default function Nieuws() {
+  const { user, isAuthenticated } = useAuth();
   const [news, setNews] = useState<NewsItem[]>([]);
   const [categories, setCategories] = useState<NewsCategory[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [shareArticle, setShareArticle] = useState<NewsItem | null>(null);
   const [shareDialogOpen, setShareDialogOpen] = useState<boolean>(false);
+
+  const isAdmin = Boolean(
+    isAuthenticated &&
+      user &&
+      (user.role === "admin" ||
+        user.role === "voorzitter" ||
+        user.role === "secretaris" ||
+        user.role === "penningmeester")
+  );
 
   useEffect(() => {
     fetch("/api/news")
@@ -122,11 +133,26 @@ export default function Nieuws() {
                     <Newspaper className="w-12 h-12 opacity-20" />
                   </div>
                 )}
-                <div className="absolute top-3 left-3 flex flex-wrap gap-1.5 max-w-[85%]">
+                <div className="absolute top-3 left-3 flex flex-wrap gap-1.5 max-w-[90%]">
                   <span className="px-2.5 py-1 bg-background/90 backdrop-blur-sm text-foreground text-[11px] font-semibold uppercase tracking-wider rounded-full shadow-sm flex items-center gap-1 border border-border/50">
                     <Tag className="w-2.5 h-2.5 text-accent" />
                     {item.category || "Algemeen"}
                   </span>
+                  {(item.isPodcast || item.podcastAudioUrl) && (
+                    <span className="px-2.5 py-1 bg-purple-600/95 backdrop-blur-sm text-white text-[11px] font-semibold rounded-full shadow-sm flex items-center gap-1 border border-purple-400/40">
+                      <Headphones className="w-2.5 h-2.5" /> Podcast
+                      {isAdmin && (
+                        <span className="ml-1 pl-1 border-l border-white/40 flex items-center gap-1 text-[10px]" title="Live weergaven (zichtbaar voor beheerder)">
+                          <Eye className="w-2.5 h-2.5" /> {item.podcastViews || 0}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                  {item.videoUrl && (
+                    <span className="px-2.5 py-1 bg-blue-600/95 backdrop-blur-sm text-white text-[11px] font-semibold rounded-full shadow-sm flex items-center gap-1 border border-blue-400/40">
+                      <Video className="w-2.5 h-2.5" /> Video
+                    </span>
+                  )}
                   {item.wijkNaam && (
                     <span className="px-2.5 py-1 bg-accent/90 backdrop-blur-sm text-accent-foreground text-[11px] font-semibold rounded-full shadow-sm flex items-center gap-1">
                       <MapPin className="w-2.5 h-2.5" />

@@ -79,3 +79,50 @@ export async function logCouncilSearch(params: {
   }
 }
 
+/**
+ * Helper to record a global navbar search query event (news, standpunten, agenda) to the audit backend.
+ * Works seamlessly whether the visitor is logged in or an anonymous guest.
+ */
+export async function logNavbarSearch(params: {
+  query: string;
+  resultsCount: number;
+  countsBreakdown?: {
+    all: number;
+    nieuws: number;
+    standpunt: number;
+    agenda: number;
+  };
+  activeTab?: string;
+}) {
+  const trimmed = (params.query || "").trim();
+  if (!trimmed) return;
+
+  const token =
+    localStorage.getItem("auth_token") ||
+    sessionStorage.getItem("auth_token") ||
+    localStorage.getItem("token") ||
+    sessionStorage.getItem("token");
+
+  try {
+    fetch("/api/navbar/audit/search", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        query: trimmed,
+        resultsCount: params.resultsCount,
+        countsBreakdown: params.countsBreakdown || null,
+        activeTab: params.activeTab || "all",
+        source: "navbar",
+      }),
+    }).catch(() => {
+      // Fire-and-forget background audit
+    });
+  } catch {
+    // Ignore network failure
+  }
+}
+
+
