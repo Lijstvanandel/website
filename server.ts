@@ -40,6 +40,7 @@ const appDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
 import Stripe from "stripe";
 import { createServer as createViteServer } from "vite";
 import { BUURTKAART_43_WIJKEN, syncWijkenWithBuurtkaart, LEGACY_SLUG_MAP } from "./src/data/defaultWijken.js";
+import { LEGAL_DOCUMENTS } from "./src/data/legalDocuments.js";
 import { getPageMetadata, injectMetadataIntoHtml } from "./src/server/metaGenerator.js";
 import { generateNewsletterHtml, generateNewsletterText, prepareNewsletterForDispatch } from "./src/server/newsletterTemplate.js";
 import {
@@ -705,6 +706,38 @@ function getDb() {
         content: "FRACTIESTATUUT LIJST VAN ANDEL\\n\\nARTIKEL 1: GEMEENSCHAPPELIJKE VERANTWOORDELIJKHEID\\n1. De fractie van Lijst van Andel vertegenwoordigt de inwoners van Steenwijkerland op basis van het verkiezingsprogramma en lokale speerpunten.\\n2. Leden en fractieleden handelen te allen tijde integer, transparant en met respect voor elkaar.\\n\\nARTIKEL 2: VERTROUWELIJKHEID & DIGITALE STUKKEN\\n1. Documenten aangemerkt als vertrouwelijk zijn uitsluitend bestemd voor geregistreerde leden en fractieleden.\\n2. Het delen, exporteren of kopiëren van interne beraadstukken zonder schriftelijke instemming van de fractievoorzitter is uitdrukkelijk verboden.\\n\\nARTIKEL 3: BESLUITVORMING & STEMPROCEDURE\\n1. Besluiten binnen de fractie worden bij voorkeur genomen op basis van consensus.\\n2. Bij stemming beslist de gewone meerderheid der uitgebrachte geldige stemmen."
       }
     ];
+    saveDb(db);
+  }
+
+  // Ensure legal documents under "Juridisch & Privacy" exist in db.documents
+  if (!db.documents) db.documents = [];
+  let legalDocsAdded = false;
+  Object.values(LEGAL_DOCUMENTS).forEach((legalDoc) => {
+    const exists = (db.documents || []).some(
+      (d: any) =>
+        d.id === legalDoc.id ||
+        (d.title || "").toLowerCase().trim() === legalDoc.title.toLowerCase().trim()
+    );
+    if (!exists) {
+      db.documents.push({
+        id: legalDoc.id,
+        title: legalDoc.title,
+        description: legalDoc.description,
+        category: legalDoc.category,
+        confidentiality: legalDoc.confidentiality,
+        date: legalDoc.date,
+        fileUrl: legalDoc.fileUrl,
+        fileName: legalDoc.fileName,
+        fileSize: legalDoc.fileSize,
+        pageCount: legalDoc.pageCount,
+        author: legalDoc.author,
+        createdAt: new Date().toISOString(),
+        content: legalDoc.content,
+      });
+      legalDocsAdded = true;
+    }
+  });
+  if (legalDocsAdded) {
     saveDb(db);
   }
 
@@ -3918,7 +3951,199 @@ async function startServer() {
     });
   });
 
-  // Admin, Treasurer & Secretary (Board) Routes - Users
+  // =========================================================================
+  // AVG / GDPR DYNAMISCHE ZELFSERVICE ENDPOINTS (ART. 15, 16, 17, 18, 20 AVG)
+  // =========================================================================
+
+  // 1 & 5. Recht op Inzage & Dataportabiliteit (Dynamische Export in JSON of CSV)
+  app.get("/api/me/gdpr/export", requireAuth, (req: any, res: any) => {
+    const db = getDb();
+    const user = db.users.find((u: any) => u.id === req.user.id);
+    if (!user) return res.status(404).json({ error: "Gebruiker niet gevonden" });
+
+    const safeUser = getSafeUserWithMembership(user);
+    
+    // Attending events for this member
+    const userEvents = (db.events || [])
+      .filter((ev: any) => Array.isArray(ev.attendees) && ev.attendees.map(String).includes(String(user.id)))
+      .map((ev: any) => ({
+        id: ev.id,
+        title: ev.title,
+        date: ev.date,
+        time: ev.time || "Niet gespecificeerd",
+        location: ev.location || ev.address || "Steenwijkerland",
+        status: ev.isCancelled ? "Geannuleerd" : "Aangemeld"
+      }));
+
+    // Member documents accessible
+    const accessibleDocsCount = (db.documents || []).filter((d: any) => {
+      if (d.category === "Juridisch & Privacy" || d.isPublic) return true;
+      if (safeUser.isFullMember || safeUser.isLid) return true;
+      return false;
+    }).length;
+
+    const exportPayload = {
+      meta: {
+        exportTitle: "Persoonsgegevens Dossier (AVG / GDPR)",
+        exportTimestamp: new Date().toISOString(),
+        formatVersion: "AVG-GDPR-Art15-Art20-v1",
+        legalBasis: "Algemene Verordening Gegevensbescherming (EU) 2016/679",
+        dataController: {
+          name: "Lijst van Andel",
+          legalForm: "Politieke partij / kiesvereniging Gemeente Steenwijkerland",
+          contactEmail: "privacy@lijstvanandel.nl",
+          website: "https://lijstvanandel.nl",
+          dpoOfficer: "Functionaris Gegevensbescherming Lijst van Andel"
+        }
+      },
+      dataSubject: {
+        id: user.id,
+        username: user.username,
+        salutation: user.salutation || "Niet opgegeven",
+        fullName: user.fullName || "",
+        email: safeUser.email,
+        address: user.address || "Niet opgegeven",
+        city: user.city || "Steenwijkerland",
+        role: user.role || "lid",
+        createdAt: user.createdAt || "2024-01-01T00:00:00.000Z",
+        remarks: user.remarks || ""
+      },
+      membershipAndFinance: {
+        isLid: Boolean(safeUser.isLid),
+        isFullMember: Boolean(safeUser.isFullMember),
+        membershipState: safeUser.membershipState,
+        billingStatus: safeUser.billingStatus,
+        directDebitConsent: Boolean(user.directDebit),
+        paidAmount: user.paidAmount || 0,
+        paidUntil: user.paidUntil || null,
+        statutoryRetentionNotice: "Financiële bijdragen vallen onder de wettelijke fiscale bewaarplicht van 7 jaar conform de Algemene wet inzake rijksbelastingen."
+      },
+      preferencesAndConsents: {
+        newsletterSubscribed: Boolean(safeUser.newsletterSubscribed),
+        processingRestricted: Boolean(user.processingRestricted),
+        processingRestrictedAt: user.processingRestrictedAt || null,
+        restrictionReason: user.restrictionReason || null,
+        agreedToPrivacyPolicy: true,
+        agreedToTerms: true,
+        agreedToProcessingRegulations: true
+      },
+      securityAndAccount: {
+        authenticationMethod: "Wachtwoord beveiligd (bcrypt gezouten hash, niet leesbaar voor beheerders)",
+        twoFactorConfigured: Boolean(user.twoFactorEnabled),
+        accountStatus: user.isActive !== false ? "Actief" : "Inactief"
+      },
+      activityAndEvents: {
+        totalEventsRegistered: userEvents.length,
+        events: userEvents,
+        accessibleDocumentsCount: accessibleDocsCount
+      }
+    };
+
+    // Check if CSV format requested
+    if (req.query.format === "csv") {
+      const csvRows = [
+        ["Categorie", "Veld", "Waarde"],
+        ["Identificatie", "Gebruikers-ID", user.id],
+        ["Identificatie", "Gebruikersnaam", user.username],
+        ["Identificatie", "Aanhef", user.salutation || ""],
+        ["Identificatie", "Volledige naam", user.fullName || ""],
+        ["Identificatie", "E-mailadres", safeUser.email],
+        ["Identificatie", "Adres", user.address || ""],
+        ["Identificatie", "Woonplaats", user.city || ""],
+        ["Identificatie", "Rol", user.role || "lid"],
+        ["Identificatie", "Account aangemaakt op", user.createdAt || ""],
+        ["Lidmaatschap", "Is volwaardig lid", safeUser.isFullMember ? "Ja" : "Nee"],
+        ["Lidmaatschap", "Lidmaatschapsstatus", safeUser.membershipState || "active"],
+        ["Lidmaatschap", "Facturatiestatus", safeUser.billingStatus || "paid"],
+        ["Lidmaatschap", "Automatische incasso", user.directDebit ? "Toegestaan" : "Nee"],
+        ["Voorkeuren", "Nieuwsbrief actief", safeUser.newsletterSubscribed ? "Ja" : "Nee"],
+        ["Voorkeuren", "Verwerking beperkt (opschorting)", user.processingRestricted ? "Ja" : "Nee"],
+        ["Voorkeuren", "Reden opschorting", user.restrictionReason || "Geen"],
+        ["Voorkeuren", "Datum opschorting", user.processingRestrictedAt || ""],
+        ["Activiteit", "Aantal geregistreerde evenementen", String(userEvents.length)],
+        ...userEvents.map((e: any, idx: number) => ["Evenement " + (idx + 1), `${e.title} (${e.date})`, e.location])
+      ];
+
+      const csvContent = "\uFEFF" + csvRows.map(row => 
+        row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(";")
+      ).join("\r\n");
+
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="lijstvanandel-avg-export-${user.username}.csv"`);
+      return res.status(200).send(csvContent);
+    }
+
+    res.status(200).json(exportPayload);
+  });
+
+  // 4. Recht op Beperking van de Verwerking (Tijdelijk opschorten van verwerking)
+  app.patch("/api/me/gdpr/restriction", requireAuth, (req: any, res: any) => {
+    const { restricted, reason } = req.body;
+    const db = getDb();
+    const user = db.users.find((u: any) => u.id === req.user.id);
+    if (!user) return res.status(404).json({ error: "Gebruiker niet gevonden" });
+
+    const isRestricted = Boolean(restricted);
+    user.processingRestricted = isRestricted;
+    user.processingRestrictedAt = isRestricted ? new Date().toISOString() : null;
+    user.restrictionReason = isRestricted ? (reason ? String(reason).trim().slice(0, 500) : "Verzoek lid tot tijdelijke beperking verwerking") : null;
+
+    if (isRestricted) {
+      // Direct halt newsletter mailings during restriction
+      user.newsletterSubscribed = false;
+    }
+
+    saveDb(db);
+
+    const safeUser = getSafeUserWithMembership(user);
+    res.status(200).json({
+      success: true,
+      message: isRestricted
+        ? "De verwerking van uw gegevens is tijdelijk opgeschort conform art. 18 AVG. Automatische communicatie is gepauzeerd."
+        : "De beperking van de verwerking is opgeheven. Uw gegevens worden weer normaal verwerkt.",
+      user: safeUser
+    });
+  });
+
+  // 3. Recht op Gegevenswissing - Selectieve opschoning van niet-essentiële gegevens
+  app.post("/api/me/gdpr/erasure/selective", requireAuth, (req: any, res: any) => {
+    const { clearRemarks, clearEventHistory, unsubscribeNewsletter } = req.body;
+    const db = getDb();
+    const user = db.users.find((u: any) => u.id === req.user.id);
+    if (!user) return res.status(404).json({ error: "Gebruiker niet gevonden" });
+
+    const clearedItems: string[] = [];
+
+    if (clearRemarks) {
+      user.remarks = "";
+      clearedItems.push("persoonlijke opmerkingen/interesses");
+    }
+
+    if (unsubscribeNewsletter) {
+      user.newsletterSubscribed = false;
+      clearedItems.push("nieuwsbriefinschrijving");
+    }
+
+    if (clearEventHistory && Array.isArray(db.events)) {
+      let removedCount = 0;
+      db.events.forEach((ev: any) => {
+        if (Array.isArray(ev.attendees) && ev.attendees.map(String).includes(String(user.id))) {
+          ev.attendees = ev.attendees.filter((uid: string) => String(uid) !== String(user.id));
+          removedCount++;
+        }
+      });
+      clearedItems.push(`${removedCount} bijeenkomst-aanmelding(en)`);
+    }
+
+    saveDb(db);
+
+    const safeUser = getSafeUserWithMembership(user);
+    res.status(200).json({
+      success: true,
+      message: `Niet-essentiële gegevens succesvol gewist: ${clearedItems.join(", ") || "geen wijzigingen"}.`,
+      user: safeUser
+    });
+  });
   app.get("/api/admin/users", requireAuth, requireBoardOrAdmin, (req: any, res: any) => {
     const db = getDb();
     const safeUsers = db.users.map((u: any) => {
@@ -7656,12 +7881,69 @@ async function startServer() {
 
     const current = db.news[index];
     const newViews = (Number(current.podcastViews) || 0) + 1;
+    const stats = current.mediaStats || {
+      video: { starts: 0, p25: 0, p50: 0, p75: 0, p100: 0 },
+      podcast: { starts: newViews, p25: 0, p50: 0, p75: 0, p100: 0 }
+    };
+    if (!stats.podcast) {
+      stats.podcast = { starts: newViews, p25: 0, p50: 0, p75: 0, p100: 0 };
+    } else {
+      stats.podcast.starts = newViews;
+    }
+
     db.news[index] = {
       ...current,
       podcastViews: newViews,
+      mediaStats: stats,
     };
     saveDb(db);
-    res.json({ success: true, podcastViews: newViews });
+    res.json({ success: true, podcastViews: newViews, mediaStats: stats });
+  });
+
+  // Track media playback progress / depth milestones (start, 25%, 50%, 75%, 100% ThruPlay)
+  app.post("/api/news/:id/media-progress", (req: any, res: any) => {
+    const db = getDb();
+    const index = db.news.findIndex((n: any) => n.id === req.params.id);
+    if (index === -1) return res.status(404).json({ error: "Nieuws niet gevonden" });
+
+    const { mediaType = "podcast", milestone = "start" } = req.body;
+    const current = db.news[index];
+
+    // Ensure mediaStats structure
+    const stats = current.mediaStats || {
+      video: { starts: 0, p25: 0, p50: 0, p75: 0, p100: 0 },
+      podcast: { starts: Number(current.podcastViews) || 0, p25: 0, p50: 0, p75: 0, p100: 0 }
+    };
+
+    const targetType: "video" | "podcast" = mediaType === "video" ? "video" : "podcast";
+    if (!stats[targetType]) {
+      stats[targetType] = { starts: 0, p25: 0, p50: 0, p75: 0, p100: 0 };
+    }
+
+    if (milestone === "start") {
+      stats[targetType].starts = (Number(stats[targetType].starts) || 0) + 1;
+      if (targetType === "podcast") {
+        current.podcastViews = stats.podcast.starts;
+      }
+    } else if (milestone === "p25") {
+      stats[targetType].p25 = (Number(stats[targetType].p25) || 0) + 1;
+    } else if (milestone === "p50") {
+      stats[targetType].p50 = (Number(stats[targetType].p50) || 0) + 1;
+    } else if (milestone === "p75") {
+      stats[targetType].p75 = (Number(stats[targetType].p75) || 0) + 1;
+    } else if (milestone === "p100") {
+      stats[targetType].p100 = (Number(stats[targetType].p100) || 0) + 1;
+    }
+
+    current.mediaStats = stats;
+    db.news[index] = current;
+    saveDb(db);
+
+    res.json({
+      success: true,
+      mediaStats: stats,
+      podcastViews: current.podcastViews || stats.podcast?.starts || 0
+    });
   });
 
   app.patch("/api/admin/news/:id/toggle-visibility", requireAuth, requireAdmin, (req: any, res: any) => {
@@ -10128,6 +10410,54 @@ async function startServer() {
     } catch (err: any) {
       console.error("[API MEMBER-DOCUMENTS/:id ERROR]", err);
       res.status(500).json({ error: "Fout bij ophalen van document: " + (err?.message || err) });
+    }
+  });
+
+  // ==================== PUBLIEKE JURIDISCHE DOCUMENTEN ====================
+  // Public access to legal documents (Privacyverklaring, Algemene Voorwaarden, Verwerkingsreglement)
+  app.get(["/api/public/documents/legal", "/api/public/documents/legal/:type"], (req: any, res: any) => {
+    try {
+      const db = getDb();
+      const type = (req.params.type || req.query.type || "").toString().toLowerCase().trim();
+      const allDocs = Array.isArray(db.documents) ? db.documents : [];
+      const legalDocs = allDocs.filter((d: any) => {
+        const cat = (d.category || "").toLowerCase();
+        return (
+          cat.includes("juridisch") ||
+          cat.includes("privacy") ||
+          cat.includes("voorwaarden") ||
+          cat.includes("reglement")
+        );
+      });
+
+      if (type) {
+        const match = legalDocs.find((d: any) => {
+          const t = (d.title || "").toLowerCase();
+          const id = (d.id || "").toLowerCase();
+          if (type.includes("privacy")) return t.includes("privacy") || id.includes("privacy");
+          if (type.includes("voorwaarden") || type.includes("algemeen")) return t.includes("voorwaarden") || id.includes("voorwaarden");
+          if (type.includes("verwerking") || type.includes("reglement")) return t.includes("verwerking") || id.includes("verwerking");
+          return t.includes(type) || id.includes(type);
+        });
+
+        if (match) return res.json(match);
+
+        // Fallback to static legal document if not found in db
+        const fallback = Object.values(LEGAL_DOCUMENTS).find((d) => {
+          const t = d.title.toLowerCase();
+          const id = d.id.toLowerCase();
+          if (type.includes("privacy")) return t.includes("privacy") || id.includes("privacy");
+          if (type.includes("voorwaarden") || type.includes("algemeen")) return t.includes("voorwaarden") || id.includes("voorwaarden");
+          if (type.includes("verwerking") || type.includes("reglement")) return t.includes("verwerking") || id.includes("verwerking");
+          return t.includes(type) || id.includes(type);
+        });
+        return res.json(fallback || null);
+      }
+
+      res.json(legalDocs.length > 0 ? legalDocs : Object.values(LEGAL_DOCUMENTS));
+    } catch (err: any) {
+      console.error("[API LEGAL-DOCUMENTS ERROR]", err);
+      res.status(500).json({ error: "Fout bij ophalen van juridische documenten: " + (err?.message || err) });
     }
   });
 

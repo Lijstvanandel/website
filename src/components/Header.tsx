@@ -159,24 +159,24 @@ export const Header = () => {
     <>
       <header className="sticky top-0 z-40 backdrop-blur-md bg-background/95 border-b border-accent/20 w-full transition-colors">
         {/* Full-width responsive container giving optimal space without overflowing */}
-        <div className="w-full max-w-[1720px] mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 flex items-center justify-between h-16 sm:h-20 lg:h-22 gap-2 sm:gap-3 lg:gap-4">
+        <div className="w-full max-w-[1720px] mx-auto px-3 sm:px-4 xl:px-6 2xl:px-8 flex items-center justify-between h-16 sm:h-18 lg:h-20 gap-2 sm:gap-3 xl:gap-4">
           
           {/* Left Side: Logo & Brand Name + Desktop Navigation */}
-          <div className="flex items-center gap-2.5 sm:gap-4 lg:gap-4 xl:gap-6 min-w-0 shrink">
+          <div className="flex items-center gap-2 sm:gap-3 xl:gap-4 2xl:gap-6 min-w-0 shrink">
             {portalConfig.isPortalMode ? (
               // Neutral Council Portal Mode (Hoogeveen)
               <Link
                 to="/raadspaneel"
-                className="flex items-center gap-2.5 sm:gap-3 group shrink-0 select-none"
+                className="flex items-center gap-2 sm:gap-2.5 group shrink-0 select-none"
               >
-                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-accent/15 border border-accent/35 flex items-center justify-center text-accent shadow-sm group-hover:scale-105 transition-transform">
-                  <Building2 className="w-5 h-5 sm:w-6 sm:h-6" />
+                <div className="w-9 h-9 sm:w-10 sm:h-10 xl:w-11 xl:h-11 rounded-xl bg-accent/15 border border-accent/35 flex items-center justify-center text-accent shadow-sm group-hover:scale-105 transition-transform">
+                  <Building2 className="w-4.5 h-4.5 sm:w-5 sm:h-5 xl:w-5.5 xl:h-5.5" />
                 </div>
                 <div className="leading-tight flex-1 min-w-0">
-                  <div className="font-display text-base sm:text-lg lg:text-xl tracking-wide text-foreground whitespace-nowrap">
+                  <div className="font-display text-sm sm:text-base xl:text-lg 2xl:text-xl tracking-wide text-foreground whitespace-nowrap">
                     {portalConfig.portalTitle}
                   </div>
-                  <div className="text-[9.5px] sm:text-[10px] uppercase tracking-wider font-semibold text-accent whitespace-nowrap">
+                  <div className="text-[8.5px] sm:text-[9.5px] xl:text-[10px] uppercase tracking-wider font-semibold text-accent whitespace-nowrap">
                     {portalConfig.portalSubtitle}
                   </div>
                 </div>
@@ -185,15 +185,15 @@ export const Header = () => {
               // Full Party Website (Lijst van Andel Steenwijkerland)
               <Link
                 to="/"
-                className="flex items-center gap-2 sm:gap-2.5 group shrink-0 select-none w-[190px] sm:w-[230px] lg:w-[270px] xl:w-[310px]"
+                className="flex items-center gap-2 sm:gap-2.5 group shrink-0 select-none max-w-fit"
               >
                 <img
                   src={logo}
                   alt="Lijst van Andel logo"
-                  className="w-10 h-10 sm:w-12 sm:h-12 lg:w-14 lg:h-14 xl:w-16 xl:h-16 rounded-full object-cover transition-transform duration-300 group-hover:scale-105 shrink-0 shadow-sm ring-1 ring-accent/30"
+                  className="w-9 h-9 sm:w-10 sm:h-10 xl:w-11 xl:h-11 2xl:w-12 2xl:h-12 rounded-full object-cover transition-transform duration-300 group-hover:scale-105 shrink-0 shadow-sm ring-1 ring-accent/30"
                 />
                 <div className="leading-tight flex-1 min-w-0">
-                  <div className="font-display text-base sm:text-lg lg:text-xl xl:text-2xl tracking-wide text-foreground whitespace-nowrap">
+                  <div className="font-display text-sm sm:text-base xl:text-lg 2xl:text-xl tracking-wide text-foreground whitespace-nowrap">
                     Lijst van Andel
                   </div>
                   <div className="h-4 sm:h-4.5 overflow-visible flex items-center">
@@ -204,7 +204,7 @@ export const Header = () => {
                         animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
                         exit={{ opacity: 0, y: -7, filter: "blur(2px)" }}
                         transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-                        className="text-[8.5px] sm:text-[9.5px] lg:text-[10px] xl:text-[10.5px] uppercase tracking-[0.08em] sm:tracking-[0.10em] xl:tracking-[0.12em] font-semibold text-accent whitespace-nowrap"
+                        className="text-[8px] sm:text-[9px] xl:text-[9.5px] 2xl:text-[10.5px] uppercase tracking-[0.08em] sm:tracking-[0.10em] xl:tracking-[0.12em] font-semibold text-accent whitespace-nowrap"
                         title={currentSubtitle}
                       >
                         {currentSubtitle}
@@ -218,7 +218,7 @@ export const Header = () => {
             {/* Desktop Navigation starting cleanly on the left */}
             {portalConfig.isPortalMode ? (
               // Dedicated Council Navigation Tabs in Portal Mode
-              <nav className="hidden lg:flex items-center gap-1 xl:gap-2 shrink">
+              <nav className={`hidden xl:flex items-center gap-0.5 xl:gap-1 2xl:gap-2 shrink transition-opacity duration-150 ${isSearchOpen ? "hidden 2xl:flex opacity-60" : "opacity-100"}`}>
                 {portalNavItems.map((item) => {
                   const hasTab = item.to.includes("tab=");
                   const targetTab = hasTab ? item.to.split("tab=")[1] : null;
@@ -233,7 +233,7 @@ export const Header = () => {
                     <NavLink
                       key={item.to}
                       to={targetUrl}
-                      className={`px-2.5 xl:px-3.5 py-1.5 text-xs xl:text-sm uppercase tracking-wider font-medium transition-colors relative whitespace-nowrap ${
+                      className={`px-2 xl:px-2.5 2xl:px-3.5 py-1.5 text-xs xl:text-[12.5px] 2xl:text-sm uppercase tracking-wider font-medium transition-colors relative whitespace-nowrap ${
                         isActive ? "text-accent font-semibold" : "text-foreground/85 hover:text-accent"
                       }`}
                     >
@@ -247,11 +247,11 @@ export const Header = () => {
               </nav>
             ) : (
               // Standard Party Nav Items
-              <nav className="hidden lg:flex items-center gap-0.5 xl:gap-1 2xl:gap-2 shrink">
+              <nav className={`hidden xl:flex items-center gap-0.5 xl:gap-1 2xl:gap-2 shrink transition-opacity duration-150 ${isSearchOpen ? "hidden 2xl:flex opacity-60" : "opacity-100"}`}>
                 {/* Mensen Dropdown */}
                 <DropdownMenu>
                   <DropdownMenuTrigger
-                    className={`px-2 xl:px-3 py-1.5 text-xs xl:text-sm uppercase tracking-wider font-medium transition-colors relative inline-flex items-center gap-1 outline-none whitespace-nowrap ${
+                    className={`px-2 xl:px-2.5 2xl:px-3 py-1.5 text-xs xl:text-[12.5px] 2xl:text-sm uppercase tracking-wider font-medium transition-colors relative inline-flex items-center gap-1 outline-none whitespace-nowrap ${
                       partijActive ? "text-accent" : "text-foreground/85 hover:text-accent"
                     }`}
                   >
@@ -279,16 +279,14 @@ export const Header = () => {
                   </DropdownMenuContent>
                 </DropdownMenu>
 
-                {/* Standard Nav Items - Contact is hidden when search is open */}
-                {navItems
-                  .filter((item) => (isSearchOpen && item.to === "/contact" ? false : true))
-                  .map((item) => (
+                {/* Standard Nav Items */}
+                {navItems.map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}
                     end={item.to === "/"}
                     className={({ isActive }) =>
-                      `px-2 xl:px-3 py-1.5 text-xs xl:text-sm uppercase tracking-wider font-medium transition-colors relative whitespace-nowrap ${
+                      `px-2 xl:px-2.5 2xl:px-3 py-1.5 text-xs xl:text-[12.5px] 2xl:text-sm uppercase tracking-wider font-medium transition-colors relative whitespace-nowrap ${
                         isActive ? "text-accent font-semibold" : "text-foreground/85 hover:text-accent"
                       }`
                     }
@@ -308,12 +306,12 @@ export const Header = () => {
           </div>
 
           {/* Right-side Actions & Authentication Controls */}
-          <div className="flex items-center gap-1 sm:gap-1.5 lg:gap-1.5 xl:gap-2 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-1.5 xl:gap-2 shrink-0">
             {/* 1. Word lid / Registreren Button */}
             {!isAuthenticated && (
-              <Link to="/registreren" className="hidden sm:inline-flex">
+              <Link to="/registreren" className="hidden sm:inline-flex shrink-0">
                 <Button
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground border border-accent/40 uppercase tracking-wider text-xs font-semibold px-2.5 xl:px-3 h-8 sm:h-9 whitespace-nowrap shrink-0 shadow-sm"
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground border border-accent/40 uppercase tracking-wider text-xs font-semibold px-2 xl:px-2.5 2xl:px-3 h-8 sm:h-9 whitespace-nowrap shrink-0 shadow-sm"
                 >
                   <UserPlus className="w-3.5 h-3.5 mr-1" />
                   <span>{portalConfig.isPortalMode ? "Registreren" : "Word lid"}</span>
@@ -331,7 +329,7 @@ export const Header = () => {
                   <Link to={portalConfig.isPortalMode ? "/raadspaneel" : "/dashboard"}>
                     <Button
                       variant="outline"
-                      className="border-accent/40 text-accent hover:bg-accent/15 uppercase tracking-wider text-xs font-semibold px-2 xl:px-3 h-8 sm:h-9 whitespace-nowrap"
+                      className="border-accent/40 text-accent hover:bg-accent/15 uppercase tracking-wider text-xs font-semibold px-2 xl:px-2.5 2xl:px-3 h-8 sm:h-9 whitespace-nowrap"
                     >
                       {portalConfig.isPortalMode ? (
                         <>
@@ -360,7 +358,7 @@ export const Header = () => {
               <Link to="/login" className="hidden sm:inline-flex shrink-0">
                 <Button
                   variant="ghost"
-                  className="border border-accent/40 text-foreground hover:text-accent hover:bg-accent/10 uppercase tracking-wider text-xs font-semibold px-2.5 xl:px-3.5 h-8 sm:h-9 whitespace-nowrap"
+                  className="border border-accent/40 text-foreground hover:text-accent hover:bg-accent/10 uppercase tracking-wider text-xs font-semibold px-2 xl:px-2.5 2xl:px-3 h-8 sm:h-9 whitespace-nowrap"
                 >
                   <Lock className="w-3.5 h-3.5 mr-1 text-accent" />
                   Login
@@ -368,14 +366,102 @@ export const Header = () => {
               </Link>
             )}
 
-            <div className="hidden xl:block w-[1px] h-5 bg-border mx-0.5" />
+            <div className="hidden 2xl:block w-[1px] h-5 bg-border mx-0.5" />
 
             {/* Globale Zoekfunctie (Nieuws, Standpunten, Agenda) */}
             <GlobalSearchNav isOpen={isSearchOpen} onOpenChange={setIsSearchOpen} />
 
-            {/* 4. Tekstgrootte vergroten & verkleinen knoppen (zichtbaar op md+) */}
+            {/* 4a. Compact Tekstgrootte Dropdown op laptop/tablet schermen (sm tot 2xl) */}
+            <div className="hidden sm:inline-flex 2xl:hidden shrink-0">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className={`h-8 sm:h-9 px-2 inline-flex items-center justify-center gap-1 rounded-sm border text-xs font-bold transition-all shrink-0 ${
+                      fontSize !== 100
+                        ? "border-accent bg-accent text-accent-foreground shadow-sm"
+                        : "border-accent/40 text-accent hover:bg-accent hover:text-accent-foreground"
+                    }`}
+                    title={`Tekstgrootte: ${fontSize}%. Klik voor opties.`}
+                    aria-label={`Tekstgrootte aanpassen (huidig: ${fontSize}%)`}
+                  >
+                    <span className="font-display text-xs">A</span>
+                    {fontSize !== 100 && (
+                      <span className="text-[10px] font-mono leading-none">{fontSize}%</span>
+                    )}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56 bg-background border-accent/30 shadow-xl p-2 z-50">
+                  <div className="px-2 py-1.5 border-b border-border/60 mb-1.5">
+                    <div className="text-xs font-semibold text-foreground flex items-center justify-between">
+                      <span>Tekstgrootte</span>
+                      {fontSize !== 100 && (
+                        <button
+                          onClick={resetFontSize}
+                          className="text-[10px] text-accent hover:underline uppercase tracking-wider font-semibold"
+                        >
+                          Herstel
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      Geldt direct voor de volledige website.
+                    </p>
+                  </div>
+
+                  {/* Quick A- / A+ Row */}
+                  <div className="flex items-center justify-between px-2 py-1 mb-1.5 bg-muted/40 rounded">
+                    <button
+                      type="button"
+                      onClick={decreaseFontSize}
+                      disabled={fontSize <= 85}
+                      className="px-2.5 py-1 text-xs font-bold text-accent hover:bg-accent/20 rounded disabled:opacity-30 cursor-pointer"
+                      title="Verkleinen (A-)"
+                    >
+                      A-
+                    </button>
+                    <span className="text-xs font-bold text-foreground">{fontSize}%</span>
+                    <button
+                      type="button"
+                      onClick={increaseFontSize}
+                      disabled={fontSize >= 145}
+                      className="px-2.5 py-1 text-xs font-bold text-accent hover:bg-accent/20 rounded disabled:opacity-30 cursor-pointer"
+                      title="Vergroten (A+)"
+                    >
+                      A+
+                    </button>
+                  </div>
+
+                  <div className="space-y-1">
+                    {[
+                      { size: 85, label: "Compact (85%)" },
+                      { size: 100, label: "Standaard (100%)" },
+                      { size: 115, label: "Groot (115%)" },
+                      { size: 130, label: "Extra groot (130%)" },
+                      { size: 145, label: "Maximaal (145%)" },
+                    ].map((item) => (
+                      <button
+                        key={item.size}
+                        type="button"
+                        onClick={() => setFontSize(item.size)}
+                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded text-xs transition-colors cursor-pointer ${
+                          fontSize === item.size
+                            ? "bg-accent/20 text-accent font-semibold"
+                            : "hover:bg-accent/10 text-foreground"
+                        }`}
+                      >
+                        <span>{item.label}</span>
+                        {fontSize === item.size && <Check className="w-3.5 h-3.5 text-accent" />}
+                      </button>
+                    ))}
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
+            {/* 4b. Volledige Tekstgrootte balk (zichtbaar op ultra-wide 2xl+) */}
             <div
-              className="hidden md:inline-flex items-center rounded-sm border border-accent/40 bg-background/60 h-8 sm:h-9 p-0.5 shrink-0 shadow-2xs"
+              className="hidden 2xl:inline-flex items-center rounded-sm border border-accent/40 bg-background/60 h-8 sm:h-9 p-0.5 shrink-0 shadow-2xs"
               title="Tekstgrootte aanpassen voor de hele website"
             >
               <button
@@ -457,8 +543,8 @@ export const Header = () => {
               </button>
             </div>
 
-            {/* 5. Kleurcontrast voor kleurenblindheid knop (zichtbaar op md+) */}
-            <div className="hidden md:inline-flex shrink-0">
+            {/* 5. Kleurcontrast voor kleurenblindheid knop (zichtbaar op sm+) */}
+            <div className="hidden sm:inline-flex shrink-0">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
@@ -567,7 +653,7 @@ export const Header = () => {
             {/* Mobile Hamburger Menu Button */}
             <button
               onClick={() => setMobileOpen(!mobileOpen)}
-              className="lg:hidden p-1.5 sm:p-2 text-foreground rounded-md hover:bg-accent/10 transition-colors shrink-0"
+              className="xl:hidden p-1.5 sm:p-2 text-foreground rounded-md hover:bg-accent/10 transition-colors shrink-0"
               aria-label="Menu"
             >
               {mobileOpen ? <X className="w-5 h-5 sm:w-6 sm:h-6" /> : <Menu className="w-5 h-5 sm:w-6 sm:h-6" />}
@@ -577,7 +663,7 @@ export const Header = () => {
 
         {/* Mobile Dropdown Navigation Drawer */}
         {mobileOpen && (
-          <div className="lg:hidden border-t border-accent/20 bg-background/98 backdrop-blur-md shadow-2xl animate-in slide-in-from-top-2 duration-200">
+          <div className="xl:hidden border-t border-accent/20 bg-background/98 backdrop-blur-md shadow-2xl animate-in slide-in-from-top-2 duration-200">
             <nav className="max-w-[1720px] mx-auto px-5 py-5 flex flex-col gap-1.5">
               {/* Portal Mode Navigation Links vs Standard Party Navigation */}
               {portalConfig.isPortalMode ? (

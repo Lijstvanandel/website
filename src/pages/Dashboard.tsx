@@ -62,6 +62,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { PrivacyRightsManager } from "@/components/PrivacyRightsManager";
 
 interface EventItem {
   id: string;
@@ -112,16 +113,6 @@ export default function Dashboard() {
 
   // Edit Profile / Registration Data Modal State
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
-  const [isSavingProfile, setIsSavingProfile] = useState(false);
-  const [profileSalutation, setProfileSalutation] = useState(user?.salutation || "Dhr.");
-  const [profileFullName, setProfileFullName] = useState(user?.fullName || "");
-  const [profileEmail, setProfileEmail] = useState(user?.email || (user?.username?.includes("@") ? user?.username : ""));
-  const [profileAddress, setProfileAddress] = useState(user?.address || "");
-  const [profileCity, setProfileCity] = useState(user?.city || "");
-  const [profileUsername, setProfileUsername] = useState(user?.username || "");
-  const [profilePassword, setProfilePassword] = useState("");
-  const [profileRemarks, setProfileRemarks] = useState(user?.remarks || "");
-  const [profileDirectDebit, setProfileDirectDebit] = useState(user?.directDebit || false);
 
   // Account Verwijderen State
   const [isDeleteAccountOpen, setIsDeleteAccountOpen] = useState(false);
@@ -165,18 +156,10 @@ export default function Dashboard() {
   }, [token]);
 
   useEffect(() => {
-    if (user && !isEditProfileOpen) {
-      setProfileSalutation(user.salutation || "Dhr.");
-      setProfileFullName(user.fullName || "");
-      setProfileEmail(user.email || (user.username?.includes("@") ? user.username : ""));
-      setProfileAddress(user.address || "");
-      setProfileCity(user.city || "");
-      setProfileUsername(user.username || "");
-      setProfileRemarks(user.remarks || "");
-      setProfileDirectDebit(user.directDebit || false);
+    if (user) {
       setEmailInput(user.email || (user.username?.includes("@") ? user.username : ""));
     }
-  }, [user, isEditProfileOpen]);
+  }, [user]);
 
   // Haal evenementen op voor de ingelogde gebruiker
   useEffect(() => {
@@ -351,66 +334,6 @@ export default function Dashboard() {
   if (!user) {
     return <Navigate to="/login" replace />;
   }
-
-  // Handle Profile Update Submission
-  const handleSaveProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!token) return;
-
-    if (!profileFullName.trim()) {
-      toast.error("Volledige naam is verplicht");
-      return;
-    }
-    if (!profileEmail.trim() || !profileEmail.includes("@")) {
-      toast.error("Voer een geldig e-mailadres in");
-      return;
-    }
-    if (!profileUsername.trim() || profileUsername.trim().length < 3) {
-      toast.error("Gebruikersnaam moet minimaal 3 tekens bevatten");
-      return;
-    }
-    if (profilePassword && profilePassword.trim().length < 6) {
-      toast.error("Wachtwoord moet minimaal 6 tekens zijn");
-      return;
-    }
-
-    setIsSavingProfile(true);
-    try {
-      const res = await fetch("/api/me/profile", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          salutation: profileSalutation,
-          fullName: profileFullName.trim(),
-          email: profileEmail.trim(),
-          address: profileAddress.trim(),
-          city: profileCity.trim(),
-          username: profileUsername.trim(),
-          password: profilePassword.trim() || undefined,
-          remarks: profileRemarks.trim(),
-          directDebit: profileDirectDebit,
-        }),
-      });
-
-      const data = await safeJson(res, {});
-      if (!res.ok) {
-        throw new Error(data.error || "Kon gegevens niet opslaan");
-      }
-
-      updateUser(data.user, data.token);
-      setProfilePassword("");
-      setIsEditProfileOpen(false);
-      toast.success("Uw registratiegegevens zijn succesvol bijgewerkt!");
-    } catch (err: unknown) {
-      const error = err as Error;
-      toast.error(error.message || "Er is een fout opgetreden bij het bijwerken van uw gegevens");
-    } finally {
-      setIsSavingProfile(false);
-    }
-  };
 
   // Handle Account Deletion
   const handleDeleteAccount = async () => {
@@ -1425,6 +1348,28 @@ export default function Dashboard() {
                   <UserCog className="w-3.5 h-3.5 mr-1.5 text-accent" />
                   Mijn Registratiegegevens Bewerken
                 </Button>
+
+                {/* Directe AVG & Privacyrechten Zelfservice Koppeling */}
+                <div className="mt-3 pt-3 border-t border-border/60">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditProfileOpen(true)}
+                    className="w-full p-2.5 rounded-xl bg-accent/5 border border-accent/20 hover:bg-accent/10 transition-colors text-left flex items-center justify-between group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-accent shrink-0" />
+                      <div>
+                        <span className="text-xs font-semibold text-foreground group-hover:text-accent transition-colors block">
+                          AVG &amp; Privacyrechten Zelfservice
+                        </span>
+                        <span className="text-[11px] text-muted-foreground block">
+                          Inzage, rectificatie, dataportabiliteit, wissing &amp; opschorting
+                        </span>
+                      </div>
+                    </div>
+                    <ArrowRight className="w-3.5 h-3.5 text-accent group-hover:translate-x-0.5 transition-transform" />
+                  </button>
+                </div>
               </section>
             </div>
           </div>
@@ -1432,207 +1377,11 @@ export default function Dashboard() {
       </div>
 
       {/* ============================================================ */}
-      {/* DIALOG 1: REGISTRATIEGEGEVENS WIJZIGEN */}
+      {/* DIALOG 1: REGISTRATIEGEGEVENS WIJZIGEN & AVG ZELFSERVICE */}
       {/* ============================================================ */}
       <Dialog open={isEditProfileOpen} onOpenChange={setIsEditProfileOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-2xl font-display flex items-center gap-2.5">
-              <UserCog className="w-6 h-6 text-accent" />
-              <span>Registratiegegevens Wijzigen</span>
-            </DialogTitle>
-            <DialogDescription>
-              Pas hier uw persoonsgegevens, woonplaats, e-mailadres en wachtwoord aan.
-            </DialogDescription>
-          </DialogHeader>
-
-          <form onSubmit={handleSaveProfile} className="space-y-4 py-2">
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="text-xs font-semibold text-foreground block mb-1">
-                  Aanhef
-                </label>
-                <Select value={profileSalutation} onValueChange={setProfileSalutation}>
-                  <SelectTrigger className="h-9 text-xs sm:text-sm">
-                    <SelectValue placeholder="Aanhef" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Dhr.">Dhr.</SelectItem>
-                    <SelectItem value="Mevr.">Mevr.</SelectItem>
-                    <SelectItem value="Anders">Anders</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="col-span-2">
-                <label className="text-xs font-semibold text-foreground block mb-1">
-                  Volledige naam *
-                </label>
-                <Input
-                  value={profileFullName}
-                  onChange={(e) => setProfileFullName(e.target.value)}
-                  placeholder="Voor- en achternaam"
-                  className="h-9 text-xs sm:text-sm"
-                  required
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-foreground block mb-1">
-                E-mailadres *
-              </label>
-              <Input
-                type="email"
-                value={profileEmail}
-                onChange={(e) => setProfileEmail(e.target.value)}
-                placeholder="uw.email@voorbeeld.nl"
-                className="h-9 text-xs sm:text-sm"
-                required
-              />
-              <span className="text-[11px] text-muted-foreground block mt-0.5">
-                Hierop ontvangt u belangrijke ledencorrespondentie.
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-semibold text-foreground block mb-1">
-                  Adres (Straat & nr)
-                </label>
-                <Input
-                  value={profileAddress}
-                  onChange={(e) => setProfileAddress(e.target.value)}
-                  placeholder="Kerkstraat 12"
-                  className="h-9 text-xs sm:text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-foreground block mb-1">
-                  Woonplaats
-                </label>
-                <Input
-                  value={profileCity}
-                  onChange={(e) => setProfileCity(e.target.value)}
-                  placeholder="Steenwijk, Oldemarkt..."
-                  className="h-9 text-xs sm:text-sm"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border/50">
-              <div>
-                <label className="text-xs font-semibold text-foreground block mb-1">
-                  Gebruikersnaam *
-                </label>
-                <Input
-                  value={profileUsername}
-                  onChange={(e) => setProfileUsername(e.target.value)}
-                  placeholder="Gebruikersnaam"
-                  className="h-9 text-xs sm:text-sm"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-foreground block mb-1">
-                  Nieuw Wachtwoord
-                </label>
-                <Input
-                  type="password"
-                  value={profilePassword}
-                  onChange={(e) => setProfilePassword(e.target.value)}
-                  placeholder="Alleen bij wijziging"
-                  className="h-9 text-xs sm:text-sm"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-foreground block mb-1">
-                Opmerkingen / Interessegebieden (optioneel)
-              </label>
-              <Textarea
-                value={profileRemarks}
-                onChange={(e) => setProfileRemarks(e.target.value)}
-                placeholder="Bijv. interesse in woningbouw, buitengebied, cultuur..."
-                rows={2}
-                className="text-xs sm:text-sm"
-              />
-            </div>
-
-            <div className="flex items-start space-x-3 p-3 rounded-xl border border-border bg-muted/20">
-              <Checkbox
-                id="directDebitCheck"
-                checked={profileDirectDebit}
-                onCheckedChange={(c) => setProfileDirectDebit(Boolean(c))}
-              />
-              <div className="space-y-0.5 leading-none">
-                <label
-                  htmlFor="directDebitCheck"
-                  className="text-xs font-semibold text-foreground cursor-pointer"
-                >
-                  Automatische incasso (contributie)
-                </label>
-                <p className="text-[11px] text-muted-foreground">
-                  Toestemming voor automatische incasso van de jaarlijkse partijbijdrage.
-                </p>
-              </div>
-            </div>
-
-            {/* Account Verwijderen Optie */}
-            <div className="pt-3 border-t border-border/70">
-              <div className="p-3.5 rounded-xl border border-destructive/30 bg-destructive/5 space-y-2">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div>
-                    <span className="text-xs font-semibold text-destructive flex items-center gap-1.5">
-                      <Trash2 className="w-3.5 h-3.5" /> Account Verwijderen
-                    </span>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                      Wilt u uw account definitief opheffen? Al uw gegevens en agenda-aanmeldingen worden gewist.
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsDeleteAccountOpen(true)}
-                    className="text-xs text-destructive hover:text-destructive-foreground hover:bg-destructive border-destructive/40 shrink-0 h-8 px-3"
-                  >
-                    Account verwijderen
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2.5 pt-4 border-t border-border">
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setIsEditProfileOpen(false)}
-                className="text-xs h-9"
-              >
-                Annuleren
-              </Button>
-              <Button
-                type="submit"
-                disabled={isSavingProfile}
-                className="bg-accent text-accent-foreground font-semibold text-xs h-9"
-              >
-                {isSavingProfile ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                    Opslaan...
-                  </>
-                ) : (
-                  <>
-                    <Check className="w-3.5 h-3.5 mr-1.5" />
-                    Gegevens Opslaan
-                  </>
-                )}
-              </Button>
-            </div>
-          </form>
+        <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto p-4 sm:p-6">
+          <PrivacyRightsManager onClose={() => setIsEditProfileOpen(false)} />
         </DialogContent>
       </Dialog>
 

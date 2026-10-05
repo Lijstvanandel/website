@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { Link } from "react-router-dom";
 import { fetchWithAuth } from "@/lib/api";
 import {
   FileText,
@@ -17,6 +18,9 @@ import {
   Clock,
   RotateCw,
   FileCheck,
+  ExternalLink,
+  Globe,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +36,7 @@ import {
 import { toast } from "sonner";
 import { MemberDocument } from "@/types/document";
 import { SecureDocumentViewer } from "./SecureDocumentViewer";
+import { LEGAL_DOCUMENTS } from "@/data/legalDocuments";
 
 interface DocumentManagerProps {
   token: string | null;
@@ -50,15 +55,34 @@ const DEFAULT_CATEGORIES = [
   "Fractie & Beraad",
   "Campagne & Strategie",
   "Ledenraadpleging",
+  "Juridisch & Privacy",
   "Algemeen",
 ];
 
 const CONFIDENTIALITY_LEVELS = [
+  "Openbaar / Publiek",
   "Vertrouwelijk - Alleen Leden",
   "Strikt Vertrouwelijk",
   "Intern Concept",
   "Bestuur & Fractie",
 ];
+
+function getPublicDocumentUrl(doc: MemberDocument): string | null {
+  const cat = (doc.category || "").toLowerCase();
+  const title = (doc.title || "").toLowerCase();
+  const id = (doc.id || "").toLowerCase();
+  if (
+    cat.includes("juridisch") ||
+    cat.includes("privacy") ||
+    cat.includes("voorwaarden") ||
+    cat.includes("reglement")
+  ) {
+    if (title.includes("privacy") || id.includes("privacy")) return "/privacyverklaring";
+    if (title.includes("voorwaarden") || id.includes("voorwaarden")) return "/algemene-voorwaarden";
+    if (title.includes("verwerking") || id.includes("verwerking") || title.includes("reglement")) return "/verwerkingsreglement";
+  }
+  return null;
+}
 
 export const DocumentManager: React.FC<DocumentManagerProps> = ({ token, currentUser }) => {
   const [documents, setDocuments] = useState<MemberDocument[]>([]);
@@ -445,6 +469,11 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ token, current
                     <span className="px-2 py-0.5 rounded-md text-[10px] bg-muted border border-border text-muted-foreground">
                       {doc.category}
                     </span>
+                    {getPublicDocumentUrl(doc) && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                        <Globe className="w-2.5 h-2.5" /> Gekoppeld aan website
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-muted-foreground line-clamp-2">
                     {doc.description}
@@ -467,6 +496,22 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ token, current
 
               {/* Action Buttons */}
               <div className="flex items-center gap-2 shrink-0 self-end md:self-center pt-2 md:pt-0 border-t md:border-t-0 border-border/60 w-full md:w-auto justify-end">
+                {getPublicDocumentUrl(doc) && (
+                  <Link
+                    to={getPublicDocumentUrl(doc)!}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 text-xs h-8 gap-1.5"
+                      title="Bekijk live pagina op de website"
+                    >
+                      <Globe className="w-3.5 h-3.5" /> Website
+                    </Button>
+                  </Link>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
@@ -474,7 +519,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ token, current
                   className="border-accent/40 text-accent hover:bg-accent/10 text-xs h-8 gap-1.5"
                   title="Bekijk hoe leden dit document zien (inclusief knipprogramma-beveiliging)"
                 >
-                  <Eye className="w-3.5 h-3.5" /> Veilig Testen / Inzien
+                  <Eye className="w-3.5 h-3.5" /> Veilig Inzien
                 </Button>
                 <Button
                   variant="outline"
@@ -511,9 +556,92 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ token, current
               {activeDoc ? "Document Bewerken" : "Nieuw Exclusief Document Toevoegen"}
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Documenten worden uitsluitend getoond aan ingelogde leden en worden geopend in de beveiligde viewer (zonder downloadoptie en met automatische schermmaskering).
+              {category === "Juridisch & Privacy"
+                ? "Documenten in de categorie 'Juridisch & Privacy' worden direct live getoond op de openbare websitepagina's (/privacyverklaring, /algemene-voorwaarden en /verwerkingsreglement) én zijn inzichtelijk in het ledenportaal."
+                : "Documenten worden getoond aan ingelogde leden en worden geopend in de beveiligde lezersmodus (zonder downloadoptie en met automatische schermmaskering)."}
             </DialogDescription>
           </DialogHeader>
+
+          {/* Quick Template Picker for Juridisch & Privacy */}
+          {category === "Juridisch & Privacy" && !activeDoc && (
+            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 text-xs space-y-2">
+              <div className="flex items-center gap-1.5 font-semibold text-emerald-700 dark:text-emerald-300">
+                <Sparkles className="w-4 h-4 text-emerald-600" />
+                <span>Snel sjabloon invullen voor de openbare websitepagina's:</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const t = LEGAL_DOCUMENTS.privacyverklaring;
+                    setTitle(t.title);
+                    setDescription(t.description);
+                    setCategory(t.category);
+                    setConfidentiality(t.confidentiality);
+                    setAuthor(t.author);
+                    setContent(t.content);
+                    setDate(t.date);
+                    setFileName(t.fileName || "");
+                    setFileUrl(t.fileUrl || "");
+                    setFileSize(t.fileSize || "420 KB");
+                    setPageCount(t.pageCount || 4);
+                    toast.success("Privacyverklaring sjabloon ingeladen!");
+                  }}
+                  className="text-xs h-7 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/15"
+                >
+                  📄 Privacyverklaring
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const t = LEGAL_DOCUMENTS.voorwaarden;
+                    setTitle(t.title);
+                    setDescription(t.description);
+                    setCategory(t.category);
+                    setConfidentiality(t.confidentiality);
+                    setAuthor(t.author);
+                    setContent(t.content);
+                    setDate(t.date);
+                    setFileName(t.fileName || "");
+                    setFileUrl(t.fileUrl || "");
+                    setFileSize(t.fileSize || "380 KB");
+                    setPageCount(t.pageCount || 3);
+                    toast.success("Algemene Voorwaarden sjabloon ingeladen!");
+                  }}
+                  className="text-xs h-7 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/15"
+                >
+                  ⚖️ Algemene Voorwaarden
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const t = LEGAL_DOCUMENTS.verwerkingsreglement;
+                    setTitle(t.title);
+                    setDescription(t.description);
+                    setCategory(t.category);
+                    setConfidentiality(t.confidentiality);
+                    setAuthor(t.author);
+                    setContent(t.content);
+                    setDate(t.date);
+                    setFileName(t.fileName || "");
+                    setFileUrl(t.fileUrl || "");
+                    setFileSize(t.fileSize || "450 KB");
+                    setPageCount(t.pageCount || 4);
+                    toast.success("Verwerkingsreglement sjabloon ingeladen!");
+                  }}
+                  className="text-xs h-7 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/15"
+                >
+                  🛡️ Verwerkingsreglement
+                </Button>
+              </div>
+            </div>
+          )}
 
           <div className="space-y-4 py-3 text-xs">
             {/* Title */}

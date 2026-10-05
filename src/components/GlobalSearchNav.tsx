@@ -378,7 +378,7 @@ export const GlobalSearchNav: React.FC<GlobalSearchNavProps> = ({
                 }
               }}
               placeholder="Zoek in nieuws, standpunten, agenda..."
-              className="w-48 sm:w-64 md:w-80 lg:w-96 pl-8 sm:pl-9 pr-8 h-8 sm:h-9 text-xs sm:text-sm bg-background border border-accent rounded-sm focus:outline-none focus:ring-1 focus:ring-accent text-foreground placeholder:text-muted-foreground shadow-md transition-all"
+              className="w-40 sm:w-56 md:w-64 xl:w-60 2xl:w-72 max-w-[calc(100vw-110px)] pl-8 sm:pl-9 pr-8 h-8 sm:h-9 text-xs sm:text-sm bg-background border border-accent rounded-sm focus:outline-none focus:ring-1 focus:ring-accent text-foreground placeholder:text-muted-foreground shadow-md transition-all"
               aria-label="Zoekterm invoeren"
             />
             {query ? (

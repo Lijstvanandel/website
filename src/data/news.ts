@@ -1,6 +1,19 @@
 const kopwijzerImg = "/assets/news-kopwijzer.jpg";
 const marktImg = "/assets/markt-steenwijk.jpg";
 
+export interface MediaRetentionStats {
+  starts: number;
+  p25: number;
+  p50: number;
+  p75: number;
+  p100: number; // ThruPlays / Volledig afgekeken of afgeluisterd
+}
+
+export interface NewsMediaStats {
+  video?: MediaRetentionStats;
+  podcast?: MediaRetentionStats;
+}
+
 export interface NewsItem {
   id: string;
   title: string;
@@ -32,6 +45,8 @@ export interface NewsItem {
   podcastViews?: number;
   podcastSpotifyUrl?: string;
   podcastAppleUrl?: string;
+  // Media retention & ThruPlay stats (25%, 50%, 75%, 100%)
+  mediaStats?: NewsMediaStats;
 }
 
 export const news: NewsItem[] = [

@@ -39,14 +39,21 @@ export const Footer = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-6 text-[11px]">
-            <div className="flex items-center gap-1.5 text-muted-foreground/90">
+          <div className="flex flex-wrap items-center gap-4 md:gap-5 text-[11px]">
+            <Link to="/privacyverklaring" className="hover:text-accent transition-colors">
+              Privacyverklaring
+            </Link>
+            <span className="text-muted-foreground/40 hidden sm:inline">•</span>
+            <Link to="/algemene-voorwaarden" className="hover:text-accent transition-colors">
+              Algemene voorwaarden
+            </Link>
+            <span className="text-muted-foreground/40 hidden sm:inline">•</span>
+            <Link to="/verwerkingsreglement" className="hover:text-accent transition-colors">
+              Verwerkingsreglement
+            </Link>
+            <div className="hidden lg:flex items-center gap-1.5 text-muted-foreground/90 ml-2">
               <Shield className="w-3.5 h-3.5 text-accent" />
-              <span>AVG & BIO-conform (Frankrijk, EU)</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-muted-foreground/90">
-              <Lock className="w-3.5 h-3.5 text-accent" />
-              <span>End-to-End Versleuteld</span>
+              <span>AVG & BIO-conform</span>
             </div>
           </div>
 
@@ -206,9 +213,24 @@ export const Footer = () => {
         </div>
       </div>
       <div className="border-t border-accent/10">
-        <div className="container py-5 flex flex-col md:flex-row justify-between items-center gap-2 text-xs text-muted-foreground">
+        <div className="container py-5 flex flex-col md:flex-row justify-between items-center gap-3 text-xs text-muted-foreground">
           <p>© {new Date().getFullYear()} Lijst van Andel — Lokale partij Steenwijkerland.</p>
-          <span className="text-accent/70 uppercase tracking-widest">Dichtbij de inwoner</span>
+
+          <div className="flex flex-wrap items-center justify-center gap-4 text-xs font-medium">
+            <Link to="/privacyverklaring" className="hover:text-accent transition-colors">
+              Privacyverklaring
+            </Link>
+            <span className="text-muted-foreground/40">•</span>
+            <Link to="/algemene-voorwaarden" className="hover:text-accent transition-colors">
+              Algemene voorwaarden
+            </Link>
+            <span className="text-muted-foreground/40">•</span>
+            <Link to="/verwerkingsreglement" className="hover:text-accent transition-colors">
+              Verwerkingsreglement
+            </Link>
+          </div>
+
+          <span className="text-accent/70 uppercase tracking-widest text-[11px]">Dichtbij de inwoner</span>
         </div>
       </div>
     </footer>

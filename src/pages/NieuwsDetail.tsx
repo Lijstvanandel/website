@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   ArrowLeft,
@@ -18,12 +18,18 @@ import {
   Settings,
   Radio,
   ExternalLink,
+  BarChart3,
+  TrendingUp,
+  CheckCircle2,
+  Sparkles,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
-import { NewsItem } from "@/data/news";
+import { NewsItem, NewsMediaStats } from "@/data/news";
 import { useAuth } from "@/context/AuthContext";
 import { ShareDialog } from "@/components/ShareDialog";
 import { InteractiveArticleRenderer } from "@/components/InteractiveArticleRenderer";
+import { ChromecastButton } from "@/components/ChromecastButton";
 
 export default function NieuwsDetail() {
   const { id } = useParams<{ id: string }>();
@@ -37,6 +43,13 @@ export default function NieuwsDetail() {
   const [podcastViews, setPodcastViews] = useState<number>(0);
   const [hasTrackedPlay, setHasTrackedPlay] = useState<boolean>(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const articleContentRef = useRef<HTMLDivElement | null>(null);
+
+  // Media Retention (ThruPlays: 25%, 50%, 75%, 100%)
+  const [mediaStats, setMediaStats] = useState<NewsMediaStats | null>(null);
+  const [activeRetentionTab, setActiveRetentionTab] = useState<"podcast" | "video">("podcast");
+  const trackedMilestonesRef = useRef<Set<string>>(new Set());
 
   // Is current viewer an administrator/beheerder?
   const isAdmin = Boolean(
@@ -68,7 +81,23 @@ export default function NieuwsDetail() {
       .then((data: NewsItem | null) => {
         if (data && data.title) {
           setArticle(data);
-          setPodcastViews(Number(data.podcastViews) || 0);
+          const views = Number(data.podcastViews) || 0;
+          setPodcastViews(views);
+          if (data.mediaStats) {
+            setMediaStats(data.mediaStats);
+          } else {
+            setMediaStats({
+              podcast: { starts: views, p25: 0, p50: 0, p75: 0, p100: 0 },
+              video: { starts: 0, p25: 0, p50: 0, p75: 0, p100: 0 },
+            });
+          }
+
+          if (data.videoUrl && !data.podcastAudioUrl && !data.isPodcast) {
+            setActiveRetentionTab("video");
+          } else {
+            setActiveRetentionTab("podcast");
+          }
+
           document.title = `${data.title} | Lijst van Andel`;
         } else {
           setNotFound(true);
@@ -81,28 +110,99 @@ export default function NieuwsDetail() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  // Handle podcast playback tracking (increment view count)
-  const handlePodcastPlay = async () => {
-    if (!hasTrackedPlay && id) {
-      setHasTrackedPlay(true);
+  // Record playback milestone (start, 25%, 50%, 75%, 100% ThruPlay)
+  const recordMilestone = useCallback(
+    async (mediaType: "podcast" | "video", milestone: "start" | "p25" | "p50" | "p75" | "p100") => {
+      if (!id) return;
+      const key = `${mediaType}_${milestone}`;
+      if (trackedMilestonesRef.current.has(key)) return;
+      trackedMilestonesRef.current.add(key);
+
       try {
-        const res = await fetch(`/api/news/${id}/podcast-view`, {
+        const res = await fetch(`/api/news/${id}/media-progress`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mediaType, milestone }),
         });
         if (res.ok) {
           const result = await res.json();
+          if (result.mediaStats) {
+            setMediaStats(result.mediaStats);
+          }
           if (typeof result.podcastViews === "number") {
             setPodcastViews(result.podcastViews);
-          } else {
-            setPodcastViews((prev) => prev + 1);
           }
         }
       } catch (err) {
-        console.error("Fout bij registreren weergave:", err);
+        console.error("Fout bij registreren voortgang:", err);
       }
+    },
+    [id]
+  );
+
+  // Handle podcast playback tracking
+  const handlePodcastPlay = async () => {
+    if (!hasTrackedPlay && id) {
+      setHasTrackedPlay(true);
+      recordMilestone("podcast", "start");
     }
   };
+
+  // Audio element time tracking (25%, 50%, 75%, 100%)
+  const handleAudioTimeUpdate = (e: React.SyntheticEvent<HTMLAudioElement>) => {
+    const el = e.currentTarget;
+    if (!el.duration || isNaN(el.duration)) return;
+    const ratio = el.currentTime / el.duration;
+    if (ratio >= 0.25) recordMilestone("podcast", "p25");
+    if (ratio >= 0.5) recordMilestone("podcast", "p50");
+    if (ratio >= 0.75) recordMilestone("podcast", "p75");
+    if (ratio >= 0.98) recordMilestone("podcast", "p100");
+  };
+
+  // Video element time tracking (25%, 50%, 75%, 100%)
+  const handleVideoTimeUpdate = (e: React.SyntheticEvent<HTMLVideoElement>) => {
+    const el = e.currentTarget;
+    if (!el.duration || isNaN(el.duration)) return;
+    const ratio = el.currentTime / el.duration;
+    if (ratio >= 0.25) recordMilestone("video", "p25");
+    if (ratio >= 0.5) recordMilestone("video", "p50");
+    if (ratio >= 0.75) recordMilestone("video", "p75");
+    if (ratio >= 0.98) recordMilestone("video", "p100");
+  };
+
+  // Attach progress tracking to any videos embedded in HTML article content
+  useEffect(() => {
+    if (!articleContentRef.current) return;
+    const embeddedVideos = articleContentRef.current.querySelectorAll("video");
+    const cleanupFns: Array<() => void> = [];
+
+    embeddedVideos.forEach((vid) => {
+      const onPlay = () => recordMilestone("video", "start");
+      const onTimeUpdate = () => {
+        if (!vid.duration || isNaN(vid.duration)) return;
+        const ratio = vid.currentTime / vid.duration;
+        if (ratio >= 0.25) recordMilestone("video", "p25");
+        if (ratio >= 0.5) recordMilestone("video", "p50");
+        if (ratio >= 0.75) recordMilestone("video", "p75");
+        if (ratio >= 0.98) recordMilestone("video", "p100");
+      };
+      const onEnded = () => recordMilestone("video", "p100");
+
+      vid.addEventListener("play", onPlay);
+      vid.addEventListener("timeupdate", onTimeUpdate);
+      vid.addEventListener("ended", onEnded);
+
+      cleanupFns.push(() => {
+        vid.removeEventListener("play", onPlay);
+        vid.removeEventListener("timeupdate", onTimeUpdate);
+        vid.removeEventListener("ended", onEnded);
+      });
+    });
+
+    return () => {
+      cleanupFns.forEach((fn) => fn());
+    };
+  }, [article?.content, recordMilestone]);
 
   // Clean up speech on unmount
   useEffect(() => {
@@ -124,6 +224,39 @@ export default function NieuwsDetail() {
     const wordCount = plainText ? plainText.split(/\s+/).length : 0;
     return Math.max(1, Math.ceil(wordCount / 200));
   }, [article]);
+
+  // Compute media retention stats & completion percentages for current active tab (podcast or video)
+  const currentRetStats = useMemo(() => {
+    const statsObj = activeRetentionTab === "video" ? mediaStats?.video : mediaStats?.podcast;
+    const fallbackStarts =
+      activeRetentionTab === "podcast"
+        ? Math.max(podcastViews, statsObj?.starts || 0)
+        : statsObj?.starts || 0;
+
+    const starts = Math.max(fallbackStarts, statsObj?.starts || 0);
+    const p25 = Math.min(starts, statsObj?.p25 || 0);
+    const p50 = Math.min(starts, statsObj?.p50 || 0);
+    const p75 = Math.min(starts, statsObj?.p75 || 0);
+    const p100 = Math.min(starts, statsObj?.p100 || 0);
+
+    const base = Math.max(1, starts);
+    const pct25 = starts > 0 ? Math.round((p25 / base) * 100) : 0;
+    const pct50 = starts > 0 ? Math.round((p50 / base) * 100) : 0;
+    const pct75 = starts > 0 ? Math.round((p75 / base) * 100) : 0;
+    const pct100 = starts > 0 ? Math.round((p100 / base) * 100) : 0;
+
+    return {
+      starts,
+      p25,
+      p50,
+      p75,
+      p100,
+      pct25,
+      pct50,
+      pct75,
+      pct100,
+    };
+  }, [activeRetentionTab, mediaStats, podcastViews]);
 
   const handleToggleSpeech = () => {
     if (!article) return;
@@ -323,40 +456,220 @@ export default function NieuwsDetail() {
             {article.title}
           </h1>
 
-          {/* Beheerderspaneel voor Podcast weergaven (indien ingelogd als admin) */}
-          {isAdmin && (article.isPodcast || article.podcastAudioUrl) && (
-            <div className="mb-6 p-4 rounded-xl bg-purple-500/10 dark:bg-purple-950/30 border-2 border-purple-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                  <Headphones className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-sm text-foreground">Podcast Statistieken</span>
-                    <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold bg-purple-600 text-white tracking-wider">
-                      Alleen Beheerders
-                    </span>
+          {/* Beheerderspaneel voor Kijkduur-diepte & ThruPlays (indien ingelogd als admin) */}
+          {isAdmin && (article.isPodcast || article.podcastAudioUrl || article.videoUrl) && (
+            <div className="mb-8 p-5 sm:p-6 rounded-2xl bg-gradient-to-br from-purple-500/10 via-background to-secondary/30 border-2 border-purple-500/40 shadow-sm animate-fade-up">
+              {/* Header with Title and Mode Switcher */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-border/80">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <BarChart3 className="w-5 h-5" />
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Live geregistreerde luisterbeurten en weergaven voor deze podcast aflevering.
-                  </p>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-base text-foreground flex items-center gap-1.5">
+                        Kijkduur- &amp; Luisterdiepte (ThruPlays)
+                      </span>
+                      <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold bg-purple-600 text-white tracking-wider">
+                        Beheerdersanalyse
+                      </span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-accent/20 text-accent border border-accent/30">
+                        Byron Sharp Model
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Meet conform de Meta ThruPlay-standaard of uw merkboodschap de aandacht vasthoudt en écht blijft hangen.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  {/* Toggle between Podcast and Video if both exist */}
+                  {(article.isPodcast || article.podcastAudioUrl) && article.videoUrl && (
+                    <div className="flex items-center bg-muted/60 p-1 rounded-xl border border-border">
+                      <button
+                        type="button"
+                        onClick={() => setActiveRetentionTab("podcast")}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                          activeRetentionTab === "podcast"
+                            ? "bg-purple-600 text-white shadow-xs"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <Headphones className="w-3.5 h-3.5" /> Podcast
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveRetentionTab("video")}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                          activeRetentionTab === "video"
+                            ? "bg-blue-600 text-white shadow-xs"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <Video className="w-3.5 h-3.5" /> Video
+                      </button>
+                    </div>
+                  )}
+                  <Link
+                    to="/admin"
+                    className="px-3.5 py-1.5 rounded-xl bg-secondary hover:bg-secondary/80 text-foreground font-semibold text-xs border border-border transition-colors flex items-center gap-1.5"
+                    title="Beheer nieuws en podcasts op /admin"
+                  >
+                    <Settings className="w-3.5 h-3.5" /> Naar /admin
+                  </Link>
                 </div>
               </div>
-              <div className="flex items-center gap-3 self-start sm:self-auto">
-                <div className="px-3.5 py-1.5 rounded-lg bg-background border border-purple-500/30 flex items-center gap-2">
-                  <Eye className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                  <span className="text-xs text-muted-foreground font-medium">Totaal weergaven:</span>
-                  <span className="font-mono font-bold text-base text-purple-700 dark:text-purple-300">
-                    {podcastViews}
+
+              {/* Top Summary KPI's */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-4">
+                <div className="p-3.5 rounded-xl bg-card border border-border/80 shadow-2xs">
+                  <span className="text-[11px] text-muted-foreground block font-medium">Gestart (Impressie)</span>
+                  <div className="flex items-baseline gap-1 mt-1">
+                    <span className="text-xl font-bold font-mono text-foreground">{currentRetStats.starts}</span>
+                    <span className="text-[10px] text-muted-foreground font-normal">weergaven</span>
+                  </div>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold block mt-0.5">
+                    100% startbasis
                   </span>
                 </div>
-                <Link
-                  to="/admin"
-                  className="px-3 py-1.5 rounded-lg bg-secondary hover:bg-secondary/80 text-foreground font-semibold text-xs border border-border transition-colors flex items-center gap-1.5"
-                  title="Beheer nieuws en podcasts op /admin"
-                >
-                  <Settings className="w-3.5 h-3.5" /> Beheer
-                </Link>
+
+                <div className="p-3.5 rounded-xl bg-card border border-border/80 shadow-2xs">
+                  <span className="text-[11px] text-muted-foreground block font-medium">50% Halverwege</span>
+                  <div className="flex items-baseline gap-1 mt-1">
+                    <span className="text-xl font-bold font-mono text-purple-700 dark:text-purple-300">{currentRetStats.p50}</span>
+                    <span className="text-[10px] text-muted-foreground font-normal">bezoekers</span>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground font-medium block mt-0.5">
+                    {currentRetStats.pct50}% retentie
+                  </span>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-card border border-border/80 shadow-2xs">
+                  <span className="text-[11px] text-muted-foreground block font-medium">100% Voltooid</span>
+                  <div className="flex items-baseline gap-1 mt-1">
+                    <span className="text-xl font-bold font-mono text-accent">{currentRetStats.p100}</span>
+                    <span className="text-[10px] text-muted-foreground font-normal">ThruPlays</span>
+                  </div>
+                  <span className="text-[10px] text-accent font-semibold block mt-0.5">
+                    Volledig afgerond
+                  </span>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-purple-500/15 border border-purple-500/30 shadow-2xs">
+                  <span className="text-[11px] text-purple-800 dark:text-purple-200 block font-semibold">ThruPlay Score</span>
+                  <div className="flex items-baseline gap-1 mt-1">
+                    <span className="text-2xl font-bold font-mono text-purple-700 dark:text-purple-300">
+                      {currentRetStats.pct100}%
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-purple-700 dark:text-purple-300 font-medium block mt-0.5">
+                    {currentRetStats.pct100 >= 50 ? "Hoge merkbinding ★" : "Actieve doorkijk"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Visual Funnel Bar */}
+              <div className="mt-5 p-4 rounded-xl bg-card/60 border border-border/80 space-y-3">
+                <div className="flex items-center justify-between text-xs font-semibold text-foreground">
+                  <span>Voltooiingspercentage over kijktijd / luistertijd (Milestones)</span>
+                  <span className="text-muted-foreground font-normal text-[11px]">
+                    {activeRetentionTab === "video" ? "Video Retentie" : "Podcast Luisterdiepte"}
+                  </span>
+                </div>
+
+                <div className="space-y-2.5 pt-1">
+                  {/* Step 0: Start */}
+                  <div>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="font-medium text-foreground flex items-center gap-1.5">
+                        <Play className="w-3 h-3 text-emerald-500" /> Start (0%)
+                      </span>
+                      <span className="font-mono text-muted-foreground font-medium">
+                        {currentRetStats.starts} weergaven • 100%
+                      </span>
+                    </div>
+                    <div className="w-full h-2.5 bg-muted rounded-full overflow-hidden">
+                      <div className="h-full bg-emerald-500 rounded-full transition-all duration-500 w-full" />
+                    </div>
+                  </div>
+
+                  {/* Step 1: 25% */}
+                  <div>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="font-medium text-foreground flex items-center gap-1.5">
+                        <span>🥉 25% Bekeken/Beluisterd</span>
+                      </span>
+                      <span className="font-mono text-muted-foreground font-medium">
+                        {currentRetStats.p25} weergaven • {currentRetStats.pct25}%
+                      </span>
+                    </div>
+                    <div className="w-full h-2.5 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                        style={{ width: `${currentRetStats.pct25}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Step 2: 50% */}
+                  <div>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="font-medium text-foreground flex items-center gap-1.5">
+                        <span>🥈 50% Halverwege</span>
+                      </span>
+                      <span className="font-mono text-muted-foreground font-medium">
+                        {currentRetStats.p50} weergaven • {currentRetStats.pct50}%
+                      </span>
+                    </div>
+                    <div className="w-full h-2.5 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-purple-500 rounded-full transition-all duration-500"
+                        style={{ width: `${currentRetStats.pct50}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Step 3: 75% */}
+                  <div>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="font-medium text-foreground flex items-center gap-1.5">
+                        <span>🥇 75% Vergevorderd</span>
+                      </span>
+                      <span className="font-mono text-muted-foreground font-medium">
+                        {currentRetStats.p75} weergaven • {currentRetStats.pct75}%
+                      </span>
+                    </div>
+                    <div className="w-full h-2.5 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-indigo-500 rounded-full transition-all duration-500"
+                        style={{ width: `${currentRetStats.pct75}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Step 4: 100% ThruPlay */}
+                  <div>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="font-bold text-accent flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-accent" /> 100% Volledig (ThruPlay)
+                      </span>
+                      <span className="font-mono text-accent font-bold">
+                        {currentRetStats.p100} ThruPlays • {currentRetStats.pct100}%
+                      </span>
+                    </div>
+                    <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-accent rounded-full transition-all duration-500 shadow-xs"
+                        style={{ width: `${currentRetStats.pct100}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-muted-foreground italic pt-1 border-t border-border/60">
+                  Inwoners die de 100% ThruPlay-drempel bereiken, hebben de boodschap integraal tot zich genomen. Dit duidt op hoge brand salience en sterke mentale associatie.
+                </p>
               </div>
             </div>
           )}
@@ -386,40 +699,47 @@ export default function NieuwsDetail() {
                   </div>
                 </div>
 
-                {/* Externe streaming links (Spotify, Apple Podcasts) */}
-                {(article.podcastSpotifyUrl || article.podcastAppleUrl) && (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {article.podcastSpotifyUrl && (
-                      <a
-                        href={article.podcastSpotifyUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-[#1DB954] text-white hover:bg-[#1aa34a] transition-all shadow-xs"
-                      >
-                        <ExternalLink className="w-3 h-3" /> Spotify
-                      </a>
-                    )}
-                    {article.podcastAppleUrl && (
-                      <a
-                        href={article.podcastAppleUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-zinc-900 text-white hover:bg-zinc-800 transition-all shadow-xs"
-                      >
-                        <ExternalLink className="w-3 h-3" /> Apple Podcasts
-                      </a>
-                    )}
-                  </div>
-                )}
+                {/* Externe streaming links (Spotify, Apple Podcasts) & Chromecast */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {article.podcastAudioUrl && (
+                    <ChromecastButton
+                      mediaUrl={article.podcastAudioUrl}
+                      mediaTitle={article.podcastTitle || article.title}
+                      audioRef={audioRef}
+                    />
+                  )}
+                  {article.podcastSpotifyUrl && (
+                    <a
+                      href={article.podcastSpotifyUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-[#1DB954] text-white hover:bg-[#1aa34a] transition-all shadow-xs"
+                    >
+                      <ExternalLink className="w-3 h-3" /> Spotify
+                    </a>
+                  )}
+                  {article.podcastAppleUrl && (
+                    <a
+                      href={article.podcastAppleUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-zinc-900 text-white hover:bg-zinc-800 transition-all shadow-xs"
+                    >
+                      <ExternalLink className="w-3 h-3" /> Apple Podcasts
+                    </a>
+                  )}
+                </div>
               </div>
 
-              {/* Audio player met automatische weergaventelling bij afspelen */}
+              {/* Audio player met automatische weergaventelling en voortgangstracking bij afspelen */}
               {article.podcastAudioUrl ? (
                 <div className="space-y-2 pt-2 border-t border-purple-500/20">
                   <audio
                     ref={audioRef}
                     controls
                     onPlay={handlePodcastPlay}
+                    onTimeUpdate={handleAudioTimeUpdate}
+                    onEnded={() => recordMilestone("podcast", "p100")}
                     className="w-full h-11 rounded-lg"
                     preload="metadata"
                   >
@@ -430,7 +750,7 @@ export default function NieuwsDetail() {
                     <span>Druk op afspelen om deze podcast direct te beluisteren.</span>
                     {isAdmin && (
                       <span className="font-semibold text-purple-700 dark:text-purple-300 flex items-center gap-1">
-                        <Eye className="w-3.5 h-3.5" /> {podcastViews} weergaven (zichtbaar voor beheerder)
+                        <Eye className="w-3.5 h-3.5" /> {podcastViews} weergaven • {currentRetStats.pct100}% ThruPlay (zichtbaar voor beheerder)
                       </span>
                     )}
                   </div>
@@ -453,9 +773,13 @@ export default function NieuwsDetail() {
                 </div>
               )}
               <video
+                ref={videoRef}
                 controls
                 playsInline
                 preload="metadata"
+                onPlay={() => recordMilestone("video", "start")}
+                onTimeUpdate={handleVideoTimeUpdate}
+                onEnded={() => recordMilestone("video", "p100")}
                 className="w-full max-h-[520px] object-contain bg-black"
               >
                 <source src={article.videoUrl} type="video/mp4" />
@@ -591,7 +915,7 @@ export default function NieuwsDetail() {
             </div>
           )}
 
-          <div className="mb-12">
+          <div className="mb-12" ref={articleContentRef}>
             {(article.description || article.excerpt) && (
               <p className="lead font-medium text-lg md:text-xl text-foreground mb-8 border-l-4 border-accent pl-4 py-1 leading-relaxed bg-accent/5 rounded-r">
                 {article.description || article.excerpt}

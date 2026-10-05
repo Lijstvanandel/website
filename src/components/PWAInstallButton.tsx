@@ -44,12 +44,11 @@ export function PWAInstallButton({ variant = "button", className = "" }: PWAInst
           variant="outline"
           size="sm"
           onClick={handleAction}
-          className={`h-9 gap-1.5 px-3 rounded-full text-xs font-medium border-primary/30 hover:border-primary text-foreground bg-primary/5 hover:bg-primary/10 transition-all ${className}`}
+          className={`h-8 sm:h-9 gap-1.5 px-2.5 xl:px-2.5 2xl:px-3 rounded-full text-xs font-medium border-primary/30 hover:border-primary text-foreground bg-primary/5 hover:bg-primary/10 transition-all ${className}`}
           title="Installeer Lijst van Andel als PWA App op uw apparaat"
         >
           <Smartphone className="w-3.5 h-3.5 text-primary" />
-          <span className="hidden sm:inline">App</span>
-          <span className="sm:hidden">App</span>
+          <span className="hidden 2xl:inline">App</span>
         </Button>
 
         {/* iOS Install Dialog */}

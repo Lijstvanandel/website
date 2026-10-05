@@ -77,6 +77,9 @@ const AdminDashboard = safeLazy(() => import("./pages/AdminDashboard"));
 const NieuwsbriefAfmelden = safeLazy(() => import("./pages/NieuwsbriefAfmelden"));
 const TicketView = safeLazy(() => import("./pages/TicketView"));
 const Polls = safeLazy(() => import("./pages/Polls"));
+const Privacyverklaring = safeLazy(() => import("./pages/Privacyverklaring"));
+const AlgemeneVoorwaarden = safeLazy(() => import("./pages/AlgemeneVoorwaarden"));
+const Verwerkingsreglement = safeLazy(() => import("./pages/Verwerkingsreglement"));
 
 const queryClient = new QueryClient();
 
@@ -148,6 +151,11 @@ const AppRoutes = () => {
               <Route path="/wordlid" element={<Register />} />
               <Route path="/peilingen" element={<Navigate to="/raadspaneel" replace />} />
               <Route path="/polls" element={<Navigate to="/raadspaneel" replace />} />
+              <Route path="/privacyverklaring" element={<Privacyverklaring />} />
+              <Route path="/privacy" element={<Privacyverklaring />} />
+              <Route path="/algemene-voorwaarden" element={<AlgemeneVoorwaarden />} />
+              <Route path="/voorwaarden" element={<AlgemeneVoorwaarden />} />
+              <Route path="/verwerkingsreglement" element={<Verwerkingsreglement />} />
             </>
           ) : (
             // Full Party Website (Steenwijkerland - Lijst van Andel)
@@ -199,6 +207,11 @@ const AppRoutes = () => {
               <Route path="/dossiers" element={<Raadspaneel />} />
               <Route path="/dossiers/:slug" element={<Raadspaneel />} />
               <Route path="/nieuwsbrief/afmelden" element={<NieuwsbriefAfmelden />} />
+              <Route path="/privacyverklaring" element={<Privacyverklaring />} />
+              <Route path="/privacy" element={<Privacyverklaring />} />
+              <Route path="/algemene-voorwaarden" element={<AlgemeneVoorwaarden />} />
+              <Route path="/voorwaarden" element={<AlgemeneVoorwaarden />} />
+              <Route path="/verwerkingsreglement" element={<Verwerkingsreglement />} />
             </>
           )}
         </Route>

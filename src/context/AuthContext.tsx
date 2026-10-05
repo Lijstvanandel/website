@@ -31,6 +31,9 @@ export interface User {
   municipality?: "steenwijkerland" | "hoogeveen" | string;
   portalApproved?: boolean;
   isPortalUser?: boolean;
+  processingRestricted?: boolean;
+  processingRestrictedAt?: string | null;
+  restrictionReason?: string | null;
 }
 
 interface AuthContextType {
