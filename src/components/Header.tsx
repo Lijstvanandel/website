@@ -32,7 +32,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-const logo = "/assets/logo.png";
+const logo = "/assets/logo.webp";
 import { BUURTKAART_43_WIJKEN, LEGACY_SLUG_MAP } from "@/data/defaultWijken";
 import { getPortalConfig } from "@/utils/portalConfig";
 
@@ -99,6 +99,7 @@ export const Header = () => {
   const [apiWijkenMap, setApiWijkenMap] = useState<Record<string, string>>({});
 
   useEffect(() => {
+    if (!location.pathname.toLowerCase().includes("wijk")) return;
     fetch("/api/wijken")
       .then((res) => (res.ok ? res.json().catch(() => []) : []))
       .then((data) => {
@@ -113,7 +114,7 @@ export const Header = () => {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [location.pathname]);
 
   // Determine current active subtitle based on route
   const currentSubtitle = useMemo(() => {
@@ -190,6 +191,13 @@ export const Header = () => {
                 <img
                   src={logo}
                   alt="Lijst van Andel logo"
+                  width="48"
+                  height="48"
+                  loading="eager"
+                  decoding="async"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = "/assets/logo.png";
+                  }}
                   className="w-9 h-9 sm:w-10 sm:h-10 xl:w-11 xl:h-11 2xl:w-12 2xl:h-12 rounded-full object-cover transition-transform duration-300 group-hover:scale-105 shrink-0 shadow-sm ring-1 ring-accent/30"
                 />
                 <div className="leading-tight flex-1 min-w-0">

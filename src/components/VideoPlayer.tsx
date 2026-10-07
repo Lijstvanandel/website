@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Play } from "lucide-react";
 
 interface VideoPlayerProps {
@@ -60,6 +60,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   className = "",
   poster,
 }) => {
+  const [isPlaying, setIsPlaying] = useState(false);
   const { type, src } = parseVideoUrl(url);
 
   if (!src) {
@@ -71,16 +72,59 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     );
   }
 
+  // Ultra-lightweight click-to-play facade: eliminates 10MB+ video buffering overhead on page load
+  if (!isPlaying) {
+    const webpPoster = poster?.replace(/\.(jpg|jpeg|png)$/i, ".webp");
+    return (
+      <div
+        className={`relative w-full h-full bg-black overflow-hidden group cursor-pointer select-none ${className}`}
+        onClick={() => setIsPlaying(true)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setIsPlaying(true);
+          }
+        }}
+        aria-label={`Speel video af: ${title}`}
+      >
+        {poster ? (
+          <picture className="w-full h-full">
+            {webpPoster && <source srcSet={webpPoster} type="image/webp" />}
+            <img
+              src={poster}
+              alt={title}
+              loading="lazy"
+              decoding="async"
+              width="640"
+              height="360"
+              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 opacity-85 group-hover:opacity-100"
+            />
+          </picture>
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-neutral-900 to-black" />
+        )}
+        <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+          <div className="w-14 h-14 rounded-full bg-accent/90 text-accent-foreground group-hover:bg-accent group-hover:scale-110 transition-all flex items-center justify-center shadow-lg ring-4 ring-black/40">
+            <Play className="w-6 h-6 ml-0.5 fill-current" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (type === "youtube" || type === "vimeo") {
+    const embedUrl = src.includes("?") ? `${src}&autoplay=1` : `${src}?autoplay=1`;
     return (
       <div className={`relative w-full h-full bg-black overflow-hidden ${className}`}>
         <iframe
-          src={src}
+          src={embedUrl}
           title={title}
           className="w-full h-full border-0 absolute inset-0"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           allowFullScreen
-          loading="lazy"
+          autoFocus
         />
       </div>
     );
@@ -91,8 +135,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       <video
         src={src}
         controls
+        autoPlay
         playsInline
-        preload="metadata"
+        preload="auto"
         poster={poster}
         className="w-full h-full object-cover"
       >

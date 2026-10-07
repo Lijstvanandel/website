@@ -51,12 +51,24 @@ export const FractielidWidget: React.FC<FractielidWidgetProps> = ({
       <div className="grid grid-cols-1 sm:grid-cols-[200px_1fr] md:grid-cols-[180px_1fr] lg:grid-cols-[220px_1fr]">
         <div className="aspect-[4/5] overflow-hidden bg-muted flex items-center justify-center">
           {lid.imgUrl ? (
-            <img
-              src={lid.imgUrl}
-              alt={lid.name}
-              loading="lazy"
-              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-            />
+            <picture className="w-full h-full">
+              <source
+                srcSet={lid.imgUrl.replace(/\.(jpg|jpeg|png)$/i, ".webp")}
+                type="image/webp"
+              />
+              <img
+                src={lid.imgUrl.replace(/\.(jpg|jpeg|png)$/i, ".webp")}
+                alt={lid.name}
+                loading="lazy"
+                decoding="async"
+                width="220"
+                height="275"
+                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = lid.imgUrl || "/assets/silhouette.webp";
+                }}
+              />
+            </picture>
           ) : (
             <div className="text-muted-foreground text-xs uppercase tracking-wider">Geen foto</div>
           )}

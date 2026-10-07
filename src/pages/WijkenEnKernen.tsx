@@ -182,14 +182,24 @@ const WijkenEnKernen = () => {
               >
                 {/* Banner thumbnail */}
                 <div className="relative h-36 w-full overflow-hidden bg-muted">
-                  <img
-                    src={w.bannerUrl || "/assets/steenwijk-aerial.jpg"}
-                    alt={w.naam}
-                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = "/assets/steenwijk-aerial.jpg";
-                    }}
-                  />
+                  <picture>
+                    <source
+                      srcSet={(w.bannerUrl || "/assets/steenwijk-aerial.webp").replace(/\.(jpg|jpeg|png)$/i, ".webp")}
+                      type="image/webp"
+                    />
+                    <img
+                      src={(w.bannerUrl || "/assets/steenwijk-aerial.webp").replace(/\.(jpg|jpeg|png)$/i, ".webp")}
+                      alt={w.naam}
+                      loading="lazy"
+                      decoding="async"
+                      width="400"
+                      height="144"
+                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = "/assets/steenwijk-aerial.jpg";
+                      }}
+                    />
+                  </picture>
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
                   <div className="absolute top-2.5 left-2.5">
                     <Badge

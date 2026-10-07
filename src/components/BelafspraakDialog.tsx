@@ -79,8 +79,9 @@ export const BelafspraakDialog = ({ open, onOpenChange, defaultRaadslid }: Belaf
     onderwerp: ""
   });
 
-  // Fetch available fractieleden
+  // Fetch available fractieleden on demand when modal opens
   useEffect(() => {
+    if (!open) return;
     let isMounted = true;
     setLoadingPersonen(true);
     fetch("/api/belafspraken/personen")
@@ -100,7 +101,7 @@ export const BelafspraakDialog = ({ open, onOpenChange, defaultRaadslid }: Belaf
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [open]);
 
   // Pre-fill person whenever defaultRaadslid changes or personen are loaded
   useEffect(() => {

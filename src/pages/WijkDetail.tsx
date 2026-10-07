@@ -52,6 +52,7 @@ import { WijkItem } from "@/types/wijk";
 import { Dossier } from "@/types/dossier";
 import { useAuth } from "@/context/AuthContext";
 import { getSubdossierClientThumbnail } from "@/lib/dossierClientUtils";
+import { BUURTKAART_WIJKEN, LEGACY_SLUG_MAP } from "@/data/defaultWijken";
 
 function formatSocialUrl(platform: string, value?: string): string | undefined {
   if (!value) return undefined;
@@ -105,8 +106,31 @@ const WijkDetail = () => {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
   const [belOpen, setBelOpen] = useState(false);
-  const [wijk, setWijk] = useState<WijkItem | null>(null);
-  const [loading, setLoading] = useState(true);
+
+  // Synchronous initial fallback wijk resolution for instant First Paint & Core Web Vitals
+  const initialWijk = useMemo<WijkItem | null>(() => {
+    if (!slug) return null;
+    const cleanSlug = slug.toLowerCase();
+    const mapped = LEGACY_SLUG_MAP[cleanSlug] || cleanSlug;
+    const found = BUURTKAART_WIJKEN.find(
+      (w) => w.slug.toLowerCase() === mapped || w.slug.toLowerCase() === cleanSlug
+    );
+    if (!found) return null;
+    return {
+      id: found.slug,
+      slug: found.slug,
+      naam: found.naam,
+      type: found.type,
+      gemeente: found.gemeente,
+      bannerUrl: found.bannerUrl,
+      heroBannerUrl: found.heroBannerUrl || found.bannerUrl,
+      beschrijving: found.beschrijving,
+      vertegenwoordiger: found.vertegenwoordiger,
+    } as WijkItem;
+  }, [slug]);
+
+  const [wijk, setWijk] = useState<WijkItem | null>(initialWijk);
+  const [loading, setLoading] = useState(!initialWijk);
   const [error, setError] = useState<string | null>(null);
   const [videos, setVideos] = useState<WijkVideo[]>([]);
   const [wijkNews, setWijkNews] = useState<NewsItem[]>([]);
@@ -131,27 +155,37 @@ const WijkDetail = () => {
   // 1. Fetch core wijk info & quick media immediately
   useEffect(() => {
     if (!slug) return;
-    setLoading(true);
+    if (initialWijk) {
+      setWijk((prev) => prev || initialWijk);
+      setLoading(false);
+      const portalConfig = getPortalConfig();
+      document.title = `${initialWijk.naam} (${initialWijk.type || 'Wijk/Kern'}) | ${portalConfig.isPortalMode ? portalConfig.portalTitle : "Lijst van Andel"}`;
+    } else {
+      setLoading(true);
+    }
     setError(null);
 
-    // Fetch dynamic wijk data from backend
+    // Fetch dynamic wijk data from backend (non-blocking revalidation)
     fetch(`/api/wijken/${slug}`)
       .then(async (res) => {
         if (!res.ok) {
-          throw new Error("Wijk of kern niet gevonden");
+          if (!initialWijk) throw new Error("Wijk of kern niet gevonden");
+          return null;
         }
         return res.json().catch(() => null);
       })
       .then((data: WijkItem | null) => {
-        if (!data) throw new Error("Ongeldige wijk gegevens");
+        if (!data) return;
         setWijk(data);
         const portalConfig = getPortalConfig();
         document.title = `${data.naam} (${data.type || 'Wijk/Kern'}) | ${portalConfig.isPortalMode ? portalConfig.portalTitle : "Lijst van Andel"}`;
         setLoading(false);
       })
       .catch((err) => {
-        setError(err.message);
-        setLoading(false);
+        if (!initialWijk) {
+          setError(err.message);
+          setLoading(false);
+        }
       });
 
     // Fetch videos for this wijk
@@ -273,14 +307,33 @@ const WijkDetail = () => {
           HERO BANNER MET ACHTERGRONDFOTO
           ======================================================== */}
       <section className="relative w-full min-h-[320px] md:min-h-[420px] flex items-center overflow-hidden border-b border-accent/30 bg-black">
-        <img
-          src={wijk.bannerUrl || "/assets/steenwijk-aerial.jpg"}
-          alt={`Achtergrond van ${wijk.naam}`}
-          className="absolute inset-0 w-full h-full object-cover opacity-60"
-          onError={(e) => {
-            (e.target as HTMLImageElement).src = "/assets/steenwijk-aerial.jpg";
-          }}
-        />
+        <picture className="absolute inset-0 w-full h-full">
+          <source
+            srcSet={
+              (wijk.heroBannerUrl || wijk.bannerUrl || "/assets/steenwijk-aerial.webp").replace(
+                /\.(jpg|jpeg|png)$/i,
+                ".webp"
+              )
+            }
+            type="image/webp"
+          />
+          <img
+            src={(wijk.heroBannerUrl || wijk.bannerUrl || "/assets/steenwijk-aerial.webp").replace(
+              /\.(jpg|jpeg|png)$/i,
+              ".webp"
+            )}
+            alt={`Achtergrond van ${wijk.naam}`}
+            className="w-full h-full object-cover opacity-60"
+            // @ts-expect-error fetchpriority is standard HTML attribute
+            fetchpriority="high"
+            decoding="async"
+            width="1200"
+            height="420"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = "/assets/steenwijk-aerial.jpg";
+            }}
+          />
+        </picture>
         <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/70 to-black/30" />
         <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent" />
 
@@ -333,15 +386,24 @@ const WijkDetail = () => {
               <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr] md:grid-cols-[200px_1fr]">
                 {/* Foto */}
                 <div className="aspect-[4/5] sm:aspect-auto sm:h-full overflow-hidden bg-muted relative">
-                  <img
-                    src={rep.fotoUrl || "/assets/stef-mars.jpg"}
-                    alt={`${repFullName} - ${repRole}`}
-                    loading="lazy"
-                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = "/assets/silhouette.png";
-                    }}
-                  />
+                  <picture>
+                    <source
+                      srcSet={(rep.fotoUrl || "/assets/stef-mars.webp").replace(/\.(jpg|jpeg|png)$/i, ".webp")}
+                      type="image/webp"
+                    />
+                    <img
+                      src={(rep.fotoUrl || "/assets/stef-mars.webp").replace(/\.(jpg|jpeg|png)$/i, ".webp")}
+                      alt={`${repFullName} - ${repRole}`}
+                      loading="lazy"
+                      decoding="async"
+                      width="200"
+                      height="250"
+                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = "/assets/silhouette.webp";
+                      }}
+                    />
+                  </picture>
                 </div>
 
                 {/* Info */}

@@ -294,21 +294,24 @@ const Standpunten = () => {
       const h = Number(paramHoofdstuk) - 1;
       if (h >= 0 && h < 10) {
         setOpenIdx(h);
-        setTimeout(() => {
-          if (paramStandpunt) {
-            const el = document.getElementById(`standpunt-h${paramHoofdstuk}-s${paramStandpunt}`);
-            if (el) {
-              el.scrollIntoView({ behavior: "smooth", block: "center" });
-              el.classList.add("ring-2", "ring-accent", "ring-offset-4");
-              setTimeout(() => {
-                el.classList.remove("ring-2", "ring-accent", "ring-offset-4");
-              }, 4000);
+        const timer = setTimeout(() => {
+          requestAnimationFrame(() => {
+            if (paramStandpunt) {
+              const el = document.getElementById(`standpunt-h${paramHoofdstuk}-s${paramStandpunt}`);
+              if (el) {
+                el.scrollIntoView({ behavior: "smooth", block: "center" });
+                el.classList.add("ring-2", "ring-accent", "ring-offset-4");
+                setTimeout(() => {
+                  el.classList.remove("ring-2", "ring-accent", "ring-offset-4");
+                }, 4000);
+              }
+            } else {
+              const hEl = document.getElementById(`hoofdstuk-${paramHoofdstuk}`);
+              if (hEl) hEl.scrollIntoView({ behavior: "smooth", block: "start" });
             }
-          } else {
-            const hEl = document.getElementById(`hoofdstuk-${paramHoofdstuk}`);
-            if (hEl) hEl.scrollIntoView({ behavior: "smooth", block: "start" });
-          }
-        }, 350);
+          });
+        }, 300);
+        return () => clearTimeout(timer);
       }
     }
   }, [paramHoofdstuk, paramStandpunt]);

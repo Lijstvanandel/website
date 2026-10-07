@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { BelafspraakDialog } from "@/components/BelafspraakDialog";
 import { FractielidWidget, FractielidItem } from "@/components/FractielidWidget";
 import { StemgedragSection } from "@/components/StemgedragSection";
+import { DEFAULT_FRACTIELEDEN } from "@/data/fractieleden";
 
 interface VideoItem {
   id: string;
@@ -13,22 +14,20 @@ interface VideoItem {
 const Raadsleden = () => {
   const [belOpen, setBelOpen] = useState(false);
   const [voorgeselecteerd, setVoorgeselecteerd] = useState<string | undefined>(undefined);
-  const [leden, setLeden] = useState<FractielidItem[]>([]);
+  const [leden, setLeden] = useState<FractielidItem[]>(DEFAULT_FRACTIELEDEN);
   const [videos, setVideos] = useState<VideoItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    setLoading(true);
     Promise.all([
       fetch("/api/fractieleden").then((res) => (res.ok ? res.json().catch(() => []) : [])),
       fetch("/api/videos").then((res) => (res.ok ? res.json().catch(() => []) : [])),
     ])
       .then(([ledenData, videosData]) => {
-        if (Array.isArray(ledenData)) setLeden(ledenData);
+        if (Array.isArray(ledenData) && ledenData.length > 0) setLeden(ledenData);
         if (Array.isArray(videosData)) setVideos(videosData);
       })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .catch(() => {});
   }, []);
 
   const openMet = (lid: FractielidItem) => {

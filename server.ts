@@ -6517,17 +6517,28 @@ async function startServer() {
     }
   });
 
-  // Admin Routes - Fractieleden
+  // Helper to sanitize internal asset photos to modern lightweight WebP format
+  const sanitizeFractielidPhoto = (m: any) => {
+    if (!m) return m;
+    let img = m.imgUrl || m.img || "";
+    if (img.startsWith("/assets/") && (img.endsWith(".png") || img.endsWith(".jpg"))) {
+      img = img.replace(/\.(png|jpg)$/i, ".webp");
+    }
+    return { ...m, imgUrl: img, img: img };
+  };
+
+  // Public & Admin Routes - Fractieleden
   app.get("/api/fractieleden", (req, res) => {
     const db = getDb();
-    res.json(db.fractieleden || []);
+    const leden = (db.fractieleden || []).map(sanitizeFractielidPhoto);
+    res.json(leden);
   });
 
   app.get("/api/fractieleden/:id", (req, res) => {
     const db = getDb();
-    const lid = (db.fractieleden || []).find((f: any) => f.id === req.params.id);
+    const lid = (db.fractieleden || []).find((f: any) => String(f.id) === String(req.params.id));
     if (!lid) return res.status(404).json({ error: "Fractielid niet gevonden" });
-    res.json(lid);
+    res.json(sanitizeFractielidPhoto(lid));
   });
 
   app.post("/api/admin/fractieleden", requireAuth, requireAdmin, upload.single('img'), (req: any, res: any) => {
@@ -12415,7 +12426,13 @@ Sitemap: ${baseUrl}/sitemap.xml
   // 4b. Update Topic Contributions (Bijdrage Politieke Markt, Bijdrage Raadsvergadering, Hamerstuk)
   app.patch("/api/council/topics/:topicId/contributions", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
     const { topicId } = req.params;
-    const { bijdragePolitiekeMarkt, bijdrageRaadsvergadering, markAsHamerstuk } = req.body;
+    const {
+      bijdragePolitiekeMarkt,
+      bijdragePolitiekeMarktStructured,
+      bijdrageRaadsvergadering,
+      bijdrageRaadsvergaderingStructured,
+      markAsHamerstuk,
+    } = req.body;
     const db = getDb();
 
     const topic = (db.councilAgendaTopics || []).find((t: any) => t.id === topicId);
@@ -12425,12 +12442,26 @@ Sitemap: ${baseUrl}/sitemap.xml
 
     if (bijdragePolitiekeMarkt !== undefined) {
       topic.bijdragePolitiekeMarkt = bijdragePolitiekeMarkt;
+      if (bijdragePolitiekeMarktStructured !== undefined) {
+        topic.bijdragePolitiekeMarktStructured = bijdragePolitiekeMarktStructured;
+      }
+      topic.bijdragePolitiekeMarktUpdatedBy = req.user.fullName || req.user.username;
+      topic.bijdragePolitiekeMarktUpdatedAt = new Date().toISOString();
+    } else if (bijdragePolitiekeMarktStructured !== undefined) {
+      topic.bijdragePolitiekeMarktStructured = bijdragePolitiekeMarktStructured;
       topic.bijdragePolitiekeMarktUpdatedBy = req.user.fullName || req.user.username;
       topic.bijdragePolitiekeMarktUpdatedAt = new Date().toISOString();
     }
 
     if (bijdrageRaadsvergadering !== undefined) {
       topic.bijdrageRaadsvergadering = bijdrageRaadsvergadering;
+      if (bijdrageRaadsvergaderingStructured !== undefined) {
+        topic.bijdrageRaadsvergaderingStructured = bijdrageRaadsvergaderingStructured;
+      }
+      topic.bijdrageRaadsvergaderingUpdatedBy = req.user.fullName || req.user.username;
+      topic.bijdrageRaadsvergaderingUpdatedAt = new Date().toISOString();
+    } else if (bijdrageRaadsvergaderingStructured !== undefined) {
+      topic.bijdrageRaadsvergaderingStructured = bijdrageRaadsvergaderingStructured;
       topic.bijdrageRaadsvergaderingUpdatedBy = req.user.fullName || req.user.username;
       topic.bijdrageRaadsvergaderingUpdatedAt = new Date().toISOString();
     }
@@ -12448,6 +12479,7 @@ Sitemap: ${baseUrl}/sitemap.xml
 
     saveDb(db);
     recordCouncilContribution(topic);
+    persistSqlite();
 
     return res.json({
       success: true,

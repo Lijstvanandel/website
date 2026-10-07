@@ -71,16 +71,44 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     target: "es2022",
-    assetsInlineLimit: 0,
-    cssCodeSplit: false,
-    chunkSizeWarningLimit: 2000,
+    assetsInlineLimit: 4096,
+    cssCodeSplit: true,
+    chunkSizeWarningLimit: 1000,
     emptyOutDir: false,
     copyPublicDir: false,
     sourcemap: false,
-    minify: false,
+    minify: "esbuild",
     reportCompressedSize: false,
     rollupOptions: {
-      maxParallelFileOps: 1,
+      maxParallelFileOps: 2,
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules")) {
+            if (
+              id.includes("/node_modules/react/") ||
+              id.includes("/node_modules/react-dom/") ||
+              id.includes("/node_modules/scheduler/")
+            ) {
+              return "vendor-react";
+            }
+            if (
+              id.includes("/node_modules/react-router") ||
+              id.includes("/node_modules/@remix-run/router")
+            ) {
+              return "vendor-router";
+            }
+            if (id.includes("/node_modules/@tanstack/react-query")) {
+              return "vendor-query";
+            }
+            if (id.includes("/node_modules/@radix-ui/")) {
+              return "vendor-radix";
+            }
+            if (id.includes("/node_modules/date-fns")) {
+              return "vendor-date";
+            }
+          }
+        },
+      },
       onwarn(warning, warn) {
         if (warning.code === "MODULE_LEVEL_DIRECTIVE" || warning.message?.includes("use client")) return;
         warn(warning);

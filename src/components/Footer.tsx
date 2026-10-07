@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Facebook, Instagram, Linkedin, Twitter, Mail, CheckCircle2, ArrowRight, Heart, Shield, Building2, Lock } from "lucide-react";
-const logo = "/assets/logo.png";
+const logo = "/assets/logo.webp";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -96,7 +96,18 @@ export const Footer = () => {
       <div className="container py-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
         <div>
           <div className="flex items-center gap-3 mb-4">
-            <img src={logo} alt="Lijst van Andel logo" className="w-11 h-11 rounded-full object-cover" />
+            <img
+              src={logo}
+              alt="Lijst van Andel logo"
+              width="44"
+              height="44"
+              loading="lazy"
+              decoding="async"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = "/assets/logo.png";
+              }}
+              className="w-11 h-11 rounded-full object-cover"
+            />
             <div>
               <div className="font-display text-lg">Lijst van Andel</div>
               <div className="text-[10px] uppercase tracking-widest text-accent">Steenwijkerland</div>

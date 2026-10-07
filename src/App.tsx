@@ -14,27 +14,7 @@ import { ScrollToTop } from "./components/ScrollToTop";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { getPortalConfig } from "./utils/portalConfig";
 
-// Eager load primary public pages for instant FCP / LCP and zero chunk-loading failures
-import Home from "./pages/Home";
-import WijkenEnKernen from "./pages/WijkenEnKernen";
-import WijkDetail from "./pages/WijkDetail";
-import Nieuws from "./pages/Nieuws";
-import NieuwsDetail from "./pages/NieuwsDetail";
-import Standpunten from "./pages/Standpunten";
-import Agenda from "./pages/Agenda";
-import AgendaDetail from "./pages/AgendaDetail";
-import Raadsleden from "./pages/Raadsleden";
-import Contact from "./pages/Contact";
-import Bestuur from "./pages/Bestuur";
-import Steunfractie from "./pages/Steunfractie";
-import Doneren from "./pages/Doneren";
-import NotFound from "./pages/NotFound";
-import Login from "./pages/Login";
-import Register from "./pages/Register";
-
-// Self-healing lazy loading helper to prevent blank pages or chunk loading failures for heavy admin modules.
-// Retries the import with exponential backoff if a transient network/compile hiccup occurred.
-// If it still fails, reloads the page once to pull fresh Vite bundles.
+// Self-healing lazy loading helper to prevent blank pages or chunk loading failures
 function safeLazy<T extends React.ComponentType<any>>(
   importFn: () => Promise<{ default: T }>
 ) {
@@ -67,7 +47,25 @@ function safeLazy<T extends React.ComponentType<any>>(
   });
 }
 
-// Lazy-load heavier administrative, dashboard and portal sub-routes with self-healing capabilities
+// Lazy-load all public pages to minimize critical path entry bundle for Core Web Vitals
+const Home = safeLazy(() => import("./pages/Home"));
+const WijkenEnKernen = safeLazy(() => import("./pages/WijkenEnKernen"));
+const WijkDetail = safeLazy(() => import("./pages/WijkDetail"));
+const Nieuws = safeLazy(() => import("./pages/Nieuws"));
+const NieuwsDetail = safeLazy(() => import("./pages/NieuwsDetail"));
+const Standpunten = safeLazy(() => import("./pages/Standpunten"));
+const Agenda = safeLazy(() => import("./pages/Agenda"));
+const AgendaDetail = safeLazy(() => import("./pages/AgendaDetail"));
+const Raadsleden = safeLazy(() => import("./pages/Raadsleden"));
+const Contact = safeLazy(() => import("./pages/Contact"));
+const Bestuur = safeLazy(() => import("./pages/Bestuur"));
+const Steunfractie = safeLazy(() => import("./pages/Steunfractie"));
+const Doneren = safeLazy(() => import("./pages/Doneren"));
+const NotFound = safeLazy(() => import("./pages/NotFound"));
+const Login = safeLazy(() => import("./pages/Login"));
+const Register = safeLazy(() => import("./pages/Register"));
+
+// Lazy-load heavier administrative, dashboard and portal sub-routes
 const Raadspaneel = safeLazy(() => import("./pages/Raadspaneel"));
 const FractielidVideos = safeLazy(() => import("./pages/FractielidVideos"));
 const VideoRedirect = safeLazy(() => import("./pages/VideoRedirect"));

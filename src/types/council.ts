@@ -84,6 +84,15 @@ export interface CouncilTopicNote {
   updatedAt?: string;
 }
 
+export interface CouncilStructuredContribution {
+  pijn: string;
+  eis: string;
+  pivot: string;
+  spons: string;
+  klemzet: string;
+  dictum: string;
+}
+
 export interface CouncilAgendaTopic {
   id: string; // Topic ID or generated slug
   meetingId: string;
@@ -110,10 +119,12 @@ export interface CouncilAgendaTopic {
 
   // Politieke Markt & Raadsvergadering contributions
   bijdragePolitiekeMarkt?: string;
+  bijdragePolitiekeMarktStructured?: CouncilStructuredContribution;
   bijdragePolitiekeMarktUpdatedBy?: string;
   bijdragePolitiekeMarktUpdatedAt?: string;
 
   bijdrageRaadsvergadering?: string;
+  bijdrageRaadsvergaderingStructured?: CouncilStructuredContribution;
   bijdrageRaadsvergaderingUpdatedBy?: string;
   bijdrageRaadsvergaderingUpdatedAt?: string;
 

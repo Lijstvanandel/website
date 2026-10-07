@@ -43,10 +43,10 @@ interface WijkManagerProps {
 }
 
 const PRESET_BANNERS = [
-  { label: "Oostermeenthe", url: "/assets/oostermeenthe-banner.jpg" },
-  { label: "Markt Steenwijk", url: "/assets/markt-steenwijk.jpg" },
-  { label: "Luchtfoto Steenwijk", url: "/assets/steenwijk-aerial.jpg" },
-  { label: "Weerribben / Natuur", url: "/assets/hero-banner.jpg" },
+  { label: "Oostermeenthe", url: "/assets/oostermeenthe-banner.webp" },
+  { label: "Markt Steenwijk", url: "/assets/markt-steenwijk.webp" },
+  { label: "Luchtfoto Steenwijk", url: "/assets/steenwijk-aerial.webp" },
+  { label: "Weerribben / Natuur", url: "/assets/hero-banner.webp" },
 ];
 
 export const WijkManager: React.FC<WijkManagerProps> = ({ token }) => {

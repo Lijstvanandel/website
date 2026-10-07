@@ -14,6 +14,7 @@ export interface PageMetadata {
   ogImageAlt?: string;
   ogType: string;
   canonicalUrl: string;
+  preloadImage?: string;
   keywords?: string;
   author?: string;
   publishedTime?: string;
@@ -88,6 +89,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
       ogTitle: "Lijst van Andel - Onafhankelijke Lokale Politiek in Steenwijkerland",
       ogDescription: "Voorrang voor lokale woningzoekenden, behoud van voorzieningen in onze dorpen en een direct aanspreekbare fractie.",
       ogImage: DEFAULT_IMAGE,
+      preloadImage: "/assets/steenwijk-aerial.webp",
       ogType: "website",
       canonicalUrl,
       structuredData: {
@@ -264,7 +266,11 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
 
     if (wijk) {
       const cleanDesc = truncate(stripHtml(wijk.beschrijving || `Informatie, speerpunten en nieuws voor ${wijk.naam} in de gemeente Steenwijkerland.`), 160);
-      const wijkImage = resolveImageUrl(baseUrl, wijk.bannerUrl || wijk.fotoUrl);
+      const rawWijkImg = wijk.heroBannerUrl || wijk.bannerUrl || wijk.fotoUrl || "/assets/steenwijk-aerial.webp";
+      const wijkImage = resolveImageUrl(baseUrl, rawWijkImg);
+      const preloadWijkBanner = rawWijkImg.startsWith("http")
+        ? rawWijkImg
+        : rawWijkImg.replace(/\.(jpg|jpeg|png)$/i, ".webp");
       const title = `${wijk.naam} (${wijk.type || 'Wijk/Kern'}) | Lijst van Andel`;
 
       return {
@@ -273,6 +279,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
         ogTitle: `${wijk.naam} - Lokale plannen & speerpunten`,
         ogDescription: cleanDesc,
         ogImage: wijkImage,
+        preloadImage: preloadWijkBanner,
         ogType: "website",
         canonicalUrl,
         structuredData: {
@@ -776,6 +783,9 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
       const isBurger = member.type?.toLowerCase() === "burgerraadslid" || member.role?.toLowerCase().includes("burgerraadslid");
       const title = `Video's & Bijdragen van ${member.name} (${isBurger ? "Burgerraadslid" : (member.role || "Raadslid")}) | Lijst van Andel`;
       const desc = videoCustomDesc || `Bekijk alle videobijdragen, raadsdebatten en toelichtingen van ${member.name} in de gemeenteraad van Steenwijkerland.`;
+      const memberPhotoWebp = member.imgUrl?.startsWith("/assets/")
+        ? member.imgUrl.replace(/\.(png|jpg)$/i, ".webp")
+        : undefined;
 
       return {
         title,
@@ -783,6 +793,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
         ogTitle: title,
         ogDescription: desc,
         ogImage: selectedImage,
+        preloadImage: memberPhotoWebp,
         ogType: "video.other",
         canonicalUrl
       };
@@ -967,6 +978,14 @@ export function injectMetadataIntoHtml(html: string, meta: PageMetadata): string
     const jsonLd = JSON.stringify(meta.structuredData);
     const jsonLdScript = `\n  <script type="application/ld+json">\n${jsonLd}\n  </script>\n`;
     modified = modified.replace("</head>", `${jsonLdScript}</head>`);
+  }
+
+  // Preload LCP hero image for instant rendering & Core Web Vitals
+  if (meta.preloadImage) {
+    const isWebp = meta.preloadImage.endsWith(".webp");
+    const typeAttr = isWebp ? ' type="image/webp"' : "";
+    const preloadImageTag = `  <link rel="preload" as="image" href="${escapeHtml(meta.preloadImage)}"${typeAttr} fetchpriority="high" />\n`;
+    modified = modified.replace("</head>", `${preloadImageTag}</head>`);
   }
 
   // Pre-render semantic content for LLM crawlers and SEO bots inside <div id="root">

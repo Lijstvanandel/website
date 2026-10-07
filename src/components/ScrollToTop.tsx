@@ -12,8 +12,6 @@ export function ScrollToTop() {
       left: 0,
       behavior: "instant" as ScrollBehavior,
     });
-    document.documentElement.scrollTop = 0;
-    document.body.scrollTop = 0;
   }, [pathname]);
 
   return null;

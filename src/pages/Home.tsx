@@ -2,9 +2,9 @@ import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Users, Phone, Video, Home as HomeIcon, TreePine, Tractor, Coins, Landmark, Calendar as CalIcon, MapPin } from "lucide-react";
 import { useEffect, useState, useRef } from "react";
-const heroBanner = "/assets/steenwijk-aerial.jpg";
-const sammyImg = "/assets/sammy.png";
-const lisaImg = "/assets/lisa.png";
+const heroBanner = "/assets/steenwijk-aerial.webp";
+const sammyImg = "/assets/sammy.webp";
+const lisaImg = "/assets/lisa.webp";
 import { BelafspraakDialog } from "@/components/BelafspraakDialog";
 import { HeroBuurtkaart } from "@/components/HeroBuurtkaart";
 import { news } from "@/data/news";
@@ -35,8 +35,8 @@ const normalizeSlug = (s: string): string => {
 const DEFAULT_FRACTIELEDEN = [
   { id: "1", name: "Sammy van Andel", role: "Fractievoorzitter", type: "Raadslid", imgUrl: sammyImg },
   { id: "2", name: "Lisa Mars", role: "Raadslid", type: "Raadslid", imgUrl: lisaImg },
-  { id: "3", name: "Nathan ten Wolde", role: "Burgerraadslid", type: "Burgerraadslid", imgUrl: "/assets/nathan.png" },
-  { id: "4", name: "Chris van Andel", role: "Burgerraadslid", type: "Burgerraadslid", imgUrl: "/assets/chris.jpg" },
+  { id: "3", name: "Nathan ten Wolde", role: "Burgerraadslid", type: "Burgerraadslid", imgUrl: "/assets/nathan.webp" },
+  { id: "4", name: "Chris van Andel", role: "Burgerraadslid", type: "Burgerraadslid", imgUrl: "/assets/chris.webp" },
 ];
 
 const Home = () => {
@@ -157,15 +157,22 @@ const Home = () => {
       {/* HERO — Verticaal compact met minimale afstand tot de navbar & interactieve achtergrond */}
       <section className="relative overflow-hidden pt-2 sm:pt-3 lg:pt-4 pb-0 bg-background transition-colors">
         {/* Standaard achtergrondfoto (Steenwijk aerial) */}
-        <img
-          src={heroBanner}
-          alt="Luchtfoto van Steenwijk bij zonsondergang"
-          width={1920}
-          height={1080}
-          fetchpriority="high"
-          decoding="async"
-          className="absolute inset-0 w-full h-full object-cover pointer-events-none transition-transform duration-1000 ease-out"
-        />
+        <picture className="absolute inset-0 w-full h-full pointer-events-none">
+          <source srcSet="/assets/steenwijk-aerial.webp" type="image/webp" />
+          <img
+            src={heroBanner}
+            alt="Luchtfoto van Steenwijk bij zonsondergang"
+            width={1920}
+            height={1080}
+            // @ts-expect-error fetchpriority is standard HTML
+            fetchpriority="high"
+            decoding="async"
+            className="w-full h-full object-cover pointer-events-none transition-transform duration-1000 ease-out"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = "/assets/steenwijk-aerial.jpg";
+            }}
+          />
+        </picture>
 
         {/* Dynamische hover achtergrondfoto Layer A met ultra-zachte crossfade */}
         {bgLayerA.url && (
@@ -200,7 +207,7 @@ const Home = () => {
 
         <div className="container relative z-10 py-1 sm:py-2">
           <div className="grid lg:grid-cols-[1.1fr_1.3fr] xl:grid-cols-[1fr_1.2fr] gap-6 lg:gap-8 xl:gap-12 items-center">
-            <div className="max-w-3xl space-y-3.5 sm:space-y-4 md:space-y-5 animate-fade-up">
+            <div className="max-w-3xl space-y-3.5 sm:space-y-4 md:space-y-5">
               {/* Compacte badge direct onder de navbar */}
               <div className="inline-flex items-center gap-2 px-3 py-1 border border-accent/40 bg-twente-black/70 backdrop-blur rounded-xs transition-all duration-300">
                 <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
@@ -234,7 +241,7 @@ const Home = () => {
             </div>
 
             {/* Buurtkaart: Statisch voor SEO, dynamisch interactief bij hoveren */}
-            <div className="hidden lg:block relative h-[460px] lg:h-[500px] xl:h-[550px] animate-fade-up">
+            <div className="hidden lg:block relative h-[460px] lg:h-[500px] xl:h-[550px]">
               <HeroBuurtkaart onWijkHover={setHoveredWijkSlug} />
             </div>
           </div>

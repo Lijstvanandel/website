@@ -13,9 +13,11 @@ export interface CouncilContributionRecord {
   meetingType?: string;
   municipality: "steenwijkerland" | "hoogeveen" | string;
   bijdragePolitiekeMarkt?: string;
+  bijdragePolitiekeMarktStructured?: any;
   bijdragePolitiekeMarktUpdatedAt?: string;
   bijdragePolitiekeMarktUpdatedBy?: string;
   bijdrageRaadsvergadering?: string;
+  bijdrageRaadsvergaderingStructured?: any;
   bijdrageRaadsvergaderingUpdatedAt?: string;
   bijdrageRaadsvergaderingUpdatedBy?: string;
   isParked?: boolean;
@@ -223,10 +225,12 @@ export function recordCouncilContribution(topic: Partial<CouncilAgendaTopic> & {
     
     // Debate contributions
     bijdragePolitiekeMarkt: topic.bijdragePolitiekeMarkt !== undefined ? topic.bijdragePolitiekeMarkt : (existing?.bijdragePolitiekeMarkt || ""),
+    bijdragePolitiekeMarktStructured: topic.bijdragePolitiekeMarktStructured !== undefined ? topic.bijdragePolitiekeMarktStructured : (existing?.bijdragePolitiekeMarktStructured || null),
     bijdragePolitiekeMarktUpdatedAt: topic.bijdragePolitiekeMarktUpdatedAt || existing?.bijdragePolitiekeMarktUpdatedAt || (topic.bijdragePolitiekeMarkt ? new Date().toISOString() : undefined),
     bijdragePolitiekeMarktUpdatedBy: topic.bijdragePolitiekeMarktUpdatedBy || existing?.bijdragePolitiekeMarktUpdatedBy,
 
     bijdrageRaadsvergadering: topic.bijdrageRaadsvergadering !== undefined ? topic.bijdrageRaadsvergadering : (existing?.bijdrageRaadsvergadering || ""),
+    bijdrageRaadsvergaderingStructured: topic.bijdrageRaadsvergaderingStructured !== undefined ? topic.bijdrageRaadsvergaderingStructured : (existing?.bijdrageRaadsvergaderingStructured || null),
     bijdrageRaadsvergaderingUpdatedAt: topic.bijdrageRaadsvergaderingUpdatedAt || existing?.bijdrageRaadsvergaderingUpdatedAt || (topic.bijdrageRaadsvergadering ? new Date().toISOString() : undefined),
     bijdrageRaadsvergaderingUpdatedBy: topic.bijdrageRaadsvergaderingUpdatedBy || existing?.bijdrageRaadsvergaderingUpdatedBy,
 
@@ -304,13 +308,20 @@ export function hydrateTopicsWithContributions(topics: CouncilAgendaTopic[]): Co
       // Hydrate debate speeches
       if (contrib.bijdragePolitiekeMarkt && !matchedTopic.bijdragePolitiekeMarkt) {
         matchedTopic.bijdragePolitiekeMarkt = contrib.bijdragePolitiekeMarkt;
+        matchedTopic.bijdragePolitiekeMarktStructured = contrib.bijdragePolitiekeMarktStructured || matchedTopic.bijdragePolitiekeMarktStructured;
         matchedTopic.bijdragePolitiekeMarktUpdatedAt = contrib.bijdragePolitiekeMarktUpdatedAt;
         matchedTopic.bijdragePolitiekeMarktUpdatedBy = contrib.bijdragePolitiekeMarktUpdatedBy;
+      } else if (contrib.bijdragePolitiekeMarktStructured && !matchedTopic.bijdragePolitiekeMarktStructured) {
+        matchedTopic.bijdragePolitiekeMarktStructured = contrib.bijdragePolitiekeMarktStructured;
       }
+
       if (contrib.bijdrageRaadsvergadering && !matchedTopic.bijdrageRaadsvergadering) {
         matchedTopic.bijdrageRaadsvergadering = contrib.bijdrageRaadsvergadering;
+        matchedTopic.bijdrageRaadsvergaderingStructured = contrib.bijdrageRaadsvergaderingStructured || matchedTopic.bijdrageRaadsvergaderingStructured;
         matchedTopic.bijdrageRaadsvergaderingUpdatedAt = contrib.bijdrageRaadsvergaderingUpdatedAt;
         matchedTopic.bijdrageRaadsvergaderingUpdatedBy = contrib.bijdrageRaadsvergaderingUpdatedBy;
+      } else if (contrib.bijdrageRaadsvergaderingStructured && !matchedTopic.bijdrageRaadsvergaderingStructured) {
+        matchedTopic.bijdrageRaadsvergaderingStructured = contrib.bijdrageRaadsvergaderingStructured;
       }
 
       // Hydrate parked state
@@ -383,9 +394,11 @@ export function hydrateTopicsWithContributions(topics: CouncilAgendaTopic[]): Co
         parkedBy: contrib.parkedBy,
         previousCategory: contrib.previousCategory,
         bijdragePolitiekeMarkt: contrib.bijdragePolitiekeMarkt || "",
+        bijdragePolitiekeMarktStructured: contrib.bijdragePolitiekeMarktStructured || null,
         bijdragePolitiekeMarktUpdatedAt: contrib.bijdragePolitiekeMarktUpdatedAt,
         bijdragePolitiekeMarktUpdatedBy: contrib.bijdragePolitiekeMarktUpdatedBy,
         bijdrageRaadsvergadering: contrib.bijdrageRaadsvergadering || "",
+        bijdrageRaadsvergaderingStructured: contrib.bijdrageRaadsvergaderingStructured || null,
         bijdrageRaadsvergaderingUpdatedAt: contrib.bijdrageRaadsvergaderingUpdatedAt,
         bijdrageRaadsvergaderingUpdatedBy: contrib.bijdrageRaadsvergaderingUpdatedBy,
         notes: contrib.notes || [],

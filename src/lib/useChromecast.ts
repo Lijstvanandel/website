@@ -24,8 +24,16 @@ export function useChromecast(): UseChromecastReturn {
   const [deviceName, setDeviceName] = useState<string | null>(null);
   const currentSessionRef = useRef<any>(null);
 
-  // Initialize Cast Context when Cast SDK is ready
+  // Initialize Cast Context when Cast SDK is ready (loaded on demand)
   useEffect(() => {
+    // Dynamically load Cast SDK only when Chromecast hook is used
+    if (typeof window !== "undefined" && !window.cast && !document.querySelector('script[src*="cast_sender.js"]')) {
+      const script = document.createElement("script");
+      script.src = "https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1";
+      script.async = true;
+      document.head.appendChild(script);
+    }
+
     const initCastFramework = () => {
       try {
         if (window.cast?.framework) {

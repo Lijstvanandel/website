@@ -72,7 +72,9 @@ import {
   CouncilDocument,
   CouncilTopicNote,
   CouncilMeetingScrapeSummary,
+  CouncilStructuredContribution,
 } from "@/types/council";
+import { StructuredContributionModal } from "@/components/council/StructuredContributionModal";
 import { SupportDossierPanel } from "@/components/SupportDossierPanel";
 import { SecureDocumentViewer } from "@/components/SecureDocumentViewer";
 import { TopicStandpuntenSection } from "@/components/council/TopicStandpuntenSection";
@@ -1333,8 +1335,15 @@ export default function Raadspaneel() {
     }
   };
 
-  // Save Politieke Markt contribution / Mark as hamerstuk
-  const handleSavePolitiekeMarkt = async (topicId: string, markAsHamerstuk?: boolean) => {
+  // Save Structured Politieke Markt contribution / Mark as hamerstuk
+  const handleSaveStructuredPolitiekeMarkt = async (
+    topicId: string,
+    payload: {
+      rawText: string;
+      structured: CouncilStructuredContribution;
+      markAsHamerstuk?: boolean;
+    }
+  ) => {
     if (!token) return;
     setIsSavingContribution(true);
     try {
@@ -1345,22 +1354,58 @@ export default function Raadspaneel() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          bijdragePolitiekeMarkt: politiekeMarktText,
-          markAsHamerstuk: markAsHamerstuk,
+          bijdragePolitiekeMarkt: payload.rawText,
+          bijdragePolitiekeMarktStructured: payload.structured,
+          markAsHamerstuk: payload.markAsHamerstuk,
         }),
       });
       const data = await parseApiResponse(res);
       if (!res.ok) throw new Error(data.error || "Kon bijdrage niet opslaan");
 
       if (data.topic) updateTopic(data.topic);
-      setIsPolitiekeMarktModalOpen(false);
       toast.success(
-        markAsHamerstuk
+        payload.markAsHamerstuk
           ? "Bijdrage opgeslagen en gemarkeerd als afgehandeld hamerstuk!"
           : "Bijdrage Politieke Markt succesvol opgeslagen!"
       );
     } catch (err: any) {
       toast.error(err.message || "Fout bij opslaan");
+      throw err;
+    } finally {
+      setIsSavingContribution(false);
+    }
+  };
+
+  // Save Structured Raadsvergadering contribution
+  const handleSaveStructuredRaadsvergadering = async (
+    topicId: string,
+    payload: {
+      rawText: string;
+      structured: CouncilStructuredContribution;
+    }
+  ) => {
+    if (!token) return;
+    setIsSavingContribution(true);
+    try {
+      const res = await fetch(`/api/council/topics/${topicId}/contributions`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          bijdrageRaadsvergadering: payload.rawText,
+          bijdrageRaadsvergaderingStructured: payload.structured,
+        }),
+      });
+      const data = await parseApiResponse(res);
+      if (!res.ok) throw new Error(data.error || "Kon bijdrage niet opslaan");
+
+      if (data.topic) updateTopic(data.topic);
+      toast.success("Bijdrage Raadsvergadering succesvol opgeslagen!");
+    } catch (err: any) {
+      toast.error(err.message || "Fout bij opslaan");
+      throw err;
     } finally {
       setIsSavingContribution(false);
     }
@@ -1424,33 +1469,7 @@ export default function Raadspaneel() {
     }
   };
 
-  // Save Raadsvergadering contribution
-  const handleSaveRaadsvergadering = async (topicId: string) => {
-    if (!token) return;
-    setIsSavingContribution(true);
-    try {
-      const res = await fetch(`/api/council/topics/${topicId}/contributions`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          bijdrageRaadsvergadering: raadsvergaderingText,
-        }),
-      });
-      const data = await parseApiResponse(res);
-      if (!res.ok) throw new Error(data.error || "Kon bijdrage niet opslaan");
 
-      if (data.topic) updateTopic(data.topic);
-      setIsRaadsvergaderingModalOpen(false);
-      toast.success("Bijdrage Raadsvergadering succesvol opgeslagen!");
-    } catch (err: any) {
-      toast.error(err.message || "Fout bij opslaan");
-    } finally {
-      setIsSavingContribution(false);
-    }
-  };
 
   const handleDirectSaveContribution = async (topicId: string, payload: { bijdragePolitiekeMarkt?: string; bijdrageRaadsvergadering?: string }) => {
     if (!token) return;
@@ -3227,7 +3246,6 @@ export default function Raadspaneel() {
                       type="button"
                       variant="outline"
                       onClick={() => {
-                        setPolitiekeMarktText(selectedTopic.bijdragePolitiekeMarkt || "");
                         setIsPolitiekeMarktModalOpen(true);
                       }}
                       className="h-auto py-2.5 px-3.5 text-xs rounded-xl border-accent/40 bg-accent/5 hover:bg-accent/15 text-foreground justify-start text-left flex items-start gap-2.5 group transition-all"
@@ -3236,14 +3254,16 @@ export default function Raadspaneel() {
                       <div className="min-w-0 flex-1">
                         <div className="font-bold text-accent group-hover:underline flex items-center justify-between">
                           <span>Bijdrage Politieke Markt</span>
-                          {selectedTopic.bijdragePolitiekeMarkt ? (
-                            <span className="text-[10px] bg-accent/20 px-1.5 py-0.2 rounded font-semibold text-accent">Ingevuld</span>
+                          {selectedTopic.bijdragePolitiekeMarktStructured || selectedTopic.bijdragePolitiekeMarkt ? (
+                            <span className="text-[10px] bg-accent/20 px-1.5 py-0.2 rounded font-semibold text-accent">6-Vaks Ingevuld</span>
                           ) : (
                             <span className="text-[10px] text-muted-foreground font-normal">Nog leeg</span>
                           )}
                         </div>
                         <p className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5">
-                          {selectedTopic.bijdragePolitiekeMarkt ? selectedTopic.bijdragePolitiekeMarkt : "Concept inbreng, standpunt & spreektijd..."}
+                          {selectedTopic.bijdragePolitiekeMarktStructured
+                            ? `Pijn: ${selectedTopic.bijdragePolitiekeMarktStructured.pijn || ""} | Spons: ${selectedTopic.bijdragePolitiekeMarktStructured.spons || ""}`
+                            : (selectedTopic.bijdragePolitiekeMarkt || "6-vaks model: Pijn, Eis, Pivot & Spons, Klemzet, Dictum...")}
                         </p>
                       </div>
                     </Button>
@@ -3253,7 +3273,6 @@ export default function Raadspaneel() {
                       type="button"
                       variant="outline"
                       onClick={() => {
-                        setRaadsvergaderingText(selectedTopic.bijdrageRaadsvergadering || "");
                         setIsRaadsvergaderingModalOpen(true);
                       }}
                       className="h-auto py-2.5 px-3.5 text-xs rounded-xl border-border bg-card hover:bg-muted/40 text-foreground justify-start text-left flex items-start gap-2.5 group transition-all"
@@ -3262,14 +3281,16 @@ export default function Raadspaneel() {
                       <div className="min-w-0 flex-1">
                         <div className="font-bold text-foreground group-hover:text-accent flex items-center justify-between">
                           <span>Bijdrage Raadsvergadering</span>
-                          {selectedTopic.bijdrageRaadsvergadering ? (
-                            <span className="text-[10px] bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.2 rounded font-semibold">Ingevuld</span>
+                          {selectedTopic.bijdrageRaadsvergaderingStructured || selectedTopic.bijdrageRaadsvergadering ? (
+                            <span className="text-[10px] bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.2 rounded font-semibold">6-Vaks Ingevuld</span>
                           ) : (
                             <span className="text-[10px] text-muted-foreground font-normal">Nog leeg</span>
                           )}
                         </div>
                         <p className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5">
-                          {selectedTopic.bijdrageRaadsvergadering ? selectedTopic.bijdrageRaadsvergadering : "Definitieve inbreng, stemadvies & moties..."}
+                          {selectedTopic.bijdrageRaadsvergaderingStructured
+                            ? `Pijn: ${selectedTopic.bijdrageRaadsvergaderingStructured.pijn || ""} | Spons: ${selectedTopic.bijdrageRaadsvergaderingStructured.spons || ""}`
+                            : (selectedTopic.bijdrageRaadsvergadering || "6-vaks model: Pijn, Eis, Pivot & Spons, Klemzet, Dictum...")}
                         </p>
                       </div>
                     </Button>
@@ -4063,175 +4084,42 @@ export default function Raadspaneel() {
         </DialogContent>
       </Dialog>
 
-      {/* Bijdrage Politieke Markt Dialog */}
+      {/* 6-Vaks Gestructureerde Bijdrage Politieke Markt Dialog */}
       {selectedTopic && (
-        <Dialog open={isPolitiekeMarktModalOpen} onOpenChange={setIsPolitiekeMarktModalOpen}>
-          <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
-            <DialogHeader>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-accent/15 text-accent border border-accent/30">
-                  Politieke Markt
-                </span>
-                {selectedTopic.status === "hamerstuk_afgehandeld" && (
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                    Afgehandeld als hamerstuk
-                  </span>
-                )}
-              </div>
-              <DialogTitle className="text-lg font-display font-bold leading-snug">
-                Bijdrage Politieke Markt: {selectedTopic.title}
-              </DialogTitle>
-              <DialogDescription className="text-xs text-muted-foreground">
-                Noteer hier het standpunt, de inbreng van de fractie en de concept spreektijd voor de Politieke Markt.
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-4 py-2 flex-1 min-h-0 overflow-y-auto">
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-foreground">
-                  Fractie-inbreng & Standpunt (Politieke Markt)
-                </label>
-                <Textarea
-                  rows={8}
-                  value={politiekeMarktText}
-                  onChange={(e) => setPolitiekeMarktText(e.target.value)}
-                  placeholder="Noteer hier uw standpunt, vragen aan het college/wethouder en kernpunten voor de politieke markt..."
-                  className="text-xs bg-muted/20"
-                />
-              </div>
-
-              {selectedTopic.bijdragePolitiekeMarktUpdatedAt && (
-                <div className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5" />
-                  <span>
-                    Laatst gewijzigd door {selectedTopic.bijdragePolitiekeMarktUpdatedBy || "onbekend"} op{" "}
-                    {new Date(selectedTopic.bijdragePolitiekeMarktUpdatedAt).toLocaleString("nl-NL")}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            <DialogFooter className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-3 border-t border-border">
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsPolitiekeMarktModalOpen(false)}
-                  disabled={isSavingContribution}
-                  className="text-xs"
-                >
-                  Sluiten
-                </Button>
-                {selectedTopic.status !== "hamerstuk_afgehandeld" ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={isSavingContribution}
-                    onClick={() => handleSavePolitiekeMarkt(selectedTopic.id, true)}
-                    className="text-xs border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-semibold gap-1"
-                    title="Markeer als afgehandeld hamerstuk (geen verdere bespreking in de raad nodig)"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    Afgehandeld als hamerstuk
-                  </Button>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={isSavingContribution}
-                    onClick={() => handleSavePolitiekeMarkt(selectedTopic.id, false)}
-                    className="text-xs text-muted-foreground hover:text-foreground"
-                    title="Zet terug naar bespreekstuk"
-                  >
-                    Terugzetten naar bespreekstuk
-                  </Button>
-                )}
-              </div>
-
-              <Button
-                type="button"
-                size="sm"
-                disabled={isSavingContribution}
-                onClick={() => handleSavePolitiekeMarkt(selectedTopic.id, undefined)}
-                className="text-xs bg-accent text-accent-foreground font-semibold"
-              >
-                {isSavingContribution ? "Opslaan..." : "Bijdrage Opslaan"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <StructuredContributionModal
+          isOpen={isPolitiekeMarktModalOpen}
+          onClose={() => setIsPolitiekeMarktModalOpen(false)}
+          topicTitle={selectedTopic.title}
+          type="politieke_markt"
+          initialStructured={selectedTopic.bijdragePolitiekeMarktStructured || null}
+          initialRawText={selectedTopic.bijdragePolitiekeMarkt || ""}
+          updatedAt={selectedTopic.bijdragePolitiekeMarktUpdatedAt}
+          updatedBy={selectedTopic.bijdragePolitiekeMarktUpdatedBy}
+          status={selectedTopic.status}
+          onSave={async (payload) => {
+            await handleSaveStructuredPolitiekeMarkt(selectedTopic.id, payload);
+          }}
+          isSaving={isSavingContribution}
+        />
       )}
 
-      {/* Bijdrage Raadsvergadering Dialog */}
+      {/* 6-Vaks Gestructureerde Bijdrage Raadsvergadering Dialog */}
       {selectedTopic && (
-        <Dialog open={isRaadsvergaderingModalOpen} onOpenChange={setIsRaadsvergaderingModalOpen}>
-          <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
-            <DialogHeader>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-primary/15 text-primary border border-primary/30">
-                  Raadsvergadering
-                </span>
-                <span className="text-xs text-muted-foreground">Besluitvorming</span>
-              </div>
-              <DialogTitle className="text-lg font-display font-bold leading-snug">
-                Bijdrage Raadsvergadering: {selectedTopic.title}
-              </DialogTitle>
-              <DialogDescription className="text-xs text-muted-foreground">
-                Noteer hier de definitieve inbreng, eventuele moties/amendementen en het fractie-stemadvies voor de raadsvergadering.
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-4 py-2 flex-1 min-h-0 overflow-y-auto">
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-foreground">
-                  Definitieve inbreng, Stemadvies & Moties
-                </label>
-                <Textarea
-                  rows={8}
-                  value={raadsvergaderingText}
-                  onChange={(e) => setRaadsvergaderingText(e.target.value)}
-                  placeholder="Bijv. Stemadvies: VOOR / TEGEN; Motie 'Behoud dorpshuis' indienen met mede-indieners..."
-                  className="text-xs bg-muted/20"
-                />
-              </div>
-
-              {selectedTopic.bijdrageRaadsvergaderingUpdatedAt && (
-                <div className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5" />
-                  <span>
-                    Laatst gewijzigd door {selectedTopic.bijdrageRaadsvergaderingUpdatedBy || "onbekend"} op{" "}
-                    {new Date(selectedTopic.bijdrageRaadsvergaderingUpdatedAt).toLocaleString("nl-NL")}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            <DialogFooter className="flex items-center justify-between gap-2 pt-3 border-t border-border">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setIsRaadsvergaderingModalOpen(false)}
-                disabled={isSavingContribution}
-                className="text-xs"
-              >
-                Sluiten
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                disabled={isSavingContribution}
-                onClick={() => handleSaveRaadsvergadering(selectedTopic.id)}
-                className="text-xs bg-accent text-accent-foreground font-semibold"
-              >
-                {isSavingContribution ? "Opslaan..." : "Bijdrage Raadsvergadering Opslaan"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <StructuredContributionModal
+          isOpen={isRaadsvergaderingModalOpen}
+          onClose={() => setIsRaadsvergaderingModalOpen(false)}
+          topicTitle={selectedTopic.title}
+          type="raadsvergadering"
+          initialStructured={selectedTopic.bijdrageRaadsvergaderingStructured || null}
+          initialRawText={selectedTopic.bijdrageRaadsvergadering || ""}
+          updatedAt={selectedTopic.bijdrageRaadsvergaderingUpdatedAt}
+          updatedBy={selectedTopic.bijdrageRaadsvergaderingUpdatedBy}
+          status={selectedTopic.status}
+          onSave={async (payload) => {
+            await handleSaveStructuredRaadsvergadering(selectedTopic.id, payload);
+          }}
+          isSaving={isSavingContribution}
+        />
       )}
 
       {/* Parkeer Onderwerp Dialog (met verplichte reden) */}

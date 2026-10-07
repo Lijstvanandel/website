@@ -7,6 +7,7 @@ import { BelafspraakDialog } from "@/components/BelafspraakDialog";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { ShareDialog } from "@/components/ShareDialog";
 import { getVideoThumbnail } from "@/lib/videoUtils";
+import { DEFAULT_FRACTIELEDEN } from "@/data/fractieleden";
 
 interface VideoItem {
   id: string;
@@ -23,9 +24,16 @@ interface VideoItem {
 
 export default function FractielidVideos() {
   const { id } = useParams<{ id: string }>();
-  const [member, setMember] = useState<FractielidItem | null>(null);
+
+  // Synchronous initial fallback resolution for 0ms First Contentful Paint & 0 CLS
+  const defaultMember = React.useMemo(() => {
+    return DEFAULT_FRACTIELEDEN.find((m) => String(m.id) === String(id)) || null;
+  }, [id]);
+
+  const [member, setMember] = useState<FractielidItem | null>(defaultMember);
   const [videos, setVideos] = useState<VideoItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!defaultMember);
+  const [videosLoading, setVideosLoading] = useState(true);
   const [belOpen, setBelOpen] = useState(false);
   const [voorgeselecteerd, setVoorgeselecteerd] = useState<string | undefined>(undefined);
 
@@ -42,9 +50,15 @@ export default function FractielidVideos() {
   });
 
   useEffect(() => {
-    setLoading(true);
+    if (defaultMember) {
+      setMember((prev) => prev || defaultMember);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+    setVideosLoading(true);
 
-    // Fetch fractielid and all videos
+    // Fetch fractielid and all videos in background
     Promise.all([
       fetch("/api/fractieleden").then((res) => (res.ok ? res.json() : [])),
       fetch("/api/videos").then((res) => (res.ok ? res.json() : [])),
@@ -52,7 +66,11 @@ export default function FractielidVideos() {
       .then(([ledenData, videosData]: [FractielidItem[], VideoItem[]]) => {
         if (Array.isArray(ledenData)) {
           const found = ledenData.find((l) => String(l.id) === String(id));
-          setMember(found || null);
+          if (found) {
+            setMember(found);
+          } else if (defaultMember) {
+            setMember(defaultMember);
+          }
         }
 
         if (Array.isArray(videosData)) {
@@ -70,12 +88,13 @@ export default function FractielidVideos() {
       })
       .finally(() => {
         setLoading(false);
+        setVideosLoading(false);
       });
-  }, [id]);
+  }, [id, defaultMember]);
 
-  // Handle deep-link anchor or ?v=ID parameter scrolling
+  // Handle deep-link anchor or ?v=ID parameter scrolling without forced reflow
   useEffect(() => {
-    if (loading || videos.length === 0) return;
+    if (videosLoading || videos.length === 0) return;
 
     // Check query params ?v= or ?video=
     const params = new URLSearchParams(window.location.search);
@@ -91,16 +110,19 @@ export default function FractielidVideos() {
     if (targetElementId) {
       const el = document.getElementById(targetElementId);
       if (el) {
-        setTimeout(() => {
-          el.scrollIntoView({ behavior: "smooth", block: "center" });
-          el.classList.add("ring-2", "ring-accent");
-          setTimeout(() => {
-            el.classList.remove("ring-2", "ring-accent");
-          }, 3000);
+        const timer = setTimeout(() => {
+          requestAnimationFrame(() => {
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+            el.classList.add("ring-2", "ring-accent");
+            setTimeout(() => {
+              el.classList.remove("ring-2", "ring-accent");
+            }, 3000);
+          });
         }, 150);
+        return () => clearTimeout(timer);
       }
     }
-  }, [loading, videos]);
+  }, [videosLoading, videos]);
 
   const handleOpenBelafspraak = (lid: FractielidItem) => {
     setVoorgeselecteerd(`${lid.name} — ${lid.role}`);
@@ -135,9 +157,19 @@ export default function FractielidVideos() {
 
   if (loading) {
     return (
-      <div className="container py-20 text-center">
-        <div className="inline-block w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="text-muted-foreground text-sm">Fractielid en video's laden...</p>
+      <div className="container py-12 md:py-20 min-h-[75vh]">
+        <div className="h-5 w-40 bg-muted/60 rounded mb-8 animate-pulse" />
+        <div className="max-w-3xl mb-10 space-y-3">
+          <div className="h-3.5 w-32 bg-muted/60 rounded animate-pulse" />
+          <div className="h-12 w-80 bg-muted/60 rounded animate-pulse" />
+          <div className="h-5 w-full max-w-lg bg-muted/40 rounded animate-pulse" />
+        </div>
+        <div className="h-64 max-w-4xl bg-muted/30 rounded border border-border animate-pulse mb-14" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[1, 2, 3].map((n) => (
+            <div key={n} className="h-80 bg-muted/20 rounded border border-border/60 animate-pulse" />
+          ))}
+        </div>
       </div>
     );
   }
@@ -237,7 +269,25 @@ export default function FractielidVideos() {
           )}
         </div>
 
-        {videos.length === 0 ? (
+        {videosLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
+            {[1, 2, 3].map((n) => (
+              <div
+                key={n}
+                className="bg-card border border-border rounded-sm overflow-hidden flex flex-col h-80 animate-pulse"
+              >
+                <div className="aspect-video bg-muted/60" />
+                <div className="p-5 space-y-3 flex-1 flex flex-col justify-between">
+                  <div className="space-y-2">
+                    <div className="h-4 bg-muted/60 rounded w-3/4" />
+                    <div className="h-3 bg-muted/40 rounded w-1/2" />
+                  </div>
+                  <div className="h-8 bg-muted/30 rounded w-full" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : videos.length === 0 ? (
           <div className="bg-card border border-border p-12 text-center rounded-sm max-w-2xl mx-auto my-8">
             <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent">
               <Video className="w-8 h-8 opacity-70" />
