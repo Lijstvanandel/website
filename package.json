@@ -14,7 +14,8 @@
     "test:watch": "vitest",
     "test:smtp": "node scripts/test-smtp.cjs",
     "backup:council": "node scripts/backup-council.cjs",
-    "restore:council": "node scripts/restore-council.cjs"
+    "restore:council": "node scripts/restore-council.cjs",
+    "admin:reset": "node scripts/reset-admin.cjs"
   },
   "dependencies": {
     "@google/genai": "^2.21.0",
