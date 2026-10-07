@@ -125,6 +125,14 @@ export const HeroBuurtkaart: React.FC<HeroBuurtkaartProps> = ({ onWijkHover }) =
                           setHoveredName(buurt.name);
                           onWijkHover?.(buurt.slug);
                         }}
+                        onTouchStart={() => {
+                          setHoveredName(buurt.name);
+                          onWijkHover?.(buurt.slug);
+                        }}
+                        onFocus={() => {
+                          setHoveredName(buurt.name);
+                          onWijkHover?.(buurt.slug);
+                        }}
                         onMouseLeave={() => {
                           setHoveredName(null);
                           onWijkHover?.(null);

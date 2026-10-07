@@ -591,8 +591,14 @@ export function syncWijkenWithBuurtkaart(existingList: StoredWijkRecord[] = []):
         resolvedNaam = "Ijsselham, Paasloo en de Basse";
       }
 
-      const rawBanner = (existing.bannerUrl && existing.bannerUrl !== "/assets/hero-banner.webp") ? existing.bannerUrl : defWijk.bannerUrl;
-      const rawHero = defWijk.heroBannerUrl || existing.heroBannerUrl || defWijk.bannerUrl;
+      // User's customized database values strictly take priority over static default seeds!
+      const rawBanner = (existing.bannerUrl && existing.bannerUrl.trim())
+        ? existing.bannerUrl.trim()
+        : (existing.heroBannerUrl && existing.heroBannerUrl.trim() ? existing.heroBannerUrl.trim() : defWijk.bannerUrl);
+
+      const rawHero = (existing.heroBannerUrl && existing.heroBannerUrl.trim() && existing.heroBannerUrl !== "/assets/steenwijk-aerial.webp")
+        ? existing.heroBannerUrl.trim()
+        : (existing.bannerUrl && existing.bannerUrl.trim() ? existing.bannerUrl.trim() : (defWijk.heroBannerUrl || defWijk.bannerUrl));
 
       const rep = existing.vertegenwoordiger !== undefined ? existing.vertegenwoordiger : defWijk.vertegenwoordiger;
       const resolvedRep = rep ? {

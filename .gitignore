@@ -36,7 +36,7 @@ dist/version.json
 database.sqlite
 database.sqlite*
 vault_crm_sensitive.sqlite*
-.vault_master.key
+.vault_master.key*
 *.sqlite
 *.sqlite-journal
 *.sqlite-wal

@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Users, Phone, Video, Home as HomeIcon, TreePine, Tractor, Coins, Landmark, Calendar as CalIcon, MapPin } from "lucide-react";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 const heroBanner = "/assets/steenwijk-aerial.webp";
 const sammyImg = "/assets/sammy.webp";
 const lisaImg = "/assets/lisa.webp";
@@ -44,6 +44,7 @@ const Home = () => {
   const [homeNews, setHomeNews] = useState<any[]>(() => news.filter((n: any) => !n.wijkSlug));
   const [wijken, setWijken] = useState<WijkItem[]>([]);
   const [fractieleden, setFractieleden] = useState<any[]>(DEFAULT_FRACTIELEDEN);
+  const [selectedWijkSlug, setSelectedWijkSlug] = useState<string | null>(null);
   const [hoveredWijkSlug, setHoveredWijkSlug] = useState<string | null>(null);
   const [bgLayerA, setBgLayerA] = useState<{ url: string; visible: boolean }>({ url: "", visible: false });
   const [bgLayerB, setBgLayerB] = useState<{ url: string; visible: boolean }>({ url: "", visible: false });
@@ -122,14 +123,35 @@ const Home = () => {
     };
   }, [navigate]);
 
-  // Find hovered wijk and synchronize active background with smooth dual-buffer crossfade
-  const hoveredWijk = hoveredWijkSlug
-    ? (wijken.find((w) => normalizeSlug(w.slug) === hoveredWijkSlug) ||
-       BUURTKAART_WIJKEN.find((w) => normalizeSlug(w.slug) === hoveredWijkSlug))
-    : null;
+  // Find custom-configured wijken with uploaded or unique photos from database
+  const customWijkenWithPhotos = useMemo(() => {
+    return (wijken || []).filter((w) => {
+      const banner = w.bannerUrl?.trim();
+      const hero = w.heroBannerUrl?.trim();
+      return (
+        (banner && banner !== "/assets/steenwijk-aerial.webp" && banner !== "/assets/hero-banner.webp") ||
+        (hero && hero !== "/assets/steenwijk-aerial.webp" && hero !== "/assets/hero-banner.webp")
+      );
+    });
+  }, [wijken]);
+
+  // Find active wijk and synchronize active background with smooth dual-buffer crossfade
+  const activeWijkSlug = hoveredWijkSlug || selectedWijkSlug;
+  const hoveredWijk = activeWijkSlug
+    ? (wijken.find((w) => normalizeSlug(w.slug) === activeWijkSlug) ||
+       BUURTKAART_WIJKEN.find((w) => normalizeSlug(w.slug) === activeWijkSlug))
+    : (customWijkenWithPhotos.length > 0 ? customWijkenWithPhotos[0] : null);
 
   useEffect(() => {
-    const targetUrl = (hoveredWijk?.heroBannerUrl || hoveredWijk?.bannerUrl)?.trim();
+    // Prioritize custom uploaded or configured photos over default generic aerial photo
+    const customHero = (hoveredWijk?.heroBannerUrl && hoveredWijk.heroBannerUrl.trim() && hoveredWijk.heroBannerUrl !== "/assets/steenwijk-aerial.webp")
+      ? hoveredWijk.heroBannerUrl.trim()
+      : null;
+    const customBanner = (hoveredWijk?.bannerUrl && hoveredWijk.bannerUrl.trim() && hoveredWijk.bannerUrl !== "/assets/hero-banner.webp" && hoveredWijk.bannerUrl !== "/assets/steenwijk-aerial.webp")
+      ? hoveredWijk.bannerUrl.trim()
+      : null;
+
+    const targetUrl = customHero || customBanner || hoveredWijk?.heroBannerUrl?.trim() || hoveredWijk?.bannerUrl?.trim();
     if (targetUrl) {
       // Preload image before fading to avoid any blank flash
       const img = new Image();

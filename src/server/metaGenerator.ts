@@ -267,11 +267,17 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
 
     if (wijk) {
       const cleanDesc = truncate(stripHtml(wijk.beschrijving || `Informatie, speerpunten en nieuws voor ${wijk.naam} in de gemeente Steenwijkerland.`), 160);
-      const rawWijkImg = wijk.heroBannerUrl || wijk.bannerUrl || wijk.fotoUrl || "/assets/steenwijk-aerial.webp";
+      const rawWijkImg = (
+        (wijk.bannerUrl && wijk.bannerUrl.trim() && wijk.bannerUrl !== "/assets/hero-banner.webp" ? wijk.bannerUrl.trim() : null) ||
+        (wijk.heroBannerUrl && wijk.heroBannerUrl.trim() && wijk.heroBannerUrl !== "/assets/steenwijk-aerial.webp" ? wijk.heroBannerUrl.trim() : null) ||
+        wijk.bannerUrl?.trim() ||
+        wijk.heroBannerUrl?.trim() ||
+        "/assets/steenwijk-aerial.webp"
+      );
       const wijkImage = resolveImageUrl(baseUrl, rawWijkImg);
-      const preloadWijkBanner = rawWijkImg.startsWith("http")
-        ? rawWijkImg
-        : rawWijkImg.replace(/\.(jpg|jpeg|png)$/i, ".webp");
+      const preloadWijkBanner = (rawWijkImg.startsWith("/assets/") && !rawWijkImg.includes("/uploads/"))
+        ? rawWijkImg.replace(/\.(jpg|jpeg|png)$/i, ".webp")
+        : rawWijkImg;
       const title = `${wijk.naam} (${wijk.type || 'Wijk/Kern'}) | Lijst van Andel`;
 
       return {

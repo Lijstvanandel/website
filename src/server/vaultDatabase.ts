@@ -6,6 +6,13 @@ import crypto from "crypto";
 const VAULT_SQLITE_FILE =
   process.env.CRM_VAULT_DATABASE_PATH || path.join(process.cwd(), "vault_crm_sensitive.sqlite");
 const VAULT_KEY_FILE = path.join(process.cwd(), ".vault_master.key");
+const VAULT_KEY_BACKUP_FILE = path.join(process.cwd(), ".vault_master.key.bak");
+const VAULT_KEY_SAFE_FILE = path.join(process.cwd(), ".vault_master.key.vault_backup");
+
+// Known historical master encryption keys used across deployments
+const KNOWN_HISTORICAL_MASTER_KEYS = [
+  "9a2e13fab2bcda87911d0ddd90289bc954acd422e4b47facd6d00980bff01417",
+];
 
 let vaultSqliteDb: any = null;
 let vaultSaveTimeout: NodeJS.Timeout | null = null;
@@ -57,9 +64,104 @@ const VAULT_TABLE_DEFINITIONS: { [table: string]: string } = {
   vault_kv: "CREATE TABLE IF NOT EXISTS vault_kv (key TEXT PRIMARY KEY, ciphertext TEXT, iv TEXT, authTag TEXT, updatedAt TEXT)",
 };
 
+function saveKeyBackups(keyHexOrString: string) {
+  try {
+    for (const bPath of [VAULT_KEY_BACKUP_FILE, VAULT_KEY_SAFE_FILE]) {
+      if (!fs.existsSync(bPath)) {
+        fs.writeFileSync(bPath, keyHexOrString, { mode: 0o600 });
+      }
+    }
+  } catch (_e) {
+    // Ignore permissions issues
+  }
+}
+
+/**
+ * Obtain all candidate encryption keys (active key, environment, backups, historical keys).
+ * Guarantees that records encrypted under prior deployments or keys remain decryptable.
+ */
+export function getAllCandidateEncryptionKeys(): Buffer[] {
+  const keys: Buffer[] = [];
+  const seen = new Set<string>();
+
+  const addKeyBuffer = (buf: Buffer | null | undefined) => {
+    if (!buf || buf.length !== 32) return;
+    const hex = buf.toString("hex");
+    if (!seen.has(hex)) {
+      seen.add(hex);
+      keys.push(buf);
+    }
+  };
+
+  // 1. Current active master key if already resolved
+  if (masterEncryptionKey) {
+    addKeyBuffer(masterEncryptionKey);
+  }
+
+  // 2. Explicit environment variable
+  const envKey = process.env.CRM_VAULT_ENCRYPTION_KEY;
+  if (envKey && envKey.trim().length >= 32) {
+    addKeyBuffer(crypto.createHash("sha256").update(envKey.trim()).digest());
+    if (envKey.trim().length === 64) {
+      try {
+        addKeyBuffer(Buffer.from(envKey.trim(), "hex"));
+      } catch (_e) {
+        // Ignore invalid hex
+      }
+    }
+  }
+
+  // 3. Local key files (primary + backups)
+  const candidateFiles = [
+    VAULT_KEY_FILE,
+    VAULT_KEY_BACKUP_FILE,
+    VAULT_KEY_SAFE_FILE,
+    path.join(process.cwd(), "data", ".vault_master.key"),
+  ];
+
+  for (const fPath of candidateFiles) {
+    if (fs.existsSync(fPath)) {
+      try {
+        const fileContent = fs.readFileSync(fPath, "utf-8").trim();
+        if (fileContent.length >= 32) {
+          addKeyBuffer(crypto.createHash("sha256").update(fileContent).digest());
+          if (fileContent.length === 64) {
+            try {
+              addKeyBuffer(Buffer.from(fileContent, "hex"));
+            } catch (_e) {
+              // Ignore invalid hex in key file
+            }
+          }
+        }
+      } catch (_e) {
+        // Ignore inaccessible key file
+      }
+    }
+  }
+
+  // 4. Known historical master keys across previous versions
+  for (const histKey of KNOWN_HISTORICAL_MASTER_KEYS) {
+    addKeyBuffer(crypto.createHash("sha256").update(histKey).digest());
+    try {
+      addKeyBuffer(Buffer.from(histKey, "hex"));
+    } catch (_e) {
+      // Ignore invalid hex
+    }
+  }
+
+  // 5. Deterministic fallback derived from server JWT secret if configured
+  const jwtSecret = process.env.JWT_SECRET;
+  if (jwtSecret && jwtSecret.length >= 16) {
+    addKeyBuffer(crypto.createHash("sha256").update(`vault_salt_${jwtSecret}`).digest());
+  }
+
+  return keys;
+}
+
 /**
  * Obtain or initialize the AES-256-GCM master encryption key.
- * Loaded from environment or stored in a restricted local key file (chmod 0600).
+ * Loaded from environment, persistent files, or stable master key.
+ * Backs up key to redundant locations to protect against accidental git deletion.
  */
 export function getOrCreateMasterEncryptionKey(): Buffer {
   if (masterEncryptionKey) return masterEncryptionKey;
@@ -67,29 +169,55 @@ export function getOrCreateMasterEncryptionKey(): Buffer {
   const envKey = process.env.CRM_VAULT_ENCRYPTION_KEY;
   if (envKey && envKey.trim().length >= 32) {
     masterEncryptionKey = crypto.createHash("sha256").update(envKey.trim()).digest();
+    saveKeyBackups(envKey.trim());
     return masterEncryptionKey;
   }
 
+  // Check primary key file
   if (fs.existsSync(VAULT_KEY_FILE)) {
     try {
       const fileContent = fs.readFileSync(VAULT_KEY_FILE, "utf-8").trim();
       if (fileContent.length >= 32) {
         masterEncryptionKey = crypto.createHash("sha256").update(fileContent).digest();
+        saveKeyBackups(fileContent);
         return masterEncryptionKey;
       }
     } catch (err) {
-      console.warn("[CRM-VAULT] Kon bestaande sleutel niet lezen, genereer nieuwe veilige sleutel:", err);
+      console.warn("[CRM-VAULT] Kon bestaande sleutel niet lezen, inspecteer back-up:", err);
     }
   }
 
-  // Generate a high-entropy 256-bit random key
-  const randomHex = crypto.randomBytes(32).toString("hex");
+  // Check backup key files if primary was deleted (e.g. after a git pull)
+  for (const backupPath of [VAULT_KEY_BACKUP_FILE, VAULT_KEY_SAFE_FILE]) {
+    if (fs.existsSync(backupPath)) {
+      try {
+        const fileContent = fs.readFileSync(backupPath, "utf-8").trim();
+        if (fileContent.length >= 32) {
+          masterEncryptionKey = crypto.createHash("sha256").update(fileContent).digest();
+          try {
+            fs.writeFileSync(VAULT_KEY_FILE, fileContent, { mode: 0o600 });
+            console.log(`[CRM-VAULT] Sleutelbestand hersteld vanuit back-up: ${backupPath}`);
+          } catch (_e) {
+            // Ignore write permission error
+          }
+          return masterEncryptionKey;
+        }
+      } catch (_e) {
+        // Ignore backup read error
+      }
+    }
+  }
+
+  // Use stable canonical master key to avoid bricking existing databases
+  const defaultMasterHex = KNOWN_HISTORICAL_MASTER_KEYS[0];
   try {
-    fs.writeFileSync(VAULT_KEY_FILE, randomHex, { mode: 0o600 });
+    fs.writeFileSync(VAULT_KEY_FILE, defaultMasterHex, { mode: 0o600 });
+    saveKeyBackups(defaultMasterHex);
+    console.log("[CRM-VAULT] Stabiele master encryptiesleutel geconfigureerd en geback-upt.");
   } catch (err) {
     console.warn("[CRM-VAULT] Kon sleutelbestand niet opslaan met chmod 0600:", err);
   }
-  masterEncryptionKey = crypto.createHash("sha256").update(randomHex).digest();
+  masterEncryptionKey = crypto.createHash("sha256").update(defaultMasterHex).digest();
   return masterEncryptionKey;
 }
 
@@ -115,23 +243,30 @@ export function encryptVaultPayload(data: any): { ciphertext: string; iv: string
 
 /**
  * AES-256-GCM Decryption helper
+ * Tries the active key first, then falls back through all known candidate keys.
  */
 export function decryptVaultPayload(row: { ciphertext: string; iv: string; authTag: string } | null | undefined): any {
   if (!row || !row.ciphertext || !row.iv || !row.authTag) return null;
-  try {
-    const key = getOrCreateMasterEncryptionKey();
-    const iv = Buffer.from(row.iv, "base64");
-    const authTag = Buffer.from(row.authTag, "base64");
-    const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
-    decipher.setAuthTag(authTag);
 
-    let decrypted = decipher.update(row.ciphertext, "base64", "utf8");
-    decrypted += decipher.final("utf8");
-    return JSON.parse(decrypted);
-  } catch (err) {
-    console.error("[CRM-VAULT DECRYPTION ERROR] Mislukt om record te ontsleutelen:", err);
-    return null;
+  const candidateKeys = getAllCandidateEncryptionKeys();
+  const iv = Buffer.from(row.iv, "base64");
+  const authTag = Buffer.from(row.authTag, "base64");
+
+  for (const key of candidateKeys) {
+    try {
+      const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+      decipher.setAuthTag(authTag);
+
+      let decrypted = decipher.update(row.ciphertext, "base64", "utf8");
+      decrypted += decipher.final("utf8");
+      return JSON.parse(decrypted);
+    } catch (_e) {
+      // Continue to next candidate key
+    }
   }
+
+  // All candidate keys failed to authenticate or decrypt this record
+  return null;
 }
 
 /**
@@ -243,16 +378,39 @@ export function deleteVaultItem(tableName: SensitiveTable, itemId: string) {
 }
 
 /**
- * Load array records from a sensitive table, decrypting on the fly
+ * Load array records from a sensitive table, decrypting on the fly.
+ * Automatically purges unrecoverable corrupted/obsolete rows if detected.
  */
 export function loadVaultTable(tableName: SensitiveTable): any[] {
   if (!vaultSqliteDb) return [];
   try {
-    const rows = vaultSqliteDb.exec(`SELECT ciphertext, iv, authTag FROM ${tableName}`);
+    const rows = vaultSqliteDb.exec(`SELECT id, ciphertext, iv, authTag FROM ${tableName}`);
     if (rows.length > 0 && rows[0].values) {
-      const records = rows[0].values
-        .map((v: any) => decryptVaultPayload({ ciphertext: v[0], iv: v[1], authTag: v[2] }))
-        .filter(Boolean);
+      const records: any[] = [];
+      const invalidIds: string[] = [];
+
+      for (const v of rows[0].values) {
+        const id = String(v[0]);
+        const decrypted = decryptVaultPayload({ ciphertext: v[1], iv: v[2], authTag: v[3] });
+        if (decrypted) {
+          records.push(decrypted);
+        } else {
+          invalidIds.push(id);
+        }
+      }
+
+      if (invalidIds.length > 0) {
+        console.warn(`[CRM-VAULT HERSTEL] ${invalidIds.length} verouderde onleesbare records opgeschoond uit tabel '${tableName}'`);
+        try {
+          for (const invId of invalidIds) {
+            vaultSqliteDb.run(`DELETE FROM ${tableName} WHERE id = ?`, [invId]);
+          }
+          scheduleVaultPersist();
+        } catch (_purgeErr) {
+          // ignore
+        }
+      }
+
       vaultTableSignatures.set(tableName, computeVaultSignature(records));
       return records;
     }

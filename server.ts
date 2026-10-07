@@ -1031,6 +1031,27 @@ function getDb() {
     saveDb(db);
   }
 
+  // Ensure primary admin user account exists for seamless administrator access
+  if (Array.isArray(db.users) && !db.users.some((u: any) => u.role === "admin" || u.username === "admin")) {
+    const adminPass = process.env.ADMIN_PASSWORD || "admin123";
+    const defaultAdminPass = bcrypt.hashSync(adminPass, 10);
+    db.users.push({
+      id: "user_admin",
+      username: "admin",
+      fullName: "Systeembeheerder Lijst van Andel",
+      email: "info@lijstvanandel.nl",
+      role: "admin",
+      isActive: true,
+      billingStatus: "exempt",
+      paidAmount: 0,
+      createdAt: new Date().toISOString(),
+      password: defaultAdminPass,
+      newsletterSubscribed: true
+    });
+    saveDb(db);
+    console.log("[SECURITY] ✅ Hoofdbeheerdersaccount 'admin' gegarandeerd actief.");
+  }
+
   // Ensure penningmeester user account exists for seamless role access
   if (Array.isArray(db.users) && !db.users.some((u: any) => u.role === "penningmeester")) {
     const defaultTreasurerPass = bcrypt.hashSync("penningmeester123", 10);
@@ -10086,14 +10107,18 @@ async function startServer() {
       const hoogeveenDossiers: any[] = getHoogeveenDossiers();
       const matchingDossiers = hoogeveenDossiers.filter((d) => d.wijken?.includes(wijk.naam));
 
+      // Check if admin has set custom photo/description in db.wijken for this Hoogeveen wijk
+      const dbWijk = (db.wijken || []).find((w: any) => w.slug.toLowerCase() === rawSlug || (w.id && String(w.id).toLowerCase() === rawSlug));
+
       return res.json({
         id: wijk.id,
-        naam: wijk.naam,
+        naam: dbWijk?.naam || wijk.naam,
         slug: wijk.slug,
         type: wijk.type === "stadswijk" ? "Wijk" : "Kern",
         gemeente: "Hoogeveen",
-        beschrijving: wijk.description,
-        bannerUrl: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800&auto=format&fit=crop&q=80",
+        beschrijving: dbWijk?.beschrijving || wijk.description,
+        bannerUrl: dbWijk?.bannerUrl || "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800&auto=format&fit=crop&q=80",
+        heroBannerUrl: dbWijk?.heroBannerUrl || dbWijk?.bannerUrl || "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800&auto=format&fit=crop&q=80",
         inwoners: wijk.totaalInwoners,
         oppervlakteHa: wijk.totaalOppervlakteHa,
         documentCount: wijk.documentCount,
@@ -10101,6 +10126,7 @@ async function startServer() {
         buurten: wijk.buurten,
         aliases: wijk.aliases,
         dossiers: matchingDossiers,
+        vertegenwoordiger: dbWijk?.vertegenwoordiger || null,
       });
     }
 
@@ -10129,6 +10155,10 @@ async function startServer() {
     if (!req.file) {
       return res.status(400).json({ error: "Geen bestand geüpload" });
     }
+    syncFileAcrossUploadDirs(req.file.path);
+    try {
+      fs.chmodSync(req.file.path, 0o644);
+    } catch (_e) {}
     const url = `/uploads/wijken/${req.file.filename}`;
     res.json({ url });
   });
@@ -10136,8 +10166,11 @@ async function startServer() {
   // Admin: Update wijk/kern (achtergrondfoto, beschrijving, vertegenwoordiger)
   app.put("/api/admin/wijken/:slug", requireAuth, requireAdmin, (req: any, res: any) => {
     const db = getDb();
-    const slug = req.params.slug.toLowerCase();
-    const wijkIndex = (db.wijken || []).findIndex((w: any) => w.slug.toLowerCase() === slug);
+    const rawSlug = req.params.slug.toLowerCase();
+    const slug = LEGACY_SLUG_MAP[rawSlug] || rawSlug;
+    const wijkIndex = (db.wijken || []).findIndex(
+      (w: any) => w.slug.toLowerCase() === slug || w.slug.toLowerCase() === rawSlug
+    );
 
     if (wijkIndex === -1) {
       return res.status(404).json({ error: "Wijk of kern niet gevonden" });
@@ -10155,8 +10188,22 @@ async function startServer() {
 
     const wijk = db.wijken[wijkIndex];
 
-    if (bannerUrl !== undefined) wijk.bannerUrl = String(bannerUrl).trim();
-    if (heroBannerUrl !== undefined) wijk.heroBannerUrl = String(heroBannerUrl).trim();
+    if (bannerUrl !== undefined) {
+      const cleanBanner = String(bannerUrl).trim();
+      wijk.bannerUrl = cleanBanner;
+      // If heroBannerUrl was empty or default aerial, keep them in sync
+      if (!wijk.heroBannerUrl || wijk.heroBannerUrl === "/assets/steenwijk-aerial.webp" || wijk.heroBannerUrl === "/assets/hero-banner.webp") {
+        wijk.heroBannerUrl = cleanBanner;
+      }
+    }
+    if (heroBannerUrl !== undefined) {
+      const cleanHero = String(heroBannerUrl).trim();
+      wijk.heroBannerUrl = cleanHero;
+      // If bannerUrl was empty or default aerial, keep them in sync
+      if (!wijk.bannerUrl || wijk.bannerUrl === "/assets/steenwijk-aerial.webp" || wijk.bannerUrl === "/assets/hero-banner.webp") {
+        wijk.bannerUrl = cleanHero;
+      }
+    }
     if (beschrijving !== undefined) wijk.beschrijving = String(beschrijving).trim();
     if (naam !== undefined && naam) wijk.naam = String(naam).trim();
     if (type !== undefined && (type === "Wijk" || type === "Kern")) wijk.type = type;

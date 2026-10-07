@@ -291,6 +291,21 @@ const WijkDetail = () => {
     rep?.rol ||
     (wijk.type === "Wijk" ? "Wijkvertegenwoordiger" : "Kernvertegenwoordiger");
 
+  // Determine active banner background: Prioritize custom bannerUrl, then heroBannerUrl, then fallback
+  const activeBannerUrl = (
+    (wijk.bannerUrl && wijk.bannerUrl.trim() && wijk.bannerUrl !== "/assets/hero-banner.webp" && wijk.bannerUrl !== "/assets/steenwijk-aerial.webp" ? wijk.bannerUrl.trim() : null) ||
+    (wijk.heroBannerUrl && wijk.heroBannerUrl.trim() && wijk.heroBannerUrl !== "/assets/steenwijk-aerial.webp" && wijk.heroBannerUrl !== "/assets/hero-banner.webp" ? wijk.heroBannerUrl.trim() : null) ||
+    wijk.bannerUrl?.trim() ||
+    wijk.heroBannerUrl?.trim() ||
+    "/assets/steenwijk-aerial.webp"
+  );
+  const isBannerBundled = activeBannerUrl.startsWith("/assets/") && !activeBannerUrl.includes("/uploads/");
+  const bannerWebp = isBannerBundled ? activeBannerUrl.replace(/\.(jpg|jpeg|png)$/i, ".webp") : null;
+
+  const repFoto = rep?.fotoUrl?.trim() || "";
+  const isRepBundled = repFoto.startsWith("/assets/") && !repFoto.includes("/uploads/");
+  const repWebp = isRepBundled ? repFoto.replace(/\.(jpg|jpeg|png)$/i, ".webp") : null;
+
   const facebookUrl = formatSocialUrl("facebook", rep?.socials?.facebook);
   const instagramUrl = formatSocialUrl("instagram", rep?.socials?.instagram);
   const linkedinUrl = formatSocialUrl("linkedin", rep?.socials?.linkedin);
@@ -308,33 +323,25 @@ const WijkDetail = () => {
           ======================================================== */}
       <section className="relative w-full min-h-[320px] md:min-h-[420px] flex items-center overflow-hidden border-b border-accent/30 bg-black">
         <picture className="absolute inset-0 w-full h-full">
-          <source
-            srcSet={
-              (wijk.heroBannerUrl || wijk.bannerUrl || "/assets/steenwijk-aerial.webp").replace(
-                /\.(jpg|jpeg|png)$/i,
-                ".webp"
-              )
-            }
-            type="image/webp"
-          />
+          {bannerWebp && <source srcSet={bannerWebp} type="image/webp" />}
           <img
-            src={(wijk.heroBannerUrl || wijk.bannerUrl || "/assets/steenwijk-aerial.webp").replace(
-              /\.(jpg|jpeg|png)$/i,
-              ".webp"
-            )}
+            src={activeBannerUrl}
             alt={`Achtergrond van ${wijk.naam}`}
-            className="w-full h-full object-cover opacity-60"
+            className="w-full h-full object-cover opacity-80"
             // @ts-expect-error fetchpriority is standard HTML attribute
             fetchpriority="high"
             decoding="async"
             width="1200"
             height="420"
             onError={(e) => {
-              (e.target as HTMLImageElement).src = "/assets/steenwijk-aerial.jpg";
+              const target = e.target as HTMLImageElement;
+              if (target.src && !target.src.endsWith("/assets/steenwijk-aerial.jpg")) {
+                target.src = "/assets/steenwijk-aerial.jpg";
+              }
             }}
           />
         </picture>
-        <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/70 to-black/30" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/55 to-black/25" />
         <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent" />
 
         <div className="relative container z-10 py-12 md:py-16 flex flex-col justify-between h-full">
@@ -386,24 +393,27 @@ const WijkDetail = () => {
               <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr] md:grid-cols-[200px_1fr]">
                 {/* Foto */}
                 <div className="aspect-[4/5] sm:aspect-auto sm:h-full overflow-hidden bg-muted relative">
-                  <picture>
-                    <source
-                      srcSet={(rep.fotoUrl || "/assets/stef-mars.webp").replace(/\.(jpg|jpeg|png)$/i, ".webp")}
-                      type="image/webp"
-                    />
-                    <img
-                      src={(rep.fotoUrl || "/assets/stef-mars.webp").replace(/\.(jpg|jpeg|png)$/i, ".webp")}
-                      alt={`${repFullName} - ${repRole}`}
-                      loading="lazy"
-                      decoding="async"
-                      width="200"
-                      height="250"
-                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = "/assets/silhouette.webp";
-                      }}
-                    />
-                  </picture>
+                  {repFoto ? (
+                    <picture className="w-full h-full">
+                      {repWebp && <source srcSet={repWebp} type="image/webp" />}
+                      <img
+                        src={repFoto}
+                        alt={`${repFullName} - ${repRole}`}
+                        loading="lazy"
+                        decoding="async"
+                        width="200"
+                        height="250"
+                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = "/assets/silhouette.webp";
+                        }}
+                      />
+                    </picture>
+                  ) : (
+                    <div className="w-full h-full min-h-[200px] flex items-center justify-center bg-muted text-muted-foreground">
+                      <User className="w-10 h-10" />
+                    </div>
+                  )}
                 </div>
 
                 {/* Info */}
