@@ -58,38 +58,35 @@ export default function FractielidVideos() {
     }
     setVideosLoading(true);
 
-    // Fetch fractielid and all videos in background
-    Promise.all([
-      fetch("/api/fractieleden").then((res) => (res.ok ? res.json() : [])),
-      fetch("/api/videos").then((res) => (res.ok ? res.json() : [])),
-    ])
-      .then(([ledenData, videosData]: [FractielidItem[], VideoItem[]]) => {
+    // Fetch targeted fractielid videos with fast fallback
+    fetch(`/api/videos?memberId=${encodeURIComponent(id || "")}`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((videosData: VideoItem[]) => {
+        if (Array.isArray(videosData)) {
+          // Sort by date descending
+          const sorted = [...videosData].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          setVideos(sorted);
+        }
+      })
+      .catch((err) => {
+        console.warn("Fout bij ophalen fractielid video data:", err);
+      })
+      .finally(() => {
+        setVideosLoading(false);
+      });
+
+    // Optionally refresh member info in background if not default or custom edited
+    fetch("/api/fractieleden")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((ledenData: FractielidItem[]) => {
         if (Array.isArray(ledenData)) {
           const found = ledenData.find((l) => String(l.id) === String(id));
           if (found) {
             setMember(found);
-          } else if (defaultMember) {
-            setMember(defaultMember);
           }
         }
-
-        if (Array.isArray(videosData)) {
-          // Filter all videos linked to this member
-          const memberVideos = videosData.filter((v) =>
-            v.fractieledenIds?.map(String).includes(String(id))
-          );
-          // Sort by date descending
-          memberVideos.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-          setVideos(memberVideos);
-        }
       })
-      .catch((err) => {
-        console.error("Fout bij ophalen fractielid video data:", err);
-      })
-      .finally(() => {
-        setLoading(false);
-        setVideosLoading(false);
-      });
+      .catch(() => {});
   }, [id, defaultMember]);
 
   // Handle deep-link anchor or ?v=ID parameter scrolling without forced reflow
@@ -241,11 +238,12 @@ export default function FractielidVideos() {
           videoCount={videos.length}
           onPlanBelafspraak={handleOpenBelafspraak}
           showVideoButton={false}
+          eagerPhoto={true}
         />
       </div>
 
       {/* OVERZICHT VAN ALLE GEKOPPELDE VIDEO'S */}
-      <div className="space-y-6">
+      <div className="space-y-6 min-h-[380px]">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4">
           <div>
             <h2 className="font-display text-2xl sm:text-3xl flex items-center gap-2.5">
@@ -270,11 +268,11 @@ export default function FractielidVideos() {
         </div>
 
         {videosLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2 min-h-[300px]">
             {[1, 2, 3].map((n) => (
               <div
                 key={n}
-                className="bg-card border border-border rounded-sm overflow-hidden flex flex-col h-80 animate-pulse"
+                className="bg-card border border-border rounded-sm overflow-hidden flex flex-col h-72 animate-pulse"
               >
                 <div className="aspect-video bg-muted/60" />
                 <div className="p-5 space-y-3 flex-1 flex flex-col justify-between">
@@ -288,12 +286,12 @@ export default function FractielidVideos() {
             ))}
           </div>
         ) : videos.length === 0 ? (
-          <div className="bg-card border border-border p-12 text-center rounded-sm max-w-2xl mx-auto my-8">
+          <div className="bg-card border border-border p-8 md:p-12 text-center rounded-sm max-w-2xl mx-auto my-4 min-h-[260px] flex flex-col items-center justify-center">
             <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent">
               <Video className="w-8 h-8 opacity-70" />
             </div>
             <h3 className="font-display text-2xl mb-2">Geen video's gevonden</h3>
-            <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
+            <p className="text-sm text-muted-foreground mb-6 leading-relaxed max-w-md">
               Er zijn op dit moment nog geen specifieke videobijdragen aan {member.name} gekoppeld.
               Zodra er nieuwe raadsvergaderingen of interviews online komen, worden deze hier getoond.
             </p>

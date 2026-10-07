@@ -24,6 +24,8 @@ import { hoofdstukken, type Standpunt } from "@/data/partijprogramma";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
+import { DEFAULT_FRACTIELEDEN } from "@/data/fractieleden";
+import { getVideoThumbnail } from "@/lib/videoUtils";
 
 const iconMap: Record<string, typeof Vote> = {
   vote: Vote,
@@ -214,7 +216,12 @@ const StandpuntCard = ({ hNr, s, dynamicVideos, fractieleden }: StandpuntCardPro
 
                     {/* Speler */}
                     <div className="aspect-video w-full bg-black rounded overflow-hidden border border-border">
-                      <VideoPlayer url={v.videoUrl} title={v.title} poster={v.thumbnailUrl} className="w-full h-full" />
+                      <VideoPlayer
+                        url={v.videoUrl}
+                        title={v.title}
+                        poster={getVideoThumbnail(v.videoUrl, v.thumbnailUrl) || v.thumbnailUrl}
+                        className="w-full h-full"
+                      />
                     </div>
 
                     {v.description && (
@@ -287,7 +294,7 @@ const Standpunten = () => {
     return 0;
   });
   const [videos, setVideos] = useState<VideoItem[]>([]);
-  const [fractieleden, setFractieleden] = useState<FractielidItem[]>([]);
+  const [fractieleden, setFractieleden] = useState<FractielidItem[]>(DEFAULT_FRACTIELEDEN);
 
   useEffect(() => {
     if (paramHoofdstuk) {

@@ -40,12 +40,19 @@ vault_crm_sensitive.sqlite*
 *.sqlite
 *.sqlite-journal
 *.sqlite-wal
+
+# Runtime Data & Uploads (anchored to root to protect src/data/)
+/data/
+/data/*
+/backups/
+/backups/*
 uploads/
 public/uploads/
 *.csv
 public/*.csv
 dist/*.csv
 !src/data/
+!src/data/**
 src/data/persisted_council_contributions.json
 public/data/*.log
 public/data/*/*.log
@@ -56,10 +63,6 @@ public/data/gemini_dead_letter_queue.jsonl
 # Git-Immune Council Vault & Persistent Backups
 .council_vault/
 .council_vault/*
-data/
-data/*
-backups/
-backups/*
 council_contributions_master.json
 *council_contributions*
 

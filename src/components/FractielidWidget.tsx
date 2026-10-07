@@ -30,6 +30,7 @@ interface FractielidWidgetProps {
   onPlanBelafspraak?: (lid: FractielidItem) => void;
   showVideoButton?: boolean;
   className?: string;
+  eagerPhoto?: boolean;
 }
 
 export const FractielidWidget: React.FC<FractielidWidgetProps> = ({
@@ -38,6 +39,7 @@ export const FractielidWidget: React.FC<FractielidWidgetProps> = ({
   onPlanBelafspraak,
   showVideoButton = true,
   className = "",
+  eagerPhoto = false,
 }) => {
   return (
     <article
@@ -59,7 +61,9 @@ export const FractielidWidget: React.FC<FractielidWidgetProps> = ({
               <img
                 src={lid.imgUrl.replace(/\.(jpg|jpeg|png)$/i, ".webp")}
                 alt={lid.name}
-                loading="lazy"
+                loading={eagerPhoto ? "eager" : "lazy"}
+                // @ts-expect-error fetchpriority standard attribute
+                fetchpriority={eagerPhoto ? "high" : "auto"}
                 decoding="async"
                 width="220"
                 height="275"

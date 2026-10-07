@@ -76,7 +76,8 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
     : (host && !isLocal ? host : "lijstvanandel.nl");
   const baseUrl = `${protocol}://${effectiveHost}`;
   const pathParts = urlPath.split("?");
-  const cleanPath = pathParts[0].split("#")[0];
+  const rawPath = pathParts[0].split("#")[0];
+  const cleanPath = (rawPath.length > 1 ? rawPath.replace(/\/+$/, "") : rawPath).toLowerCase();
   const queryString = pathParts[1] ? pathParts[1].split("#")[0] : "";
   const queryParams = new URLSearchParams(queryString);
   const canonicalUrl = `${baseUrl}${cleanPath === "/" ? "" : cleanPath}`;
@@ -713,7 +714,14 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
   const videoMemberMatch = cleanPath.match(/^\/(?:fractie|raadsleden)\/([a-zA-Z0-9_-]+)\/videos$/);
   if (videoMemberMatch) {
     const memberId = videoMemberMatch[1];
-    const member = (db?.fractieleden || []).find((m: any) => m.id === memberId || m.name?.toLowerCase().includes(memberId.toLowerCase()));
+    const defaultMembers = [
+      { id: "1", name: "Sammy van Andel", role: "Fractievoorzitter", type: "Raadslid", imgUrl: "/assets/sammy.webp" },
+      { id: "2", name: "Lisa Mars", role: "Raadslid", type: "Raadslid", imgUrl: "/assets/lisa.webp" },
+      { id: "3", name: "Nathan ten Wolde", role: "Burgerraadslid", type: "Burgerraadslid", imgUrl: "/assets/nathan.webp" },
+      { id: "4", name: "Chris van Andel", role: "Burgerraadslid", type: "Burgerraadslid", imgUrl: "/assets/chris.webp" },
+    ];
+    const member = (db?.fractieleden || []).find((m: any) => String(m.id) === String(memberId) || m.name?.toLowerCase().includes(memberId.toLowerCase()))
+      || defaultMembers.find((m: any) => String(m.id) === String(memberId) || m.name.toLowerCase().includes(memberId.toLowerCase()));
     if (member) {
       // Zoek gekoppelde video's
       const memberVideos = (db?.videos || [])

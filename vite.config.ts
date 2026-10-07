@@ -41,6 +41,7 @@ export default defineConfig(({ mode }) => ({
   ],
   esbuild: {
     legalComments: "none",
+    drop: mode === "production" ? ["console", "debugger"] : [],
   },
   resolve: {
     alias: {
@@ -70,7 +71,7 @@ export default defineConfig(({ mode }) => ({
     exclude: ["pdfjs-dist"],
   },
   build: {
-    target: "es2022",
+    target: ["es2022", "chrome100", "safari15", "firefox100", "edge100"],
     assetsInlineLimit: 4096,
     cssCodeSplit: true,
     chunkSizeWarningLimit: 1000,
@@ -102,6 +103,9 @@ export default defineConfig(({ mode }) => ({
             }
             if (id.includes("/node_modules/@radix-ui/")) {
               return "vendor-radix";
+            }
+            if (id.includes("/node_modules/lucide-react/")) {
+              return "vendor-icons";
             }
             if (id.includes("/node_modules/date-fns")) {
               return "vendor-date";
