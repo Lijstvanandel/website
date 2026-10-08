@@ -931,7 +931,7 @@ export function dismissAllDiffAlerts(username?: string): number {
 /**
  * Clear all unassigned topics, leaving topics that are assigned or have notes/activity intact.
  */
-export function clearUnassignedCouncilTopics(targetMunicipality: "steenwijkerland" | "hoogeveen" = "steenwijkerland"): { removedCount: number; remainingCount: number } {
+export function clearUnassignedCouncilTopics(targetMunicipality: "steenwijkerland" = "steenwijkerland"): { removedCount: number; remainingCount: number } {
   const db = getDbFromSqlite();
   const allTopics: CouncilAgendaTopic[] = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
   
@@ -949,18 +949,10 @@ export function clearUnassignedCouncilTopics(targetMunicipality: "steenwijkerlan
   const removedCount = existingTopics.length - keptTopics.length;
   db.councilAgendaTopics = [...otherTopics, ...keptTopics];
   
-  if (targetMunicipality === "hoogeveen") {
-    if (db.councilScrapeSummaryHoogeveen) {
-      db.councilScrapeSummaryHoogeveen.totalTopics = keptTopics.length;
-      db.councilScrapeSummaryHoogeveen.bespreekstukkenCount = keptTopics.filter((t: any) => t.category === "Oordeelvorming - bespreekstukken" && !t.isArchived).length;
-      db.councilScrapeSummaryHoogeveen.archivedCount = keptTopics.filter((t: any) => t.isArchived).length;
-    }
-  } else {
-    if (db.councilScrapeSummary) {
-      db.councilScrapeSummary.totalTopics = keptTopics.length;
-      db.councilScrapeSummary.bespreekstukkenCount = keptTopics.filter((t: any) => t.category === "Oordeelvorming - bespreekstukken" && !t.isArchived).length;
-      db.councilScrapeSummary.archivedCount = keptTopics.filter((t: any) => t.isArchived).length;
-    }
+  if (db.councilScrapeSummary) {
+    db.councilScrapeSummary.totalTopics = keptTopics.length;
+    db.councilScrapeSummary.bespreekstukkenCount = keptTopics.filter((t: any) => t.category === "Oordeelvorming - bespreekstukken" && !t.isArchived).length;
+    db.councilScrapeSummary.archivedCount = keptTopics.filter((t: any) => t.isArchived).length;
   }
   
   saveDbToSqlite(db);

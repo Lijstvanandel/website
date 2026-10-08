@@ -28,7 +28,7 @@ export interface User {
   hoursRemaining24h?: number;
   activatedAt?: string | null;
   membershipNotice?: string;
-  municipality?: "steenwijkerland" | "hoogeveen" | string;
+  municipality?: "steenwijkerland" | string;
   portalApproved?: boolean;
   isPortalUser?: boolean;
   processingRestricted?: boolean;

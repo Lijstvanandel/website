@@ -106,6 +106,13 @@ html,body,.folium-map,.leaflet-container{background:transparent !important;}
                     });
                 }
             });
+
+            map.on('mouseout', function() {
+                window.parent.postMessage({type:'wijk-unhover'}, '*');
+            });
+            document.body.addEventListener('mouseleave', function() {
+                window.parent.postMessage({type:'wijk-unhover'}, '*');
+            });
         }, 500);
     });
 </script>

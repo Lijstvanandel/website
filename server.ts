@@ -99,23 +99,6 @@ import {
   dismissAllDiffAlerts,
 } from "./src/server/councilScraperService.js";
 import {
-  scrapeCouncilAgendasHoogeveen,
-  startHoogeveenCouncilWatchdogScheduler,
-  bulkDownloadHoogeveenPdfs,
-} from "./src/server/hoogeveenScraperService.js";
-import {
-  distributeHoogeveenDossiers,
-  getHoogeveenWijkenOverview,
-  getHoogeveenDossiers,
-  startHoogeveenRestructuringInBackground,
-  getHoogeveenClassificationStatus,
-  cancelHoogeveenClassification,
-  generateHoogeveenMetadataCsv,
-} from "./src/server/hoogeveenDossierManager.js";
-import {
-  HOOGEVEEN_WIJKEN_MATRIX,
-} from "./src/server/hoogeveenTaxonomy.js";
-import {
   getEventLoopLagMetrics,
   globalPdfWorkerPool,
 } from "./src/server/workers/pdfWorkerPool.js";
@@ -183,15 +166,6 @@ import {
   saveOverijsselMetadata
 } from "./src/server/overijsselNotubizService.js";
 import {
-  startDrentheSync,
-  stopDrentheSync,
-  getDrentheSyncStatus,
-  getSavedDrentheDocuments,
-  saveDrentheMetadata,
-  clearDrentheCache,
-  classifyDrentheDocument
-} from "./src/server/drentheProvincieService.js";
-import {
   startWaterschapSync,
   cancelWaterschapSync,
   getWaterschapSyncStatus,
@@ -206,7 +180,6 @@ import {
 } from "./src/server/missingFilesRepairService.js";
 import {
   syncSteenwijkerlandToezeggingen,
-  syncHoogeveenToezeggingen,
   queryToezeggingen,
   getSingleToezegging,
   getToezeggingenStats,
@@ -2387,9 +2360,6 @@ async function startServer() {
     const candidatePaths = [
       path.join(uploadsPath, "documents", safeFilename),
       path.join(distUploadsPath, "documents", safeFilename),
-      path.join(uploadsPath, "documents", "hoogeveen", safeFilename),
-      path.join(process.cwd(), "uploads", "documents", "hoogeveen", safeFilename),
-      path.join(distUploadsPath, "documents", "hoogeveen", safeFilename),
       path.join(uploadsPath, safeFilename),
       path.join(distUploadsPath, safeFilename),
       path.join(uploadsPath, "stemgedrag", safeFilename),
@@ -3274,17 +3244,13 @@ async function startServer() {
     const memDetails = computeMembershipDetails(user);
     const resolvedEmail = safeUser.email || (safeUser.username?.includes("@") ? safeUser.username : "");
     const newsletterSubscribed = safeUser.newsletterSubscribed !== undefined ? Boolean(safeUser.newsletterSubscribed) : true;
-    const isHoogeveen = safeUser.municipality === "hoogeveen" || safeUser.isPortalUser;
-    const portalApproved = safeUser.portalApproved !== undefined ? Boolean(safeUser.portalApproved) : (isHoogeveen ? false : true);
     
     return {
       ...safeUser,
       email: resolvedEmail,
       newsletterSubscribed,
-      municipality: safeUser.municipality || "steenwijkerland",
+      municipality: "steenwijkerland",
       billingStatus: safeUser.billingStatus || (safeUser.role === "admin" ? "exempt" : "paid"),
-      portalApproved,
-      isPortalUser: Boolean(safeUser.isPortalUser),
       isFullMember: memDetails.isFullMember,
       isLid: memDetails.isLid,
       membershipState: memDetails.membershipState,
@@ -3320,14 +3286,7 @@ async function startServer() {
     const resolvedEmail = (email && typeof email === 'string') ? email.trim() : (username.includes('@') ? username : '');
 
     const host = String(req.headers.host || "").toLowerCase();
-    const isPortalReg = Boolean(
-      portalMode === true ||
-      reqMuni === "hoogeveen" ||
-      host.includes("hoogeveen.") ||
-      host.includes("hgv.") ||
-      host.startsWith("hoogeveen-")
-    );
-    const assignedMunicipality = isPortalReg ? (reqMuni || "hoogeveen") : (reqMuni || "steenwijkerland");
+    const assignedMunicipality = "steenwijkerland";
 
     const settings = db.membershipSettings || {
       enabled: true,
@@ -3339,7 +3298,7 @@ async function startServer() {
       requirePaymentAtRegistration: true,
     };
 
-    const initialBillingStatus = (isAdminUser || isPortalReg)
+    const initialBillingStatus = isAdminUser
       ? 'exempt'
       : (settings.enabled && settings.requirePaymentAtRegistration ? 'pending' : 'paid');
 
@@ -3348,7 +3307,7 @@ async function startServer() {
       salutation, 
       fullName, 
       address: address || "", 
-      city: city || (isPortalReg ? "Hoogeveen" : ""), 
+      city: city || "", 
       username, 
       email: resolvedEmail,
       password: hashedPassword, 
@@ -3466,10 +3425,9 @@ async function startServer() {
       return res.status(401).json({ error: "Ongeldige inloggegevens" });
     }
 
-    // Portal approval check: ONLY for portal mode (Hoogeveen) users who are not yet approved
-    const isPortalUser = (user.municipality === "hoogeveen" || user.isPortalUser);
+    // Approval check for accounts awaiting activation
     const isPrivileged = user.role === "admin" || user.role === "key-user" || user.role === "voorzitter";
-    if (isPortalUser && !isPrivileged && user.portalApproved !== true) {
+    if (user.portalApproved === false && !isPrivileged) {
       return res.status(403).json({
         error: "in afwachting van goedkeuring. De beheerder is op de hoogte.",
         pendingApproval: true
@@ -3489,20 +3447,14 @@ async function startServer() {
   app.post("/api/login", handleLoginLogic);
   app.post("/api/auth/login", handleLoginLogic);
 
-  // Portal User Approval Routes (Key-Users & Admins)
-  app.get("/api/portal/pending-users", requireAuth, requireKeyUserOrAdmin, (req: any, res: any) => {
+  // User Approval Routes (Key-Users & Admins)
+  app.get("/api/portal/pending-users", requireAuth, requireKeyUserOrAdmin, (_req: any, res: any) => {
     const db = getDb();
-    const userMuni = req.user.municipality || "hoogeveen";
-    const isAdmin = req.user.role === "admin" || req.user.role === "voorzitter";
 
     const pending = db.users
       .filter((u: any) => {
         if (u.role === "admin" || u.role === "voorzitter" || u.role === "secretaris" || u.role === "penningmeester" || u.role === "key-user") return false;
-        const isPortal = u.municipality === "hoogeveen" || u.isPortalUser;
-        if (!isPortal) return false;
-        if (u.portalApproved === true) return false;
-        if (!isAdmin && u.municipality && u.municipality !== userMuni) return false;
-        return true;
+        return u.portalApproved === false;
       })
       .map((u: any) => getSafeUserWithMembership(u));
 
@@ -10063,73 +10015,16 @@ async function startServer() {
   // WIJKEN EN KERNEN API
   // ==========================================
 
-  // Public: Get all wijken en kernen (scoped to active municipality)
+  // Public: Get all wijken en kernen (Steenwijkerland)
   app.get("/api/wijken", (req, res) => {
     const db = getDb();
-    const targetMunicipality = resolveRequestMunicipality(req);
-    if (targetMunicipality === "hoogeveen") {
-      const hgOverview = getHoogeveenWijkenOverview();
-      const formatted = hgOverview.map((w) => ({
-        id: w.id,
-        naam: w.naam,
-        slug: w.slug,
-        type: w.type === "stadswijk" ? "Wijk" : "Kern",
-        gemeente: "Hoogeveen",
-        beschrijving: w.description || `Wijk/Kern ${w.naam} in Gemeente Hoogeveen.`,
-        bannerUrl: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800&auto=format&fit=crop&q=80",
-        inwoners: w.totaalInwoners,
-        oppervlakteHa: w.totaalOppervlakteHa,
-        documentCount: w.documentCount,
-        topicCount: w.topicCount,
-        buurten: w.buurten,
-        aliases: w.aliases,
-      }));
-      return res.json(formatted);
-    }
     res.json(db.wijken || []);
   });
 
-  // Public: Get single wijk by slug (with alias resolution & Hoogeveen dossier matching)
+  // Public: Get single wijk by slug
   app.get("/api/wijken/:slug", (req, res) => {
     const db = getDb();
-    const targetMunicipality = resolveRequestMunicipality(req);
     const rawSlug = req.params.slug.toLowerCase();
-
-    if (targetMunicipality === "hoogeveen") {
-      const hgOverview = getHoogeveenWijkenOverview();
-      const wijk = hgOverview.find(
-        (w) => w.slug.toLowerCase() === rawSlug || w.naam.toLowerCase() === rawSlug || w.aliases.some((a) => a.toLowerCase() === rawSlug)
-      );
-      if (!wijk) {
-        return res.status(404).json({ error: "Wijk of kern niet gevonden in Hoogeveen" });
-      }
-
-      const hoogeveenDossiers: any[] = getHoogeveenDossiers();
-      const matchingDossiers = hoogeveenDossiers.filter((d) => d.wijken?.includes(wijk.naam));
-
-      // Check if admin has set custom photo/description in db.wijken for this Hoogeveen wijk
-      const dbWijk = (db.wijken || []).find((w: any) => w.slug.toLowerCase() === rawSlug || (w.id && String(w.id).toLowerCase() === rawSlug));
-
-      return res.json({
-        id: wijk.id,
-        naam: dbWijk?.naam || wijk.naam,
-        slug: wijk.slug,
-        type: wijk.type === "stadswijk" ? "Wijk" : "Kern",
-        gemeente: "Hoogeveen",
-        beschrijving: dbWijk?.beschrijving || wijk.description,
-        bannerUrl: dbWijk?.bannerUrl || "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800&auto=format&fit=crop&q=80",
-        heroBannerUrl: dbWijk?.heroBannerUrl || dbWijk?.bannerUrl || "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800&auto=format&fit=crop&q=80",
-        inwoners: wijk.totaalInwoners,
-        oppervlakteHa: wijk.totaalOppervlakteHa,
-        documentCount: wijk.documentCount,
-        topicCount: wijk.topicCount,
-        buurten: wijk.buurten,
-        aliases: wijk.aliases,
-        dossiers: matchingDossiers,
-        vertegenwoordiger: dbWijk?.vertegenwoordiger || null,
-      });
-    }
-
     const slug = LEGACY_SLUG_MAP[rawSlug] || rawSlug;
     const wijk = (db.wijken || []).find((w: any) => w.slug.toLowerCase() === slug || w.slug.toLowerCase() === rawSlug);
     if (!wijk) {
@@ -10158,7 +10053,9 @@ async function startServer() {
     syncFileAcrossUploadDirs(req.file.path);
     try {
       fs.chmodSync(req.file.path, 0o644);
-    } catch (_e) {}
+    } catch (_e) {
+      // chmod negeren indien bestandssysteem permissiewijzigingen blokkeert
+    }
     const url = `/uploads/wijken/${req.file.filename}`;
     res.json({ url });
   });
@@ -11660,57 +11557,12 @@ Sitemap: ${baseUrl}/sitemap.xml
   }
 
   // Helper to determine topic municipality strictly
-  function getTopicMunicipality(topic: any): "steenwijkerland" | "hoogeveen" {
-    if (!topic) return "steenwijkerland";
-    const m = String(topic.municipality || "").toLowerCase().trim();
-    if (m === "hoogeveen" || m === "hgv") return "hoogeveen";
-    if (m === "steenwijkerland" || m === "swl") return "steenwijkerland";
-    if (topic.id && (String(topic.id).startsWith("hg_") || String(topic.id).includes("hoogeveen"))) return "hoogeveen";
+  function getTopicMunicipality(_topic: any): "steenwijkerland" {
     return "steenwijkerland";
   }
 
   // Helper to determine active municipality from request context
-  function resolveRequestMunicipality(req: any): "steenwijkerland" | "hoogeveen" {
-    // 1. Explicit query or body parameter takes priority if provided
-    const q = String(
-      req.query?.municipality ||
-      req.query?.portal ||
-      req.query?.tenant ||
-      req.query?.muni ||
-      req.body?.municipality ||
-      req.body?.portal ||
-      req.body?.tenant ||
-      ""
-    ).toLowerCase().trim();
-    if (q === "hoogeveen" || q === "hgv") return "hoogeveen";
-    if (q === "steenwijkerland" || q === "swl") return "steenwijkerland";
-
-    // 2. Explicit request headers
-    const headerTenant = String(req.headers["x-portal-tenant"] || req.headers["x-municipality"] || req.headers["x-tenant"] || "").toLowerCase().trim();
-    if (headerTenant === "hoogeveen" || headerTenant === "hgv") return "hoogeveen";
-    if (headerTenant === "steenwijkerland" || headerTenant === "swl") return "steenwijkerland";
-
-    // 3. User assigned municipality if authenticated
-    if (req.user && req.user.role !== "admin") {
-      const uMuni = (req.user.municipality || "steenwijkerland").toLowerCase().trim();
-      return uMuni === "hoogeveen" ? "hoogeveen" : "steenwijkerland";
-    }
-
-    // 4. Hostname check (domain based: e.g. hoogeveen.scientiarum.nl)
-    const host = String(req.headers["x-forwarded-host"] || req.headers.host || "").toLowerCase();
-    if (host.includes("hoogeveen.") || host.includes("hgv.") || host.startsWith("hoogeveen-")) {
-      return "hoogeveen";
-    }
-    if (host.includes("steenwijkerland.") || host.includes("swl.")) {
-      return "steenwijkerland";
-    }
-
-    // 5. If user is admin and has an assigned municipality
-    if (req.user?.municipality === "hoogeveen") {
-      return "hoogeveen";
-    }
-
-    // 6. Default to Steenwijkerland (primary party site)
+  function resolveRequestMunicipality(_req: any): "steenwijkerland" {
     return "steenwijkerland";
   }
 
@@ -11749,9 +11601,7 @@ Sitemap: ${baseUrl}/sitemap.xml
           docUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl${docUrl}`;
         }
         if (!docUrl && d.id) {
-          if (enriched.municipality === "hoogeveen" || String(enriched.id || "").startsWith("hg_") || /^\d+$/.test(String(d.id))) {
-            docUrl = `https://api.notubiz.nl/document/${d.id}/1`;
-          } else if (enriched.meetingId) {
+          if (enriched.meetingId) {
             docUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl/Agenda/Document/${enriched.meetingId}?documentId=${d.id}&agendaItemId=${enriched.agendaItemId || ""}`;
           } else {
             docUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl/Document/LoadAgendaItemDocument/${d.id}`;
@@ -11771,7 +11621,7 @@ Sitemap: ${baseUrl}/sitemap.xml
 
       return {
         id: enriched.id,
-        municipality: enriched.municipality || targetMunicipality,
+        municipality: "steenwijkerland",
         meetingId: enriched.meetingId,
         meetingDate: enriched.meetingDate,
         meetingDateDisplay: enriched.meetingDateDisplay,
@@ -11806,18 +11656,17 @@ Sitemap: ${baseUrl}/sitemap.xml
       };
     });
 
-    const summaryKey = targetMunicipality === "hoogeveen" ? "councilScrapeSummaryHoogeveen" : "councilScrapeSummary";
-    const summary = db[summaryKey] || {
+    const summary = db.councilScrapeSummary || {
       lastScrapedAt: null,
       totalMeetingsScraped: 0,
       totalTopics: topics.length,
       bespreekstukkenCount: topics.filter((t: any) => t.category === "Oordeelvorming - bespreekstukken" && !t.isArchived).length,
       archivedCount: topics.filter((t: any) => t.isArchived).length,
       status: "idle",
-      municipality: targetMunicipality,
+      municipality: "steenwijkerland",
     };
 
-    // Get list of council members / fractieleden for assignment dropdown (strictly scoped to target municipality, with admin/alle support)
+    // Get list of council members / fractieleden for assignment dropdown
     const councilMembers = (db.users || [])
       .filter((u: any) => {
         const isCouncil =
@@ -11828,8 +11677,7 @@ Sitemap: ${baseUrl}/sitemap.xml
           u.role === "commissielid" ||
           u.role === "admin";
         if (!isCouncil) return false;
-        const userMuni = (u.municipality || "steenwijkerland").toLowerCase().trim();
-        return userMuni === targetMunicipality || userMuni === "alle" || u.role === "admin";
+        return true;
       })
       .map((u: any) => ({
         id: u.id,
@@ -11898,9 +11746,7 @@ Sitemap: ${baseUrl}/sitemap.xml
           docUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl${docUrl}`;
         }
         if (!docUrl && d.id) {
-          if (enriched.municipality === "hoogeveen" || String(enriched.id || "").startsWith("hg_") || /^\d+$/.test(String(d.id))) {
-            docUrl = `https://api.notubiz.nl/document/${d.id}/1`;
-          } else if (enriched.meetingId) {
+          if (enriched.meetingId) {
             docUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl/Agenda/Document/${enriched.meetingId}?documentId=${d.id}&agendaItemId=${enriched.agendaItemId || ""}`;
           } else {
             docUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl/Document/LoadAgendaItemDocument/${d.id}`;
@@ -11921,35 +11767,25 @@ Sitemap: ${baseUrl}/sitemap.xml
   app.post("/api/council/scrape-now", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
     res.setHeader("Content-Type", "application/json");
     try {
-      const targetMunicipality = resolveRequestMunicipality(req);
-      const isHoogeveen = targetMunicipality === "hoogeveen";
-      const syncType = isHoogeveen ? "COUNCIL_HOOGEVEEN_NOTUBIZ_SYNC" : "COUNCIL_IBABS_SYNC";
-      const idempotencyKey = `${isHoogeveen ? "hoogeveen" : "ibabs"}-scrape-${new Date().toISOString().slice(0, 13)}`;
+      const syncType = "COUNCIL_IBABS_SYNC";
+      const idempotencyKey = `ibabs-scrape-${new Date().toISOString().slice(0, 13)}`;
 
       const { job, isDuplicate } = globalBackgroundJobQueue.enqueue(
         syncType,
         idempotencyKey,
         async (bgJob) => {
-          globalBackgroundJobQueue.updateProgress(bgJob.id, 25, isHoogeveen ? "Ophalen vergaderingen Hoogeveen (NotuBiz)..." : "Ophalen vergaderingen van iBabs...");
-          const summary = isHoogeveen ? await scrapeCouncilAgendasHoogeveen([2025, 2026]) : await scrapeCouncilAgendas(undefined, { isManual: true });
-          globalBackgroundJobQueue.updateProgress(bgJob.id, 80, isHoogeveen ? "Dossierverdeling Hoogeveen uitvoeren..." : "Topic categorisatie & dossierverdeling...");
-          if (isHoogeveen) {
-            try {
-              await distributeHoogeveenDossiers();
-            } catch (dErr: any) {
-              console.warn("[HOOGEVEEN DOSSIERVERDELING WARN]:", dErr?.message);
-            }
-          } else {
-            try {
-              await distributeSteenwijkerlandDossiers();
-            } catch (dErr: any) {
-              console.warn("[STEENWIJKERLAND DOSSIERVERDELING WARN]:", dErr?.message);
-            }
+          globalBackgroundJobQueue.updateProgress(bgJob.id, 25, "Ophalen vergaderingen van iBabs...");
+          const summary = await scrapeCouncilAgendas(undefined, { isManual: true });
+          globalBackgroundJobQueue.updateProgress(bgJob.id, 80, "Topic categorisatie & dossierverdeling...");
+          try {
+            await distributeSteenwijkerlandDossiers();
+          } catch (dErr: any) {
+            console.warn("[STEENWIJKERLAND DOSSIERVERDELING WARN]:", dErr?.message);
           }
           globalBackgroundJobQueue.updateProgress(bgJob.id, 100, "Scraping en verdeling succesvol afgerond");
           return summary;
         },
-        { initiatedBy: req.user?.username || "raadslid", initialAction: `Starten ${isHoogeveen ? "Hoogeveen NotuBiz" : "iBabs"} synchronisatie...` }
+        { initiatedBy: req.user?.username || "raadslid", initialAction: "Starten iBabs synchronisatie..." }
       );
 
       if (req.query.async === "true") {
@@ -11962,21 +11798,13 @@ Sitemap: ${baseUrl}/sitemap.xml
         });
       }
 
-      const summary = isHoogeveen ? await scrapeCouncilAgendasHoogeveen() : await scrapeCouncilAgendas(undefined, { isManual: true });
-      if (isHoogeveen) {
-        try {
-          await distributeHoogeveenDossiers();
-        } catch (dErr: any) {
-          console.warn("[HOOGEVEEN AUTO-DISTRIBUTE]:", dErr?.message);
-        }
-      } else {
-        try {
-          await distributeSteenwijkerlandDossiers();
-        } catch (dErr: any) {
-          console.warn("[STEENWIJKERLAND AUTO-DISTRIBUTE]:", dErr?.message);
-        }
+      const summary = await scrapeCouncilAgendas(undefined, { isManual: true });
+      try {
+        await distributeSteenwijkerlandDossiers();
+      } catch (dErr: any) {
+        console.warn("[STEENWIJKERLAND AUTO-DISTRIBUTE]:", dErr?.message);
       }
-      return res.json({ success: true, message: `Agenda's en documenten voor ${isHoogeveen ? "Hoogeveen" : "Steenwijkerland"} succesvol gescraped en verdeeld over dossiers!`, summary, jobId: job.id });
+      return res.json({ success: true, message: "Agenda's en documenten voor Steenwijkerland succesvol gescraped en verdeeld over dossiers!", summary, jobId: job.id });
     } catch (err: any) {
       console.error("[RAADSPANEEL SCRAPER FOUT]", err);
       return res.status(500).json({ error: "Fout bij scrapen van vergaderstukken: " + err.message });
@@ -11984,114 +11812,19 @@ Sitemap: ${baseUrl}/sitemap.xml
   });
 
   // Dedicated Unified Dossier Synchronizer Endpoint
-  app.post("/api/council/sync-dossiers", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
+  app.post("/api/council/sync-dossiers", requireAuth, requireCouncilOrAdmin, async (_req: any, res: any) => {
     res.setHeader("Content-Type", "application/json");
     try {
-      const targetMunicipality = resolveRequestMunicipality(req);
-      const isHoogeveen = targetMunicipality === "hoogeveen";
-
-      if (isHoogeveen) {
-        const distResult = await distributeHoogeveenDossiers({ force: true });
-        return res.json({
-          success: true,
-          message: `Succesvol gesynchroniseerd: ${distResult.documentsDistributedCount} raadsdocumenten verdeeld over ${distResult.dossiersCount} Hoogeveense dossiers en subdossiers!`,
-          municipality: "hoogeveen",
-          result: distResult,
-        });
-      } else {
-        const distResult = await distributeSteenwijkerlandDossiers();
-        return res.json({
-          success: true,
-          message: `Succesvol gesynchroniseerd: ${distResult.topicsDistributedCount} agendapunten en ${distResult.documentsDistributedCount} bespreekstukken verdeeld over ${distResult.dossiersCount} Steenwijkerlandse dossiers en subdossiers!`,
-          municipality: "steenwijkerland",
-          result: distResult,
-        });
-      }
+      const distResult = await distributeSteenwijkerlandDossiers();
+      return res.json({
+        success: true,
+        message: `Succesvol gesynchroniseerd: ${distResult.topicsDistributedCount} agendapunten en ${distResult.documentsDistributedCount} bespreekstukken verdeeld over ${distResult.dossiersCount} Steenwijkerlandse dossiers en subdossiers!`,
+        municipality: "steenwijkerland",
+        result: distResult,
+      });
     } catch (err: any) {
       console.error("[SYNC DOSSIERS ERROR]:", err);
       return res.status(500).json({ error: "Fout bij synchroniseren met dossiers: " + err.message });
-    }
-  });
-
-  // Dedicated Hoogeveen Scraper Endpoint
-  app.post("/api/council/hoogeveen/scrape-now", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
-    res.setHeader("Content-Type", "application/json");
-    try {
-      const summary = await scrapeCouncilAgendasHoogeveen();
-      const distSummary = await distributeHoogeveenDossiers();
-      return res.json({
-        success: true,
-        message: "Gemeente Hoogeveen raadsinformatie succesvol gescraped en verdeeld over wijken!",
-        summary,
-        distribution: distSummary,
-      });
-    } catch (err: any) {
-      console.error("[HOOGEVEEN SCRAPER ROUTE FOUT]", err);
-      return res.status(500).json({ error: "Fout bij scrapen van Hoogeveen vergaderstukken: " + err.message });
-    }
-  });
-
-  // Dedicated Hoogeveen PDF Bulk-Download Endpoint (with Background Progress Tracking)
-  app.post("/api/council/hoogeveen/bulk-download-pdfs", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
-    res.setHeader("Content-Type", "application/json");
-    try {
-      const idempotencyKey = `hoogeveen-pdf-bulk-download-${new Date().toISOString().slice(0, 10)}`;
-      const { job, isDuplicate } = globalBackgroundJobQueue.enqueue(
-        "HOOGEVEEN_PDF_BULK_DOWNLOAD",
-        idempotencyKey,
-        async (bgJob) => {
-          globalBackgroundJobQueue.updateProgress(bgJob.id, 0, "Initialiseren van document downloads (2021-2026)...");
-          const result = await bulkDownloadHoogeveenPdfs((downloaded, total, currentTitle) => {
-            const percent = Math.round((downloaded / total) * 100);
-            globalBackgroundJobQueue.updateProgress(bgJob.id, percent, `Bezig met downloaden: ${downloaded}/${total} bestanden (${percent}%). Momenteel: "${currentTitle.slice(0, 30)}..."`);
-          });
-          globalBackgroundJobQueue.updateProgress(bgJob.id, 100, "Alle PDF-documenten succesvol gedownload en lokaal opgeslagen!");
-          return result;
-        },
-        { initiatedBy: req.user?.username || "raadslid", initialAction: "Starten bulk download Hoogeveen raadsstukken..." }
-      );
-
-      return res.json({
-        success: true,
-        message: isDuplicate ? "Bulk-download taak is al actief op de achtergrond!" : "Bulk-download taak succesvol gestart op de achtergrond!",
-        jobId: job.id,
-        isDuplicate,
-        job,
-      });
-    } catch (err: any) {
-      return res.status(500).json({ error: "Fout bij starten van bulk download: " + err.message });
-    }
-  });
-
-  // Dedicated Hoogeveen Dossierverdeler Endpoint
-  app.post("/api/dossiers/hoogeveen/distribute", requireAuth, requireCouncilOrAdmin, async (_req: any, res: any) => {
-    res.setHeader("Content-Type", "application/json");
-    try {
-      const result = await distributeHoogeveenDossiers();
-      return res.json({
-        success: true,
-        message: "Hoogeveen dossiers succesvol verdeeld over wijken en kerndossiers!",
-        result,
-      });
-    } catch (err: any) {
-      console.error("[HOOGEVEEN DOSSIERVERDELER ROUTE FOUT]", err);
-      return res.status(500).json({ error: "Fout bij verdelen van Hoogeveen dossiers: " + err.message });
-    }
-  });
-
-  // Hoogeveen Wijken & Kernen Overview (Aggregated CBS data)
-  app.get("/api/dossiers/hoogeveen/wijken", (_req: any, res: any) => {
-    res.setHeader("Content-Type", "application/json");
-    try {
-      const wijken = getHoogeveenWijkenOverview();
-      return res.json({
-        success: true,
-        municipality: "hoogeveen",
-        totalWijken: wijken.length,
-        wijken,
-      });
-    } catch (err: any) {
-      return res.status(500).json({ error: "Fout bij ophalen Hoogeveen wijken: " + err.message });
     }
   });
 
@@ -12160,28 +11893,23 @@ Sitemap: ${baseUrl}/sitemap.xml
     return res.json({ success, message: success ? "Taak geannuleerd" : "Kon taak niet annuleren (mogelijk reeds voltooid)" });
   });
 
-  // 2a-2. Manual Diff-Check trigger (Watchdog on demand, strictly per municipality)
-  app.post("/api/council/diff-check-now", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
+  // 2a-2. Manual Diff-Check trigger (Watchdog on demand)
+  app.post("/api/council/diff-check-now", requireAuth, requireCouncilOrAdmin, async (_req: any, res: any) => {
     res.setHeader("Content-Type", "application/json");
     try {
-      const targetMunicipality = resolveRequestMunicipality(req);
-      const isHoogeveen = targetMunicipality === "hoogeveen";
-      const summary = isHoogeveen
-        ? await scrapeHoogeveenCouncilAgendas(undefined, { isManual: true })
-        : await scrapeCouncilAgendas(undefined, { isManual: true });
+      const summary = await scrapeCouncilAgendas(undefined, { isManual: true });
       const db = getDb();
       const allTopics = db.councilAgendaTopics || [];
-      const topics = allTopics.filter((t: any) => getTopicMunicipality(t) === targetMunicipality);
-      const topicsWithDumps = topics.filter((t: any) => t.hasRecentDump || t.hasDocumentDiff);
+      const topicsWithDumps = allTopics.filter((t: any) => t.hasRecentDump || t.hasDocumentDiff);
       
       return res.json({
         success: true,
         message: topicsWithDumps.length > 0
           ? `Diff-check voltooid! ${topicsWithDumps.length} agendapunt(en) met recente updates of 'vrijdagmiddag-dumps' gevonden.`
-          : `Diff-check voltooid: Alle raadsstukken voor ${isHoogeveen ? "Hoogeveen" : "Steenwijkerland"} zijn 100% up-to-date. Geen nieuwe dumps gedetecteerd.`,
+          : "Diff-check voltooid: Alle raadsstukken voor Steenwijkerland zijn 100% up-to-date. Geen nieuwe dumps gedetecteerd.",
         summary,
         topicsWithDumpsCount: topicsWithDumps.length,
-        topics,
+        topics: allTopics,
       });
     } catch (err: any) {
       console.error("[RAADSPANEEL DIFF-CHECK FOUT]", err);
@@ -12217,23 +11945,20 @@ Sitemap: ${baseUrl}/sitemap.xml
     return res.json({ success: true, updatedCount: count, topics });
   });
 
-  // 2b. Clear unassigned scraper topics (preserves assigned topics & notes) strictly for target municipality
-  app.post("/api/council/clear-unassigned", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+  // 2b. Clear unassigned scraper topics (preserves assigned topics & notes)
+  app.post("/api/council/clear-unassigned", requireAuth, requireCouncilOrAdmin, (_req: any, res: any) => {
     res.setHeader("Content-Type", "application/json");
     try {
-      const targetMunicipality = resolveRequestMunicipality(req);
-      const result = clearUnassignedCouncilTopics(targetMunicipality);
+      const result = clearUnassignedCouncilTopics("steenwijkerland");
       const db = getDb();
       const allTopics = db.councilAgendaTopics || [];
-      const topics = allTopics.filter((t: any) => getTopicMunicipality(t) === targetMunicipality);
-      const summaryKey = targetMunicipality === "hoogeveen" ? "councilScrapeSummaryHoogeveen" : "councilScrapeSummary";
       return res.json({
         success: true,
         removedCount: result.removedCount,
         remainingCount: result.remainingCount,
-        topics,
-        summary: db[summaryKey],
-        message: `${result.removedCount} onverdeelde onderwerpen van ${targetMunicipality === "hoogeveen" ? "Hoogeveen" : "Steenwijkerland"} gewist. ${result.remainingCount} toegewezen/actieve onderwerpen behouden.`
+        topics: allTopics,
+        summary: db.councilScrapeSummary,
+        message: `${result.removedCount} onverdeelde onderwerpen van Steenwijkerland gewist. ${result.remainingCount} toegewezen/actieve onderwerpen behouden.`
       });
     } catch (err: any) {
       console.error("[RAADSPANEEL CLEAR FOUT]", err);
@@ -12264,13 +11989,6 @@ Sitemap: ${baseUrl}/sitemap.xml
       const user = (db.users || []).find((u: any) => u.username === assignedTo || u.id === assignedTo);
       if (!user) {
         return res.status(404).json({ error: "Geselecteerd raadslid niet gevonden." });
-      }
-
-      const userMuni = (user.municipality || "steenwijkerland").toLowerCase().trim();
-      if (userMuni !== topicMuni && userMuni !== "alle" && user.role !== "admin") {
-        return res.status(400).json({
-          error: `Strikte gemeentescheiding: ${user.fullName || user.username} behoort tot gemeente ${userMuni === "hoogeveen" ? "Hoogeveen" : "Steenwijkerland"} en kan niet worden gekoppeld aan een bespreekstuk van ${topicMuni === "hoogeveen" ? "Hoogeveen" : "Steenwijkerland"}.`
-        });
       }
 
       assignedUserObj = user;
@@ -13111,11 +12829,7 @@ Sitemap: ${baseUrl}/sitemap.xml
 
       // If database has 0 items, kick off background sync without blocking the HTTP response
       if (result.totalCount === 0) {
-        if (municipality === "hoogeveen") {
-          syncHoogeveenToezeggingen().catch((e) => console.warn("[AUTO-SYNC HGV ERR]:", e));
-        } else {
-          syncSteenwijkerlandToezeggingen({ fetchFullDetails: false }).catch((e) => console.warn("[AUTO-SYNC SWL ERR]:", e));
-        }
+        syncSteenwijkerlandToezeggingen({ fetchFullDetails: false }).catch((e) => console.warn("[AUTO-SYNC SWL ERR]:", e));
       }
 
       res.json(result);
@@ -13125,10 +12839,9 @@ Sitemap: ${baseUrl}/sitemap.xml
     }
   });
 
-  app.get("/api/council/toezeggingen/stats", optionalAuth, (req: any, res: any) => {
+  app.get("/api/council/toezeggingen/stats", optionalAuth, (_req: any, res: any) => {
     try {
-      const municipality = resolveRequestMunicipality(req);
-      const stats = getToezeggingenStats(municipality);
+      const stats = getToezeggingenStats("steenwijkerland");
       res.json(stats);
     } catch (err: any) {
       res.status(500).json({ error: "Fout bij ophalen toezeggingen statistieken" });
@@ -13137,8 +12850,7 @@ Sitemap: ${baseUrl}/sitemap.xml
 
   app.get("/api/council/toezeggingen/:rowId", optionalAuth, async (req: any, res: any) => {
     try {
-      const municipality = resolveRequestMunicipality(req);
-      const item = await getSingleToezegging(req.params.rowId, municipality);
+      const item = await getSingleToezegging(req.params.rowId, "steenwijkerland");
       if (!item) {
         return res.status(404).json({ error: "Toezegging niet gevonden" });
       }
@@ -13148,19 +12860,10 @@ Sitemap: ${baseUrl}/sitemap.xml
     }
   });
 
-  app.post("/api/council/toezeggingen/sync", optionalAuth, async (req: any, res: any) => {
+  app.post("/api/council/toezeggingen/sync", optionalAuth, async (_req: any, res: any) => {
     try {
-      const municipality = resolveRequestMunicipality(req);
-      let syncResult;
-      let sourceName = "iBabs Publieksportaal";
-
-      if (municipality === "hoogeveen") {
-        syncResult = await syncHoogeveenToezeggingen();
-        sourceName = "Hoogeveen Notubiz Portaal";
-      } else {
-        syncResult = await syncSteenwijkerlandToezeggingen({ fetchFullDetails: true });
-        sourceName = "Steenwijkerland iBabs Portaal";
-      }
+      const syncResult = await syncSteenwijkerlandToezeggingen({ fetchFullDetails: true });
+      const sourceName = "Steenwijkerland iBabs Portaal";
 
       res.json({
         success: true,
@@ -13649,15 +13352,9 @@ Sitemap: ${baseUrl}/sitemap.xml
       const targetMunicipality = resolveRequestMunicipality(req);
       const scopedCustomDossiers = (db.customDossiers || []).filter((d: any) => {
         const dMuni = d.municipality || "steenwijkerland";
-        return dMuni === targetMunicipality;
+        return dMuni === "steenwijkerland";
       });
-      let allDossiers: any[] = [];
-      if (targetMunicipality === "hoogeveen") {
-        const hoogeveenDossiers: any[] = getHoogeveenDossiers();
-        allDossiers = [...hoogeveenDossiers, ...scopedCustomDossiers];
-      } else {
-        allDossiers = getAllDossiers(scopedCustomDossiers, db.deletedDossierSlugs || [], db.customSubdossiers || {});
-      }
+      const allDossiers: any[] = getAllDossiers(scopedCustomDossiers, db.deletedDossierSlugs || [], db.customSubdossiers || {});
 
       const search = (req.query.search || "").toString().toLowerCase().trim();
       const category = (req.query.category || "").toString().trim();
@@ -13667,21 +13364,21 @@ Sitemap: ${baseUrl}/sitemap.xml
       const limit = Math.max(1, parseInt(req.query.limit || "12", 10));
 
       // Use cached dossier statistics to avoid expensive disk/metadata recalculations on every page/search request
-      const statsCacheKey = `${targetMunicipality}_${allDossiers.length}`;
+      const statsCacheKey = `steenwijkerland_${allDossiers.length}`;
       let cachedStatsEntry = dossierStatsCache.get(statsCacheKey);
       const now = Date.now();
 
       if (!cachedStatsEntry || (now - cachedStatsEntry.timestamp > 30000)) {
         const diskStats = countPhysicalFilesOnDisk();
         const masterMetadataList = getRawMetadata();
-        const aiProcessedCount = targetMunicipality === "hoogeveen" ? 0 : masterMetadataList.filter(m => {
+        const aiProcessedCount = masterMetadataList.filter(m => {
           if (!m) return false;
           return (
             m.ai_geclassificeerd === true || 
             (typeof m.ai_model === "string" && m.ai_model.toLowerCase().includes("gemini"))
           );
         }).length;
-        const unclassifiedFailCount = targetMunicipality === "hoogeveen" ? 0 : masterMetadataList.filter(m => m.dossier === "ONGECLASSIFICEERD_FALEN" || m.subdossier === "Audit & Retry Vereist (DLQ)").length;
+        const unclassifiedFailCount = masterMetadataList.filter(m => m.dossier === "ONGECLASSIFICEERD_FALEN" || m.subdossier === "Audit & Retry Vereist (DLQ)").length;
 
         const categoriesSet = new Set<string>();
         const uniqueDocsSet = new Set<string>();
@@ -13710,7 +13407,7 @@ Sitemap: ${baseUrl}/sitemap.xml
             totalSubdossiers,
             totalDocuments: uniqueDocsSet.size,
             totalUploadedFiles: uniqueUploadedSet.size,
-            physicalFilesOnDisk: targetMunicipality === "hoogeveen" ? (diskStats.hoogeveenCount || uniqueUploadedSet.size) : diskStats.totalFiles,
+            physicalFilesOnDisk: diskStats.totalFiles,
             missingFilesCount: Math.max(0, uniqueDocsSet.size - uniqueUploadedSet.size),
             classifiedSuccessCount: aiProcessedCount,
             unclassifiedFailCount,
@@ -13909,35 +13606,10 @@ Sitemap: ${baseUrl}/sitemap.xml
   });
 
   // Catalog of all unique documents across all dossiers for linking
-  app.get("/api/council/catalog/all-documents", optionalAuth, (req: any, res: any) => {
+  app.get("/api/council/catalog/all-documents", optionalAuth, (_req: any, res: any) => {
     try {
       const db = getDb();
-      const targetMunicipality = resolveRequestMunicipality(req);
-      let docs: any[] = [];
-
-      if (targetMunicipality === "hoogeveen") {
-        const hoogeveenDossiers = getHoogeveenDossiers();
-        const customHoogeveen = (db.customDossiers || []).filter((d: any) => d.municipality === "hoogeveen");
-        const allHgDossiers = [...hoogeveenDossiers, ...customHoogeveen];
-        const map = new Map<string, any>();
-        allHgDossiers.forEach((dossier) => {
-          (dossier.documents || []).forEach((doc: any) => {
-            const key = doc.bestandsnaam || doc.id || doc.titel;
-            if (key && !map.has(key)) {
-              map.set(key, doc);
-            }
-          });
-        });
-        docs = Array.from(map.values()).sort((a: any, b: any) => {
-          if (!a.datum && !b.datum) return a.titel?.localeCompare(b.titel || "") || 0;
-          if (!a.datum) return 1;
-          if (!b.datum) return -1;
-          return new Date(b.datum).getTime() - new Date(a.datum).getTime();
-        });
-      } else {
-        docs = getAllCatalogDocuments(db);
-      }
-
+      const docs = getAllCatalogDocuments(db);
       res.json({ documents: docs, total: docs.length });
     } catch (err: any) {
       console.error("[COUNCIL CATALOG ERROR]:", err);
@@ -14041,14 +13713,11 @@ Sitemap: ${baseUrl}/sitemap.xml
     try {
       const rawSlug = decodeURIComponent(req.params.slug || "").trim();
       const db = getDb();
-      const targetMunicipality = resolveRequestMunicipality(req);
-      const allDossiers = targetMunicipality === "hoogeveen"
-        ? [...getHoogeveenDossiers(), ...(db.customDossiers || []).filter((d: any) => d.municipality === "hoogeveen")]
-        : getAllDossiers(
-            (db.customDossiers || []).filter((d: any) => (d.municipality || "steenwijkerland") === "steenwijkerland"),
-            db.deletedDossierSlugs || [],
-            db.customSubdossiers || {}
-          );
+      const allDossiers = getAllDossiers(
+        (db.customDossiers || []).filter((d: any) => (d.municipality || "steenwijkerland") === "steenwijkerland"),
+        db.deletedDossierSlugs || [],
+        db.customSubdossiers || {}
+      );
       
       const searchSlug = rawSlug.toLowerCase();
       const normalizeClean = (str: string) => (str || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -14398,22 +14067,6 @@ Sitemap: ${baseUrl}/sitemap.xml
   app.post("/api/council/classify-bulk-documents", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
     try {
       const { force, limit } = req.body || {};
-      const targetMunicipality = resolveRequestMunicipality(req);
-
-      if (targetMunicipality === "hoogeveen") {
-        const currentStatus = getHoogeveenClassificationStatus();
-        if (currentStatus.isRunning) {
-          return res.status(400).json({ error: "Er is al een herstructureringsproces actief voor Hoogeveen." });
-        }
-        const parsedLimit = typeof limit === "number" && limit > 0 ? limit : (limit ? parseInt(limit, 10) : undefined);
-        startHoogeveenRestructuringInBackground({ force: !!force, limit: parsedLimit && parsedLimit > 0 ? parsedLimit : undefined });
-        return res.json({
-          success: true,
-          message: parsedLimit
-            ? `Hoogeveen dossiers herverdelen gestart voor maximaal ${parsedLimit} documenten in de achtergrond`
-            : "Hoogeveen dossiers herverdelen en herstructureren gestart in de achtergrond",
-        });
-      }
       
       const currentStatus = getBulkClassificationStatus();
       if (currentStatus.isRunning) {
@@ -14433,13 +14086,8 @@ Sitemap: ${baseUrl}/sitemap.xml
     }
   });
 
-  app.get("/api/council/classify-bulk-status", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+  app.get("/api/council/classify-bulk-status", requireAuth, requireCouncilOrAdmin, (_req: any, res: any) => {
     try {
-      const targetMunicipality = resolveRequestMunicipality(req);
-      if (targetMunicipality === "hoogeveen") {
-        const status = getHoogeveenClassificationStatus();
-        return res.json(status);
-      }
       const status = getBulkClassificationStatus();
       res.json(status);
     } catch (err: any) {
@@ -14447,13 +14095,8 @@ Sitemap: ${baseUrl}/sitemap.xml
     }
   });
 
-  app.post("/api/council/classify-bulk-cancel", requireAuth, requireCouncilOrAdmin, (req: any, res: any) => {
+  app.post("/api/council/classify-bulk-cancel", requireAuth, requireCouncilOrAdmin, (_req: any, res: any) => {
     try {
-      const targetMunicipality = resolveRequestMunicipality(req);
-      if (targetMunicipality === "hoogeveen") {
-        cancelHoogeveenClassification();
-        return res.json({ success: true, message: "Hoogeveen herstructureringsproces geannuleerd" });
-      }
       cancelBulkClassification();
       res.json({ success: true, message: "Proces geannuleerd" });
     } catch (err: any) {
@@ -15099,16 +14742,9 @@ Sitemap: ${baseUrl}/sitemap.xml
   });
 
   // Download complete master metadata CSV containing all documents
-  app.get(["/api/council/metadata.csv", "/api/council/metadata/download"], optionalAuth, (req: any, res: any) => {
+  app.get(["/api/council/metadata.csv", "/api/council/metadata/download"], optionalAuth, (_req: any, res: any) => {
     try {
-      const targetMunicipality = resolveRequestMunicipality(req);
       const dateStr = new Date().toISOString().slice(0, 10);
-      if (targetMunicipality === "hoogeveen") {
-        const csv = generateHoogeveenMetadataCsv("all");
-        res.setHeader("Content-Type", "text/csv; charset=utf-8");
-        res.setHeader("Content-Disposition", `attachment; filename="hoogeveen_raadsstukken_metadata_compleet_${dateStr}.csv"`);
-        return res.send(csv);
-      }
       const metadata = getRawMetadata();
       const csv = generateMasterMetadataCsv(metadata);
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
@@ -15121,16 +14757,9 @@ Sitemap: ${baseUrl}/sitemap.xml
   });
 
   // Download CSV of ONLY unprocessed / DLQ files
-  app.get(["/api/council/metadata/unprocessed.csv"], optionalAuth, (req: any, res: any) => {
+  app.get(["/api/council/metadata/unprocessed.csv"], optionalAuth, (_req: any, res: any) => {
     try {
-      const targetMunicipality = resolveRequestMunicipality(req);
       const dateStr = new Date().toISOString().slice(0, 10);
-      if (targetMunicipality === "hoogeveen") {
-        const csv = generateHoogeveenMetadataCsv("unprocessed");
-        res.setHeader("Content-Type", "text/csv; charset=utf-8");
-        res.setHeader("Content-Disposition", `attachment; filename="hoogeveen_onverwerkte_bestanden_${dateStr}.csv"`);
-        return res.send(csv);
-      }
       const metadata = getRawMetadata();
       const unprocessedItems = metadata.filter((item) => {
         const isGoedVerwerkt = (
@@ -15151,16 +14780,9 @@ Sitemap: ${baseUrl}/sitemap.xml
   });
 
   // Download CSV of ONLY successfully AI-processed files
-  app.get(["/api/council/metadata/processed.csv"], optionalAuth, (req: any, res: any) => {
+  app.get(["/api/council/metadata/processed.csv"], optionalAuth, (_req: any, res: any) => {
     try {
-      const targetMunicipality = resolveRequestMunicipality(req);
       const dateStr = new Date().toISOString().slice(0, 10);
-      if (targetMunicipality === "hoogeveen") {
-        const csv = generateHoogeveenMetadataCsv("processed");
-        res.setHeader("Content-Type", "text/csv; charset=utf-8");
-        res.setHeader("Content-Disposition", `attachment; filename="hoogeveen_verwerkte_bestanden_goed_${dateStr}.csv"`);
-        return res.send(csv);
-      }
       const metadata = getRawMetadata();
       const processedItems = metadata.filter((item) => {
         return (
@@ -15180,13 +14802,9 @@ Sitemap: ${baseUrl}/sitemap.xml
   });
 
   // Download complete restructuring execution log
-  app.get(["/api/council/classification-log/download", "/api/council/classification-log.txt"], optionalAuth, (req: any, res: any) => {
+  app.get(["/api/council/classification-log/download", "/api/council/classification-log.txt"], optionalAuth, (_req: any, res: any) => {
     try {
-      const targetMunicipality = resolveRequestMunicipality(req);
-      const isHoogeveen = targetMunicipality === "hoogeveen";
-      const logPath = isHoogeveen
-        ? path.join(process.cwd(), "public", "data", "hoogeveen", "last_restructuring_execution_hoogeveen.log")
-        : path.join(process.cwd(), "public", "data", "last_restructuring_execution.log");
+      const logPath = path.join(process.cwd(), "public", "data", "last_restructuring_execution.log");
 
       if (!fs.existsSync(logPath)) {
         res.setHeader("Content-Type", "text/plain; charset=utf-8");
@@ -15195,30 +14813,11 @@ Sitemap: ${baseUrl}/sitemap.xml
       const content = fs.readFileSync(logPath, "utf-8");
       const dateStr = new Date().toISOString().slice(0, 10);
       res.setHeader("Content-Type", "text/plain; charset=utf-8");
-      res.setHeader("Content-Disposition", `attachment; filename="${isHoogeveen ? "hoogeveen" : "steenwijkerland"}_herstructurering_uitvoeringslog_${dateStr}.txt"`);
+      res.setHeader("Content-Disposition", `attachment; filename="steenwijkerland_herstructurering_uitvoeringslog_${dateStr}.txt"`);
       res.send(content);
     } catch (err: any) {
       console.error("[LOG DOWNLOAD ERROR]:", err);
       res.status(500).json({ error: "Fout bij downloaden van uitvoeringslog: " + err.message });
-    }
-  });
-
-  // Download Hoogeveen PDF Bulk-Download live progress and execution log
-  app.get(["/api/council/hoogeveen/bulk-download-log/download", "/api/council/hoogeveen/bulk-download-log.txt", "/api/council/bulk-download-log.txt"], optionalAuth, (req: any, res: any) => {
-    try {
-      const logPath = path.join(process.cwd(), "public", "data", "hoogeveen", "last_pdf_bulk_download_hoogeveen.log");
-      if (!fs.existsSync(logPath)) {
-        res.setHeader("Content-Type", "text/plain; charset=utf-8");
-        return res.send("Nog geen PDF bulk-downloadlog beschikbaar. Druk op 'PDF Bulk-Download (2021-2026)' om een downloadsessie te starten.");
-      }
-      const content = fs.readFileSync(logPath, "utf-8");
-      const dateStr = new Date().toISOString().slice(0, 10);
-      res.setHeader("Content-Type", "text/plain; charset=utf-8");
-      res.setHeader("Content-Disposition", `attachment; filename="hoogeveen_pdf_bulk_download_log_${dateStr}.txt"`);
-      res.send(content);
-    } catch (err: any) {
-      console.error("[BULK DOWNLOAD LOG ERROR]:", err);
-      res.status(500).json({ error: "Fout bij ophalen van bulk download log: " + err.message });
     }
   });
 
@@ -15572,150 +15171,6 @@ Sitemap: ${baseUrl}/sitemap.xml
       });
     } catch (err: any) {
       res.status(500).json({ error: "Fout bij ophalen documenten: " + err.message });
-    }
-  });
-
-  // ==========================================
-  // 12C. Provincie Drenthe (Drents Parlement) Scraper
-  // ==========================================
-  app.post("/api/council/drenthe/start-sync", requireAuth, requireCouncilOrAdmin, async (req: any, res: any) => {
-    try {
-      const { years } = req.body || {};
-      const status = await startDrentheSync(Array.isArray(years) && years.length > 0 ? years : [2021, 2022, 2023, 2024, 2025, 2026]);
-      res.json({
-        success: true,
-        message: "Synchronisatie Provincie Drenthe (Drents Parlement) gestart",
-        status
-      });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || "Fout bij starten synchronisatie Drenthe" });
-    }
-  });
-
-  app.post("/api/council/drenthe/stop-sync", requireAuth, requireCouncilOrAdmin, (_req: any, res: any) => {
-    try {
-      const status = stopDrentheSync();
-      res.json({ success: true, status, message: "Synchronisatie Provincie Drenthe gestopt" });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || "Fout bij stoppen" });
-    }
-  });
-
-  app.get("/api/council/drenthe/sync-status", requireAuth, requireCouncilOrAdmin, (_req: any, res: any) => {
-    try {
-      const status = getDrentheSyncStatus();
-      res.json({ success: true, status });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || "Fout bij ophalen status" });
-    }
-  });
-
-  app.post("/api/council/drenthe/clear-cache", requireAuth, requireCouncilOrAdmin, (_req: any, res: any) => {
-    try {
-      const result = clearDrentheCache();
-      res.json(result);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || "Fout bij wissen cache" });
-    }
-  });
-
-  app.get("/api/council/drenthe/export-csv", optionalAuth, (req: any, res: any) => {
-    try {
-      const csvPath = path.join(process.cwd(), "public", "uploads", "documents", "raadsstukken_metadata_drenthe.csv");
-      const rootCsvPath = path.join(process.cwd(), "raadsstukken_metadata_drenthe.csv");
-
-      let targetPath = fs.existsSync(csvPath) ? csvPath : (fs.existsSync(rootCsvPath) ? rootCsvPath : null);
-
-      if (!targetPath) {
-        const items = getSavedDrentheDocuments();
-        if (items.length > 0) {
-          saveDrentheMetadata(items);
-          targetPath = csvPath;
-        }
-      }
-
-      if (!targetPath || !fs.existsSync(targetPath)) {
-        return res.status(404).json({ error: "CSV-bestand nog niet gegenereerd. Start eerst de Drenthe synchronisatie." });
-      }
-
-      res.setHeader("Content-Type", "text/csv; charset=utf-8");
-      res.setHeader("Content-Disposition", 'attachment; filename="raadsstukken_metadata_drenthe.csv"');
-      const stream = fs.createReadStream(targetPath);
-      stream.pipe(res);
-    } catch (err: any) {
-      res.status(500).json({ error: "Fout bij downloaden Drenthe CSV: " + err.message });
-    }
-  });
-
-  app.get("/api/council/drenthe/documents", optionalAuth, (req: any, res: any) => {
-    try {
-      const docs = getSavedDrentheDocuments();
-      const { scope, query, year } = req.query;
-
-      let filtered = docs;
-      if (scope && scope !== "all") {
-        filtered = filtered.filter((d) => d.scope === scope);
-      }
-      if (year && year !== "all") {
-        filtered = filtered.filter((d) => d.datum && d.datum.startsWith(String(year)));
-      }
-      if (query && typeof query === "string") {
-        const qLower = query.toLowerCase();
-        filtered = filtered.filter(
-          (d) =>
-            d.titel.toLowerCase().includes(qLower) ||
-            d.meeting_titel.toLowerCase().includes(qLower) ||
-            d.gremium_naam.toLowerCase().includes(qLower) ||
-            d.reden.toLowerCase().includes(qLower)
-        );
-      }
-
-      res.json({
-        total: filtered.length,
-        allTotal: docs.length,
-        documents: filtered,
-      });
-    } catch (err: any) {
-      res.status(500).json({ error: "Fout bij ophalen Drenthe documenten: " + err.message });
-    }
-  });
-
-  app.get("/api/council/drenthe/pdf-proxy", optionalAuth, async (req: any, res: any) => {
-    try {
-      const url = req.query.url;
-      if (!url || typeof url !== "string") {
-        return res.status(400).send("URL parameter verplicht");
-      }
-
-      // Check if local file exists
-      if (url.startsWith("/uploads/")) {
-        const localFile = path.join(process.cwd(), "public", url);
-        if (fs.existsSync(localFile)) {
-          res.setHeader("Content-Type", "application/pdf");
-          res.setHeader("Content-Disposition", "inline");
-          return fs.createReadStream(localFile).pipe(res);
-        }
-      }
-
-      // Stream from external url
-      const targetUrl = url.startsWith("http") ? url : `https://www.drentsparlement.nl${url.startsWith("/") ? "" : "/"}${url}`;
-      const remoteRes = await fetch(targetUrl, {
-        signal: AbortSignal.timeout(15000),
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/Drenthe-Parlement-Sync/1.0",
-        },
-      });
-
-      if (!remoteRes.ok) {
-        return res.status(remoteRes.status).send("Kon extern PDF document niet ophalen");
-      }
-
-      res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", "inline");
-      const buffer = Buffer.from(await remoteRes.arrayBuffer());
-      return res.send(buffer);
-    } catch (err: any) {
-      return res.status(500).send("Fout bij streamen PDF: " + err.message);
     }
   });
 
@@ -16167,9 +15622,6 @@ Sitemap: ${baseUrl}/sitemap.xml
     // Start automated 24-hour council agenda scraper for Steenwijkerland
     startDailyCouncilScraper();
 
-    // Start autonomous council agenda scraper for Hoogeveen
-    startHoogeveenCouncilWatchdogScheduler();
-
     // Auto-verify and sync server documents if disk contains unindexed files asynchronously
     (async () => {
       try {
@@ -16218,20 +15670,11 @@ Sitemap: ${baseUrl}/sitemap.xml
       }
     })();
 
-    // Non-blocking background sync for Steenwijkerland and Hoogeveen LTA Toezeggingen after server boot
+    // Non-blocking background sync for Steenwijkerland LTA Toezeggingen after server boot
     setTimeout(async () => {
       try {
-        console.log("[LTA AUTO-SYNC] Initialiseren van Steenwijkerland en Hoogeveen toezeggingen in achtergrond...");
-        const results = await Promise.allSettled([
-          syncSteenwijkerlandToezeggingen({ fetchFullDetails: false }),
-          syncHoogeveenToezeggingen(),
-        ]);
-        results.forEach((res, idx) => {
-          if (res.status === "rejected") {
-            const muniName = idx === 0 ? "Steenwijkerland" : "Hoogeveen";
-            console.warn(`[LTA AUTO-SYNC WAARSCHUWING ${muniName}]:`, res.reason?.message || res.reason);
-          }
-        });
+        console.log("[LTA AUTO-SYNC] Initialiseren van Steenwijkerland toezeggingen in achtergrond...");
+        await syncSteenwijkerlandToezeggingen({ fetchFullDetails: false });
       } catch (ltaBootErr: any) {
         console.warn("[LTA AUTO-SYNC WARNING]:", ltaBootErr?.message || ltaBootErr);
       }
@@ -16240,11 +15683,8 @@ Sitemap: ${baseUrl}/sitemap.xml
     // Schedule 6-hour recurring sync for LTA toezeggingen
     setInterval(async () => {
       try {
-        console.log("[LTA INTERVAL SYNC] Periodieke synchronisatie van Steenwijkerland en Hoogeveen toezeggingen gestart...");
-        await Promise.allSettled([
-          syncSteenwijkerlandToezeggingen({ fetchFullDetails: false }),
-          syncHoogeveenToezeggingen(),
-        ]);
+        console.log("[LTA INTERVAL SYNC] Periodieke synchronisatie van Steenwijkerland toezeggingen gestart...");
+        await syncSteenwijkerlandToezeggingen({ fetchFullDetails: false });
       } catch (err: any) {
         console.warn("[LTA INTERVAL SYNC WARNING]:", err?.message || err);
       }

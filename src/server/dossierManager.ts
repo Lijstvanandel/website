@@ -549,7 +549,6 @@ export function countPhysicalFilesOnDisk(): {
   rootCount: number;
   waterschapCount: number;
   overijsselCount: number;
-  hoogeveenCount: number;
   otherSubdirsCount: number;
   totalFiles: number;
 } {
@@ -558,7 +557,6 @@ export function countPhysicalFilesOnDisk(): {
     let rootCount = 0;
     let waterschapCount = 0;
     let overijsselCount = 0;
-    let hoogeveenCount = 0;
     let otherSubdirsCount = 0;
     const countedBaseNames = new Set<string>();
 
@@ -571,35 +569,15 @@ export function countPhysicalFilesOnDisk(): {
       if (key.includes("/")) {
         if (key.startsWith("waterschap/")) waterschapCount++;
         else if (key.startsWith("overijssel/")) overijsselCount++;
-        else if (key.startsWith("hoogeveen/")) hoogeveenCount++;
         else otherSubdirsCount++;
       } else {
         rootCount++;
       }
     }
 
-    // Direct check for hoogeveen upload directories if cache had not indexed them yet
-    const hgDirs = [
-      path.join(DOCUMENTS_DIR, "hoogeveen"),
-      path.join(process.cwd(), "uploads", "documents", "hoogeveen"),
-      path.join(DIST_DOCUMENTS_DIR, "hoogeveen"),
-    ];
-    for (const hgDir of hgDirs) {
-      try {
-        if (fs.existsSync(hgDir)) {
-          const files = fs.readdirSync(hgDir).filter(isDocFile);
-          if (files.length > hoogeveenCount) {
-            hoogeveenCount = files.length;
-          }
-        }
-      } catch (_e) {
-        // ignore
-      }
-    }
-
-    const totalFiles = rootCount + waterschapCount + overijsselCount + hoogeveenCount + otherSubdirsCount;
+    const totalFiles = rootCount + waterschapCount + overijsselCount + otherSubdirsCount;
     if (totalFiles > 0) {
-      return { rootCount, waterschapCount, overijsselCount, hoogeveenCount, otherSubdirsCount, totalFiles };
+      return { rootCount, waterschapCount, overijsselCount, otherSubdirsCount, totalFiles };
     }
   }
 
@@ -607,7 +585,6 @@ export function countPhysicalFilesOnDisk(): {
   let rootCount = 0;
   let waterschapCount = 0;
   let overijsselCount = 0;
-  let hoogeveenCount = 0;
   let otherSubdirsCount = 0;
 
   try {
@@ -624,7 +601,6 @@ export function countPhysicalFilesOnDisk(): {
             const subCount = subEntries.filter((s) => s.isFile() && isDocFile(s.name)).length;
             if (subDirName === "waterschap") waterschapCount += subCount;
             else if (subDirName === "overijssel") overijsselCount += subCount;
-            else if (subDirName === "hoogeveen") hoogeveenCount += subCount;
             else otherSubdirsCount += subCount;
           } catch (_e) {
             // ignore subDir readdir error
@@ -632,30 +608,12 @@ export function countPhysicalFilesOnDisk(): {
         }
       }
     }
-
-    // Also check alternate hoogeveen paths
-    const altHgDirs = [
-      path.join(process.cwd(), "uploads", "documents", "hoogeveen"),
-      path.join(DIST_DOCUMENTS_DIR, "hoogeveen"),
-    ];
-    for (const altDir of altHgDirs) {
-      try {
-        if (fs.existsSync(altDir)) {
-          const altCount = fs.readdirSync(altDir).filter(isDocFile).length;
-          if (altCount > hoogeveenCount) {
-            hoogeveenCount = altCount;
-          }
-        }
-      } catch (_e) {
-        // ignore
-      }
-    }
   } catch (err) {
     console.error("Error counting physical files on disk:", err);
   }
 
-  const totalFiles = rootCount + waterschapCount + overijsselCount + hoogeveenCount + otherSubdirsCount;
-  return { rootCount, waterschapCount, overijsselCount, hoogeveenCount, otherSubdirsCount, totalFiles };
+  const totalFiles = rootCount + waterschapCount + overijsselCount + otherSubdirsCount;
+  return { rootCount, waterschapCount, overijsselCount, otherSubdirsCount, totalFiles };
 }
 
 // Asynchronous background disk sync function for JSON, CSV, and graph files

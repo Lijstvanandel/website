@@ -11,7 +11,7 @@ export interface CouncilContributionRecord {
   meetingDateDisplay?: string;
   meetingTitle?: string;
   meetingType?: string;
-  municipality: "steenwijkerland" | "hoogeveen" | string;
+  municipality: "steenwijkerland" | string;
   bijdragePolitiekeMarkt?: string;
   bijdragePolitiekeMarktStructured?: any;
   bijdragePolitiekeMarktUpdatedAt?: string;

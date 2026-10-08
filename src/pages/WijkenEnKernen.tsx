@@ -4,30 +4,22 @@ import { ArrowRight, MapPin, Search, User, RefreshCw, FolderTree, FileText } fro
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { WijkItem } from "@/types/wijk";
-import { getPortalConfig } from "@/utils/portalConfig";
 
 const WijkenEnKernen = () => {
-  const portalConfig = getPortalConfig();
   const [wijken, setWijken] = useState<WijkItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [tab, setTab] = useState<"all" | "vertegenwoordigd" | "Wijk" | "Kern">(
-    portalConfig.isPortalMode ? "all" : "vertegenwoordigd"
-  );
+  const [tab, setTab] = useState<"all" | "vertegenwoordigd" | "Wijk" | "Kern">("vertegenwoordigd");
 
   useEffect(() => {
-    fetch(`/api/wijken?portal=${portalConfig.tenantId}`, {
-      headers: {
-        "x-portal-tenant": portalConfig.tenantId,
-      },
-    })
+    fetch("/api/wijken")
       .then((res) => (res.ok ? res.json().catch(() => []) : []))
       .then((data: WijkItem[]) => {
         setWijken(Array.isArray(data) ? data : []);
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [portalConfig.tenantId]);
+  }, []);
 
   const vertegenwoordigdeWijken = wijken.filter((w) => !!w.vertegenwoordiger);
 
@@ -53,15 +45,13 @@ const WijkenEnKernen = () => {
       {/* Header */}
       <div className="max-w-3xl mb-12">
         <div className="text-xs uppercase tracking-[0.3em] text-accent mb-3 font-semibold">
-          {portalConfig.isPortalMode ? `Raadsportaal ${portalConfig.municipalityName}` : "Verken Steenwijkerland"}
+          Verken Steenwijkerland
         </div>
         <h1 className="font-display text-5xl md:text-6xl mb-6 border-gold-line pb-4">
           Wijken en kernen
         </h1>
         <p className="text-base md:text-lg text-muted-foreground leading-relaxed">
-          {portalConfig.isPortalMode
-            ? `Gemeente ${portalConfig.municipalityName} bestaat uit diverse stadswijken, dorpskernen en buitengebieden. Bekijk hieronder alle geaggregeerde hoofddossiers, subdossiers en gekoppelde raadsstukken per wijk of kern.`
-            : "Steenwijkerland bestaat uit de historische stad Steenwijk met daaromheen tientallen karakteristieke kernen, dorpen en buurtschappen. Ontdek hieronder de actuele status, vertegenwoordigers en dossiers van uw eigen woonomgeving."}
+          Steenwijkerland bestaat uit de historische stad Steenwijk met daaromheen tientallen karakteristieke kernen, dorpen en buurtschappen. Ontdek hieronder de actuele status, vertegenwoordigers en dossiers van uw eigen woonomgeving.
         </p>
       </div>
 
@@ -72,21 +62,19 @@ const WijkenEnKernen = () => {
           Geografische dossierverdeling per wijk of kern
         </h2>
         <p className="text-sm text-muted-foreground leading-relaxed mb-5">
-          {portalConfig.isPortalMode
-            ? `Elke wijk en kern heeft een eigen dossieroverzicht. Alle raadsvoorstellen, omgevingsplannen en besluitvormende documenten van Gemeente ${portalConfig.municipalityName} worden automatisch gecategoriseerd en geografisch toegewezen.`
-            : "Elke wijk en kern heeft een eigen profielpagina met een achtergrondfoto, wijkbeschrijving, aanspreekpunt, video's en dossiers. Zo weet u precies wat er speelt en wie u kunt benaderen."}
+          Elke wijk en kern heeft een eigen profielpagina met een achtergrondfoto, wijkbeschrijving, aanspreekpunt, video's en dossiers. Zo weet u precies wat er speelt en wie u kunt benaderen.
         </p>
         <ul className="grid sm:grid-cols-3 gap-4 text-sm">
           <li className="flex items-start gap-3 bg-muted/30 p-3.5 rounded-lg border border-border/40">
             <span className="text-accent font-display text-xl leading-none mt-0.5">01</span>
             <span>
-              <span className="text-foreground font-medium">Stadswijken</span> liggen binnen de kern {portalConfig.municipalityName} (bijv. {portalConfig.isPortalMode ? "Schutlanden, Krakeel, Wolfsbos, Erflanden" : "Oostermeenthe, Centrum, De Gagels"}).
+              <span className="text-foreground font-medium">Stadswijken</span> liggen binnen de kern Steenwijkerland (bijv. Oostermeenthe, Centrum, De Gagels).
             </span>
           </li>
           <li className="flex items-start gap-3 bg-muted/30 p-3.5 rounded-lg border border-border/40">
             <span className="text-accent font-display text-xl leading-none mt-0.5">02</span>
             <span>
-              <span className="text-foreground font-medium">Kernen & Dorpen</span> omvatten alle omliggende dorpen (bijv. {portalConfig.isPortalMode ? "Elim, Hollandscheveld, Nieuweroord, Pesse, Fluitenberg" : "Giethoorn, Vollenhove, Oldemarkt"}).
+              <span className="text-foreground font-medium">Kernen & Dorpen</span> omvatten alle omliggende dorpen (bijv. Giethoorn, Vollenhove, Oldemarkt).
             </span>
           </li>
           <li className="flex items-start gap-3 bg-muted/30 p-3.5 rounded-lg border border-border/40">
@@ -177,7 +165,7 @@ const WijkenEnKernen = () => {
             return (
               <Link
                 key={w.slug}
-                to={portalConfig.isPortalMode ? `/wijken-en-kernen/${w.slug}?portal=${portalConfig.tenantId}` : `/wijken-en-kernen/${w.slug}`}
+                to={`/wijken-en-kernen/${w.slug}`}
                 className="group bg-card border border-border rounded-lg overflow-hidden hover-lift flex flex-col justify-between transition-all hover:border-accent/50 shadow-sm"
               >
                 {/* Banner thumbnail */}

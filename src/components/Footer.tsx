@@ -1,11 +1,10 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Facebook, Instagram, Linkedin, Twitter, Mail, CheckCircle2, ArrowRight, Heart, Shield, Building2, Lock } from "lucide-react";
+import { Facebook, Instagram, Linkedin, Twitter, Mail, CheckCircle2, ArrowRight, Heart } from "lucide-react";
 const logo = "/assets/logo.webp";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { getPortalConfig } from "@/utils/portalConfig";
 
 const socials = [
   { icon: Facebook, label: "Facebook", href: "#" },
@@ -18,52 +17,6 @@ export const Footer = () => {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
-  const portalConfig = getPortalConfig();
-
-  // Clean, neutral footer when running in Portal Mode (Hoogeveen)
-  if (portalConfig.isPortalMode) {
-    return (
-      <footer className="border-t border-accent/20 bg-background/95 mt-20 transition-colors">
-        <div className="container py-8 max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-accent/15 border border-accent/30 flex items-center justify-center text-accent">
-              <Building2 className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="font-semibold text-foreground text-sm tracking-wide">
-                {portalConfig.portalTitle}
-              </div>
-              <div className="text-[11px] text-muted-foreground">
-                {portalConfig.portalSubtitle} — Gemeente {portalConfig.municipalityName}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-4 md:gap-5 text-[11px]">
-            <Link to="/privacyverklaring" className="hover:text-accent transition-colors">
-              Privacyverklaring
-            </Link>
-            <span className="text-muted-foreground/40 hidden sm:inline">•</span>
-            <Link to="/algemene-voorwaarden" className="hover:text-accent transition-colors">
-              Algemene voorwaarden
-            </Link>
-            <span className="text-muted-foreground/40 hidden sm:inline">•</span>
-            <Link to="/verwerkingsreglement" className="hover:text-accent transition-colors">
-              Verwerkingsreglement
-            </Link>
-            <div className="hidden lg:flex items-center gap-1.5 text-muted-foreground/90 ml-2">
-              <Shield className="w-3.5 h-3.5 text-accent" />
-              <span>AVG & BIO-conform</span>
-            </div>
-          </div>
-
-          <div className="text-[11px] text-muted-foreground/80">
-            © {new Date().getFullYear()} {portalConfig.portalTitle}
-          </div>
-        </div>
-      </footer>
-    );
-  }
 
   const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();

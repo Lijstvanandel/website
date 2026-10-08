@@ -154,7 +154,7 @@ export interface CouncilAgendaTopic {
   newDocumentsCountSinceCompile?: number;
 
   // Gemeente isolatie & Geografische wijken
-  municipality?: "steenwijkerland" | "hoogeveen" | string;
+  municipality?: "steenwijkerland" | string;
   wijken?: string[];
 
   // Gekoppelde Partijstandpunten (/standpunten) & Stem/Stellingname Analyse
@@ -240,7 +240,7 @@ export interface ToezeggingItem {
   agendapuntTitle?: string;
   agendapuntUrl?: string;
   bijlagen?: ToezeggingAttachment[];
-  municipality: "steenwijkerland" | "hoogeveen";
+  municipality?: "steenwijkerland" | string;
   updatedAt: string;
 }
 

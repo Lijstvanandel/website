@@ -1,5 +1,4 @@
 import { getAllDossiers, getDossiers, getDossierBySlug, slugify, checkFileExists } from "./dossierManager.js";
-import { getHoogeveenDossiers, classifyHoogeveenHoofddossier } from "./hoogeveenDossierManager.js";
 import { normalizeHoofddossier } from "./taxonomyClassifier.js";
 import {
   getCachedDocumentContentOnly,
@@ -24,7 +23,7 @@ export interface CouncilSearchParams {
   hasFiles?: boolean;
   type?: "all" | "dossiers" | "documents";
   userId?: string;
-  municipality?: "steenwijkerland" | "hoogeveen";
+  municipality?: "steenwijkerland" | string;
   page?: number;
   limit?: number;
 }
@@ -102,18 +101,10 @@ export async function executeCouncilSearch(params: CouncilSearchParams): Promise
 
   const userFavorites = params.userId ? getUserFavoriteFilenames(params.userId) : new Set<string>();
 
-  // Fetch all compiled dossiers including custom SQLite entries according to municipality
-  const targetMunicipality = (params.municipality || "steenwijkerland").toLowerCase().trim() === "hoogeveen" ? "hoogeveen" : "steenwijkerland";
+  // Fetch all compiled dossiers including custom SQLite entries
   const db = getDbFromSqlite();
-  let allDossiers: Dossier[] = [];
-  if (targetMunicipality === "hoogeveen") {
-    const hoogeveenDossiers = getHoogeveenDossiers();
-    const customHoogeveen = (db.customDossiers || []).filter((d: any) => (d.municipality || "").toLowerCase() === "hoogeveen");
-    allDossiers = [...hoogeveenDossiers, ...customHoogeveen];
-  } else {
-    const customSwl = (db.customDossiers || []).filter((d: any) => (d.municipality || "steenwijkerland").toLowerCase() === "steenwijkerland");
-    allDossiers = getAllDossiers(customSwl, db.deletedDossierSlugs || [], db.customSubdossiers || {});
-  }
+  const customSwl = (db.customDossiers || []).filter((d: any) => (d.municipality || "steenwijkerland").toLowerCase() === "steenwijkerland");
+  const allDossiers: Dossier[] = getAllDossiers(customSwl, db.deletedDossierSlugs || [], db.customSubdossiers || {});
 
   const matchedHits: SearchHit[] = [];
   const seenHitIds = new Set<string>();
@@ -496,12 +487,8 @@ export async function executeCouncilSearch(params: CouncilSearchParams): Promise
     }
 
     const topicDocs = Array.isArray(topic.documents) ? topic.documents : [];
-    const canonicalHoofd = targetMunicipality === "hoogeveen"
-      ? classifyHoogeveenHoofddossier(topicTitle, topicDesc)
-      : normalizeHoofddossier(topicCat, topicTitle, topicDesc);
-    const parentSlug = targetMunicipality === "hoogeveen"
-      ? slugify(`hoogeveen-${canonicalHoofd}`)
-      : slugify(canonicalHoofd);
+    const canonicalHoofd = normalizeHoofddossier(topicCat, topicTitle, topicDesc);
+    const parentSlug = slugify(canonicalHoofd);
 
     // 6a. Search each attached document inside this topic
     for (const doc of topicDocs) {
@@ -607,7 +594,7 @@ export async function executeCouncilSearch(params: CouncilSearchParams): Promise
       const filenameKey = filename.toLowerCase().trim();
       const docId = `topic_${topic.id}`;
       const hitKey = `doc-${docId}`;
-      const topicUrl = topic.sourceUrl || (topic.meetingId ? (targetMunicipality === "hoogeveen" ? `https://hoogeveen.notubiz.nl/vergadering/${topic.meetingId}` : `https://steenwijkerland.bestuurlijkeinformatie.nl/Agenda/Index/${topic.meetingId}`) : undefined);
+      const topicUrl = topic.sourceUrl || (topic.meetingId ? `https://steenwijkerland.bestuurlijkeinformatie.nl/Agenda/Index/${topic.meetingId}` : undefined);
       const hasTopicLink = Boolean(topicUrl);
 
       if (hasFilesOnly && !hasTopicLink) continue;

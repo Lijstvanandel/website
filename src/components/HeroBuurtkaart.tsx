@@ -14,7 +14,6 @@ export interface HeroBuurtkaartProps {
 }
 
 export const HeroBuurtkaart: React.FC<HeroBuurtkaartProps> = ({ onWijkHover }) => {
-  const [isInteractive, setIsInteractive] = useState(false);
   const [hoveredName, setHoveredName] = useState<string | null>(null);
   const navigate = useNavigate();
 
@@ -36,133 +35,116 @@ export const HeroBuurtkaart: React.FC<HeroBuurtkaartProps> = ({ onWijkHover }) =
     return () => window.removeEventListener("message", handleMessage);
   }, [onWijkHover]);
 
-  const handleActivate = () => {
-    if (!isInteractive) {
-      setIsInteractive(true);
-    }
-  };
-
   const handleWijkClick = (slug: string) => {
     navigate(`/wijken-en-kernen/${slugify(slug)}`);
+  };
+
+  const handleClearHover = () => {
+    setHoveredName(null);
+    onWijkHover?.(null);
   };
 
   return (
     <div
       className="relative w-full h-full min-h-[460px] lg:min-h-[520px] xl:min-h-[580px] rounded-xl overflow-hidden group select-none transition-all"
-      onMouseEnter={handleActivate}
-      onTouchStart={handleActivate}
-      onFocus={handleActivate}
-      onMouseLeave={() => {
-        setHoveredName(null);
-        onWijkHover?.(null);
-      }}
+      onMouseLeave={handleClearHover}
+      onTouchEnd={handleClearHover}
     >
-      {/* Dynamic interactive Leaflet map (loaded only on hover/interaction for SEO) */}
-      {isInteractive ? (
-        <iframe
-          src="/maps/buurtkaart-hero.html"
-          title="Interactieve buurtkaart Steenwijkerland met alle 43 wijken en kernen"
-          className="w-full h-full block border-0 animate-fade-in"
-          style={{ background: "transparent" }}
-          loading="eager"
-        />
-      ) : (
-        /* Static SEO-friendly Folium map representation (initial load) */
-        <div
-          className="folium-map leaflet-container leaflet-touch leaflet-fade-anim leaflet-grab leaflet-touch-drag leaflet-touch-zoom w-full h-full relative cursor-pointer"
-          id="map_0a1492a009545e0880401bb18576ecce"
-          tabIndex={0}
-          style={{ outline: "none", background: "transparent" }}
-          role="region"
-          aria-label="Kaart van Steenwijkerland met alle wijken en kernen"
-        >
-          <div className="leaflet-pane leaflet-map-pane w-full h-full" style={{ transform: "translate3d(0px, 0px, 0px)" }}>
-            <div className="leaflet-pane leaflet-tile-pane" />
-            <div className="leaflet-pane leaflet-overlay-pane w-full h-full flex items-center justify-center">
-              <svg
-                pointerEvents="auto"
-                className="leaflet-zoom-animated w-full h-full object-contain filter drop-shadow-[0_4px_12px_rgba(0,0,0,0.35)]"
-                viewBox="100 370 650 550"
-                preserveAspectRatio="xMidYMid meet"
-                aria-label="Overzichtskaart van de wijken en dorpen in Gemeente Steenwijkerland"
-              >
-                <title>Buurtkaart Gemeente Steenwijkerland - Lijst van Andel</title>
-                <desc>
-                  Kaart met alle 43 wijken en kernen van Steenwijkerland: Steenwijk, Blokzijl, Giethoorn, Vollenhove,
-                  Oldemarkt, Tuk, Willemsoord, Kuinre, Wanneperveen, Sint Jansklooster en omgeving.
-                </desc>
-                <g>
-                  {/* Outer boundary mask */}
-                  <path
-                    stroke="none"
-                    strokeOpacity={1}
-                    strokeWidth={3}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    fill="transparent"
-                    fillOpacity={0}
-                    fillRule="evenodd"
-                    d={OUTER_MASK_PATH}
-                  />
+      {/* Volledig interactieve, lichte vector SVG buurtkaart van Steenwijkerland */}
+      <div
+        className="folium-map leaflet-container leaflet-touch leaflet-fade-anim leaflet-grab leaflet-touch-drag leaflet-touch-zoom w-full h-full relative cursor-pointer"
+        id="map_0a1492a009545e0880401bb18576ecce"
+        tabIndex={0}
+        style={{ outline: "none", background: "transparent" }}
+        role="region"
+        aria-label="Kaart van Steenwijkerland met alle wijken en kernen"
+      >
+        <div className="leaflet-pane leaflet-map-pane w-full h-full" style={{ transform: "translate3d(0px, 0px, 0px)" }}>
+          <div className="leaflet-pane leaflet-tile-pane" />
+          <div className="leaflet-pane leaflet-overlay-pane w-full h-full flex items-center justify-center">
+            <svg
+              pointerEvents="auto"
+              className="leaflet-zoom-animated w-full h-full object-contain filter drop-shadow-[0_4px_12px_rgba(0,0,0,0.35)]"
+              viewBox="100 370 650 550"
+              preserveAspectRatio="xMidYMid meet"
+              aria-label="Overzichtskaart van de wijken en dorpen in Gemeente Steenwijkerland"
+            >
+              <title>Buurtkaart Gemeente Steenwijkerland - Lijst van Andel</title>
+              <desc>
+                Kaart met alle 43 wijken en kernen van Steenwijkerland: Steenwijk, Blokzijl, Giethoorn, Vollenhove,
+                Oldemarkt, Tuk, Willemsoord, Kuinre, Wanneperveen, Sint Jansklooster en omgeving.
+              </desc>
+              <g>
+                {/* Outer boundary mask */}
+                <path
+                  stroke="none"
+                  strokeOpacity={1}
+                  strokeWidth={3}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="transparent"
+                  fillOpacity={0}
+                  fillRule="evenodd"
+                  d={OUTER_MASK_PATH}
+                />
 
-                  {/* 42 individual neighborhoods in Steenwijkerland */}
-                  {BUURTKAART_PATHS.map((buurt: BuurtPath) => {
-                    const isCurrentHover = hoveredName === buurt.name;
-                    return (
-                      <path
-                        key={buurt.id}
-                        id={`wijk-${buurt.id}`}
-                        d={buurt.d}
-                        stroke="#D4AF37"
-                        strokeWidth={isCurrentHover ? 3 : buurt.weight}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        fill="#D4AF37"
-                        fillOpacity={isCurrentHover ? 0.45 : buurt.opacity}
-                        fillRule="evenodd"
-                        className="leaflet-interactive transition-all duration-200 cursor-pointer"
-                        onMouseEnter={() => {
-                          setHoveredName(buurt.name);
-                          onWijkHover?.(buurt.slug);
-                        }}
-                        onTouchStart={() => {
-                          setHoveredName(buurt.name);
-                          onWijkHover?.(buurt.slug);
-                        }}
-                        onFocus={() => {
-                          setHoveredName(buurt.name);
-                          onWijkHover?.(buurt.slug);
-                        }}
-                        onMouseLeave={() => {
-                          setHoveredName(null);
-                          onWijkHover?.(null);
-                        }}
-                        onClick={() => handleWijkClick(buurt.slug)}
-                        tabIndex={0}
-                        role="button"
-                        aria-label={`Bekijk wijk ${buurt.name}`}
-                      >
-                        <title>{buurt.name}</title>
-                      </path>
-                    );
-                  })}
-                </g>
-              </svg>
-            </div>
+                {/* 42 individual neighborhoods in Steenwijkerland */}
+                {BUURTKAART_PATHS.map((buurt: BuurtPath) => {
+                  const isCurrentHover = hoveredName === buurt.name;
+                  return (
+                    <path
+                      key={buurt.id}
+                      id={`wijk-${buurt.id}`}
+                      d={buurt.d}
+                      stroke="#D4AF37"
+                      strokeWidth={isCurrentHover ? 3 : buurt.weight}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      fill="#D4AF37"
+                      fillOpacity={isCurrentHover ? 0.45 : buurt.opacity}
+                      fillRule="evenodd"
+                      className="leaflet-interactive transition-all duration-200 cursor-pointer"
+                      onMouseEnter={() => {
+                        setHoveredName(buurt.name);
+                        onWijkHover?.(buurt.slug);
+                      }}
+                      onTouchStart={() => {
+                        setHoveredName(buurt.name);
+                        onWijkHover?.(buurt.slug);
+                      }}
+                      onFocus={() => {
+                        setHoveredName(buurt.name);
+                        onWijkHover?.(buurt.slug);
+                      }}
+                      onMouseLeave={() => {
+                        setHoveredName((curr) => (curr === buurt.name ? null : curr));
+                        onWijkHover?.(null);
+                      }}
+                      onClick={() => handleWijkClick(buurt.slug)}
+                      tabIndex={0}
+                      role="button"
+                      aria-label={`Bekijk wijk ${buurt.name}`}
+                    >
+                      <title>{buurt.name}</title>
+                    </path>
+                  );
+                })}
+              </g>
+            </svg>
           </div>
         </div>
-      )}
+      </div>
 
       {/* Floating status & interaction prompt badge */}
       <div className="absolute top-3 right-3 z-20 pointer-events-none flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-twente-black/85 border border-accent/40 text-accent text-xs font-medium backdrop-blur-md shadow-lg transition-opacity duration-300">
         <MapPin className="w-3.5 h-3.5 text-accent animate-pulse" />
         <span className="font-sans">
-          {hoveredName ? hoveredName : isInteractive ? "Interactieve wijkkaart" : "Beweeg over de kaart"}
+          {hoveredName ? hoveredName : "Beweeg over de kaart"}
         </span>
       </div>
 
-      {/* Hover tooltip in static mode */}
-      {!isInteractive && hoveredName && (
+      {/* Hover tooltip in interactive vector mode */}
+      {hoveredName && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 pointer-events-none px-4 py-2 rounded-lg bg-twente-black/90 border border-accent text-foreground text-xs font-semibold backdrop-blur shadow-xl animate-fade-in flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-accent animate-ping" />
           <span>{hoveredName}</span>

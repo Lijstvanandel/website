@@ -7,10 +7,6 @@ import {
   getSubdossierThumbnail,
 } from "./dossierManager.js";
 import {
-  distributeHoogeveenDossiers,
-  getHoogeveenDossiers,
-} from "./hoogeveenDossierManager.js";
-import {
   normalizeHoofddossier,
   normalizeSubdossier,
   CANONICAL_PRIMARY_SUBDOSSIERS,
@@ -39,7 +35,6 @@ function detectSteenwijkerlandWijk(title: string, desc = ""): string | null {
 const lastSyncStats = {
   lastSyncedAt: null as string | null,
   steenwijkerland: { topics: 0, newDocsAdded: 0, totalDocs: 0 },
-  hoogeveen: { topics: 0, distributedDocs: 0, dossiersCount: 0 },
   isRunning: false,
 };
 
@@ -59,7 +54,7 @@ export async function syncSteenwijkerlandAgendaToDossiers(): Promise<{
 }> {
   const db = getDbFromSqlite();
   const allTopics: CouncilAgendaTopic[] = Array.isArray(db.councilAgendaTopics) ? db.councilAgendaTopics : [];
-  const swlTopics = allTopics.filter((t) => (t.municipality || "steenwijkerland").toLowerCase() !== "hoogeveen");
+  const swlTopics = allTopics.filter((t) => (t.municipality || "steenwijkerland").toLowerCase() === "steenwijkerland");
 
   if (!db.customSubdossiers) db.customSubdossiers = {};
 
@@ -214,9 +209,8 @@ export async function syncSteenwijkerlandAgendaToDossiers(): Promise<{
 }
 
 /**
- * Complete synchronization for both Steenwijkerland and Hoogeveen:
+ * Complete synchronization for Steenwijkerland:
  * - Scraped Steenwijkerland agenda documents -> Master metadata & subdossiers
- * - Scraped Hoogeveen NotuBiz documents -> Hoogeveen hoofddossiers & subdossiers
  */
 export async function syncAllAgendaTopicsToDossiers(): Promise<typeof lastSyncStats> {
   if (lastSyncStats.isRunning) {
@@ -227,19 +221,11 @@ export async function syncAllAgendaTopicsToDossiers(): Promise<typeof lastSyncSt
   console.log("[AGENDA DOSSIER SYNC] Automatische synchronisatie van agendastukken naar dossiers gestart...");
 
   try {
-    // 1. Steenwijkerland
+    // Steenwijkerland
     await syncSteenwijkerlandAgendaToDossiers();
 
-    // 2. Hoogeveen
-    const hgvRes = await distributeHoogeveenDossiers();
-    lastSyncStats.hoogeveen = {
-      topics: (getDbFromSqlite().councilAgendaTopics || []).filter((t: any) => t.municipality === "hoogeveen").length,
-      distributedDocs: hgvRes.documentsDistributedCount,
-      dossiersCount: hgvRes.dossiersCount,
-    };
-
     lastSyncStats.lastSyncedAt = new Date().toISOString();
-    console.log(`[AGENDA DOSSIER SYNC] Voltooid! Steenwijkerland (+${lastSyncStats.steenwijkerland.newDocsAdded} docs), Hoogeveen (${lastSyncStats.hoogeveen.distributedDocs} docs verdeeld).`);
+    console.log(`[AGENDA DOSSIER SYNC] Voltooid! Steenwijkerland (+${lastSyncStats.steenwijkerland.newDocsAdded} docs).`);
   } catch (err: any) {
     console.error("[AGENDA DOSSIER SYNC FOUT]:", err?.message || err);
   } finally {

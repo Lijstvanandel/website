@@ -83,7 +83,6 @@ import NewsletterManager from "@/components/admin/NewsletterManager";
 import { StellingenManager } from "@/components/admin/StellingenManager";
 import { CouncilAuditManager } from "@/components/admin/CouncilAuditManager";
 import { OverijsselNotubizManager } from "@/components/council/OverijsselNotubizManager";
-import { DrentheProvincieManager } from "@/components/council/DrentheProvincieManager";
 import { WaterschapManager } from "@/components/council/WaterschapManager";
 import { TreasurerManager } from "@/components/admin/TreasurerManager";
 import { SecretaryManager } from "@/components/admin/SecretaryManager";
@@ -761,21 +760,20 @@ export default function AdminDashboard() {
     }
   };
 
-  const changeUserMunicipality = async (id: string, newMunicipality: string) => {
-    const targetName = newMunicipality === "hoogeveen" ? "Hoogeveen" : "Steenwijkerland";
+  const changeUserMunicipality = async (id: string, newMunicipality: string = "steenwijkerland") => {
     setUsers((prev) =>
-      prev.map((u) => (u.id === id ? { ...u, municipality: newMunicipality } : u))
+      prev.map((u) => (u.id === id ? { ...u, municipality: "steenwijkerland" } : u))
     );
     if (user?.id === id) {
-      updateUser({ municipality: newMunicipality });
+      updateUser({ municipality: "steenwijkerland" });
     }
-    toast.success(`Gemeente direct gewijzigd naar ${targetName}`);
+    toast.success("Gemeente ingesteld op Steenwijkerland");
 
     try {
       const res = await fetch(`/api/admin/users/${id}/municipality`, {
         method: "PATCH",
         headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ municipality: newMunicipality }),
+        body: JSON.stringify({ municipality: "steenwijkerland" }),
       });
       if (!res.ok) {
         toast.error("Fout bij opslaan gemeente op server");
@@ -1835,9 +1833,6 @@ export default function AdminDashboard() {
           <TabsTrigger value="overijssel-notubiz" className="gap-2 text-xs text-emerald-600 dark:text-emerald-400">
             <Building2 className="w-4 h-4" /> Provincie Overijssel Sync
           </TabsTrigger>
-          <TabsTrigger value="drenthe-provincie" className="gap-2 text-xs text-rose-600 dark:text-rose-400">
-            <Building2 className="w-4 h-4" /> Provincie Drenthe Sync
-          </TabsTrigger>
           <TabsTrigger value="waterschap" className="gap-2 text-xs text-blue-600 dark:text-blue-400">
             <Waves className="w-4 h-4" /> Waterschap Sync
           </TabsTrigger>
@@ -1896,7 +1891,7 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Aanmeldingen in afwachting van goedkeuring (Portal Mode / Hoogeveen) */}
+            {/* Aanmeldingen in afwachting van goedkeuring (Fractieleden) */}
             {users.some((u) => u.portalApproved === false && u.role !== 'admin' && u.role !== 'key-user' && u.role !== 'voorzitter') && (
               <div className="bg-amber-500/10 border-2 border-amber-500/30 rounded-xl p-5 shadow-xs">
                 <div className="flex items-center gap-2.5 mb-2">
@@ -1906,7 +1901,7 @@ export default function AdminDashboard() {
                   </h3>
                 </div>
                 <p className="text-xs text-muted-foreground mb-4">
-                  Deze fractieleden hebben zich geregistreerd via de portal mode en wachten op acceptatie door een beheerder of key-user.
+                  Deze fractieleden hebben zich geregistreerd en wachten op acceptatie door een beheerder.
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {users
@@ -1924,7 +1919,7 @@ export default function AdminDashboard() {
                             @{pUser.username} &bull; {pUser.email || "Geen e-mail"}
                           </div>
                           <div className="text-[11px] text-amber-700 dark:text-amber-300 font-medium mt-1">
-                            Gemeente {pUser.municipality === "hoogeveen" ? "Hoogeveen" : (pUser.municipality || "Steenwijkerland")} &bull; In afwachting
+                            Steenwijkerland &bull; In afwachting
                           </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
@@ -2039,15 +2034,9 @@ export default function AdminDashboard() {
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <select
-                            className="text-xs px-2.5 py-1 rounded border outline-none cursor-pointer bg-background font-medium text-foreground border-accent/30 hover:border-accent"
-                            value={u.municipality || "steenwijkerland"}
-                            onChange={(e) => changeUserMunicipality(u.id, e.target.value)}
-                            title="Kies de gemeente van dit lid / raadslid (Steenwijkerland of Hoogeveen)"
-                          >
-                            <option value="steenwijkerland">Steenwijkerland</option>
-                            <option value="hoogeveen">Hoogeveen</option>
-                          </select>
+                          <span className="text-xs font-medium text-foreground">
+                            Steenwijkerland
+                          </span>
                         </td>
                         <td className="px-4 py-3">
                           <select
@@ -4864,11 +4853,6 @@ export default function AdminDashboard() {
         {/* PROVINCIE OVERIJSSEL NOTUBIZ SCRAPER & EXPORT */}
         <TabsContent value="overijssel-notubiz">
           <OverijsselNotubizManager token={token || effectiveToken} />
-        </TabsContent>
-
-        {/* PROVINCIE DRENTHE (DRENTS PARLEMENT) SCRAPER & EXPORT */}
-        <TabsContent value="drenthe-provincie">
-          <DrentheProvincieManager token={token || effectiveToken} />
         </TabsContent>
 
         {/* WATERSCHAP DRENTS OVERIJSSELSE DELTA SCRAPER */}

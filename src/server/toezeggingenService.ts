@@ -5,15 +5,11 @@ import crypto from "crypto";
 import { persistSqlite, schedulePersist, getRawSqliteDb } from "./sqliteDatabase.js";
 import { GoogleGenAI } from "@google/genai";
 import { hoofdstukken } from "../data/partijprogramma.js";
-import { hoofdstukkenHoogeveen } from "../data/partijprogrammaHoogeveen.js";
 import { MatchedStandpunt, TopicStandpuntSummary, StandpuntStance } from "../types/council.js";
 
 const STEENWIJKERLAND_REPORT_API = "https://steenwijkerland.bestuurlijkeinformatie.nl/Reports/GetReportData/18b100eb-2dba-433e-8737-2dc373dd88e1";
 const STEENWIJKERLAND_ITEM_BASE = "https://steenwijkerland.bestuurlijkeinformatie.nl/Reports/Item/";
 const STEENWIJKERLAND_BASE = "https://steenwijkerland.bestuurlijkeinformatie.nl";
-
-const HOOGEVEEN_TOEZEGGINGEN_URL = "https://hoogeveen.raadsinformatie.nl/modules/3/Toezeggingen/view?month=all&year=all&week=all";
-const HOOGEVEEN_BASE = "https://hoogeveen.raadsinformatie.nl";
 
 const SQLITE_FILE = process.env.DATABASE_PATH || path.join(process.cwd(), "database.sqlite");
 
@@ -117,7 +113,6 @@ function cleanHtmlEntities(text?: string | null): string {
 let memoryToezeggingenCache: ToezeggingItem[] = [];
 let lastSyncTimestamp: string | null = null;
 let isSyncingSWL = false;
-let isSyncingHGV = false;
 
 /**
  * Read all toezeggingen from SQLite
@@ -302,235 +297,6 @@ async function promisePool<T, R>(
   return results;
 }
 
-/**
- * Synchronize full LTA Toezeggingen list and details from Hoogeveen Notubiz portal
- */
-export async function syncHoogeveenToezeggingen(): Promise<{
-  totalFetched: number;
-  newCount: number;
-  updatedCount: number;
-  openCount: number;
-  afgedaanCount: number;
-  lastSyncedAt: string;
-}> {
-  if (isSyncingHGV) {
-    console.log("[LTA HOOGEVEEN] Synchronisatie is reeds bezig...");
-    const current = getAllToezeggingenFromDb("hoogeveen");
-    return {
-      totalFetched: current.length,
-      newCount: 0,
-      updatedCount: 0,
-      openCount: current.filter((i) => !i.isAfgedaan).length,
-      afgedaanCount: current.filter((i) => i.isAfgedaan).length,
-      lastSyncedAt: lastSyncTimestamp || new Date().toISOString(),
-    };
-  }
-
-  isSyncingHGV = true;
-  console.log("[LTA HOOGEVEEN] Start synchronisatie met Hoogeveen Notubiz...");
-
-  try {
-    const fetchOptions = {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "Accept-Language": "nl-NL,nl;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache",
-        "Sec-Ch-Ua": '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"',
-        "Sec-Ch-Ua-Mobile": "?0",
-        "Sec-Ch-Ua-Platform": '"Windows"',
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Sec-Fetch-User": "?1",
-        "Upgrade-Insecure-Requests": "1",
-      },
-      signal: AbortSignal.timeout(25000),
-    };
-
-    let html = "";
-    try {
-      let res = await fetch(HOOGEVEEN_TOEZEGGINGEN_URL, fetchOptions);
-
-      if (!res.ok) {
-        // Retry once after 1 second in case of transient WAF rate-limiting
-        await new Promise((r) => setTimeout(r, 1000));
-        res = await fetch(HOOGEVEEN_TOEZEGGINGEN_URL, {
-          ...fetchOptions,
-          signal: AbortSignal.timeout(25000),
-        });
-      }
-
-      if (!res.ok) {
-        throw new Error(`Externe server gaf HTTP status ${res.status}`);
-      }
-
-      html = await res.text();
-    } catch (fetchErr: any) {
-      const current = getAllToezeggingenFromDb("hoogeveen");
-      const isTimeout = fetchErr?.name === "TimeoutError" || String(fetchErr).includes("timeout");
-      console.log(`[LTA HOOGEVEEN] Externe portal niet direct bereikbaar (${isTimeout ? "time-out" : fetchErr?.message || fetchErr}). Actief met ${current.length} lokale toezeggingen.`);
-      return {
-        totalFetched: current.length,
-        newCount: 0,
-        updatedCount: 0,
-        openCount: current.filter((i) => !i.isAfgedaan).length,
-        afgedaanCount: current.filter((i) => i.isAfgedaan).length,
-        lastSyncedAt: lastSyncTimestamp || new Date().toISOString(),
-      };
-    }
-
-    if (!html || html.trim().length === 0) {
-      const current = getAllToezeggingenFromDb("hoogeveen");
-      return {
-        totalFetched: current.length,
-        newCount: 0,
-        updatedCount: 0,
-        openCount: current.filter((i) => !i.isAfgedaan).length,
-        afgedaanCount: current.filter((i) => i.isAfgedaan).length,
-        lastSyncedAt: lastSyncTimestamp || new Date().toISOString(),
-      };
-    }
-
-    const existingMap = new Map<string, ToezeggingItem>();
-    const currentDbItems = getAllToezeggingenFromDb("hoogeveen");
-    for (const item of currentDbItems) {
-      existingMap.set(item.rowId, item);
-    }
-
-    const now = new Date().toISOString();
-    const todayIso = now.slice(0, 10);
-    let newCount = 0;
-    let updatedCount = 0;
-
-    const items: ToezeggingItem[] = [];
-    const trRegex = /<tr data-id="(\d+)"[\s\S]*?<\/tr>/gi;
-    let match;
-
-    while ((match = trRegex.exec(html)) !== null) {
-      const rowId = match[1];
-      const trHtml = match[0];
-      const existing = existingMap.get(rowId);
-
-      const extractFieldText = (dataId: string) => {
-        const ddMatch = trHtml.match(new RegExp(`<dd[^>]*data-id="${dataId}"[^>]*>([\\s\\S]*?)<\\/dd>`, "i"));
-        if (!ddMatch) return "";
-        return cleanHtmlEntities(
-          ddMatch[1]
-            .replace(/<p[^>]*>/gi, "")
-            .replace(/<\/p>/gi, "\n")
-            .replace(/<li[^>]*>/gi, "• ")
-            .replace(/<\/li>/gi, "\n")
-            .replace(/<br\s*\/?>/gi, "\n")
-            .replace(/<[^>]+>/g, " ")
-        );
-      };
-
-      const extractFieldRaw = (dataId: string) => {
-        const ddMatch = trHtml.match(new RegExp(`<dd[^>]*data-id="${dataId}"[^>]*>([\\s\\S]*?)<\\/dd>`, "i"));
-        return ddMatch ? ddMatch[1].trim() : "";
-      };
-
-      const title = extractFieldText("1") || "Toezegging Hoogeveen";
-      const datum = extractFieldText("15");
-      const parsedDatum = parseDutchDate(datum);
-      const toezeggingText = extractFieldText("25") || title;
-      const portefeuillehouder = extractFieldText("23") || "College van B&W";
-      const deadline = extractFieldText("28");
-      const parsedDeadline = parseDutchDate(deadline);
-      const datumAfdoening = extractFieldText("17");
-      const parsedAfdoening = parseDutchDate(datumAfdoening);
-      const toelichtingAfdoening = extractFieldText("31") || extractFieldText("35");
-
-      const isAfgedaan = Boolean(datumAfdoening);
-      let isOverdue = false;
-      if (!isAfgedaan && parsedDeadline?.iso) {
-        if (parsedDeadline.iso < todayIso) {
-          isOverdue = true;
-        }
-      }
-
-      // Agendapunt
-      const agendaDd = extractFieldRaw("54") || extractFieldRaw("22");
-      const agendaLinkMatch = agendaDd.match(/<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
-      const agendapuntTitle = agendaLinkMatch ? cleanHtmlEntities(agendaLinkMatch[2].replace(/<[^>]+>/g, " ")) : extractFieldText("54");
-      const agendapuntUrl = agendaLinkMatch
-        ? agendaLinkMatch[1].startsWith("http")
-          ? agendaLinkMatch[1]
-          : `${HOOGEVEEN_BASE}${agendaLinkMatch[1]}`
-        : "";
-
-      // Attachments
-      const bijlagen: ToezeggingBijlage[] = [];
-      const attachRegex = /<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-      let aMatch;
-      while ((aMatch = attachRegex.exec(trHtml)) !== null) {
-        const href = aMatch[1];
-        if (href.includes("/document/") || href.includes("raadsinformatie.nl/document")) {
-          const bUrl = href.startsWith("http") ? href : `${HOOGEVEEN_BASE}${href}`;
-          const bTitle = cleanHtmlEntities(aMatch[2].replace(/<[^>]+>/g, "")) || "Bijlage document";
-          if (!bijlagen.some((b) => b.url === bUrl)) {
-            bijlagen.push({ title: bTitle, url: bUrl });
-          }
-        }
-      }
-
-      if (!existing) {
-        newCount++;
-      } else {
-        updatedCount++;
-      }
-
-      items.push({
-        id: existing?.id || `hgv_toezegging_${rowId}`,
-        rowId,
-        identity: rowId,
-        datum,
-        datumIso: parsedDatum?.iso,
-        year: parsedDatum?.year || (parsedDatum?.iso ? parseInt(parsedDatum.iso.slice(0, 4), 10) : 2026),
-        title,
-        toezeggingText,
-        toelichting: toelichtingAfdoening,
-        portefeuillehouder,
-        deadline: deadline || null,
-        deadlineIso: parsedDeadline?.iso || null,
-        datumAfdoening: datumAfdoening || null,
-        datumAfdoeningIso: parsedAfdoening?.iso || null,
-        status: isAfgedaan ? "Afgedaan" : "Openstaand",
-        isAfgedaan,
-        isOverdue,
-        standVanZaken: toelichtingAfdoening,
-        agendapuntTitle,
-        agendapuntUrl,
-        bijlagen,
-        municipality: "hoogeveen",
-        detailFetched: true,
-        updatedAt: now,
-        createdAt: existing?.createdAt || now,
-      });
-    }
-
-    console.log(`[LTA HOOGEVEEN] ${items.length} toezeggingen verwerkt van Hoogeveen Notubiz.`);
-    saveToezeggingenToDb(items);
-
-    const openCount = items.filter((i) => !i.isAfgedaan).length;
-    const afgedaanCount = items.filter((i) => i.isAfgedaan).length;
-
-    console.log(`[LTA HOOGEVEEN] Synchronisatie voltooid. Totaal: ${items.length} (Open: ${openCount}, Afgedaan: ${afgedaanCount}).`);
-
-    return {
-      totalFetched: items.length,
-      newCount,
-      updatedCount,
-      openCount,
-      afgedaanCount,
-      lastSyncedAt: now,
-    };
-  } finally {
-    isSyncingHGV = false;
-  }
-}
 
 /**
  * Synchronize full LTA Toezeggingen list and details from Steenwijkerland iBabs portal
@@ -746,10 +512,9 @@ export async function matchToezeggingWithStandpunten(item: ToezeggingItem): Prom
   }
 
   try {
-    const isHoogeveen = item.municipality === "hoogeveen";
-    const activeChapters = isHoogeveen ? hoofdstukkenHoogeveen : hoofdstukken;
-    const partyName = isHoogeveen ? "de lokale fractie" : "Lijst van Andel";
-    const municipalityName = isHoogeveen ? "Hoogeveen" : "Steenwijkerland";
+    const activeChapters = hoofdstukken;
+    const partyName = "Lijst van Andel";
+    const municipalityName = "Steenwijkerland";
 
     const programmaLines = [];
     for (const h of activeChapters) {

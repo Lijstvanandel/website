@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { getPortalConfig } from "@/utils/portalConfig";
 import {
   Search,
   FolderPlus,
@@ -53,13 +52,11 @@ import {
 interface DossierOverviewProps {
   initialDossierSlug?: string | null;
   initialWijkSlug?: string | null;
-  forcedMunicipality?: "steenwijkerland" | "hoogeveen";
 }
 
 export const DossierOverview: React.FC<DossierOverviewProps> = ({
   initialDossierSlug,
   initialWijkSlug,
-  forcedMunicipality,
 }) => {
   const { user } = useAuth();
   const isAdmin = Boolean(user && user.role === "admin");
@@ -68,9 +65,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
   );
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const portalConfig = getPortalConfig(undefined, user);
-  const effectiveMuni = forcedMunicipality || (user && user.role !== "admin" ? (user.municipality || "steenwijkerland") : portalConfig.tenantId);
-  const isHoogeveen = effectiveMuni === "hoogeveen";
+  const effectiveMuni = "steenwijkerland";
   const { pageSize, sortBy, setPageSize, setSortBy } = useCouncilPreferences();
 
   const [dossiers, setDossiers] = useState<Dossier[]>(() => {
@@ -392,11 +387,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
           } else {
             if (wasRunning && !data.isRunning) {
               fetchDossiers();
-              toast.success(
-                isHoogeveen
-                  ? "Hoogeveen dossiers herverdelen en herstructurering succesvol voltooid!"
-                  : "Herstructurering en taxonomie-classificatie succesvol voltooid!"
-              );
+              toast.success("Herstructurering en taxonomie-classificatie succesvol voltooid!");
             }
             isClassifyingRef.current = false;
             setIsClassifying(false);
@@ -406,7 +397,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
     } catch (_err) {
       // Silently ignore transient network or parsing errors during polling
     }
-  }, [fetchDossiers, isHoogeveen, portalConfig.tenantId]);
+  }, [fetchDossiers]);
 
   useEffect(() => {
     fetchBulkStatus();
@@ -444,11 +435,9 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
       }
       toast.info(
         limit
-          ? `${isHoogeveen ? "Hoogeveen herstructurering" : "Herstructurering"} gestart voor batch van ${limit} documenten.`
+          ? `Herstructurering gestart voor batch van ${limit} documenten.`
           : force
-          ? `${isHoogeveen ? "Volledige herverdeling Hoogeveen-dossiers" : "Volledige herstructurering (alles opnieuw)"} gestart in de achtergrond.`
-          : isHoogeveen
-          ? "Hoogeveen dossiers herverdelen en herstructureren gestart over de 7 hoofddossiers en 26 wijken & kernen."
+          ? "Volledige herstructurering (alles opnieuw) gestart in de achtergrond."
           : "Slimme herclassificatie gestart: conforme documenten worden overgeslagen, generieke wijk 'Steenwijk' en DLQ worden gericht hersteld."
       );
       fetchBulkStatus();
@@ -511,19 +500,15 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
         headers: {
           "Content-Type": "application/json",
           Authorization: token ? `Bearer ${token}` : "",
-          "x-portal-tenant": portalConfig.tenantId,
-          "x-municipality": portalConfig.tenantId,
+          "x-portal-tenant": "steenwijkerland",
+          "x-municipality": "steenwijkerland",
         },
         body: JSON.stringify({
-          municipality: portalConfig.tenantId,
+          municipality: "steenwijkerland",
         }),
       });
       if (res.ok) {
-        toast.success(
-          isHoogeveen
-            ? "Hoogeveen herstructurering wordt geannuleerd..."
-            : "Bulk-classificatie wordt geannuleerd..."
-        );
+        toast.success("Bulk-classificatie wordt geannuleerd...");
         fetchBulkStatus();
       }
     } catch (err: any) {
@@ -909,17 +894,11 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
               onClick={() => handleBulkClassify(undefined, false)}
               disabled={isClassifying}
               className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold h-8 rounded-xl shadow-2xs"
-              title={
-                isHoogeveen
-                  ? "Herverdeel alle Hoogeveense raadsstukken en agendapunten over de 7 hoofddossiers en 26 wijken & kernen van Hoogeveen"
-                  : "Hervat de classificatie zonder opnieuw te beginnen: slaat conforme documenten over en herclassificeert alleen wijk 'Steenwijk' en DLQ-bestanden"
-              }
+              title="Hervat de classificatie zonder opnieuw te beginnen: slaat conforme documenten over en herclassificeert alleen wijk 'Steenwijk' en DLQ-bestanden"
             >
               <Sparkles className={`w-3.5 h-3.5 mr-1.5 ${isClassifying ? 'animate-spin' : ''}`} />
               {isClassifying 
                 ? "Verwerken..." 
-                : isHoogeveen 
-                ? "Hoogeveen Dossiers Herverdelen" 
                 : "Hervatten & Wijk 'Steenwijk' Corrigeren"}
             </Button>
 
@@ -929,14 +908,10 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
               disabled={isClassifying}
               variant="outline"
               className="border-emerald-600/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 text-xs font-semibold h-8 rounded-xl shadow-2xs"
-              title={
-                isHoogeveen
-                  ? "Herverdeel maximaal 50 Hoogeveen-agendapunten en gekoppelde raadsdocumenten"
-                  : "Test & herstructureer maximaal 50 bestanden om kosten te beheersen en Gemini-output direct te inspecteren"
-              }
+              title="Test & herstructureer maximaal 50 bestanden om kosten te beheersen en Gemini-output direct te inspecteren"
             >
               <Sparkles className={`w-3.5 h-3.5 mr-1.5 ${isClassifying ? 'animate-spin' : ''}`} />
-              {isClassifying ? "Verwerken..." : isHoogeveen ? "Batch 50 Hoogeveen" : "Batch 50 Bestanden"}
+              {isClassifying ? "Verwerken..." : "Batch 50 Bestanden"}
             </Button>
 
             <Button
@@ -953,9 +928,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
             <Button
               id="btn-run-bulk-classify-force"
               onClick={() => {
-                const confirmMsg = isHoogeveen
-                  ? "Weet je zeker dat je alle Hoogeveen-dossiers en documenten geforceerd opnieuw wilt herverdelen?"
-                  : "Weet je zeker dat je ALLES opnieuw wilt classificeren? Dit verbruikt veel API-calls. Kies anders voor 'Hervatten & Wijk Steenwijk Corrigeren'.";
+                const confirmMsg = "Weet je zeker dat je ALLES opnieuw wilt classificeren? Dit verbruikt veel API-calls. Kies anders voor 'Hervatten & Wijk Steenwijk Corrigeren'.";
                 if (window.confirm(confirmMsg)) {
                   handleBulkClassify(undefined, true);
                 }
@@ -963,70 +936,50 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
               disabled={isClassifying}
               variant="ghost"
               className="text-muted-foreground hover:text-foreground text-xs font-normal h-8 rounded-xl"
-              title={
-                isHoogeveen
-                  ? "Volledige herverdeling Hoogeveen-dossiers forceren vanaf nul"
-                  : "Volledige herclassificatie forceren vanaf nul"
-              }
+              title="Volledige herclassificatie forceren vanaf nul"
             >
-              {isHoogeveen ? "Hoogeveen Volledig Herverdelen (Force)" : "Alles Opnieuw (Force)"}
+              Alles Opnieuw (Force)
             </Button>
 
             <a
               id="btn-download-master-csv"
-              href={`/api/council/metadata.csv?portal=${portalConfig.tenantId}&municipality=${portalConfig.tenantId}`}
+              href="/api/council/metadata.csv?municipality=steenwijkerland"
               download
               className="inline-flex items-center justify-center border border-border bg-card hover:bg-muted text-foreground text-xs font-semibold h-8 px-3 rounded-xl shadow-2xs transition-colors"
-              title={
-                isHoogeveen
-                  ? "Download het complete master CSV-bestand met alle geregistreerde Hoogeveen-documenten"
-                  : "Download het complete master CSV-bestand met alle geregistreerde bestanden"
-              }
+              title="Download het complete master CSV-bestand met alle geregistreerde bestanden"
             >
               <Download className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
-              {isHoogeveen ? "Hoogeveen Master CSV" : "Complete CSV"}
+              Complete CSV
             </a>
 
             <a
               id="btn-download-processed-csv"
-              href={`/api/council/metadata/processed.csv?portal=${portalConfig.tenantId}&municipality=${portalConfig.tenantId}`}
+              href="/api/council/metadata/processed.csv?municipality=steenwijkerland"
               download
               className="inline-flex items-center justify-center border border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs font-semibold h-8 px-3 rounded-xl shadow-2xs transition-colors"
-              title={
-                isHoogeveen
-                  ? "Download een CSV-bestand van uitsluitend de documenten die fysiek aanwezig zijn op de server"
-                  : "Download een CSV-bestand van uitsluitend de reeds succesvol via Gemini geclassificeerde bestanden"
-              }
+              title="Download een CSV-bestand van uitsluitend de reeds succesvol via Gemini geclassificeerde bestanden"
             >
               <Download className="w-3.5 h-3.5 mr-1.5 text-emerald-500" />
-              {isHoogeveen ? "Fysiek Aanwezige CSV" : "Reeds Verwerkte CSV"}
+              Reeds Verwerkte CSV
             </a>
 
             <a
               id="btn-download-unprocessed-csv"
-              href={`/api/council/metadata/unprocessed.csv?portal=${portalConfig.tenantId}&municipality=${portalConfig.tenantId}`}
+              href="/api/council/metadata/unprocessed.csv?municipality=steenwijkerland"
               download
               className="inline-flex items-center justify-center border border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs font-semibold h-8 px-3 rounded-xl shadow-2xs transition-colors"
-              title={
-                isHoogeveen
-                  ? "Download een CSV-bestand van documenten die nog via NotuBiz gedownload moeten worden"
-                  : "Download een CSV-bestand van uitsluitend de nog te verwerken / ongeclassificeerde bestanden"
-              }
+              title="Download een CSV-bestand van uitsluitend de nog te verwerken / ongeclassificeerde bestanden"
             >
               <Download className="w-3.5 h-3.5 mr-1.5 text-amber-500" />
-              {isHoogeveen ? "Nog Te Downloaden CSV" : "Nog Te Verwerken CSV"}
+              Nog Te Verwerken CSV
             </a>
 
             <a
               id="btn-download-execution-log"
-              href={`/api/council/classification-log/download?portal=${portalConfig.tenantId}&municipality=${portalConfig.tenantId}`}
+              href="/api/council/classification-log/download?municipality=steenwijkerland"
               download
               className="inline-flex items-center justify-center border border-border bg-card hover:bg-muted text-foreground text-xs font-semibold h-8 px-3 rounded-xl shadow-2xs transition-colors"
-              title={
-                isHoogeveen
-                  ? "Download het volledige uitvoeringslogboek van de Hoogeveen-herstructurering"
-                  : "Download het volledige uitvoeringslogboek van de herstructurering (met tijdstempels van alle AI-classificaties)"
-              }
+              title="Download het volledige uitvoeringslogboek van de herstructurering"
             >
               <FileText className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
               Uitvoeringslog (.txt)
@@ -1092,12 +1045,10 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
               <div>
                 <div className="flex items-center flex-wrap gap-2">
                   <h3 className="font-bold text-foreground text-sm sm:text-base flex items-center gap-2">
-                    {isHoogeveen
-                      ? "Hoogeveen Dossiers Herverdelen & Taxonomie-Indeling"
-                      : "Dossier Samenbrengingsproces (Taxonomie-AI)"}
+                    Dossier Samenbrengingsproces (Taxonomie-AI)
                   </h3>
                   <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-primary/10 text-primary border border-primary/20 rounded-md">
-                    {bulkStatus.modelName || (isHoogeveen ? "Hoogeveen NotuBiz Taxonomie-Engine" : "gemini-2.5-flash")}
+                    {bulkStatus.modelName || "gemini-2.5-flash"}
                   </span>
                   {bulkStatus.limit && (
                     <span className="px-2 py-0.5 text-[10px] font-bold bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30 rounded-full">
@@ -1114,9 +1065,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
                     </span>
                   ) : (
                     <span className="px-2 py-0.5 text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
-                      {isHoogeveen
-                        ? "Lokale NotuBiz Taxonomie-Engine"
-                        : `Max ${bulkStatus.ratePerMinute || 60} RPM • ${bulkStatus.rpdLimit && bulkStatus.rpdLimit >= 10000 ? "Onbeperkt (Pay-As-You-Go)" : `${bulkStatus.rpdLimit || 250} RPD`}`}
+                      {`Max ${bulkStatus.ratePerMinute || 60} RPM • ${bulkStatus.rpdLimit && bulkStatus.rpdLimit >= 10000 ? "Onbeperkt (Pay-As-You-Go)" : `${bulkStatus.rpdLimit || 250} RPD`}`}
                     </span>
                   )}
                 </div>
@@ -1124,11 +1073,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
                   {bulkStatus.isPaused
                     ? `Gepauzeerd wegens Gemini API rate limit (${bulkStatus.ratePerMinute || 60} RPM limiet). Het script wacht op quotum-reset en hervat automatisch...`
                     : bulkStatus.isRunning 
-                    ? isHoogeveen
-                      ? `Actief bezig met herverdelen en herstructureren van Hoogeveense raadsstukken en agendapunten (${bulkStatus.modelName || "Hoogeveen NotuBiz Taxonomie-Engine"})...`
-                      : `Actief bezig met analyseren en classificeren volgens de Steenwijkerlandse datataxonomie (${bulkStatus.modelName || "gemini-2.5-flash"}, max ${bulkStatus.ratePerMinute || 60} RPM)...` 
-                    : isHoogeveen
-                    ? "Alle Hoogeveense agendapunten en raadsstukken zijn verdeeld volgens de 7 canonieke hoofddossiers en 26 wijken & kernen."
+                    ? `Actief bezig met analyseren en classificeren volgens de Steenwijkerlandse datataxonomie (${bulkStatus.modelName || "gemini-2.5-flash"}, max ${bulkStatus.ratePerMinute || 60} RPM)...` 
                     : "Alle bestanden zijn geanalyseerd en ingedeeld volgens de ontologische routeringsregels."}
                 </p>
               </div>

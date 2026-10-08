@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Navigate, Link, useSearchParams, useParams } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
-import { getPortalConfig } from "@/utils/portalConfig";
 import { DossierOverview } from "@/components/council/DossierOverview";
 import {
   FileText,
@@ -79,7 +78,6 @@ import { SupportDossierPanel } from "@/components/SupportDossierPanel";
 import { SecureDocumentViewer } from "@/components/SecureDocumentViewer";
 import { TopicStandpuntenSection } from "@/components/council/TopicStandpuntenSection";
 import { OverijsselNotubizManager } from "@/components/council/OverijsselNotubizManager";
-import { DrentheProvincieManager } from "@/components/council/DrentheProvincieManager";
 import { WaterschapManager } from "@/components/council/WaterschapManager";
 import { VragenFormulatorWizard } from "@/components/council/VragenFormulatorWizard";
 import { ToezeggingenManager } from "@/components/council/ToezeggingenManager";
@@ -229,7 +227,6 @@ function isInvalidOrJunkTopic(rawTitle: string): boolean {
 
 export default function Raadspaneel() {
   const { user, token, isAuthenticated } = useAuth();
-  const portalConfig = getPortalConfig(undefined, user);
   const { slug } = useParams<{ slug?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -257,37 +254,11 @@ export default function Raadspaneel() {
   );
 
   // Strict Municipality Determination:
-  // Non-admin council members are strictly locked to their registered municipality.
-  // Admins can toggle between 'steenwijkerland' and 'hoogeveen'.
-  const userMunicipality = (user?.municipality || "steenwijkerland").toLowerCase().trim();
-  const [adminSelectedMuni, setAdminSelectedMuni] = useState<"steenwijkerland" | "hoogeveen">(() => {
-    try {
-      const q = searchParams.get("municipality") || searchParams.get("portal") || searchParams.get("muni");
-      if (q === "hoogeveen" || q === "hgv") return "hoogeveen";
-      if (q === "steenwijkerland" || q === "swl") return "steenwijkerland";
-      const stored = localStorage.getItem("raadspaneel_active_municipality");
-      if (stored === "hoogeveen" || stored === "steenwijkerland") return stored as any;
-    } catch (_err) {
-      // ignore localStorage errors
-    }
-    return portalConfig.isPortalMode ? "hoogeveen" : "steenwijkerland";
-  });
-
-  const activeMunicipality: "steenwijkerland" | "hoogeveen" = useMemo(() => {
-    // Non-admin council members are strictly locked to their registered municipality
-    if (user && user.role !== "admin") {
-      return userMunicipality === "hoogeveen" ? "hoogeveen" : "steenwijkerland";
-    }
-    // Admin or public: check explicit query param first
-    const q = searchParams.get("municipality") || searchParams.get("portal") || searchParams.get("muni");
-    if (q === "hoogeveen" || q === "hgv") return "hoogeveen";
-    if (q === "steenwijkerland" || q === "swl") return "steenwijkerland";
-    return adminSelectedMuni;
-  }, [user, userMunicipality, searchParams, adminSelectedMuni]);
+  const activeMunicipality: "steenwijkerland" = "steenwijkerland";
 
   const initialDossierSlug = slug || searchParams.get("dossier") || null;
   const tabParam = searchParams.get("tab");
-  type PanelTabType = "dossiers" | "agenda" | "toezeggingen" | "vragenformulator" | "overijssel" | "drenthe" | "waterschap" | "onderzoeken" | "approvals";
+  type PanelTabType = "dossiers" | "agenda" | "toezeggingen" | "vragenformulator" | "overijssel" | "waterschap" | "onderzoeken" | "approvals";
 
   const activePanelTab: PanelTabType =
     tabParam === "approvals" && isKeyUserOrAdmin
@@ -300,8 +271,6 @@ export default function Raadspaneel() {
       ? "vragenformulator"
       : tabParam === "waterschap" && isAdmin
       ? "waterschap"
-      : (tabParam === "drenthe" || (tabParam === "overijssel" && activeMunicipality === "hoogeveen")) && isAdmin
-      ? "drenthe"
       : tabParam === "overijssel" && isAdmin
       ? "overijssel"
       : tabParam === "agenda" && isCouncilOrAdmin
@@ -409,10 +378,7 @@ export default function Raadspaneel() {
           const runningOrPending = (data.jobs || []).filter((j: any) => {
             const isRunning = j.status === "running" || j.status === "pending";
             if (!isRunning) return false;
-            if (activeMunicipality === "hoogeveen") {
-              return j.type?.includes("HOOGEVEEN") || j.type === "HOOGEVEEN_PDF_BULK_DOWNLOAD";
-            }
-            return j.type?.includes("IBABS") || (!j.type?.includes("HOOGEVEEN") && !j.type?.includes("NOTUBIZ"));
+            return j.type?.includes("IBABS");
           });
           setActiveJobs(runningOrPending);
           if (runningOrPending.length > 0) {
@@ -517,24 +483,6 @@ export default function Raadspaneel() {
       // ignore
     }
   }, [setSearchParams, activeMunicipality]);
-
-  const handleSwitchMunicipality = useCallback((targetMuni: "steenwijkerland" | "hoogeveen") => {
-    setAdminSelectedMuni(targetMuni);
-    try {
-      localStorage.setItem("raadspaneel_active_municipality", targetMuni);
-      localStorage.setItem("portal_tenant", targetMuni);
-    } catch (_err) {
-      // ignore localStorage errors
-    }
-    inFlightTopicRequests.current.clear();
-    setSelectedTopicId(null);
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      next.set("municipality", targetMuni);
-      next.delete("topic");
-      return next;
-    }, { preventScrollReset: true });
-  }, [setSearchParams]);
 
   // Single Source of Truth: update any topic in the authoritative topics array and sync IndexedDB & activeDoc immediately
   const updateTopic = useCallback((updatedTopic: CouncilAgendaTopic) => {
@@ -842,8 +790,8 @@ export default function Raadspaneel() {
       // Strictly isolate agenda topics to active municipality
       const rawTopics = Array.isArray(data.topics) ? data.topics : [];
       const scopedTopics = rawTopics.filter((t: CouncilAgendaTopic) => {
-        const tMuni = (t.municipality || (t.id?.startsWith("hg_") ? "hoogeveen" : "steenwijkerland")).toLowerCase().trim();
-        return tMuni === activeMunicipality;
+        const tMuni = (t.municipality || "steenwijkerland").toLowerCase().trim();
+        return tMuni === "steenwijkerland" && !String(t.id || "").startsWith("hg_");
       });
       if (scopedTopics.length > 0) {
         setTopics(scopedTopics);
@@ -1104,28 +1052,6 @@ export default function Raadspaneel() {
     }
   };
 
-  // Trigger PDF Bulk Download for Hoogeveen
-  const handleTriggerBulkDownload = async () => {
-    if (!token) return;
-    setIsBulkDownloading(true);
-    try {
-      const res = await fetch("/api/council/hoogeveen/bulk-download-pdfs", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-      });
-      const data = await parseApiResponse(res);
-      if (!res.ok) throw new Error(data.error || "Bulk-download starten mislukt");
-      toast.success("Bulk-download van alle raadsdocumenten (2021-2026) succesvol gestart op de achtergrond! De bestanden worden nu live gedownload naar de server.");
-    } catch (err: any) {
-      toast.error(err.message || "Fout bij starten van bulk-download");
-    } finally {
-      setIsBulkDownloading(false);
-    }
-  };
-
   // Trigger manual diff-check (Watchdog)
   const handleDiffCheckNow = async () => {
     if (!token) return;
@@ -1136,8 +1062,8 @@ export default function Raadspaneel() {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
-          "x-portal-tenant": portalConfig.tenantId,
-          "x-municipality": portalConfig.tenantId,
+          "x-portal-tenant": activeMunicipality,
+          "x-municipality": activeMunicipality,
         },
       });
       const data = await parseApiResponse(res);
@@ -1840,48 +1766,20 @@ export default function Raadspaneel() {
                 {isCouncilOrAdmin ? "Interne Fractietool" : "Openbare Raadsinformatie"}
               </span>
 
-              {/* Strict Municipality Switcher for Admins */}
-              {isAdmin ? (
-                <div className="flex items-center gap-1 p-0.5 bg-muted/80 rounded-xl border border-border">
-                  <button
-                    type="button"
-                    onClick={() => handleSwitchMunicipality("steenwijkerland")}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                      activeMunicipality === "steenwijkerland"
-                        ? "bg-accent text-accent-foreground shadow-xs font-extrabold"
-                        : "text-muted-foreground hover:text-foreground hover:bg-card/60"
-                    }`}
-                  >
-                    <span>🏛️ Steenwijkerland</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSwitchMunicipality("hoogeveen")}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                      activeMunicipality === "hoogeveen"
-                        ? "bg-accent text-accent-foreground shadow-xs font-extrabold"
-                        : "text-muted-foreground hover:text-foreground hover:bg-card/60"
-                    }`}
-                  >
-                    <span>🏢 Hoogeveen</span>
-                  </button>
-                </div>
-              ) : (
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-primary/10 text-primary border border-primary/20 flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5 text-accent" />
-                  Gemeenteraad {activeMunicipality === "hoogeveen" ? "Hoogeveen" : "Steenwijkerland"}
-                </span>
-              )}
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-primary/10 text-primary border border-primary/20 flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-accent" />
+                Gemeenteraad Steenwijkerland
+              </span>
             </div>
             <h1 className="text-3xl sm:text-4xl font-display text-zinc-950 dark:text-white font-bold">
               {isCouncilOrAdmin
-                ? (activeMunicipality === "hoogeveen" ? "Raadsportaal Hoogeveen" : "Raadspaneel Steenwijkerland")
-                : `Gemeentelijke Dossiers & Raadsstukken (${activeMunicipality === "hoogeveen" ? "Hoogeveen" : "Steenwijkerland"})`}
+                ? "Raadspaneel Steenwijkerland"
+                : "Gemeentelijke Dossiers & Raadsstukken"}
             </h1>
             <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
               {isCouncilOrAdmin
-                ? `Vergaderstukken, bespreekstukken en voorbereiding voor de gemeenteraadsfractie (${activeMunicipality === "hoogeveen" ? "Hoogeveen" : "Steenwijkerland"}). Verdeel onderwerpen onder fractieleden, markeer gelezen documenten en deel interne notities.`
-                : `Openbaar inzicht in alle gemeentelijke beleidsdossiers, raadsstukken en besluitvorming van ${activeMunicipality === "hoogeveen" ? "Hoogeveen" : "Steenwijkerland"} en haar wijken en kernen.`}
+                ? "Vergaderstukken, bespreekstukken en voorbereiding voor de fractie van Lijst van Andel (Steenwijkerland). Verdeel onderwerpen onder fractieleden, markeer gelezen documenten en deel interne notities."
+                : "Openbaar inzicht in alle gemeentelijke beleidsdossiers, raadsstukken en besluitvorming van Steenwijkerland en haar wijken en kernen."}
             </p>
           </div>
 
@@ -1908,10 +1806,10 @@ export default function Raadspaneel() {
                       ? "border-rose-500/50 bg-rose-500/10 text-rose-700 dark:text-rose-400 hover:bg-rose-500/20"
                       : "border-sky-500/40 text-sky-600 dark:text-sky-400 hover:bg-sky-500/10"
                   }`}
-                  title={`Controleer ${portalConfig.isPortalMode ? "NotuBiz" : "iBabs"} direct op nieuwe documenten of 'vrijdagmiddag-dumps'`}
+                  title="Controleer iBabs direct op nieuwe documenten of 'vrijdagmiddag-dumps'"
                 >
                   <Search className={`w-3.5 h-3.5 mr-1.5 ${isDiffChecking ? "animate-spin" : ""}`} />
-                  {isDiffChecking ? "Controleren..." : `${portalConfig.isPortalMode ? "NotuBiz" : "iBabs"} Diff-Check`}
+                  {isDiffChecking ? "Controleren..." : "iBabs Diff-Check"}
                   {topicsWithDumps.length > 0 && (
                     <span className="ml-1.5 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-rose-500 text-white">
                       {topicsWithDumps.length}
@@ -1923,7 +1821,7 @@ export default function Raadspaneel() {
                   disabled={isScraping || isClearing || isDiffChecking}
                   variant="outline"
                   className="border-accent/40 text-accent hover:bg-accent/15 text-xs font-semibold h-9 rounded-xl shadow-xs cursor-pointer"
-                  title={`Ophalen van alle vergaderstukken van ${portalConfig.municipalityName}`}
+                  title="Ophalen van alle vergaderstukken van Steenwijkerland"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isScraping ? "animate-spin" : ""}`} />
                   {isScraping ? "Scrapen..." : "Vergaderstukken Nu Ophalen"}
@@ -1947,29 +1845,6 @@ export default function Raadspaneel() {
                   <ShieldCheck className="w-3.5 h-3.5 mr-1.5 text-emerald-600 dark:text-emerald-400" />
                   Kluis & Back-up ({contributionTopics.length + parkedTopics.length})
                 </Button>
-                {portalConfig.isPortalMode && (
-                  <>
-                    <Button
-                      onClick={handleTriggerBulkDownload}
-                      disabled={isBulkDownloading || isScraping || isDiffChecking}
-                      variant="default"
-                      className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold h-9 rounded-xl shadow-sm cursor-pointer"
-                      title="Download alle 2.944 PDF raadsdocumenten (2021-2026) fysiek naar de server"
-                    >
-                      <Download className={`w-3.5 h-3.5 mr-1.5 ${isBulkDownloading ? "animate-pulse" : ""}`} />
-                      {isBulkDownloading ? "Download starten..." : "PDF Bulk-Download (2021-2026)"}
-                    </Button>
-                    <a
-                      href="/api/council/hoogeveen/bulk-download-log/download"
-                      download
-                      className="inline-flex items-center justify-center border border-purple-500/40 bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 text-xs font-semibold h-9 px-3 rounded-xl shadow-xs transition-colors"
-                      title="Download het live uitvoeringslogboek van de PDF Bulk-Download"
-                    >
-                      <FileText className="w-3.5 h-3.5 mr-1.5 text-purple-600 dark:text-purple-400" />
-                      Downloadlog (.txt)
-                    </a>
-                  </>
-                )}
               </>
             )}
             {isAuthenticated ? (
@@ -2111,33 +1986,18 @@ export default function Raadspaneel() {
 
           {isAdmin && (
             <>
-              {activeMunicipality === "hoogeveen" ? (
-                <button
-                  id="tab-btn-panel-drenthe"
-                  onClick={() => setActivePanelTab("drenthe")}
-                  className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all shrink-0 ${
-                    activePanelTab === "drenthe"
-                      ? "bg-accent text-accent-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground hover:bg-card border border-border/70"
-                  }`}
-                >
-                  <Building2 className="w-4 h-4 text-rose-600 dark:text-rose-400" />
-                  Provincie Drenthe
-                </button>
-              ) : (
-                <button
-                  id="tab-btn-panel-overijssel"
-                  onClick={() => setActivePanelTab("overijssel")}
-                  className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all shrink-0 ${
-                    activePanelTab === "overijssel"
-                      ? "bg-accent text-accent-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground hover:bg-card border border-border/70"
-                  }`}
-                >
-                  <Building2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                  Provincie Overijssel
-                </button>
-              )}
+              <button
+                id="tab-btn-panel-overijssel"
+                onClick={() => setActivePanelTab("overijssel")}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all shrink-0 ${
+                  activePanelTab === "overijssel"
+                    ? "bg-accent text-accent-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground hover:bg-card border border-border/70"
+                }`}
+              >
+                <Building2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                Provincie Overijssel
+              </button>
 
               <button
                 id="tab-btn-panel-waterschap"
@@ -2225,10 +2085,10 @@ export default function Raadspaneel() {
                             <span className="font-medium text-foreground">E-mail:</span> {pUser.email || "Niet opgegeven"}
                           </div>
                           <div>
-                            <span className="font-medium text-foreground">Woonplaats:</span> {pUser.city || "Hoogeveen"}
+                            <span className="font-medium text-foreground">Woonplaats:</span> {pUser.city || "Steenwijk"}
                           </div>
                           <div>
-                            <span className="font-medium text-foreground">Gemeente:</span> {pUser.municipality === "hoogeveen" ? "Hoogeveen" : (pUser.municipality || "Hoogeveen")}
+                            <span className="font-medium text-foreground">Gemeente:</span> {pUser.municipality || "Steenwijkerland"}
                           </div>
                           {pUser.createdAt && (
                             <div>
@@ -2287,8 +2147,6 @@ export default function Raadspaneel() {
           />
         ) : activePanelTab === "waterschap" && isAdmin ? (
           <WaterschapManager token={token || undefined} />
-        ) : activePanelTab === "drenthe" && isAdmin ? (
-          <DrentheProvincieManager token={token || undefined} />
         ) : activePanelTab === "overijssel" && isAdmin ? (
           <OverijsselNotubizManager token={token || undefined} />
         ) : isCouncilOrAdmin ? (
@@ -2307,7 +2165,7 @@ export default function Raadspaneel() {
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5 max-w-3xl">
-                      Het college heeft recent een Nota van Inlichtingen, gewijzigd raadsvoorstel of financiële bijlage aan {portalConfig.isPortalMode ? "NotuBiz" : "iBabs"} toegevoegd. Controleer de stukken om te voorkomen dat u in de raadszaal verrast wordt met nieuwere stukken.
+                      Het college heeft recent een Nota van Inlichtingen, gewijzigd raadsvoorstel of financiële bijlage aan iBabs toegevoegd. Controleer de stukken om te voorkomen dat u in de raadszaal verrast wordt met nieuwere stukken.
                     </p>
                   </div>
                 </div>
@@ -2349,11 +2207,7 @@ export default function Raadspaneel() {
                       <div className="flex items-center gap-2">
                         <RefreshCw className="w-4 h-4 text-purple-600 dark:text-purple-400 animate-spin" />
                         <span className="font-bold text-foreground">
-                          {job.type === "HOOGEVEEN_PDF_BULK_DOWNLOAD"
-                            ? "📥 Bezig met PDF Bulk-Download Hoogeveen (2021-2026)..."
-                            : job.type === "COUNCIL_IBABS_SYNC" || (!portalConfig.isPortalMode && !job.type?.includes("HOOGEVEEN"))
-                            ? "🔄 Bezig met iBabs Steenwijkerland Synchronisatie..."
-                            : "🔄 Bezig met NotuBiz Hoogeveen Synchronisatie..."}
+                          🔄 Bezig met iBabs Steenwijkerland Synchronisatie...
                         </span>
                       </div>
                       <span className="font-bold text-purple-700 dark:text-purple-300">
@@ -2370,19 +2224,6 @@ export default function Raadspaneel() {
                       <p className="text-[11.5px] text-muted-foreground italic truncate">
                         {job.currentAction || "Initialiseren..."}
                       </p>
-                      {portalConfig.isPortalMode && job.type === "HOOGEVEEN_PDF_BULK_DOWNLOAD" && (
-                        <a
-                          href="/api/council/hoogeveen/bulk-download-log/download"
-                          download
-                          target="_blank"
-                          rel="noreferrer"
-                          className="shrink-0 text-[11px] font-semibold text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1"
-                          title="Bekijk of download het live geschreven .txt logbestand"
-                        >
-                          <FileText className="w-3 h-3" />
-                          Live logboek bekijken (.txt)
-                        </a>
-                      )}
                     </div>
                   </div>
                 ))}
@@ -2393,7 +2234,7 @@ export default function Raadspaneel() {
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 rounded-xl bg-muted/40 border border-border/80 text-xs">
               <div className="flex items-center gap-2 text-muted-foreground">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                <span className="font-semibold text-foreground">{portalConfig.isPortalMode ? "NotuBiz" : "iBabs"} Watchdog Diff-Checker:</span>
+                <span className="font-semibold text-foreground">iBabs Watchdog Diff-Checker:</span>
                 <span>
                   {summary?.activePollingIntervalMinutes
                     ? `Actief (Controleert elke ${summary.activePollingIntervalMinutes} minuten ivm vergaderritme)`
@@ -3135,43 +2976,31 @@ export default function Raadspaneel() {
                     )}
                   </div>
 
-                  {/* Toewijzen Dropdown (Strikte gemeentescheiding) */}
+                  {/* Toewijzen Dropdown */}
                   <div className="w-full sm:w-64 shrink-0">
-                    {(() => {
-                      const topicMuni = (selectedTopic.municipality || (selectedTopic.id?.startsWith("hg_") ? "hoogeveen" : "steenwijkerland")).toLowerCase().trim();
-                      const eligibleMembers = councilMembers.filter((m) => {
-                        const userMuni = (m.municipality || "steenwijkerland").toLowerCase().trim();
-                        return userMuni === topicMuni || userMuni === "alle" || m.role === "admin";
-                      });
-
-                      const displayMembers = eligibleMembers.length > 0 ? eligibleMembers : councilMembers;
-
-                      return (
-                        <div className="space-y-1">
-                          <Select
-                            value={selectedTopic.assignedTo || "none"}
-                            onValueChange={(val) => handleAssignTopic(selectedTopic.id, val)}
-                          >
-                            <SelectTrigger className="h-9 text-xs rounded-xl bg-background border-border">
-                              <SelectValue placeholder={`Kies lid (${topicMuni === "hoogeveen" ? "Hoogeveen" : "Steenwijkerland"})...`} />
-                            </SelectTrigger>
-                            <SelectContent className="text-xs">
-                              <SelectItem value="none">Geen (Onverdeeld)</SelectItem>
-                              {displayMembers.map((m) => (
-                                <SelectItem key={m.username} value={m.username}>
-                                  {m.fullName} (@{m.username})
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          {displayMembers.length === 0 && (
-                            <p className="text-[10px] text-muted-foreground italic">
-                              Geen {topicMuni === "hoogeveen" ? "Hoogeveen" : "Steenwijkerland"} (burger)raadsleden geregistreerd.
-                            </p>
-                          )}
-                        </div>
-                      );
-                    })()}
+                    <div className="space-y-1">
+                      <Select
+                        value={selectedTopic.assignedTo || "none"}
+                        onValueChange={(val) => handleAssignTopic(selectedTopic.id, val)}
+                      >
+                        <SelectTrigger className="h-9 text-xs rounded-xl bg-background border-border">
+                          <SelectValue placeholder="Kies raadslid..." />
+                        </SelectTrigger>
+                        <SelectContent className="text-xs">
+                          <SelectItem value="none">Geen (Onverdeeld)</SelectItem>
+                          {councilMembers.map((m) => (
+                            <SelectItem key={m.username} value={m.username}>
+                              {m.fullName} (@{m.username})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {councilMembers.length === 0 && (
+                        <p className="text-[10px] text-muted-foreground italic">
+                          Geen (burger)raadsleden geregistreerd.
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -3442,11 +3271,7 @@ export default function Raadspaneel() {
                                     effectiveUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl${effectiveUrl}`;
                                   }
                                   if (!effectiveUrl && doc.id) {
-                                    if (selectedTopic.municipality === "hoogeveen" || selectedTopic.id?.startsWith("hg_") || /^\d+$/.test(String(doc.id))) {
-                                      effectiveUrl = `https://api.notubiz.nl/document/${doc.id}/1`;
-                                    } else {
-                                      effectiveUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl/Document/LoadAgendaItemDocument/${doc.id}`;
-                                    }
+                                    effectiveUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl/Document/LoadAgendaItemDocument/${doc.id}`;
                                   }
                                   const mergedDoc = {
                                     ...doc,
@@ -3469,11 +3294,7 @@ export default function Raadspaneel() {
                                   effectiveUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl${effectiveUrl}`;
                                 }
                                 if (!effectiveUrl && doc.id) {
-                                  if (selectedTopic.municipality === "hoogeveen" || selectedTopic.id?.startsWith("hg_") || /^\d+$/.test(String(doc.id))) {
-                                    effectiveUrl = `https://api.notubiz.nl/document/${doc.id}/1`;
-                                  } else {
-                                    effectiveUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl/Document/LoadAgendaItemDocument/${doc.id}`;
-                                  }
+                                  effectiveUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl/Document/LoadAgendaItemDocument/${doc.id}`;
                                 }
                                 const isAvailable = Boolean(effectiveUrl);
 
@@ -3699,11 +3520,7 @@ export default function Raadspaneel() {
         const docId = String(currentModalDoc?.id || activeDoc.doc?.id || "");
 
         if (!resolvedDocUrl && docId) {
-          if (currentModalTopic?.municipality === "hoogeveen" || String(currentModalTopic?.id || "").startsWith("hg_") || /^\d+$/.test(docId)) {
-            resolvedDocUrl = `https://api.notubiz.nl/document/${docId}/1`;
-          } else {
-            resolvedDocUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl/Document/LoadAgendaItemDocument/${docId}`;
-          }
+          resolvedDocUrl = `https://steenwijkerland.bestuurlijkeinformatie.nl/Document/LoadAgendaItemDocument/${docId}`;
         }
 
         const proxyUrl = resolvedDocUrl
@@ -3863,7 +3680,7 @@ export default function Raadspaneel() {
                 <div className="flex-1 min-h-[350px] h-full bg-muted/30 rounded-xl overflow-hidden border border-border relative flex flex-col">
                   <div className="px-3 py-1.5 bg-background/80 border-b border-border text-[11px] text-muted-foreground flex items-center justify-between">
                     <div className="flex items-center gap-2 truncate">
-                      <span className="truncate">Beveiligde viewer • {portalConfig.isPortalMode ? "NotuBiz" : "Raadsstuk"}</span>
+                      <span className="truncate">Beveiligde viewer • Raadsstuk</span>
                       {isIframeLoading && (
                         <span className="inline-flex items-center gap-1 text-[10px] text-accent font-medium">
                           <Loader2 className="w-3 h-3 animate-spin" /> Inladen...

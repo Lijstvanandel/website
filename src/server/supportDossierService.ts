@@ -15,7 +15,6 @@ import { getDocumentContent, getCouncilDocumentContent, normalizeForSearch } fro
 import { scanTopicDocumentsAndMatchStandpunten } from "./standpuntScannerService.js";
 import { sanitizeTextForGemini } from "./bulkClassificationService.js";
 import { cleanDocumentTitle, physicalFilesCache } from "./dossierManager.js";
-import { getHoogeveenDossiers } from "./hoogeveenDossierManager.js";
 
 const METADATA_PATH = path.join(process.cwd(), "public", "data", "raadsstukken_metadata_tussentijds.json");
 const UPLOADS_DOCS_DIR = path.join(process.cwd(), "public", "uploads", "documents");
@@ -71,73 +70,58 @@ export function filterCandidateDocuments(topic: CouncilAgendaTopic): {
   filtered: any[];
   matchedTags: string[];
 } {
-  const isHoogeveen = (topic.municipality || (topic.id?.startsWith("hg_") ? "hoogeveen" : "steenwijkerland")) === "hoogeveen";
   let allCandidateDocs: any[] = [];
 
-  if (isHoogeveen) {
-    const dossiers = getHoogeveenDossiers();
-    allCandidateDocs = dossiers.flatMap((d) => (d.documents || []).map((doc) => ({
+  // 1. Load from all compiled dossiers (includes master metadata, custom dossiers, live topics, disk documents)
+  try {
+    const compiledDossiers = getAllDossiers();
+    const docsFromDossiers = compiledDossiers.flatMap((d) => (d.documents || []).map((doc) => ({
       bestandsnaam: doc.bestandsnaam,
       titel: doc.titel || doc.bestandsnaam,
-      dossier: d.title,
+      dossier: d.title || doc.dossier,
       subdossier: doc.subdossier || "",
       entiteiten: Array.isArray(doc.entiteiten) ? doc.entiteiten.join(", ") : (doc.entiteiten || ""),
       relaties: Array.isArray(doc.relaties) ? doc.relaties.join(", ") : (doc.relaties || ""),
       fileUrl: doc.fileUrl,
       fileExists: doc.fileExists,
     })));
-  } else {
-    // 1. Load from all compiled dossiers (includes master metadata, custom dossiers, live topics, disk documents)
-    try {
-      const compiledDossiers = getAllDossiers();
-      const docsFromDossiers = compiledDossiers.flatMap((d) => (d.documents || []).map((doc) => ({
-        bestandsnaam: doc.bestandsnaam,
-        titel: doc.titel || doc.bestandsnaam,
-        dossier: d.title || doc.dossier,
-        subdossier: doc.subdossier || "",
-        entiteiten: Array.isArray(doc.entiteiten) ? doc.entiteiten.join(", ") : (doc.entiteiten || ""),
-        relaties: Array.isArray(doc.relaties) ? doc.relaties.join(", ") : (doc.relaties || ""),
-        fileUrl: doc.fileUrl,
-        fileExists: doc.fileExists,
-      })));
-      allCandidateDocs.push(...docsFromDossiers);
-    } catch (_e) {
-      // ignore
-    }
+    allCandidateDocs.push(...docsFromDossiers);
+  } catch (_e) {
+    // ignore
+  }
 
-    // 2. Also incorporate raw metadata items
-    const rawMeta = getRawMetadata().map((m) => ({
-      bestandsnaam: m.bestandsnaam,
-      titel: m.titel || cleanDocumentTitle(m.bestandsnaam),
-      dossier: m.dossier || "Algemeen",
-      subdossier: m.subdossier || "",
-      entiteiten: m.entiteiten || "",
-      relaties: m.relaties || "",
-      fileUrl: `/uploads/documents/${encodeURIComponent(m.bestandsnaam)}`,
-      fileExists: true,
-    }));
-    allCandidateDocs.push(...rawMeta);
+  // 2. Also incorporate raw metadata items
+  const rawMeta = getRawMetadata().map((m) => ({
+    bestandsnaam: m.bestandsnaam,
+    titel: m.titel || cleanDocumentTitle(m.bestandsnaam),
+    dossier: m.dossier || "Algemeen",
+    subdossier: m.subdossier || "",
+    entiteiten: m.entiteiten || "",
+    relaties: m.relaties || "",
+    fileUrl: `/uploads/documents/${encodeURIComponent(m.bestandsnaam)}`,
+    fileExists: true,
+  }));
+  allCandidateDocs.push(...rawMeta);
 
-    // 3. Incorporate any physical documents in memory cache
-    try {
-      for (const [key, pInfo] of physicalFilesCache.entries()) {
-        if (!pInfo.exists) continue;
-        const baseKey = path.basename(key);
-        const cleanTitle = cleanDocumentTitle(baseKey);
-        allCandidateDocs.push({
-          bestandsnaam: key,
-          titel: cleanTitle,
-          dossier: "Bestuur, Financiën & Juridische Zaken",
-          subdossier: cleanTitle,
-          entiteiten: "Gemeenteraad Steenwijkerland",
-          relaties: `Fysiek document: ${cleanTitle}`,
-          fileUrl: pInfo.fileUrl || `/uploads/documents/${encodeURIComponent(key)}`,
-          fileExists: true,
-        });
-      }
-    } catch (_e) {
-      // ignore
+  // 3. Incorporate any physical documents in memory cache
+  try {
+    for (const [key, pInfo] of physicalFilesCache.entries()) {
+      if (!pInfo.exists) continue;
+      const baseKey = path.basename(key);
+      const cleanTitle = cleanDocumentTitle(baseKey);
+      allCandidateDocs.push({
+        bestandsnaam: key,
+        titel: cleanTitle,
+        dossier: "Bestuur, Financiën & Juridische Zaken",
+        subdossier: cleanTitle,
+        entiteiten: "Gemeenteraad Steenwijkerland",
+        relaties: `Fysiek document: ${cleanTitle}`,
+        fileUrl: pInfo.fileUrl || `/uploads/documents/${encodeURIComponent(key)}`,
+        fileExists: true,
+      });
     }
+  } catch (_e) {
+    // ignore
   }
 
   // Deduplicate candidates by unique filename and clean title
@@ -178,14 +162,12 @@ export function filterCandidateDocuments(topic: CouncilAgendaTopic): {
   const desc = (topic.description || "").toLowerCase();
   const cat = (topic.category || "").toLowerCase();
 
-  // Known kernen & wijken per municipality
-  const KERNEN = isHoogeveen
-    ? ["hoogeveen", "elim", "hollandscheveld", "noordscheschut", "pesse", "tiendeveen", "nieuwlande", "nieuweroord", "fluitenberg", "stuifzand", "erflanden", "krakeel", "wolfsbos", "schutlanden"]
-    : [
-      "steenwijk", "blokzijl", "giethoorn", "vollenhove", "kuinre", "oldemarkt",
-      "willemsoord", "tuk", "ossenzijl", "sint jansklooster", "witte paarden",
-      "steenwijkerwold", "scheerwolde", "belt-schutsloot", "onna", "kalenberg"
-    ];
+  // Known kernen & wijken for Steenwijkerland
+  const KERNEN = [
+    "steenwijk", "blokzijl", "giethoorn", "vollenhove", "kuinre", "oldemarkt",
+    "willemsoord", "tuk", "ossenzijl", "sint jansklooster", "witte paarden",
+    "steenwijkerwold", "scheerwolde", "belt-schutsloot", "onna", "kalenberg"
+  ];
 
   // Comprehensive domain keywords
   const DOMAIN_TERMS: Record<string, string[]> = {
@@ -227,7 +209,7 @@ export function filterCandidateDocuments(topic: CouncilAgendaTopic): {
 
   // Match kernen (only specific kern, without matching general Steenwijkerland municipality string)
   for (const kern of KERNEN) {
-    if (kern === "steenwijk" || kern === "hoogeveen") {
+    if (kern === "steenwijk") {
       const rx = new RegExp(`\\b${kern}\\b(?!erland)`, "i");
       if (rx.test(title) || rx.test(desc)) {
         matchedTags.push(kern.charAt(0).toUpperCase() + kern.slice(1));
@@ -259,7 +241,7 @@ export function filterCandidateDocuments(topic: CouncilAgendaTopic): {
     "verordening", "vaststellen", "wijziging", "raadsvoorstel", "besluit", "nota",
     "gemeente", "voorstel", "agendapunt", "betreffende", "inzake", "over", "voor",
     "van", "het", "een", "der", "oud", "nieuw", "concept", "definitief",
-    "2024", "2025", "2026", "2027", "2028", "steenwijkerland", "hoogeveen"
+    "2024", "2025", "2026", "2027", "2028", "steenwijkerland"
   ]);
 
   const rawTokens = (title + " " + desc)
@@ -301,7 +283,7 @@ export function filterCandidateDocuments(topic: CouncilAgendaTopic): {
     // Matched domain tags
     for (const tag of matchedTags) {
       const tLower = tag.toLowerCase();
-      if (tLower === "steenwijk" || tLower === "hoogeveen") {
+      if (tLower === "steenwijk") {
         const rx = new RegExp(`\\b${tLower}\\b(?!erland)`, "i");
         if (rx.test(itemTitle) || rx.test(itemFile) || rx.test(itemSub)) score += 20;
       } else {
@@ -368,10 +350,9 @@ export async function ensureVerifiablePdfFile(
   targetPage: number,
   citedQuote: string,
   findingContext: string,
-  municipality: string = "steenwijkerland"
+  _municipality: string = "steenwijkerland"
 ): Promise<string> {
-  const isHgv = municipality.toLowerCase() === "hoogeveen";
-  const muniUpper = isHgv ? "HOOGEVEEN" : "STEENWIJKERLAND";
+  const muniUpper = "STEENWIJKERLAND";
   const safeFilename = path.basename(filename.trim());
   const filePath1 = path.join(UPLOADS_DOCS_DIR, safeFilename);
   const filePath2 = path.join(UPLOADS_FRACTIE_DIR, safeFilename);
@@ -412,18 +393,13 @@ export async function ensureVerifiablePdfFile(
         color: rgb(0.2, 0.3, 0.45),
       });
 
-      page.drawText(
-        isHgv
-          ? "GEMEENTERAAD HOOGEVEEN • OFFICIËLE RAADSSTUKKEN VERIFICATIE"
-          : "FRACTIE LIJST VAN ANDEL • OFFICIËLE RAADSSTUKKEN VERIFICATIE",
-        {
-          x: 40,
-          y: height - 72,
-          size: 8,
-          font: helvetica,
-          color: rgb(0.4, 0.45, 0.5),
-        }
-      );
+      page.drawText("FRACTIE LIJST VAN ANDEL • OFFICIËLE RAADSSTUKKEN VERIFICATIE", {
+        x: 40,
+        y: height - 72,
+        size: 8,
+        font: helvetica,
+        color: rgb(0.4, 0.45, 0.5),
+      });
 
       // Subtle Watermark
       page.drawText(`ARCHIEF GEMEENTE ${muniUpper}`, {
@@ -535,9 +511,7 @@ export async function ensureVerifiablePdfFile(
         });
 
         // Draw context paragraph before citation
-        const introText = isHgv
-          ? "Bij de beoordeling van de uitvoerbaarheid en aansluiting op de regionale afspraken hanteert de gemeente Hoogeveen duidelijke uitgangspunten conform de vastgestelde nota's en raadskaders."
-          : "Bij de beoordeling van de uitvoerbaarheid en aansluiting op de regionale afspraken hanteert de gemeente Steenwijkerland duidelijke uitgangspunten conform de vastgestelde nota's en raadskaders.";
+        const introText = "Bij de beoordeling van de uitvoerbaarheid en aansluiting op de regionale afspraken hanteert de gemeente Steenwijkerland duidelijke uitgangspunten conform de vastgestelde nota's en raadskaders.";
         page.drawText(introText, {
           x: 50,
           y: height - 175,
@@ -758,9 +732,7 @@ export async function compileEvidenceAndAnalysis(
         relaties: d.relaties,
       }));
 
-      const topicMuni = (topic.municipality || (topic.id?.startsWith("hg_") ? "hoogeveen" : "steenwijkerland")).toLowerCase().trim();
-      const isTopicHgv = topicMuni === "hoogeveen";
-      const prompt = `Je bent de strikte feitelijke verificateur en ondersteuningsdossier-compiler ${isTopicHgv ? "voor de gemeenteraad Hoogeveen" : "van fractie Lijst van Andel (gemeenteraad Steenwijkerland)"}.
+      const prompt = `Je bent de strikte feitelijke verificateur en ondersteuningsdossier-compiler van fractie Lijst van Andel (gemeenteraad Steenwijkerland).
 Jouw taak is het compileren van een feitelijk ondersteuningsdossier voor het volgende agendapunt:
 
 AGENDAPUNT: "${title}"
@@ -1050,9 +1022,6 @@ export async function compileSupportDossierForTopic(
     console.warn(`[SUPPORT DOSSIER] Waarschuwing bij achtergrond-scannen van standpunten:`, scanErr);
   });
 
-  const topicMuni = (topic.municipality || (topic.id?.startsWith("hg_") ? "hoogeveen" : "steenwijkerland")).toLowerCase().trim();
-  const isHgvTopic = topicMuni === "hoogeveen";
-
   // 3. Ensure Verifiable PDF Files with Real Page Highlights in parallel
   const pdfPromises: Promise<any>[] = [];
   for (const item of analysis.bewijslast) {
@@ -1064,7 +1033,7 @@ export async function compileSupportDossierForTopic(
           item.page || 14,
           item.quote,
           item.finding,
-          topicMuni
+          "steenwijkerland"
         ).then((url) => {
           item.sourceDocUrl = url;
         }).catch((err) => {
@@ -1080,7 +1049,7 @@ export async function compileSupportDossierForTopic(
           item.contradictionWith.page || 8,
           item.contradictionWith.quote,
           `Tegenstrijdige passage met ${item.sourceDocName}`,
-          topicMuni
+          "steenwijkerland"
         ).then((url) => {
           item.contradictionWith!.sourceDocUrl = url;
         }).catch((err) => {
@@ -1112,7 +1081,7 @@ export async function compileSupportDossierForTopic(
     topicId: topic.id,
     topicTitle: topic.title,
     compiledAt: now,
-    compiledBy: user?.name || (isHgvTopic ? "Gemeenteraad Hoogeveen" : "Fractie-assistent (Lijst van Andel)"),
+    compiledBy: user?.name || "Fractie-assistent (Lijst van Andel)",
     status: analysis.status,
     historischeLijn: analysis.historischeLijn,
     bewijslast: analysis.bewijslast,
@@ -1133,8 +1102,8 @@ export async function compileSupportDossierForTopic(
       dossier: `Ondersteuningsdossier: ${topic.title}`,
       datum: topic.meetingDate,
       entiteiten: [
-        isHgvTopic ? "Gemeenteraad Hoogeveen" : "Gemeenteraad Steenwijkerland",
-        isHgvTopic ? "Gemeente Hoogeveen" : "Lijst van Andel",
+        "Gemeenteraad Steenwijkerland",
+        "Lijst van Andel",
         ...(matchedTags || [])
       ],
       relaties: `Raadstuk bij vergadering ${topic.meetingTitle} (${topic.meetingDate})`,
@@ -1150,7 +1119,7 @@ export async function compileSupportDossierForTopic(
       dossier: `Ondersteuningsdossier: ${topic.title}`,
       datum: topic.meetingDate,
       entiteiten: [
-        isHgvTopic ? "Raadsarchief Hoogeveen" : "Raadsarchief Steenwijkerland",
+        "Raadsarchief Steenwijkerland",
         ...(matchedTags || [])
       ],
       relaties: `Geciteerd op pagina ${ev.page}`,
@@ -1169,7 +1138,7 @@ export async function compileSupportDossierForTopic(
         titel: `Tegenbewijs: ${ev.contradictionWith.sourceDocName} (Pagina ${ev.contradictionWith.page})`,
         dossier: `Ondersteuningsdossier: ${topic.title}`,
         datum: topic.meetingDate,
-        entiteiten: [isHgvTopic ? "Raadsarchief Hoogeveen" : "Raadsarchief Steenwijkerland"],
+        entiteiten: ["Raadsarchief Steenwijkerland"],
         relaties: `Tegenstrijdige passage met ${ev.sourceDocName}`,
         fileUrl: ev.contradictionWith.sourceDocUrl || `/uploads/fractiestukken/${ev.contradictionWith.sourceDocName}`,
         fileExists: true,

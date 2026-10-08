@@ -16,13 +16,11 @@ import {
   Mail,
   Loader2,
   Clock,
-  Building2,
   ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { safeJson } from "@/lib/api";
-import { getPortalConfig } from "@/utils/portalConfig";
 import {
   Form,
   FormControl,
@@ -72,7 +70,6 @@ export default function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { login, isAuthenticated, loading } = useAuth();
-  const portalConfig = getPortalConfig();
   const [isLoading, setIsLoading] = useState(false);
   const [pendingApprovalNotice, setPendingApprovalNotice] = useState<string | null>(null);
   const redirectUrl = searchParams.get("redirect");
@@ -192,12 +189,10 @@ export default function Login() {
     <div className="container max-w-5xl mx-auto py-12 md:py-20 px-4">
       <div className="text-center mb-10 md:mb-12">
         <h1 className="text-3xl md:text-5xl font-display mb-3">
-          {portalConfig.isPortalMode ? `Inloggen — ${portalConfig.portalTitle}` : "Inloggen Ledenportaal"}
+          Inloggen Ledenportaal
         </h1>
         <p className="text-foreground/80 max-w-lg mx-auto text-base">
-          {portalConfig.isPortalMode
-            ? `Welkom bij het raadsportaal van gemeente ${portalConfig.municipalityName}. Log in met uw fractie- of raadslid account.`
-            : "Welkom terug bij Lijst van Andel. Log in met uw account om toegang te krijgen tot uw persoonlijke omgeving."}
+          Welkom terug bij Lijst van Andel. Log in met uw account om toegang te krijgen tot uw persoonlijke omgeving.
         </p>
       </div>
 
@@ -218,7 +213,7 @@ export default function Login() {
                   {pendingApprovalNotice}
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Uw registratie voor het fractieportaal ({portalConfig.municipalityName}) is in behandeling. Omdat dit portaal exclusief voor fracties is, dient een key-user of beheerder uw account eerst te accepteren.
+                  Uw registratie is in behandeling. Een beheerder dient uw account eerst te accepteren.
                 </p>
               </div>
             </div>
@@ -314,124 +309,59 @@ export default function Login() {
                 variant="outline"
                 className="w-full border-accent text-accent hover:bg-accent hover:text-accent-foreground font-medium"
               >
-                {portalConfig.isPortalMode ? "Registreren (Gratis voor fracties)" : "Word lid (Registreren)"}
+                Word lid (Registreren)
               </Button>
             </Link>
           </div>
         </div>
 
-        {/* Rechterkolom: Portaal Info / Voordelen */}
-        {portalConfig.isPortalMode ? (
-          <div className="lg:col-span-6 bg-accent/5 border border-accent/30 rounded-xl p-6 sm:p-8 shadow-sm relative overflow-hidden flex flex-col justify-between h-full">
-            <div>
-              <div className="flex items-center gap-2.5 mb-3">
-                <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-accent/15 text-accent">
-                  <Building2 className="w-5 h-5 text-accent" />
-                </span>
-                <h2 className="text-xl md:text-2xl font-display text-foreground">
-                  Besloten Fractieportaal
-                </h2>
-              </div>
-              <p className="text-sm text-foreground/80 mb-6 leading-relaxed">
-                Het digitale raads- en fractieportaal voor gemeente {portalConfig.municipalityName}. Exclusief en kosteloos toegankelijk voor fracties, raadsleden en steunfractieleden.
-              </p>
-
-              <ul className="space-y-4">
-                <li className="flex items-start gap-3.5 p-3 rounded-lg bg-background/60 border border-accent/15 backdrop-blur-sm">
-                  <div className="shrink-0 mt-0.5 w-7 h-7 rounded-md bg-accent/10 flex items-center justify-center text-accent">
-                    <CheckCircle2 className="w-4 h-4" />
-                  </div>
-                  <span className="text-sm text-foreground/90 font-medium leading-snug">
-                    Besloten raadsdossiers, vergaderstukken en fractienotities
-                  </span>
-                </li>
-                <li className="flex items-start gap-3.5 p-3 rounded-lg bg-background/60 border border-accent/15 backdrop-blur-sm">
-                  <div className="shrink-0 mt-0.5 w-7 h-7 rounded-md bg-accent/10 flex items-center justify-center text-accent">
-                    <CheckCircle2 className="w-4 h-4" />
-                  </div>
-                  <span className="text-sm text-foreground/90 font-medium leading-snug">
-                    Automatische koppeling met raadsinformatie en dump-detectie
-                  </span>
-                </li>
-                <li className="flex items-start gap-3.5 p-3 rounded-lg bg-background/60 border border-accent/15 backdrop-blur-sm">
-                  <div className="shrink-0 mt-0.5 w-7 h-7 rounded-md bg-accent/10 flex items-center justify-center text-accent">
-                    <CheckCircle2 className="w-4 h-4" />
-                  </div>
-                  <span className="text-sm text-foreground/90 font-medium leading-snug">
-                    Artikel 41 schriftelijke vragen formulator met slimme assistentie
-                  </span>
-                </li>
-                <li className="flex items-start gap-3.5 p-3 rounded-lg bg-background/60 border border-accent/15 backdrop-blur-sm">
-                  <div className="shrink-0 mt-0.5 w-7 h-7 rounded-md bg-accent/10 flex items-center justify-center text-accent">
-                    <CheckCircle2 className="w-4 h-4" />
-                  </div>
-                  <span className="text-sm text-foreground/90 font-medium leading-snug">
-                    Geen lidmaatschapskosten of betaling vereist voor fracties
-                  </span>
-                </li>
-              </ul>
+        {/* Rechterkolom: Voordelen als lid */}
+        <div className="lg:col-span-6 bg-accent/5 border border-accent/30 rounded-xl p-6 sm:p-8 shadow-sm relative overflow-hidden flex flex-col justify-between h-full">
+          <div>
+            <div className="flex items-center gap-2.5 mb-3">
+              <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-accent/15 text-accent">
+                <CheckCircle2 className="w-5 h-5 text-accent" />
+              </span>
+              <h2 className="text-xl md:text-2xl font-display text-foreground">
+                Voordelen als lid
+              </h2>
             </div>
+            <p className="text-sm text-foreground/80 mb-6 leading-relaxed">
+              Als lid van Lijst van Andel staat u dicht bij de lokale politiek van Steenwijkerland en bouwt u actief mee aan een betrokken en sterke gemeenschap.
+            </p>
 
-            <div className="mt-8 pt-6 border-t border-accent/20">
-              <p className="text-xs text-foreground/70 mb-3">
-                Aanmelden voor uw fractie is binnen 1 minuut geregeld.
-              </p>
-              <Link to={redirectUrl ? `/registreren?redirect=${encodeURIComponent(redirectUrl)}` : "/registreren"}>
-                <Button className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-semibold flex items-center justify-center gap-2">
-                  <span>Kosteloos registreren</span>
-                  <ArrowRight className="w-4 h-4" />
-                </Button>
-              </Link>
-            </div>
+            <ul className="space-y-4">
+              {memberBenefits.map((benefit, index) => {
+                const IconComponent = benefit.icon;
+                return (
+                  <li
+                    key={index}
+                    className="flex items-start gap-3.5 p-3 rounded-lg bg-background/60 border border-accent/15 backdrop-blur-sm transition-colors hover:border-accent/35"
+                  >
+                    <div className="shrink-0 mt-0.5 w-7 h-7 rounded-md bg-accent/10 flex items-center justify-center text-accent">
+                      <IconComponent className="w-4 h-4" />
+                    </div>
+                    <span className="text-sm text-foreground/90 font-medium leading-snug">
+                      {benefit.text}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
-        ) : (
-          <div className="lg:col-span-6 bg-accent/5 border border-accent/30 rounded-xl p-6 sm:p-8 shadow-sm relative overflow-hidden flex flex-col justify-between h-full">
-            <div>
-              <div className="flex items-center gap-2.5 mb-3">
-                <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-accent/15 text-accent">
-                  <CheckCircle2 className="w-5 h-5 text-accent" />
-                </span>
-                <h2 className="text-xl md:text-2xl font-display text-foreground">
-                  Voordelen als lid
-                </h2>
-              </div>
-              <p className="text-sm text-foreground/80 mb-6 leading-relaxed">
-                Als lid van Lijst van Andel staat u dicht bij de lokale politiek van Steenwijkerland en bouwt u actief mee aan een betrokken en sterke gemeenschap.
-              </p>
 
-              <ul className="space-y-4">
-                {memberBenefits.map((benefit, index) => {
-                  const IconComponent = benefit.icon;
-                  return (
-                    <li
-                      key={index}
-                      className="flex items-start gap-3.5 p-3 rounded-lg bg-background/60 border border-accent/15 backdrop-blur-sm transition-colors hover:border-accent/35"
-                    >
-                      <div className="shrink-0 mt-0.5 w-7 h-7 rounded-md bg-accent/10 flex items-center justify-center text-accent">
-                        <IconComponent className="w-4 h-4" />
-                      </div>
-                      <span className="text-sm text-foreground/90 font-medium leading-snug">
-                        {benefit.text}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-
-            <div className="mt-8 pt-6 border-t border-accent/20">
-              <p className="text-xs text-foreground/70 mb-3">
-                Samen bereiken we meer voor Steenwijk en alle kernen.
-              </p>
-              <Link to={redirectUrl ? `/registreren?redirect=${encodeURIComponent(redirectUrl)}` : "/registreren"}>
-                <Button className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-semibold flex items-center justify-center gap-2">
-                  <span>Sluit u vandaag nog aan</span>
-                  <ArrowRight className="w-4 h-4" />
-                </Button>
-              </Link>
-            </div>
+          <div className="mt-8 pt-6 border-t border-accent/20">
+            <p className="text-xs text-foreground/70 mb-3">
+              Samen bereiken we meer voor Steenwijk en alle kernen.
+            </p>
+            <Link to={redirectUrl ? `/registreren?redirect=${encodeURIComponent(redirectUrl)}` : "/registreren"}>
+              <Button className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-semibold flex items-center justify-center gap-2">
+                <span>Sluit u vandaag nog aan</span>
+                <ArrowRight className="w-4 h-4" />
+              </Button>
+            </Link>
           </div>
-        )}
+        </div>
       </div>
 
       {/* DIALOG: WACHTWOORD VERGETEN */}

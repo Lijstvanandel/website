@@ -44,7 +44,6 @@ const Home = () => {
   const [homeNews, setHomeNews] = useState<any[]>(() => news.filter((n: any) => !n.wijkSlug));
   const [wijken, setWijken] = useState<WijkItem[]>([]);
   const [fractieleden, setFractieleden] = useState<any[]>(DEFAULT_FRACTIELEDEN);
-  const [selectedWijkSlug, setSelectedWijkSlug] = useState<string | null>(null);
   const [hoveredWijkSlug, setHoveredWijkSlug] = useState<string | null>(null);
   const [bgLayerA, setBgLayerA] = useState<{ url: string; visible: boolean }>({ url: "", visible: false });
   const [bgLayerB, setBgLayerB] = useState<{ url: string; visible: boolean }>({ url: "", visible: false });
@@ -83,36 +82,37 @@ const Home = () => {
       .catch(() => {});
   }, []);
 
+  const handleWijkHover = (rawSlug: string | null) => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    if (unhoverTimerRef.current) {
+      clearTimeout(unhoverTimerRef.current);
+      unhoverTimerRef.current = null;
+    }
+
+    if (!rawSlug) {
+      // Direct herstellen naar standaard Steenwijkerland weergave
+      setHoveredWijkSlug(null);
+    } else {
+      const slug = normalizeSlug(rawSlug);
+      // Korte debounce (60ms) voor rustig bewegen over polygonen
+      hoverTimerRef.current = setTimeout(() => {
+        setHoveredWijkSlug(slug);
+      }, 60);
+    }
+  };
+
   useEffect(() => {
     const handler = (e: MessageEvent) => {
       if (!e.data || typeof e.data !== "object") return;
       if (e.data.type === "wijk-click" && typeof e.data.slug === "string") {
         navigate(`/wijken-en-kernen/${normalizeSlug(e.data.slug)}`);
       } else if (e.data.type === "wijk-hover" && typeof e.data.slug === "string") {
-        const slug = normalizeSlug(e.data.slug);
-        if (unhoverTimerRef.current) {
-          clearTimeout(unhoverTimerRef.current);
-          unhoverTimerRef.current = null;
-        }
-        if (hoverTimerRef.current) {
-          clearTimeout(hoverTimerRef.current);
-        }
-        // Smooth debounce of 100ms so moving cursor smoothly across polygons does not cause rapid flashing
-        hoverTimerRef.current = setTimeout(() => {
-          setHoveredWijkSlug(slug);
-        }, 100);
+        handleWijkHover(e.data.slug);
       } else if (e.data.type === "wijk-unhover") {
-        if (hoverTimerRef.current) {
-          clearTimeout(hoverTimerRef.current);
-          hoverTimerRef.current = null;
-        }
-        // Grace period of 350ms before clearing hover state to bridge polygon borders seamlessly
-        if (unhoverTimerRef.current) {
-          clearTimeout(unhoverTimerRef.current);
-        }
-        unhoverTimerRef.current = setTimeout(() => {
-          setHoveredWijkSlug(null);
-        }, 350);
+        handleWijkHover(null);
       }
     };
     window.addEventListener("message", handler);
@@ -123,35 +123,30 @@ const Home = () => {
     };
   }, [navigate]);
 
-  // Find custom-configured wijken with uploaded or unique photos from database
-  const customWijkenWithPhotos = useMemo(() => {
-    return (wijken || []).filter((w) => {
-      const banner = w.bannerUrl?.trim();
-      const hero = w.heroBannerUrl?.trim();
-      return (
-        (banner && banner !== "/assets/steenwijk-aerial.webp" && banner !== "/assets/hero-banner.webp") ||
-        (hero && hero !== "/assets/steenwijk-aerial.webp" && hero !== "/assets/hero-banner.webp")
-      );
-    });
-  }, [wijken]);
-
-  // Find active wijk and synchronize active background with smooth dual-buffer crossfade
-  const activeWijkSlug = hoveredWijkSlug || selectedWijkSlug;
-  const hoveredWijk = activeWijkSlug
-    ? (wijken.find((w) => normalizeSlug(w.slug) === activeWijkSlug) ||
-       BUURTKAART_WIJKEN.find((w) => normalizeSlug(w.slug) === activeWijkSlug))
-    : (customWijkenWithPhotos.length > 0 ? customWijkenWithPhotos[0] : null);
+  // Find hovered wijk strictly when hovering over the interactive map
+  const hoveredWijk = hoveredWijkSlug
+    ? (wijken.find((w) => normalizeSlug(w.slug) === hoveredWijkSlug) ||
+       BUURTKAART_WIJKEN.find((w) => normalizeSlug(w.slug) === hoveredWijkSlug))
+    : null;
 
   useEffect(() => {
+    // If not hovering, return to standard default hero background and clear dynamic layers
+    if (!hoveredWijk) {
+      setBgLayerA((prev) => ({ ...prev, visible: false }));
+      setBgLayerB((prev) => ({ ...prev, visible: false }));
+      setActiveBuffer(null);
+      return;
+    }
+
     // Prioritize custom uploaded or configured photos over default generic aerial photo
-    const customHero = (hoveredWijk?.heroBannerUrl && hoveredWijk.heroBannerUrl.trim() && hoveredWijk.heroBannerUrl !== "/assets/steenwijk-aerial.webp")
+    const customHero = (hoveredWijk.heroBannerUrl && hoveredWijk.heroBannerUrl.trim() && hoveredWijk.heroBannerUrl !== "/assets/steenwijk-aerial.webp")
       ? hoveredWijk.heroBannerUrl.trim()
       : null;
-    const customBanner = (hoveredWijk?.bannerUrl && hoveredWijk.bannerUrl.trim() && hoveredWijk.bannerUrl !== "/assets/hero-banner.webp" && hoveredWijk.bannerUrl !== "/assets/steenwijk-aerial.webp")
+    const customBanner = (hoveredWijk.bannerUrl && hoveredWijk.bannerUrl.trim() && hoveredWijk.bannerUrl !== "/assets/hero-banner.webp" && hoveredWijk.bannerUrl !== "/assets/steenwijk-aerial.webp")
       ? hoveredWijk.bannerUrl.trim()
       : null;
 
-    const targetUrl = customHero || customBanner || hoveredWijk?.heroBannerUrl?.trim() || hoveredWijk?.bannerUrl?.trim();
+    const targetUrl = customHero || customBanner || hoveredWijk.heroBannerUrl?.trim() || hoveredWijk.bannerUrl?.trim();
     if (targetUrl) {
       // Preload image before fading to avoid any blank flash
       const img = new Image();
@@ -177,7 +172,10 @@ const Home = () => {
   return (
     <>
       {/* HERO — Verticaal compact met minimale afstand tot de navbar & interactieve achtergrond */}
-      <section className="relative overflow-hidden pt-2 sm:pt-3 lg:pt-4 pb-0 bg-background transition-colors">
+      <section
+        className="relative overflow-hidden pt-2 sm:pt-3 lg:pt-4 pb-0 bg-background transition-colors"
+        onMouseLeave={() => handleWijkHover(null)}
+      >
         {/* Standaard achtergrondfoto (Steenwijk aerial) */}
         <picture className="absolute inset-0 w-full h-full pointer-events-none">
           <source srcSet="/assets/steenwijk-aerial.webp" type="image/webp" />
@@ -262,9 +260,9 @@ const Home = () => {
               </div>
             </div>
 
-            {/* Buurtkaart: Statisch voor SEO, dynamisch interactief bij hoveren */}
+            {/* Buurtkaart: Direct interactief via lichte vector SVG met vloeiende crossfade */}
             <div className="hidden lg:block relative h-[460px] lg:h-[500px] xl:h-[550px]">
-              <HeroBuurtkaart onWijkHover={setHoveredWijkSlug} />
+              <HeroBuurtkaart onWijkHover={handleWijkHover} />
             </div>
           </div>
         </div>
