@@ -254,7 +254,7 @@ export default function Raadspaneel() {
   );
 
   // Strict Municipality Determination:
-  const activeMunicipality: "steenwijkerland" = "steenwijkerland";
+  const activeMunicipality = "steenwijkerland" as const;
 
   const initialDossierSlug = slug || searchParams.get("dossier") || null;
   const tabParam = searchParams.get("tab");

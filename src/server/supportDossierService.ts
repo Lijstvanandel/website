@@ -70,7 +70,7 @@ export function filterCandidateDocuments(topic: CouncilAgendaTopic): {
   filtered: any[];
   matchedTags: string[];
 } {
-  let allCandidateDocs: any[] = [];
+  const allCandidateDocs: any[] = [];
 
   // 1. Load from all compiled dossiers (includes master metadata, custom dossiers, live topics, disk documents)
   try {

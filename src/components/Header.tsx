@@ -149,7 +149,7 @@ export const Header = () => {
     <>
       <header className="sticky top-0 z-40 backdrop-blur-md bg-background/95 border-b border-accent/20 w-full transition-colors">
         {/* Full-width responsive container giving optimal space without overflowing */}
-        <div className="w-full max-w-[1720px] mx-auto px-3 sm:px-4 xl:px-6 2xl:px-8 flex items-center justify-between h-16 sm:h-18 lg:h-20 gap-2 sm:gap-3 xl:gap-4">
+        <div className="w-full max-w-[1720px] mx-auto px-3 sm:px-4 xl:px-6 2xl:px-8 flex items-center justify-between h-16 sm:h-[72px] lg:h-20 gap-2 sm:gap-3 xl:gap-4">
           
           {/* Left Side: Logo & Brand Name + Desktop Navigation */}
           <div className="flex items-center gap-2 sm:gap-3 xl:gap-4 2xl:gap-6 min-w-0 shrink">

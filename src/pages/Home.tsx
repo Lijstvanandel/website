@@ -170,10 +170,11 @@ const Home = () => {
   }, [hoveredWijk]);
 
   return (
-    <>
-      {/* HERO — Verticaal compact met minimale afstand tot de navbar & interactieve achtergrond */}
+    <div className="relative">
+      {/* HERO — Sticky reveal effect: blijft vastgepind onder de header terwijl de rest van de pagina eroverheen schuift */}
       <section
-        className="relative overflow-hidden pt-2 sm:pt-3 lg:pt-4 pb-0 bg-background transition-colors"
+        aria-label="Introductie"
+        className="sticky top-16 sm:top-[72px] lg:top-20 z-10 overflow-hidden pt-2 sm:pt-4 lg:pt-6 pb-6 sm:pb-8 lg:pb-12 bg-background transition-colors will-change-transform"
         onMouseLeave={() => handleWijkHover(null)}
       >
         {/* Standaard achtergrondfoto (Steenwijk aerial) */}
@@ -266,9 +267,12 @@ const Home = () => {
             </div>
           </div>
         </div>
+      </section>
 
-        {/* Compacte stats bar */}
-        <div className="relative z-10 mt-5 sm:mt-6 lg:mt-8 border-t border-accent/20 bg-twente-black/85 backdrop-blur">
+      {/* VOORGRONDLAAG: Schuift bij omlaag scrollen over de sticky hero heen */}
+      <div className="relative z-20 bg-background stadium-bg shadow-[0_-20px_50px_rgba(0,0,0,0.7)] border-t border-accent/30 transition-colors">
+        {/* Compacte stats bar — '2 raadzetels, 2 burgerraadsleden etc.' als leidende bovenrand waarachter de hero verdwijnt */}
+        <div aria-label="Kerncijfers" className="bg-twente-black/95 backdrop-blur-md border-b border-accent/20">
           <div className="container grid grid-cols-2 md:grid-cols-4 gap-px">
             {[
               { v: "2", l: "Raadszetels" },
@@ -276,17 +280,16 @@ const Home = () => {
               { v: "10", l: "Speerpunten" },
               { v: "∞", l: "Lokale trots" },
             ].map((s) => (
-              <div key={s.l} className="px-3 py-2.5 sm:py-3 text-center bg-twente-black/40">
+              <div key={s.l} className="px-3 py-2.5 sm:py-3.5 text-center bg-twente-black/50">
                 <div className="font-display text-2xl sm:text-3xl text-gradient-gold">{s.v}</div>
                 <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.22em] text-muted-foreground mt-0.5">{s.l}</div>
               </div>
             ))}
           </div>
         </div>
-      </section>
 
-      {/* FRACTIE & PERSOONLIJK GESPREK CTA */}
-      <section className="container pt-8 sm:pt-10 pb-6 sm:pb-8">
+        {/* FRACTIE & PERSOONLIJK GESPREK CTA */}
+        <section className="container pt-8 sm:pt-10 pb-6 sm:pb-8">
         <div className="text-xs uppercase tracking-[0.3em] text-accent mb-2">Direct contact</div>
         <h2 className="font-display text-4xl sm:text-5xl md:text-6xl mb-6 sm:mb-8 border-gold-line pb-4">De fractie</h2>
 
@@ -468,9 +471,10 @@ const Home = () => {
           ))}
         </div>
       </section>
+      </div>
 
       <BelafspraakDialog open={belOpen} onOpenChange={setBelOpen} />
-    </>
+    </div>
   );
 };
 
