@@ -803,6 +803,7 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
       <DossierDetail
         dossierSlug={activeDossierSlug}
         initialSubdossierSlug={searchParams.get("subdossier") || null}
+        initialWijk={searchParams.get("wijk") || searchParams.get("kern") || searchParams.get("wijkSlug") || null}
         onBack={handleBackToOverview}
       />
     );

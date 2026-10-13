@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { getPortalConfig } from "@/utils/portalConfig";
 import {
   ArrowLeft,
@@ -56,14 +57,24 @@ import { useAuth } from "@/context/AuthContext";
 interface DossierDetailProps {
   dossierSlug: string;
   initialSubdossierSlug?: string | null;
+  initialWijk?: string | null;
   onBack: () => void;
 }
 
 export const DossierDetail: React.FC<DossierDetailProps> = ({
   dossierSlug,
   initialSubdossierSlug,
+  initialWijk,
   onBack,
 }) => {
+  const [searchParams] = useSearchParams();
+  const effectiveInitialWijk =
+    initialWijk ||
+    searchParams.get("wijk") ||
+    searchParams.get("kern") ||
+    searchParams.get("wijkSlug") ||
+    null;
+
   const { user } = useAuth();
   const isCouncilOrAdmin = Boolean(
     user && (user.role === "admin" || user.role === "raadslid" || user.role === "fractielid")
@@ -81,7 +92,7 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
   const [activeTab, setActiveTab] = useState<"subdossiers" | "documents" | "overview" | "timeline">("subdossiers");
   const [selectedSubdossier, setSelectedSubdossier] = useState<string | null>(initialSubdossierSlug || null);
   const [subdossierInitialTab, setSubdossierInitialTab] = useState<"graph" | "documents" | "timeline" | "wijken">("graph");
-  const [selectedWijkFilter, setSelectedWijkFilter] = useState<string | null>(null);
+  const [selectedWijkFilter, setSelectedWijkFilter] = useState<string | null>(effectiveInitialWijk);
   const [docSearch, setDocSearch] = useState("");
   const [subSearch, setSubSearch] = useState("");
   const [subdossierPage, setSubdossierPage] = useState<number>(1);
@@ -421,6 +432,13 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
     }
   }, [initialSubdossierSlug]);
 
+  // Sync wijk filter when set or changed from outside
+  useEffect(() => {
+    if (effectiveInitialWijk && effectiveInitialWijk !== selectedWijkFilter) {
+      setSelectedWijkFilter(effectiveInitialWijk);
+    }
+  }, [effectiveInitialWijk]);
+
   // Resolve active subdossier object if selected
   const activeSubdossierObj = useMemo(() => {
     if (!selectedSubdossier || !dossier) return null;
@@ -673,6 +691,8 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
             hoofddossier={dossier}
             subdossier={activeSubdossierObj}
             allDossierDocuments={dossier.documents || []}
+            wijkFilter={selectedWijkFilter || effectiveInitialWijk}
+            initialSelectedDocId={searchParams.get("doc") || null}
             onBackToHoofddossier={handleBackFromSubdossier}
             onBackToOverview={onBack}
             onOpenDocumentViewer={openDocumentViewer}

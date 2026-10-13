@@ -1261,7 +1261,9 @@ const WijkDetail = () => {
                                         activeHoofddossier.slug || activeHoofddossier.id
                                       )}&subdossier=${encodeURIComponent(sub.slug)}&wijk=${encodeURIComponent(
                                         wijk.naam
-                                      )}`}
+                                      )}${wijk.type === "Kern" ? `&kern=${encodeURIComponent(wijk.naam)}` : ""}${
+                                        subDocs.length > 0 ? `&doc=${encodeURIComponent(subDocs[0].bestandsnaam || subDocs[0].id || "")}` : ""
+                                      }`}
                                     >
                                       Bekijk subdossier ({sub.documentCount})
                                       <ArrowRight className="w-3.5 h-3.5 ml-1" />

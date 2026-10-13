@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   FolderTree,
@@ -28,6 +29,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { DossierNetworkGraph } from "./DossierNetworkGraph";
 import { getSubdossierClientThumbnail } from "@/lib/dossierClientUtils";
+import { BUURTKAART_WIJKEN } from "@/data/defaultWijken";
 import type {
   Dossier,
   DossierSubdossier,
@@ -40,6 +42,8 @@ interface SubdossierDetailViewProps {
   hoofddossier: Dossier;
   subdossier: DossierSubdossier;
   allDossierDocuments: DossierDocument[];
+  wijkFilter?: string | null;
+  initialSelectedDocId?: string | null;
   onBackToHoofddossier: () => void;
   onBackToOverview: () => void;
   onOpenDocumentViewer: (doc: DossierDocument) => void;
@@ -57,6 +61,8 @@ export const SubdossierDetailView: React.FC<SubdossierDetailViewProps> = ({
   hoofddossier,
   subdossier,
   allDossierDocuments,
+  wijkFilter,
+  initialSelectedDocId,
   onBackToHoofddossier,
   onBackToOverview,
   onOpenDocumentViewer,
@@ -68,6 +74,14 @@ export const SubdossierDetailView: React.FC<SubdossierDetailViewProps> = ({
   onToggleFavorite,
   initialTab = "graph",
 }) => {
+  const [searchParams] = useSearchParams();
+  const effectiveWijk =
+    wijkFilter ||
+    searchParams.get("wijk") ||
+    searchParams.get("kern") ||
+    searchParams.get("wijkSlug") ||
+    null;
+
   // Active standalone tab: graph | documents | timeline | wijken
   const [activeTab, setActiveTab] = useState<"graph" | "documents" | "timeline" | "wijken">(
     initialTab
@@ -110,6 +124,149 @@ export const SubdossierDetailView: React.FC<SubdossierDetailViewProps> = ({
       );
     });
   }, [allDossierDocuments, subdossier]);
+
+  // Wijk or Kern details resolved from BUURTKAART_WIJKEN
+  const wijkOrKernInfo = useMemo(() => {
+    if (!effectiveWijk) return null;
+    const raw = effectiveWijk.trim();
+    const lower = raw.toLowerCase();
+    const isExplicitKern = searchParams.has("kern");
+    const found = BUURTKAART_WIJKEN.find(
+      (w) =>
+        w.naam.toLowerCase() === lower ||
+        w.slug.toLowerCase() === lower ||
+        slugify(w.naam) === slugify(raw)
+    );
+    const type: "Wijk" | "Kern" = isExplicitKern ? "Kern" : found?.type || "Wijk";
+    const displayName = found?.naam || raw;
+    const slug = found?.slug || slugify(raw);
+    return { name: displayName, type, slug };
+  }, [effectiveWijk, searchParams]);
+
+  // Documents within this subdossier specifically linked to this wijk or kern
+  const wijkMatchingDocs = useMemo(() => {
+    if (!effectiveWijk || !subDocs || subDocs.length === 0) return [];
+    const wRaw = effectiveWijk.trim();
+    const wLower = wRaw.toLowerCase();
+    const wSlug = slugify(wRaw);
+    const wSlugClean = wSlug.replace(/-/g, " ");
+
+    const directMatches = subDocs.filter((doc) => {
+      // 1. Explicit ID / filename match
+      if (initialSelectedDocId) {
+        const idLower = initialSelectedDocId.toLowerCase();
+        if (
+          doc.bestandsnaam?.toLowerCase() === idLower ||
+          doc.id?.toLowerCase() === idLower ||
+          doc.bestandsnaam?.toLowerCase().includes(idLower)
+        ) {
+          return true;
+        }
+      }
+
+      // 2. Exact or partial wijk_of_kern field
+      if (doc.wijk_of_kern) {
+        const parts = doc.wijk_of_kern
+          .toLowerCase()
+          .split(/[,;/]+/)
+          .map((s) => s.trim());
+        if (
+          parts.some(
+            (p) =>
+              p === wLower ||
+              p.includes(wLower) ||
+              wLower.includes(p) ||
+              p === wSlugClean ||
+              p === wSlug
+          )
+        ) {
+          return true;
+        }
+      }
+
+      // 3. wijken array field
+      if (Array.isArray(doc.wijken) && doc.wijken.length > 0) {
+        if (
+          doc.wijken.some((w) => {
+            const wl = String(w).toLowerCase().trim();
+            return (
+              wl === wLower ||
+              wl.includes(wLower) ||
+              wLower.includes(wl) ||
+              wl === wSlugClean ||
+              wl === wSlug
+            );
+          })
+        ) {
+          return true;
+        }
+      }
+
+      // 4. Document title contains wijk name
+      if (doc.titel) {
+        const tLower = doc.titel.toLowerCase();
+        if (tLower.includes(wLower) || tLower.includes(wSlugClean)) {
+          return true;
+        }
+      }
+
+      // 5. Entiteiten contain wijk name
+      if (Array.isArray(doc.entiteiten) && doc.entiteiten.length > 0) {
+        if (
+          doc.entiteiten.some((e) => {
+            const el = String(e).toLowerCase().trim();
+            return el === wLower || el.includes(wLower) || wLower.includes(el);
+          })
+        ) {
+          return true;
+        }
+      }
+
+      return false;
+    });
+
+    if (directMatches.length > 0) return directMatches;
+
+    // Fallback: check all documents in hoofddossier mentioning this wijk if none in subDocs
+    if (allDossierDocuments && allDossierDocuments.length > 0) {
+      return allDossierDocuments.filter((doc) => {
+        const dWijk = (doc.wijk_of_kern || "").toLowerCase();
+        const dTitle = (doc.titel || "").toLowerCase();
+        const dEnt = (doc.entiteiten || []).join(" ").toLowerCase();
+        return (
+          dWijk.includes(wLower) ||
+          dWijk.includes(wSlugClean) ||
+          dTitle.includes(wLower) ||
+          dEnt.includes(wLower)
+        );
+      });
+    }
+
+    return [];
+  }, [effectiveWijk, subDocs, allDossierDocuments, initialSelectedDocId]);
+
+  // Selected document to highlight in network graph
+  const [selectedDocInGraph, setSelectedDocInGraph] = useState<string | null>(
+    initialSelectedDocId || null
+  );
+
+  useEffect(() => {
+    if (wijkMatchingDocs.length > 0) {
+      const match = initialSelectedDocId
+        ? wijkMatchingDocs.find(
+            (d) =>
+              d.bestandsnaam?.toLowerCase() === initialSelectedDocId.toLowerCase() ||
+              d.id?.toLowerCase() === initialSelectedDocId.toLowerCase()
+          ) || wijkMatchingDocs[0]
+        : wijkMatchingDocs[0];
+
+      if (match) {
+        setSelectedDocInGraph(match.bestandsnaam || match.id);
+      }
+    } else if (initialSelectedDocId) {
+      setSelectedDocInGraph(initialSelectedDocId);
+    }
+  }, [wijkMatchingDocs, initialSelectedDocId]);
 
   // Fetch server sub-graph specifically for this subdossier
   const fetchSubdossierGraph = useCallback(async () => {
@@ -335,6 +492,9 @@ export const SubdossierDetailView: React.FC<SubdossierDetailViewProps> = ({
     url.searchParams.set("tab", "dossiers");
     url.searchParams.set("dossier", hoofddossier.slug || hoofddossier.id);
     url.searchParams.set("subdossier", subdossier.slug || subdossier.title);
+    if (effectiveWijk) {
+      url.searchParams.set(searchParams.has("kern") ? "kern" : "wijk", effectiveWijk);
+    }
     navigator.clipboard.writeText(url.toString());
     toast.success("Directe link naar dit subdossier gekopieerd naar klembord!");
   };
@@ -364,6 +524,19 @@ export const SubdossierDetailView: React.FC<SubdossierDetailViewProps> = ({
             <FolderTree className="w-3 h-3" />
             {subdossier.title}
           </span>
+          {wijkOrKernInfo && (
+            <>
+              <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/60" />
+              <Link
+                to={`/wijken-en-kernen/${wijkOrKernInfo.slug}`}
+                className="font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20 flex items-center gap-1 hover:underline"
+                title={`Gefilterd op ${wijkOrKernInfo.type} ${wijkOrKernInfo.name}`}
+              >
+                <MapPin className="w-3 h-3" />
+                {wijkOrKernInfo.name}
+              </Link>
+            </>
+          )}
         </div>
 
         {/* Back and Action Buttons */}
@@ -652,6 +825,14 @@ export const SubdossierDetailView: React.FC<SubdossierDetailViewProps> = ({
               nodes={finalGraph.nodes}
               edges={finalGraph.edges}
               documents={subDocs}
+              selectedDocumentId={selectedDocInGraph}
+              highlightedDocumentIds={wijkMatchingDocs.map((d) => d.bestandsnaam || d.id)}
+              highlightBadge={wijkOrKernInfo ? wijkOrKernInfo.name : effectiveWijk || undefined}
+              onNodeSelect={(node) => {
+                if (node) {
+                  setSelectedDocInGraph(node.id);
+                }
+              }}
               onSelectDocument={(docItem) => {
                 const found = subDocs.find((d) => d.bestandsnaam === docItem.bestandsnaam);
                 if (found) {
@@ -670,6 +851,162 @@ export const SubdossierDetailView: React.FC<SubdossierDetailViewProps> = ({
               }}
               title={`Relatiekaart: ${subdossier.title}`}
             />
+          )}
+
+          {/* VAK: Gekoppelde stukken aan '%wijknaam%' of '%kernnaam%' */}
+          {effectiveWijk && (
+            <div
+              id="gekoppelde-stukken-wijk-box"
+              className="bg-card border-2 border-accent/40 rounded-2xl p-5 space-y-4 shadow-sm bg-gradient-to-br from-card via-card to-accent/5 transition-all"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border/80">
+                <div className="flex items-start sm:items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-accent/15 text-accent shrink-0">
+                    <MapPin className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="text-base font-bold text-foreground tracking-tight">
+                        Gekoppelde stukken aan &lsquo;{wijkOrKernInfo ? wijkOrKernInfo.name : effectiveWijk}&rsquo;
+                      </h4>
+                      <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-accent/20 text-accent border border-accent/30">
+                        {wijkMatchingDocs.length} {wijkMatchingDocs.length === 1 ? "raadsstuk" : "raadsstukken"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Specifiek geselecteerd voor {wijkOrKernInfo?.type === "Kern" ? "de kern" : "de wijk"} {wijkOrKernInfo ? wijkOrKernInfo.name : effectiveWijk} vanuit de gebiedspagina
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  {wijkOrKernInfo?.slug && (
+                    <Button
+                      asChild
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs rounded-xl border-border hover:border-accent/50 text-muted-foreground hover:text-foreground"
+                    >
+                      <Link to={`/wijken-en-kernen/${wijkOrKernInfo.slug}`}>
+                        <ArrowLeft className="w-3.5 h-3.5 mr-1" />
+                        Naar {wijkOrKernInfo.name}
+                      </Link>
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Content of Wijk Documents */}
+              {wijkMatchingDocs.length === 0 ? (
+                <div className="p-6 text-center bg-background/50 border border-dashed border-border rounded-xl space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Er zijn binnen dit specifieke subdossier geen directe stukken gelabeld met &lsquo;{effectiveWijk}&rsquo;.
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Bekijk hieronder alle {subDocs.length} stukken die in dit subdossier zijn opgenomen.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                  {wijkMatchingDocs.map((doc, idx) => {
+                    const isSelectedInGraph = selectedDocInGraph === (doc.bestandsnaam || doc.id);
+                    return (
+                      <div
+                        key={doc.id || doc.bestandsnaam || idx}
+                        className={`p-4 rounded-xl border transition-all flex flex-col justify-between group shadow-xs cursor-pointer ${
+                          isSelectedInGraph
+                            ? "bg-accent/10 border-accent ring-2 ring-accent/30 shadow-md"
+                            : "bg-background border-border hover:border-accent/60 hover:shadow-sm"
+                        }`}
+                        onClick={() => {
+                          setSelectedDocInGraph(doc.bestandsnaam || doc.id);
+                          onOpenDocumentViewer(doc);
+                        }}
+                      >
+                        <div>
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="p-1.5 rounded-lg bg-accent/15 text-accent shrink-0">
+                                <FileText className="w-3.5 h-3.5" />
+                              </span>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-accent text-accent-foreground">
+                                Gekoppeld aan {wijkOrKernInfo ? wijkOrKernInfo.name : effectiveWijk}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-muted-foreground font-mono">
+                              {doc.datum || "—"}
+                            </span>
+                          </div>
+
+                          <h5 className="text-xs font-bold text-foreground line-clamp-2 mb-1.5 group-hover:text-accent transition-colors">
+                            {doc.titel}
+                          </h5>
+
+                          <p className="text-[11px] text-muted-foreground font-mono truncate mb-2">
+                            {doc.bestandsnaam}
+                          </p>
+
+                          {doc.samenvatting && (
+                            <p className="text-[11px] text-muted-foreground line-clamp-2 mb-2 leading-relaxed">
+                              {doc.samenvatting}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="pt-2.5 mt-2.5 border-t border-border flex items-center justify-between text-[11px]">
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                                doc.fileExists
+                                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                  : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                              }`}
+                            >
+                              {doc.fileExists ? "Live PDF" : "Metadata"}
+                            </span>
+                            {isSelectedInGraph && (
+                              <span className="text-[10px] font-semibold text-accent flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3" />
+                                Actief in graaf
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 px-2 text-[10px] text-accent hover:bg-accent/15 font-semibold"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedDocInGraph(doc.bestandsnaam || doc.id);
+                                document.getElementById("dossier-graph-canvas")?.scrollIntoView({ behavior: "smooth", block: "center" });
+                              }}
+                              title="Selecteer en bekijk in relatienetwerkgraaf"
+                            >
+                              <Layers className="w-3 h-3 mr-1" />
+                              In graaf
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              className="h-6 px-2.5 text-[10px] bg-accent hover:bg-accent/90 text-accent-foreground font-semibold"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenDocumentViewer(doc);
+                              }}
+                            >
+                              <Eye className="w-3 h-3 mr-1" />
+                              Bekijk
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           )}
 
           {/* Quick Access Card Grid under the Graph */}
@@ -784,6 +1121,29 @@ export const SubdossierDetailView: React.FC<SubdossierDetailViewProps> = ({
                 <option value="live">Alleen Live PDF ({liveCount})</option>
                 <option value="meta">Alleen Metadata ({subDocs.length - liveCount})</option>
               </select>
+
+              {/* Wijk Filter Shortcut Button */}
+              {effectiveWijk && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (docSearch === effectiveWijk) {
+                      setDocSearch("");
+                    } else {
+                      setDocSearch(effectiveWijk);
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors flex items-center gap-1.5 shrink-0 h-9 cursor-pointer ${
+                    docSearch === effectiveWijk
+                      ? "bg-accent text-accent-foreground border-accent shadow-xs"
+                      : "bg-background border-border text-muted-foreground hover:text-foreground hover:border-accent/40"
+                  }`}
+                  title={`Filter documentenlijst op ${effectiveWijk}`}
+                >
+                  <MapPin className="w-3.5 h-3.5 text-accent" />
+                  <span>Alleen &lsquo;{wijkOrKernInfo ? wijkOrKernInfo.name : effectiveWijk}&rsquo; ({wijkMatchingDocs.length})</span>
+                </button>
+              )}
             </div>
 
             {/* Stuk Toevoegen */}

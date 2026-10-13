@@ -23,6 +23,10 @@ interface DossierNetworkGraphProps {
   documents?: DossierDocument[];
   onSelectDocument: (doc: DossierDocument | { bestandsnaam: string; titel: string; dossier?: string }) => void;
   title?: string;
+  selectedDocumentId?: string | null;
+  highlightedDocumentIds?: string[];
+  highlightBadge?: string;
+  onNodeSelect?: (node: SimNode | null) => void;
 }
 
 interface SimNode extends GraphNode {
@@ -44,6 +48,10 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
   documents = [],
   onSelectDocument,
   title,
+  selectedDocumentId,
+  highlightedDocumentIds = [],
+  highlightBadge,
+  onNodeSelect,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -97,6 +105,44 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
     const activeIds = new Set(activeNodes.map((n) => n.id));
     return (edges || []).filter((e) => activeIds.has(e.source) && activeIds.has(e.target));
   }, [activeNodes, edges]);
+
+  // Set of document IDs highlighted (e.g. from wijk or kern selection)
+  const highlightedSet = useMemo(() => {
+    return new Set(
+      (highlightedDocumentIds || []).map((id) => (id || "").toLowerCase().trim()).filter(Boolean)
+    );
+  }, [highlightedDocumentIds]);
+
+  // Sync selectedDocumentId with selectedNode
+  useEffect(() => {
+    if (!selectedDocumentId) return;
+    const target = selectedDocumentId.toLowerCase().trim();
+    const targetBase = target.replace(/\.pdf$/i, "");
+    const candidateNodes =
+      simNodesRef.current.length > 0 ? simNodesRef.current : (activeNodes as SimNode[]);
+
+    const found = candidateNodes.find((n) => {
+      const nId = (n.id || "").toLowerCase().trim();
+      const nLabel = (n.label || (n as any)?.title || (n as any)?.titel || "").toLowerCase().trim();
+      const nBestand = ((n as any)?.bestandsnaam || "").toLowerCase().trim();
+      return (
+        nId === target ||
+        nBestand === target ||
+        nId.includes(target) ||
+        target.includes(nId) ||
+        nBestand.includes(target) ||
+        target.includes(nBestand) ||
+        nLabel.includes(target) ||
+        (targetBase && (nId.includes(targetBase) || nBestand.includes(targetBase)))
+      );
+    });
+
+    if (found) {
+      const simNode = simNodesRef.current.find((sn) => sn.id === found.id) || (found as SimNode);
+      setSelectedNode(simNode);
+      if (onNodeSelect) onNodeSelect(simNode);
+    }
+  }, [selectedDocumentId, activeNodes, onNodeSelect]);
 
   // Spacing multiplier: default "ruim" provides generous breathing space
   const spacingMultiplier = useMemo(() => {
@@ -420,9 +466,31 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
         );
         const isSearchMatch = query && rawNodeLabel.toLowerCase().includes(query);
 
+        const nodeIdLower = (node.id || "").toLowerCase().trim();
+        const nodeBestandLower = (((node as any).bestandsnaam || "")).toLowerCase().trim();
+        const isWijkHighlighted =
+          highlightedSet.size > 0 &&
+          (highlightedSet.has(nodeIdLower) ||
+            highlightedSet.has(nodeBestandLower) ||
+            Array.from(highlightedSet).some(
+              (h) => h && (nodeIdLower.includes(h) || h.includes(nodeIdLower) || nodeBestandLower.includes(h))
+            ));
+
+        // Outer halo ring for highlighted wijk/kern document
+        if (isWijkHighlighted && !isSelected) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, node.radius + 7, 0, 2 * Math.PI);
+          ctx.strokeStyle = "rgba(217, 119, 6, 0.75)";
+          ctx.lineWidth = 2.5;
+          ctx.setLineDash([4, 3]);
+          ctx.stroke();
+          ctx.restore();
+        }
+
         ctx.save();
         ctx.beginPath();
-        const r = node.radius + (isHovered || isSelected ? 4 : 0);
+        const r = node.radius + (isHovered || isSelected ? 4 : isWijkHighlighted ? 2.5 : 0);
         ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
 
         // Fill color for document node
@@ -430,6 +498,8 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
           ctx.fillStyle = "#c6a858"; // Gold selected
         } else if (isHovered) {
           ctx.fillStyle = "#38bdf8"; // Bright sky blue hover
+        } else if (isWijkHighlighted) {
+          ctx.fillStyle = "#d97706"; // Amber highlight for wijk-linked documents
         } else if (isSearchMatch) {
           ctx.fillStyle = "#f59e0b"; // Search amber
         } else if (isConnectedToActive) {
@@ -443,11 +513,13 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
         ctx.fill();
 
         // Border ring
-        ctx.lineWidth = isSelected ? 3.5 : isHovered ? 3 : 1.8;
+        ctx.lineWidth = isSelected ? 3.5 : isHovered ? 3 : isWijkHighlighted ? 2.8 : 1.8;
         ctx.strokeStyle = isSelected
           ? "#ffffff"
           : isHovered
           ? "#fef08a"
+          : isWijkHighlighted
+          ? "#fbbf24"
           : isConnectedToActive
           ? "#7dd3fc"
           : "rgba(255,255,255,0.85)";
@@ -456,10 +528,40 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
         // Inner document icon mark (mini document outline)
         ctx.fillStyle = isSelected ? "#0f172a" : "#ffffff";
         ctx.fillRect(node.x - 4, node.y - 5.5, 8, 11);
-        ctx.fillStyle = isSelected ? "#c6a858" : "#1e40af";
+        ctx.fillStyle = isSelected ? "#c6a858" : isWijkHighlighted ? "#d97706" : "#1e40af";
         ctx.fillRect(node.x - 2.5, node.y - 3.5, 5, 1.4);
         ctx.fillRect(node.x - 2.5, node.y - 1, 5, 1.4);
         ctx.fillRect(node.x - 2.5, node.y + 1.5, 3, 1.4);
+
+        // Floating badge above node for wijk-coupled piece
+        if (isWijkHighlighted && highlightBadge) {
+          ctx.save();
+          ctx.font = "bold 9.5px system-ui, sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          const badgeText = `📍 ${highlightBadge}`;
+          const badgeW = ctx.measureText(badgeText).width + 12;
+          const badgeH = 18;
+          const badgeY = node.y - node.radius - 14;
+
+          ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
+          if (ctx.roundRect) {
+            ctx.roundRect(node.x - badgeW / 2, badgeY - badgeH / 2, badgeW, badgeH, 5);
+          } else {
+            ctx.fillRect(node.x - badgeW / 2, badgeY - badgeH / 2, badgeW, badgeH);
+          }
+          ctx.fill();
+
+          ctx.strokeStyle = "#c6a858";
+          ctx.lineWidth = 1.2;
+          if (ctx.roundRect) {
+            ctx.roundRect(node.x - badgeW / 2, badgeY - badgeH / 2, badgeW, badgeH, 5);
+            ctx.stroke();
+          }
+          ctx.fillStyle = "#fef08a";
+          ctx.fillText(badgeText, node.x, badgeY);
+          ctx.restore();
+        }
 
         // Document Label below node
         const showFull = isHovered || isSelected;
@@ -831,6 +933,12 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
             <span className="w-4 h-0.5 bg-amber-500 inline-block shrink-0" />
             <span className="text-muted-foreground">Onderlinge verbinding</span>
           </div>
+          {highlightBadge && (
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full bg-amber-600 inline-block shrink-0 ring-1 ring-amber-400" />
+              <span className="text-amber-600 dark:text-amber-400 font-semibold">Gekoppeld aan {highlightBadge}</span>
+            </div>
+          )}
           <div className="text-[10px] text-muted-foreground/80 pt-1 border-t border-border flex items-center gap-1">
             <Move className="w-3 h-3 text-accent" />
             <span>Sleep een document om vrij te verplaatsen</span>
@@ -866,9 +974,16 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
           <div className="absolute bottom-3 right-3 p-3.5 rounded-xl bg-card border border-border shadow-xl max-w-sm w-full text-xs space-y-2.5">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-accent block">
-                  Geselecteerd Document
-                </span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-accent block">
+                    Geselecteerd Document
+                  </span>
+                  {highlightBadge && (
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-accent/20 text-accent border border-accent/40">
+                      Gekoppeld aan {highlightBadge}
+                    </span>
+                  )}
+                </div>
                 <h5 className="font-bold text-foreground text-sm leading-tight mt-0.5">
                   {selectedNode.label || (selectedNode as any)?.title || (selectedNode as any)?.titel || selectedNode.id}
                 </h5>

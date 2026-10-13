@@ -70,7 +70,7 @@ const Raadsleden = () => {
         </Button>
       </div>
 
-      {/* Fractieleden Grid met 'Bekijk video's' knop */}
+      {/* Fractieleden Grid met 'Bekijk meer' knop */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {loading && (
           <div className="col-span-2 text-center text-muted-foreground py-10">

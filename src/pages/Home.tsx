@@ -326,7 +326,8 @@ const Home = () => {
                       </div>
                     </div>
                     <div className="mt-3 pt-2.5 border-t border-border/40 text-[11px] uppercase tracking-widest text-accent font-semibold flex items-center justify-center gap-1.5 opacity-90 group-hover:opacity-100 transition-opacity">
-                      <Video className="w-3.5 h-3.5" /> Bekijk video's
+                      <span>Bekijk meer</span>
+                      <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                     </div>
                   </div>
                 </Link>

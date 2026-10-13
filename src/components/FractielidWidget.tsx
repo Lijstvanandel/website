@@ -1,5 +1,5 @@
 import React from "react";
-import { Phone, Mail, Instagram, Facebook, Linkedin, Video } from "lucide-react";
+import { Phone, Mail, Instagram, Facebook, Linkedin, Video, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 
@@ -167,10 +167,8 @@ export const FractielidWidget: React.FC<FractielidWidgetProps> = ({
                 className="flex-1 w-full bg-primary hover:bg-primary/90 text-primary-foreground uppercase tracking-wider text-[11px] sm:text-xs font-semibold shadow-sm px-2 sm:px-3 py-2 h-9 inline-flex items-center justify-center whitespace-nowrap min-w-0"
               >
                 <Link to={`/fractie/${lid.id}/videos`} className="inline-flex items-center justify-center w-full">
-                  <Video className="w-3.5 h-3.5 mr-1.5 shrink-0" />
-                  <span className="truncate">
-                    Bekijk video's{typeof videoCount === "number" && videoCount > 0 ? ` (${videoCount})` : ""}
-                  </span>
+                  <ArrowRight className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                  <span className="truncate">Bekijk meer</span>
                 </Link>
               </Button>
             )}
