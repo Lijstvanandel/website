@@ -1379,23 +1379,35 @@ export function getAllDossiers(
 
     const uploadedCount = docs.filter((d) => d.fileExists).length;
 
-    // Group documents into Subdossiers
-    const subMap = new Map<string, DossierDocument[]>();
+    // Group documents into Subdossiers by canonical slug to eliminate duplicate keys & casing variants
+    const subMap = new Map<string, { title: string; docs: DossierDocument[] }>();
     const allWijkenSet = new Set<string>();
 
+    const countCapitals = (str: string) => (str.match(/[A-Z]/g) || []).length;
+
     docs.forEach((d) => {
-      const subTitle = d.subdossier || "Algemeen";
-      if (!subMap.has(subTitle)) {
-        subMap.set(subTitle, []);
+      const rawTitle = (d.subdossier || "Algemeen").trim() || "Algemeen";
+      const subSlug = slugify(rawTitle) || "algemeen";
+
+      if (!subMap.has(subSlug)) {
+        subMap.set(subSlug, { title: rawTitle, docs: [] });
+      } else {
+        const entry = subMap.get(subSlug)!;
+        // Prefer title with better capitalization (e.g. "Ingekomen Stukken" over "Ingekomen stukken")
+        if (countCapitals(rawTitle) > countCapitals(entry.title)) {
+          entry.title = rawTitle;
+        }
       }
-      subMap.get(subTitle)!.push(d);
+      subMap.get(subSlug)!.docs.push(d);
 
       if (d.wijken && d.wijken.length > 0) {
         d.wijken.forEach((w) => allWijkenSet.add(w));
       }
     });
 
-    const subdossiers = Array.from(subMap.entries()).map(([subTitle, subDocs]) => {
+    const subdossiers = Array.from(subMap.entries()).map(([subSlug, entry]) => {
+      const subTitle = entry.title;
+      const subDocs = entry.docs;
       const subDates = subDocs.map((sd) => sd.datum).filter(Boolean) as string[];
       subDates.sort();
       const subWijken = new Set<string>();
@@ -1408,13 +1420,14 @@ export function getAllDossiers(
         sd.entiteiten.slice(0, 3).forEach((e) => subTags.add(e));
       });
 
-      const subKey = `${slug}:${slugify(subTitle)}`;
-      const customSub = customSubdossiers?.[subKey] || customSubdossiers?.[slugify(subTitle)];
+      const subKey = `${slug}:${subSlug}`;
+      const customSub = customSubdossiers?.[subKey] || customSubdossiers?.[subSlug];
+      const finalTitle = customSub?.title || subTitle;
 
       return {
-        id: slugify(subTitle),
-        title: customSub?.title || subTitle,
-        slug: slugify(subTitle),
+        id: subSlug,
+        title: finalTitle,
+        slug: subSlug,
         hoofddossier: title,
         documentCount: subDocs.length,
         uploadedCount: subUploaded,
@@ -1424,8 +1437,8 @@ export function getAllDossiers(
         },
         wijken: Array.from(subWijken),
         tags: customSub?.tags || Array.from(subTags).slice(0, 5),
-        description: customSub?.description || `${subDocs.length} raadsstukken en besluiten binnen ${subTitle}.`,
-        thumbnail: customSub?.thumbnail || getSubdossierThumbnail(subTitle, title),
+        description: customSub?.description || `${subDocs.length} raadsstukken en besluiten binnen ${finalTitle}.`,
+        thumbnail: customSub?.thumbnail || getSubdossierThumbnail(finalTitle, title),
       };
     });
 

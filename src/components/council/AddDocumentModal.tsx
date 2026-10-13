@@ -401,8 +401,8 @@ export const AddDocumentModal: React.FC<AddDocumentModalProps> = ({
                   onChange={(e) => setSubdossier(e.target.value)}
                   className="w-full text-xs rounded-xl bg-background border border-border px-3 py-2 text-foreground focus:outline-hidden font-medium"
                 >
-                  {(dossier.subdossiers || []).map((s) => (
-                    <option key={s.slug} value={s.title}>
+                  {(dossier.subdossiers || []).map((s, sIdx) => (
+                    <option key={`${s.slug || s.id || sIdx}-${sIdx}`} value={s.title}>
                       {s.title}
                     </option>
                   ))}

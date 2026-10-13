@@ -1085,8 +1085,8 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
                   className="bg-transparent text-foreground text-xs focus:outline-hidden cursor-pointer"
                 >
                   <option value="">Alle wijken & kernen</option>
-                  {availableWijken.map((w) => (
-                    <option key={w} value={w}>
+                  {availableWijken.map((w, wIdx) => (
+                    <option key={`${w}-${wIdx}`} value={w}>
                       {w}
                     </option>
                   ))}
@@ -1201,7 +1201,7 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
 
                 return (
                   <div
-                    key={sub.id || idx}
+                    key={`${sub.slug || sub.id || idx}-${idx}`}
                     id={`subdossier-card-${sub.slug}`}
                     className="group bg-card border border-border hover:border-accent/50 rounded-2xl overflow-hidden transition-all duration-200 shadow-2xs hover:shadow-xs flex flex-col justify-between"
                   >
@@ -1895,8 +1895,8 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
                     className="bg-transparent text-foreground text-xs focus:outline-hidden cursor-pointer max-w-[180px] truncate"
                   >
                     <option value="">Alle subdossiers ({dossier.subdossiers.length})</option>
-                    {dossier.subdossiers.map((sub) => (
-                      <option key={sub.slug} value={sub.title}>
+                    {dossier.subdossiers.map((sub, sIdx) => (
+                      <option key={`${sub.slug || sub.id || sIdx}-${sIdx}`} value={sub.title}>
                         {sub.title} ({sub.documentCount})
                       </option>
                     ))}
@@ -1915,8 +1915,8 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
                     className="bg-transparent text-foreground text-xs focus:outline-hidden cursor-pointer max-w-[160px] truncate"
                   >
                     <option value="">Alle wijken & kernen</option>
-                    {availableWijken.map((w) => (
-                      <option key={w} value={w}>
+                    {availableWijken.map((w, wIdx) => (
+                      <option key={`${w}-${wIdx}`} value={w}>
                         {w}
                       </option>
                     ))}

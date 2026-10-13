@@ -182,8 +182,8 @@ export const DistributeDocumentsModal: React.FC<DistributeDocumentsModalProps> =
                 onChange={(e) => setTargetSubdossier(e.target.value)}
                 className="w-full text-xs rounded-xl bg-background border border-border px-3 py-2 text-foreground focus:outline-hidden font-medium"
               >
-                {(dossier.subdossiers || []).map((sub) => (
-                  <option key={sub.slug} value={sub.title}>
+                {(dossier.subdossiers || []).map((sub, sIdx) => (
+                  <option key={`${sub.slug || sub.id || sIdx}-${sIdx}`} value={sub.title}>
                     {sub.title} ({sub.documentCount} stukken)
                   </option>
                 ))}
@@ -263,8 +263,8 @@ export const DistributeDocumentsModal: React.FC<DistributeDocumentsModalProps> =
                   className="bg-transparent text-foreground text-xs focus:outline-hidden cursor-pointer w-full"
                 >
                   <option value="all">Alle huidige subdossiers</option>
-                  {(dossier.subdossiers || []).map((s) => (
-                    <option key={s.slug} value={s.title}>
+                  {(dossier.subdossiers || []).map((s, sIdx) => (
+                    <option key={`${s.slug || s.id || sIdx}-${sIdx}`} value={s.title}>
                       Alleen uit: {s.title}
                     </option>
                   ))}
