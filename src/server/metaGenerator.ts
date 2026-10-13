@@ -23,7 +23,8 @@ export interface PageMetadata {
   robots?: string;
 }
 
-const DEFAULT_IMAGE = "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/6a28d811-8508-49fb-886c-cae636602e89/id-preview-d4978b6e--d986607a-92f9-418f-a640-08923c14bf91.lovable.app-1774473106949.png";
+const DEFAULT_IMAGE_PATH = "/assets/hero-banner.jpg";
+const DEFAULT_IMAGE = "https://lijstvanandel.nl/assets/hero-banner.jpg";
 const DEFAULT_TITLE = "Lijst van Andel | Lokale Politiek Steenwijkerland";
 const DEFAULT_DESC = "Officiële website en ledenportaal van politieke partij Lijst van Andel in Steenwijkerland met nieuws, fractieleden, agenda, standpunten en wijkpagina's.";
 
@@ -47,18 +48,45 @@ function truncate(text: string, maxLen = 150): string {
 }
 
 function resolveImageUrl(baseUrl: string, imgPath?: string): string {
+  const isLocalOnly =
+    baseUrl.includes("localhost") ||
+    baseUrl.includes("127.0.0.1") ||
+    baseUrl.includes("0.0.0.0");
+  const effectiveBase = isLocalOnly ? "https://lijstvanandel.nl" : baseUrl;
+
   if (!imgPath) {
-    return `${baseUrl}/api/og-image?url=${encodeURIComponent(DEFAULT_IMAGE)}`;
+    return `${effectiveBase}${DEFAULT_IMAGE_PATH}`;
   }
-  if (imgPath.includes("/api/og-image")) {
-    if (imgPath.startsWith("http://") || imgPath.startsWith("https://")) {
-      return imgPath;
+
+  if (imgPath.startsWith("http://") || imgPath.startsWith("https://")) {
+    if (imgPath.endsWith(".webp") && imgPath.includes("lijstvanandel.nl")) {
+      return imgPath.replace(/\.webp$/i, ".jpg");
     }
-    const cleanPath = imgPath.startsWith("/") ? imgPath : `/${imgPath}`;
-    return `${baseUrl}${cleanPath}`;
+    return imgPath;
   }
-  // Automatically route through /api/og-image so sharp crops, compresses (<150KB), and formats it to 1200x630 JPEG for WhatsApp & Facebook
-  return `${baseUrl}/api/og-image?url=${encodeURIComponent(imgPath)}`;
+
+  let cleanPath = imgPath.startsWith("/") ? imgPath : `/${imgPath}`;
+  // WhatsApp & certain crawlers do not unfurl .webp images. Convert to corresponding .jpg or .png if present
+  if (cleanPath.endsWith(".webp")) {
+    const jpgCandidate = cleanPath.replace(/\.webp$/i, ".jpg");
+    const pngCandidate = cleanPath.replace(/\.webp$/i, ".png");
+    if (
+      fs.existsSync(path.join(process.cwd(), "public", jpgCandidate)) ||
+      fs.existsSync(path.join(process.cwd(), "dist", jpgCandidate))
+    ) {
+      cleanPath = jpgCandidate;
+    } else if (
+      fs.existsSync(path.join(process.cwd(), "public", pngCandidate)) ||
+      fs.existsSync(path.join(process.cwd(), "dist", pngCandidate))
+    ) {
+      cleanPath = pngCandidate;
+    } else {
+      // Fallback: If no local jpg or png candidate exists, use guaranteed public hero banner jpg
+      return `${effectiveBase}${DEFAULT_IMAGE_PATH}`;
+    }
+  }
+
+  return `${effectiveBase}${cleanPath}`;
 }
 
 function extractYouTubeThumb(videoUrl?: string): string | null {
@@ -70,11 +98,10 @@ function extractYouTubeThumb(videoUrl?: string): string | null {
 
 export function getPageMetadata(urlPath: string, host: string, db: Record<string, any>): PageMetadata {
   const isLocal = host.includes("localhost") || host.includes("127.0.0.1") || host.includes("0.0.0.0");
-  const protocol = isLocal && process.env.NODE_ENV !== "production" ? "http" : "https";
-  const effectiveHost = isLocal && process.env.NODE_ENV !== "production"
-    ? host
-    : (host && !isLocal ? host : "lijstvanandel.nl");
-  const baseUrl = `${protocol}://${effectiveHost}`;
+  const isPreview = host.includes("preview.ai-studio.app") || host.includes("web.app") || host.includes("lovable.app");
+  // Social media crawlers (WhatsApp, Facebook, Twitter, LinkedIn) require canonical public URLs
+  const effectiveHost = (isLocal || isPreview) ? "lijstvanandel.nl" : (host || "lijstvanandel.nl");
+  const baseUrl = `https://${effectiveHost}`;
   const pathParts = urlPath.split("?");
   const rawPath = pathParts[0].split("#")[0];
   const cleanPath = (rawPath.length > 1 ? rawPath.replace(/\/+$/, "") : rawPath).toLowerCase();
@@ -160,8 +187,11 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
   // 2. Nieuws detail: /nieuws/:id
   const nieuwsMatch = cleanPath.match(/^\/nieuws\/([a-zA-Z0-9_-]+)$/);
   if (nieuwsMatch) {
-    const articleId = nieuwsMatch[1];
-    const article = (db?.news || []).find((n: any) => String(n.id) === String(articleId) || n.slug === articleId);
+    const articleId = nieuwsMatch[1].toLowerCase();
+    const article = (db?.news || []).find((n: any) =>
+      String(n.id).toLowerCase() === articleId ||
+      (n.slug && n.slug.toLowerCase() === articleId)
+    );
 
     if (article) {
       const cleanDesc = truncate(stripHtml(article.excerpt || article.description || article.content || ""), 160);
@@ -372,8 +402,11 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
   // 6. Agenda detail: /agenda/:id
   const agendaMatch = cleanPath.match(/^\/agenda\/([a-zA-Z0-9_-]+)$/);
   if (agendaMatch) {
-    const eventId = agendaMatch[1];
-    const event = (db?.events || []).find((e: any) => String(e.id) === String(eventId) || e.slug === eventId);
+    const eventId = agendaMatch[1].toLowerCase();
+    const event = (db?.events || []).find((e: any) =>
+      String(e.id).toLowerCase() === eventId ||
+      (e.slug && e.slug.toLowerCase() === eventId)
+    );
 
     if (event) {
       const cleanDesc = truncate(stripHtml(event.shortDescription || event.description || ""), 160);
@@ -716,29 +749,35 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
     };
   }
 
-  // 11. Fractielid video's detail: /fractie/:id/videos of /raadsleden/:id/videos (optioneel met ?v=ID of ?video=ID)
-  const videoMemberMatch = cleanPath.match(/^\/(?:fractie|raadsleden)\/([a-zA-Z0-9_-]+)\/videos$/);
-  if (videoMemberMatch) {
-    const memberId = videoMemberMatch[1];
+  // 11. Fractielid profiel & bijdragen: /fractie/:id, /raadsleden/:id (en /videos)
+  const videoMemberMatch = cleanPath.match(/^\/(?:fractie|raadsleden)\/([a-zA-Z0-9_-]+)(?:\/videos)?$/);
+  if (videoMemberMatch && videoMemberMatch[1] !== "videos") {
+    const memberId = videoMemberMatch[1].toLowerCase();
     const defaultMembers = [
-      { id: "1", name: "Sammy van Andel", role: "Fractievoorzitter", type: "Raadslid", imgUrl: "/assets/sammy.webp" },
-      { id: "2", name: "Lisa Mars", role: "Raadslid", type: "Raadslid", imgUrl: "/assets/lisa.webp" },
-      { id: "3", name: "Nathan ten Wolde", role: "Burgerraadslid", type: "Burgerraadslid", imgUrl: "/assets/nathan.webp" },
-      { id: "4", name: "Chris van Andel", role: "Burgerraadslid", type: "Burgerraadslid", imgUrl: "/assets/chris.webp" },
+      { id: "1", name: "Sammy van Andel", role: "Fractievoorzitter", type: "Raadslid", imgUrl: "/assets/sammy.png" },
+      { id: "2", name: "Lisa Mars", role: "Raadslid", type: "Raadslid", imgUrl: "/assets/lisa.png" },
+      { id: "3", name: "Nathan ten Wolde", role: "Burgerraadslid", type: "Burgerraadslid", imgUrl: "/assets/nathan.png" },
+      { id: "4", name: "Chris van Andel", role: "Burgerraadslid", type: "Burgerraadslid", imgUrl: "/assets/chris.jpg" },
     ];
-    const member = (db?.fractieleden || []).find((m: any) => String(m.id) === String(memberId) || m.name?.toLowerCase().includes(memberId.toLowerCase()))
-      || defaultMembers.find((m: any) => String(m.id) === String(memberId) || m.name.toLowerCase().includes(memberId.toLowerCase()));
+    const member = (db?.fractieleden || []).find((m: any) =>
+      String(m.id).toLowerCase() === memberId ||
+      m.name?.toLowerCase().includes(memberId) ||
+      (m.slug && m.slug.toLowerCase() === memberId)
+    ) || defaultMembers.find((m: any) =>
+      String(m.id).toLowerCase() === memberId ||
+      m.name.toLowerCase().includes(memberId)
+    );
     if (member) {
       // Zoek gekoppelde video's
       const memberVideos = (db?.videos || [])
-        .filter((v: any) => v.fractieledenIds?.map(String).includes(String(member.id)))
+        .filter((v: any) => v.fractieledenIds?.map((fid: any) => String(fid).toLowerCase()).includes(String(member.id).toLowerCase()))
         .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
       // Check of er specifiek een video is opgevraagd via ?v= of ?video=
-      const requestedVideoId = queryParams.get("v") || queryParams.get("video");
+      const requestedVideoId = (queryParams.get("v") || queryParams.get("video") || "").toLowerCase();
       const targetVideo = requestedVideoId
-        ? memberVideos.find((v: any) => String(v.id) === String(requestedVideoId)) ||
-          (db?.videos || []).find((v: any) => String(v.id) === String(requestedVideoId))
+        ? memberVideos.find((v: any) => String(v.id).toLowerCase() === requestedVideoId) ||
+          (db?.videos || []).find((v: any) => String(v.id).toLowerCase() === requestedVideoId)
         : null;
 
       if (targetVideo) {
@@ -768,6 +807,10 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
           ogTitle: `${videoTitle} - ${member.name}`,
           ogDescription: cleanDesc,
           ogImage: videoImage,
+          ogImageType: videoImage.endsWith(".png") ? "image/png" : "image/jpeg",
+          ogImageWidth: 1200,
+          ogImageHeight: 630,
+          ogImageAlt: `${videoTitle} - ${member.name}`,
           ogType: "video.other",
           canonicalUrl: specificCanonical
         };
@@ -797,9 +840,6 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
       const isBurger = member.type?.toLowerCase() === "burgerraadslid" || member.role?.toLowerCase().includes("burgerraadslid");
       const title = `Video's & Bijdragen van ${member.name} (${isBurger ? "Burgerraadslid" : (member.role || "Raadslid")}) | Lijst van Andel`;
       const desc = videoCustomDesc || `Bekijk alle videobijdragen, raadsdebatten en toelichtingen van ${member.name} in de gemeenteraad van Steenwijkerland.`;
-      const memberPhotoWebp = member.imgUrl?.startsWith("/assets/")
-        ? member.imgUrl.replace(/\.(png|jpg)$/i, ".webp")
-        : undefined;
 
       return {
         title,
@@ -807,7 +847,10 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
         ogTitle: title,
         ogDescription: desc,
         ogImage: selectedImage,
-        preloadImage: memberPhotoWebp,
+        ogImageType: selectedImage.endsWith(".png") ? "image/png" : "image/jpeg",
+        ogImageWidth: 1200,
+        ogImageHeight: 630,
+        ogImageAlt: title,
         ogType: "video.other",
         canonicalUrl
       };
@@ -817,8 +860,8 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
   // 11b. Directe videoroute: /video/:id of /videos/:id
   const directVideoMatch = cleanPath.match(/^\/videos?\/([a-zA-Z0-9_-]+)$/);
   if (directVideoMatch) {
-    const videoId = directVideoMatch[1];
-    const video = (db?.videos || []).find((v: any) => String(v.id) === String(videoId));
+    const videoId = directVideoMatch[1].toLowerCase();
+    const video = (db?.videos || []).find((v: any) => String(v.id).toLowerCase() === videoId);
     if (video) {
       const videoTitle = video.burgerraadslidTitle || video.title || "Videobijdrage";
       const cleanDesc = video.description
@@ -836,7 +879,8 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
       // Zoek eventueel gekoppeld fractielid voor extra context
       let speakerName = "Lijst van Andel";
       if (video.fractieledenIds && video.fractieledenIds.length > 0) {
-        const member = (db?.fractieleden || []).find((m: any) => String(m.id) === String(video.fractieledenIds[0]));
+        const firstFid = String(video.fractieledenIds[0]).toLowerCase();
+        const member = (db?.fractieleden || []).find((m: any) => String(m.id).toLowerCase() === firstFid);
         if (member) {
           speakerName = member.name;
           if (!videoImage) {
@@ -857,6 +901,10 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
         ogTitle: `${videoTitle} - ${speakerName}`,
         ogDescription: cleanDesc,
         ogImage: videoImage,
+        ogImageType: videoImage.endsWith(".png") ? "image/png" : "image/jpeg",
+        ogImageWidth: 1200,
+        ogImageHeight: 630,
+        ogImageAlt: `${videoTitle} - ${speakerName}`,
         ogType: "video.other",
         canonicalUrl
       };
@@ -1031,8 +1079,9 @@ export function injectMetadataIntoHtml(html: string, meta: PageMetadata): string
   return modified;
 }
 
-function escapeHtml(str: string): string {
-  return str
+function escapeHtml(str?: string | null): string {
+  if (!str) return "";
+  return String(str)
     .replace(/&/g, "&amp;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;")

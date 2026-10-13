@@ -146,10 +146,18 @@
     background: var(--gradient-gold);
   }
   .stadium-bg {
+    background-color: hsl(var(--background));
+  }
+  .dark .stadium-bg,
+  html.dark .stadium-bg {
     background:
       radial-gradient(ellipse at top, hsl(150 35% 42% / 0.15), transparent 60%),
       radial-gradient(ellipse at bottom, hsl(43 50% 60% / 0.08), transparent 60%),
       hsl(var(--background));
+  }
+  .light .stadium-bg,
+  html.light .stadium-bg {
+    background: hsl(var(--background)) !important;
   }
   .hover-lift { transition: var(--transition-smooth); }
   .hover-lift:hover {

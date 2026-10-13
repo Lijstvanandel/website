@@ -25,7 +25,8 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
-import { extractCity } from "@/lib/utils";
+import { extractCity, isEventExpired } from "@/lib/utils";
+import DOMPurify from "dompurify";
 import { ShareDialog } from "@/components/ShareDialog";
 import { GuestEventRegistrationModal } from "@/components/GuestEventRegistrationModal";
 
@@ -362,7 +363,7 @@ export default function AgendaDetail() {
   const isLocationReleased = Boolean(event.locationStatus?.isReleased);
 
   return (
-    <div className="pb-24 bg-background min-h-screen">
+    <div className="pb-12 sm:pb-16 bg-background min-h-screen">
       {/* Background Hero Header */}
       <div className="relative w-full h-[45vh] md:h-[55vh] bg-muted overflow-hidden">
         <img
@@ -384,7 +385,7 @@ export default function AgendaDetail() {
           </Link>
 
           <div className="flex items-center gap-2">
-            {event.isPublic && !isAuthenticated && !isAttending && !event.isCancelled && (
+            {event.isPublic && !isAuthenticated && !isAttending && !event.isCancelled && !isEventExpired(event) && (
               <button
                 type="button"
                 onClick={() => setGuestModalOpen(true)}
@@ -415,6 +416,10 @@ export default function AgendaDetail() {
             {event.isCancelled ? (
               <span className="inline-flex items-center px-3 py-1 bg-red-500/15 text-red-500 text-xs font-semibold uppercase tracking-wider rounded-full">
                 <AlertCircle className="w-3 h-3 mr-1" /> Evenement Gecanceld
+              </span>
+            ) : isEventExpired(event) ? (
+              <span className="inline-flex items-center px-3 py-1 bg-zinc-500/15 text-zinc-600 dark:text-zinc-400 text-xs font-semibold uppercase tracking-wider rounded-full">
+                <Calendar className="w-3 h-3 mr-1" /> Afgelopen Evenement
               </span>
             ) : (
               <span className="inline-flex items-center px-3 py-1 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-xs font-semibold uppercase tracking-wider rounded-full">
@@ -535,7 +540,7 @@ export default function AgendaDetail() {
             {event.description?.includes("<") ? (
               <div
                 className="prose prose-lg dark:prose-invert max-w-none text-foreground/90 leading-relaxed [&_h2]:font-display [&_h2]:text-2xl [&_h2]:mb-3 [&_h2]:mt-8 [&_h2]:text-foreground [&_h3]:font-display [&_h3]:text-xl [&_h3]:text-accent [&_h3]:mt-6 [&_h3]:mb-2 [&_a]:text-accent [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-accent [&_blockquote]:pl-4 [&_blockquote]:italic [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mb-4"
-                dangerouslySetInnerHTML={{ __html: event.description }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(event.description || "") }}
               />
             ) : (
               <div className="whitespace-pre-wrap text-foreground/90 leading-relaxed text-base md:text-lg">
@@ -553,6 +558,22 @@ export default function AgendaDetail() {
                 <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
                   Deze bijeenkomst is helaas afgelast. Houd onze website in de gaten voor nieuwe data.
                 </p>
+              </div>
+            ) : isEventExpired(event) && !isAttending ? (
+              <div className="text-center py-4">
+                <Calendar className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-60" />
+                <h3 className="font-display text-xl text-foreground">Dit evenement heeft al plaatsgevonden</h3>
+                <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+                  De datum van deze bijeenkomst is inmiddels verstreken. Aanmelden is niet meer mogelijk. Bekijk onze actuele agenda voor nieuwe bijeenkomsten.
+                </p>
+                <div className="mt-4">
+                  <Link
+                    to="/agenda"
+                    className="inline-flex items-center justify-center px-6 py-2.5 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs transition-all shadow-sm"
+                  >
+                    Bekijk actuele agenda
+                  </Link>
+                </div>
               </div>
             ) : isAttending ? (
               /* State: Already Registered / Attending */
@@ -939,6 +960,7 @@ export default function AgendaDetail() {
         title={`${event.title} | Agenda Lijst van Andel`}
         description={event.shortDescription || (event.description ? event.description.replace(/<[^>]*>/g, '').slice(0, 160) : "")}
         url={currentUrl}
+        imageUrl={event.thumbnailUrl || event.image || event.headerUrl}
       />
 
       {/* Guest Event Registration Modal (Pop-up without requiring an account) */}

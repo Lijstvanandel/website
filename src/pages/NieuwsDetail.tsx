@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { NewsItem, NewsMediaStats } from "@/data/news";
+import { DEFAULT_FRACTIELEDEN } from "@/data/fractieleden";
 import { useAuth } from "@/context/AuthContext";
 import { ShareDialog } from "@/components/ShareDialog";
 import { InteractiveArticleRenderer } from "@/components/InteractiveArticleRenderer";
@@ -66,6 +67,51 @@ export default function NieuwsDetail() {
   const [isPausedSpeech, setIsPausedSpeech] = useState<boolean>(false);
   const [speechSupported, setSpeechSupported] = useState<boolean>(true);
   const [speechRate, setSpeechRate] = useState<number>(1.0);
+
+  // Fractieleden state voor directe raadslidkoppeling
+  const [fractieleden, setFractieleden] = useState<any[]>(DEFAULT_FRACTIELEDEN);
+
+  useEffect(() => {
+    fetch("/api/fractieleden")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setFractieleden(data);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Zoek het specifieke raadslid dat als auteur is ingesteld
+  const authorMember = useMemo(() => {
+    if (!article) return null;
+    if (article.authorId) {
+      const found = fractieleden.find((m) => String(m.id) === String(article.authorId));
+      if (found) return found;
+    }
+    const nameToMatch = (article.authorName || article.author || "").trim().toLowerCase();
+    if (nameToMatch && nameToMatch !== "redactie" && nameToMatch !== "lijst van andel") {
+      const found = fractieleden.find(
+        (m) =>
+          m.name.toLowerCase() === nameToMatch ||
+          nameToMatch.includes(m.name.toLowerCase()) ||
+          m.name.toLowerCase().includes(nameToMatch)
+      );
+      if (found) return found;
+    }
+    return null;
+  }, [article, fractieleden]);
+
+  // Directe link naar de pagina van het betreffende raadslid
+  const authorMemberUrl = useMemo(() => {
+    if (authorMember?.id) {
+      return `/raadsleden/${authorMember.id}`;
+    }
+    if (article?.authorId) {
+      return `/raadsleden/${article.authorId}`;
+    }
+    return "/raadsleden";
+  }, [authorMember, article]);
 
   useEffect(() => {
     setLoading(true);
@@ -385,7 +431,7 @@ export default function NieuwsDetail() {
     : "";
 
   return (
-    <div className="pb-24 bg-background min-h-screen">
+    <div className="pb-12 sm:pb-16 bg-background min-h-screen">
       {/* Header / Hero */}
       <div className="relative w-full h-[50vh] md:h-[60vh] bg-muted">
         {article.headerUrl || article.thumbnailUrl || article.image ? (
@@ -788,15 +834,19 @@ export default function NieuwsDetail() {
             </figure>
           )}
 
-          {/* Optioneel: Auteur / (Burger)raadslid blok - zoals op wijken- en kernenpagina */}
+          {/* Optioneel: Auteur / (Burger)raadslid blok met directe link naar het betreffende raadslid */}
           {(article.authorName || (article.author && article.author !== "Redactie" && article.author !== "Lijst van Andel")) && (
             <div className="pt-2 border-t border-border/60 flex items-center justify-between gap-3 text-xs mb-6">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="w-7 h-7 rounded-full overflow-hidden bg-muted shrink-0 border border-accent/30">
-                  {article.authorAvatar ? (
+              <Link
+                to={authorMemberUrl}
+                className="flex items-center gap-2 min-w-0 group hover:opacity-90 transition-opacity"
+                title={authorMember ? `Bekijk profiel en bijdragen van ${authorMember.name}` : "Bekijk raadslid"}
+              >
+                <div className="w-7 h-7 rounded-full overflow-hidden bg-muted shrink-0 border border-accent/30 group-hover:border-accent transition-colors">
+                  {article.authorAvatar || authorMember?.imgUrl ? (
                     <img
-                      src={article.authorAvatar}
-                      alt={article.authorName || article.author}
+                      src={article.authorAvatar || authorMember?.imgUrl}
+                      alt={article.authorName || article.author || authorMember?.name}
                       className="w-full h-full object-cover"
                       onError={(e) => {
                         (e.target as HTMLImageElement).src = "/assets/silhouette.png";
@@ -808,17 +858,18 @@ export default function NieuwsDetail() {
                     </div>
                   )}
                 </div>
-                <span className="font-medium text-foreground truncate">
-                  {article.authorName || article.author}
-                  {article.authorRole && (
+                <span className="font-medium text-foreground truncate group-hover:text-accent transition-colors">
+                  {article.authorName || article.author || authorMember?.name}
+                  {(article.authorRole || authorMember?.role) && (
                     <span className="text-muted-foreground ml-1.5 font-normal">
-                      • {article.authorRole}
+                      • {article.authorRole || authorMember?.role}
                     </span>
                   )}
                 </span>
-              </div>
+              </Link>
               <Link
-                to="/raadsleden"
+                to={authorMemberUrl}
+                id="btn-bekijk-raadslid"
                 className="text-accent flex items-center gap-1 shrink-0 text-xs font-semibold hover:translate-x-1 transition-transform"
               >
                 Bekijk raadslid <ArrowRight className="w-3.5 h-3.5" />
@@ -961,6 +1012,7 @@ export default function NieuwsDetail() {
         title={article.title}
         description={article.description || article.excerpt}
         url={window.location.href}
+        imageUrl={article.headerUrl || article.thumbnailUrl || article.image}
       />
     </div>
   );

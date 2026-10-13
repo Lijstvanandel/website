@@ -4,8 +4,9 @@ import { Calendar, MapPin, Clock, ArrowRight, BookOpen, Share2, Lock, CheckCircl
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { AgendaMap, AgendaEventLocation } from "@/components/AgendaMap";
+import { AgendaCalendar } from "@/components/AgendaCalendar";
 import { EventItem } from "@/data/events";
-import { extractCity } from "@/lib/utils";
+import { extractCity, isEventExpired } from "@/lib/utils";
 import { ShareDialog } from "@/components/ShareDialog";
 import { GuestEventRegistrationModal } from "@/components/GuestEventRegistrationModal";
 
@@ -25,10 +26,12 @@ export default function Agenda() {
     title: string;
     description?: string;
     url?: string;
+    imageUrl?: string;
   }>({
     title: "",
     description: "",
     url: "",
+    imageUrl: "",
   });
 
   useEffect(() => {
@@ -126,12 +129,18 @@ export default function Agenda() {
       title: `${event.title} | Agenda Lijst van Andel`,
       description: cleanDesc,
       url,
+      imageUrl: event.thumbnailUrl || event.headerUrl || event.image,
     });
     setShareDialogOpen(true);
   };
 
+  // Filter out events with an expired date and sort soonest first
+  const upcomingEvents = events
+    .filter((ev) => !isEventExpired(ev))
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
   // Convert events to map format
-  const mapEvents: AgendaEventLocation[] = events
+  const mapEvents: AgendaEventLocation[] = upcomingEvents
     .filter((ev) => isAuthenticated || ev.isPublic)
     .map((ev) => ({
       id: ev.id,
@@ -151,7 +160,7 @@ export default function Agenda() {
 
   return (
     <div className="pt-32 pb-24">
-      <div className="container mx-auto px-6 max-w-6xl">
+      <div className="container mx-auto px-4 sm:px-6 max-w-7xl">
         <div className="text-center mb-12 animate-fade-up">
           <div className="text-xs uppercase tracking-[0.3em] text-accent mb-3">Activiteiten & Bijeenkomsten</div>
           <h1 className="text-5xl md:text-6xl font-display text-zinc-950 dark:text-white mb-6">Onze Agenda</h1>
@@ -160,13 +169,31 @@ export default function Agenda() {
           </p>
         </div>
 
-        {/* Interactive Leaflet Map with Address Input */}
-        <div className="mb-14">
-          <AgendaMap
-            events={mapEvents}
-            selectedEventId={selectedEventId}
-            onSelectEvent={(id) => setSelectedEventId(id)}
-          />
+        {/* Interactive Calendar & Map Side-by-Side */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch mb-14">
+          {/* Calendar View (Left side) */}
+          <div className="lg:col-span-5 flex flex-col">
+            <AgendaCalendar
+              events={upcomingEvents}
+              selectedEventId={selectedEventId}
+              onSelectEvent={(id) => {
+                setSelectedEventId(id);
+              }}
+              className="h-full mb-0"
+            />
+          </div>
+
+          {/* Map View (Right side) */}
+          <div className="lg:col-span-7 flex flex-col">
+            <AgendaMap
+              events={mapEvents}
+              selectedEventId={selectedEventId}
+              onSelectEvent={(id) => {
+                setSelectedEventId(id);
+              }}
+              className="h-full mb-0"
+            />
+          </div>
         </div>
 
         {/* Events Heading */}
@@ -178,23 +205,23 @@ export default function Agenda() {
             </p>
           </div>
           <div className="text-xs text-muted-foreground bg-secondary/80 px-3 py-1.5 rounded border border-border">
-            {events.length} {events.length === 1 ? "evenement" : "evenementen"}
+            {upcomingEvents.length} {upcomingEvents.length === 1 ? "gepland evenement" : "geplande evenementen"}
           </div>
         </div>
 
         {/* Events List */}
         <div className="grid gap-8 max-w-4xl mx-auto">
-          {events.length === 0 && (
+          {upcomingEvents.length === 0 && (
             <div className="text-center py-16 bg-card border border-border rounded-xl text-muted-foreground">
               <Calendar className="w-12 h-12 mx-auto mb-3 opacity-25" />
-              <p className="text-base">Geen geplande evenementen gevonden.</p>
+              <p className="text-base font-medium">Geen geplande evenementen gevonden.</p>
               <p className="text-xs text-muted-foreground/80 mt-1">
-                Kom binnenkort terug voor nieuwe data en bijeenkomsten.
+                Evenementen met een verlopen datum worden niet getoond. Kom binnenkort terug voor nieuwe data en bijeenkomsten.
               </p>
             </div>
           )}
 
-          {events.map((item, index) => {
+          {upcomingEvents.map((item, index) => {
             const isSelected = selectedEventId === item.id;
             const previewText = item.shortDescription || (item.description ? item.description.replace(/<[^>]*>/g, '') : '');
             return (
@@ -364,6 +391,7 @@ export default function Agenda() {
         title={shareData.title}
         description={shareData.description}
         url={shareData.url}
+        imageUrl={shareData.imageUrl}
       />
 
       {/* Guest Event Registration Modal for Public Events */}

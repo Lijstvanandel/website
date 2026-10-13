@@ -270,7 +270,7 @@ const Home = () => {
       </section>
 
       {/* VOORGRONDLAAG: Schuift bij omlaag scrollen over de sticky hero heen */}
-      <div className="relative z-20 bg-background stadium-bg shadow-[0_-20px_50px_rgba(0,0,0,0.7)] border-t border-accent/30 transition-colors">
+      <div className="relative z-20 bg-background stadium-bg dark:shadow-[0_-20px_50px_rgba(0,0,0,0.7)] border-t border-accent/30 transition-colors">
         {/* Compacte stats bar — '2 raadzetels, 2 burgerraadsleden etc.' als leidende bovenrand waarachter de hero verdwijnt */}
         <div aria-label="Kerncijfers" className="bg-twente-black/95 backdrop-blur-md border-b border-accent/20">
           <div className="container grid grid-cols-2 md:grid-cols-4 gap-px">

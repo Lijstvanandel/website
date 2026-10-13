@@ -248,6 +248,7 @@ export default function Nieuws() {
         title={shareArticle?.title || "Lijst van Andel Nieuws"}
         description={shareArticle?.description || shareArticle?.excerpt}
         url={shareArticle ? `${window.location.origin}/nieuws/${shareArticle.id}` : undefined}
+        imageUrl={shareArticle?.thumbnailUrl || shareArticle?.headerUrl || shareArticle?.image}
       />
     </div>
   );

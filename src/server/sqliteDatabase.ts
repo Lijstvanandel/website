@@ -797,8 +797,9 @@ export function recordCouncilDocumentView(entry: Omit<CouncilDocumentViewEntry, 
  */
 export function getCouncilSearchLogs(limit = 500): CouncilSearchLogEntry[] {
   if (!sqliteDb) return [];
+  const safeLimit = Math.max(1, Math.min(2000, Number.isInteger(Number(limit)) ? Math.floor(Number(limit)) : 500));
   try {
-    const rows = sqliteDb.exec(`SELECT data FROM councilSearchLogs ORDER BY rowid DESC LIMIT ${limit}`);
+    const rows = sqliteDb.exec(`SELECT data FROM councilSearchLogs ORDER BY rowid DESC LIMIT ${safeLimit}`);
     if (rows.length > 0 && rows[0].values) {
       return rows[0].values
         .map((v: any) => {
@@ -821,8 +822,9 @@ export function getCouncilSearchLogs(limit = 500): CouncilSearchLogEntry[] {
  */
 export function getCouncilDocumentViews(limit = 500): CouncilDocumentViewEntry[] {
   if (!sqliteDb) return [];
+  const safeLimit = Math.max(1, Math.min(2000, Number.isInteger(Number(limit)) ? Math.floor(Number(limit)) : 500));
   try {
-    const rows = sqliteDb.exec(`SELECT data FROM councilDocumentViews ORDER BY rowid DESC LIMIT ${limit}`);
+    const rows = sqliteDb.exec(`SELECT data FROM councilDocumentViews ORDER BY rowid DESC LIMIT ${safeLimit}`);
     if (rows.length > 0 && rows[0].values) {
       return rows[0].values
         .map((v: any) => {
@@ -925,8 +927,9 @@ export function recordNavbarSearchLog(entry: Omit<NavbarSearchLogEntry, "id" | "
  */
 export function getNavbarSearchLogs(limit = 1000): NavbarSearchLogEntry[] {
   if (!sqliteDb) return [];
+  const safeLimit = Math.max(1, Math.min(2000, Number.isInteger(Number(limit)) ? Math.floor(Number(limit)) : 1000));
   try {
-    const rows = sqliteDb.exec(`SELECT data FROM navbarSearchLogs ORDER BY rowid DESC LIMIT ${limit}`);
+    const rows = sqliteDb.exec(`SELECT data FROM navbarSearchLogs ORDER BY rowid DESC LIMIT ${safeLimit}`);
     if (rows.length > 0 && rows[0].values) {
       return rows[0].values
         .map((v: any) => {

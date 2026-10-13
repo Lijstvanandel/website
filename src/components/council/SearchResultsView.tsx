@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import DOMPurify from "dompurify";
 import {
   FileText,
   Folder,
@@ -476,7 +477,7 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
                     {hit.snippet && (
                       <p
                         className="text-xs text-muted-foreground leading-relaxed line-clamp-2"
-                        dangerouslySetInnerHTML={{ __html: hit.snippet }}
+                        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(hit.snippet) }}
                       />
                     )}
 

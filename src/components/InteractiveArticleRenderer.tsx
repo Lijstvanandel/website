@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
+import DOMPurify from "dompurify";
 import {
   Map,
   BarChart3,
@@ -444,7 +445,7 @@ export const InteractiveArticleRenderer: React.FC<InteractiveArticleRendererProp
             key={`html-${index}`}
             onClick={handleContentClick}
             className="prose prose-lg dark:prose-invert max-w-none text-foreground/90 leading-relaxed [&_h2]:font-display [&_h2]:text-2xl [&_h2]:mb-3 [&_h2]:mt-8 [&_h2]:text-foreground [&_h3]:font-display [&_h3]:text-xl [&_h3]:text-accent [&_h3]:mt-6 [&_h3]:mb-2 [&_a]:text-accent [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-accent [&_blockquote]:pl-4 [&_blockquote]:italic [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mb-4 [&_figure]:my-6 [&_figure_img]:cursor-zoom-in [&_figure_img]:rounded-xl [&_figure_img]:shadow-sm [&_figure_img]:border [&_figure_img]:border-border/80 [&_figure_figcaption]:text-xs [&_figure_figcaption]:text-muted-foreground [&_figure_figcaption]:mt-2 [&_figure_figcaption]:italic"
-            dangerouslySetInnerHTML={{ __html: part.html }}
+            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(part.html) }}
           />
         );
       })}

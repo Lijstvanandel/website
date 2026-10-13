@@ -45,7 +45,7 @@ export const Footer = () => {
   };
 
   return (
-    <footer className="border-t border-accent/20 bg-twente-black mt-20">
+    <footer className="border-t border-border/20 dark:border-accent/20 bg-twente-black transition-colors">
       <div className="container py-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
         <div>
           <div className="flex items-center gap-3 mb-4">

@@ -27,3 +27,42 @@ export function extractCity(address?: string): string {
   }
   return trimmed;
 }
+
+export function isEventExpired(item?: { date?: string; endTime?: string; startTime?: string } | null): boolean {
+  if (!item || !item.date) return false;
+  try {
+    const rawDate = String(item.date).trim();
+    const datePart = rawDate.split("T")[0];
+    const parts = datePart.split("-").map(Number);
+    if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+      const [year, month, day] = parts;
+      let hours = 23;
+      let minutes = 59;
+      let seconds = 59;
+
+      if (item.endTime) {
+        const cleanTime = String(item.endTime).replace(".", ":").trim();
+        const tParts = cleanTime.split(":");
+        if (tParts.length >= 2 && !isNaN(Number(tParts[0])) && !isNaN(Number(tParts[1]))) {
+          hours = Number(tParts[0]);
+          minutes = Number(tParts[1]);
+          seconds = 0;
+        }
+      }
+
+      const eventDate = new Date(year, month - 1, day, hours, minutes, seconds);
+      return eventDate.getTime() < Date.now();
+    }
+
+    const parsed = new Date(rawDate);
+    if (!isNaN(parsed.getTime())) {
+      if (!rawDate.includes(":") && !rawDate.includes("T")) {
+        parsed.setHours(23, 59, 59, 999);
+      }
+      return parsed.getTime() < Date.now();
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}

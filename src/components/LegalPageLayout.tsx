@@ -455,27 +455,6 @@ export const LegalPageLayout: React.FC<LegalPageLayoutProps> = ({ slug, icon: Ic
                 </div>
               </div>
             </div>
-
-            {/* Quick Links Footer in Page */}
-            <div className="mt-6 flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground px-2">
-              <div className="flex items-center gap-1.5">
-                <Shield className="w-3.5 h-3.5 text-accent" />
-                <span>Lijst van Andel Steenwijkerland</span>
-              </div>
-              <div className="flex items-center gap-4">
-                <Link to="/privacyverklaring" className="hover:text-accent transition-colors">
-                  Privacyverklaring
-                </Link>
-                <span>•</span>
-                <Link to="/algemene-voorwaarden" className="hover:text-accent transition-colors">
-                  Algemene voorwaarden
-                </Link>
-                <span>•</span>
-                <Link to="/verwerkingsreglement" className="hover:text-accent transition-colors">
-                  Verwerkingsreglement
-                </Link>
-              </div>
-            </div>
           </main>
         </div>
       </div>

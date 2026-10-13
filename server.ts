@@ -313,7 +313,17 @@ const execPromise = util.promisify(exec);
 let lastCacheClearedTime: string | null = null;
 let lastSystemSyncTime: string | null = null;
 
-const JWT_SECRET = process.env.JWT_SECRET || "super-secret-dev-key";
+// Cryptographic secret for signing JSON Web Tokens (JWT)
+// Generates a cryptographically strong 256-bit random secret if not set via environment
+const FALLBACK_RANDOM_JWT_SECRET = crypto.randomBytes(32).toString("hex");
+const JWT_SECRET = process.env.JWT_SECRET || FALLBACK_RANDOM_JWT_SECRET;
+if (!process.env.JWT_SECRET) {
+  if (process.env.NODE_ENV === "production") {
+    console.warn("\x1b[31m[SECURITY WARNING] JWT_SECRET ontbreekt in de productieomgeving! Een willekeurige 256-bit sleutel is gegenereerd voor deze runtime.\x1b[0m");
+  } else {
+    console.info("[SECURITY INFO] Ontwikkelomgeving gebruikt dynamisch gegenereerde 256-bit JWT_SECRET fallback.");
+  }
+}
 // SQLite Database is initialized in startServer() with database.sqlite
 const DB_FILE = path.join(process.cwd(), "database.sqlite");
 
@@ -1006,6 +1016,7 @@ function getDb() {
 
   // Ensure primary admin user account exists for seamless administrator access
   if (Array.isArray(db.users) && !db.users.some((u: any) => u.role === "admin" || u.username === "admin")) {
+    const isDefaultAdminPass = !process.env.ADMIN_PASSWORD;
     const adminPass = process.env.ADMIN_PASSWORD || "admin123";
     const defaultAdminPass = bcrypt.hashSync(adminPass, 10);
     db.users.push({
@@ -1019,10 +1030,15 @@ function getDb() {
       paidAmount: 0,
       createdAt: new Date().toISOString(),
       password: defaultAdminPass,
+      mustChangePassword: isDefaultAdminPass,
       newsletterSubscribed: true
     });
     saveDb(db);
-    console.log("[SECURITY] ✅ Hoofdbeheerdersaccount 'admin' gegarandeerd actief.");
+    if (isDefaultAdminPass) {
+      console.warn("\x1b[33m[SECURITY NOTICE] Hoofdbeheerdersaccount 'admin' aangemaakt met standaardwachtwoord. Wijzig dit direct in het beheerderspaneel!\x1b[0m");
+    } else {
+      console.log("[SECURITY] ✅ Hoofdbeheerdersaccount 'admin' gegarandeerd actief met custom wachtwoord.");
+    }
   }
 
   // Ensure penningmeester user account exists for seamless role access
@@ -1039,6 +1055,7 @@ function getDb() {
       paidAmount: 0,
       createdAt: new Date().toISOString(),
       password: defaultTreasurerPass,
+      mustChangePassword: true,
       newsletterSubscribed: true
     });
     saveDb(db);
@@ -1058,6 +1075,7 @@ function getDb() {
       paidAmount: 0,
       createdAt: new Date().toISOString(),
       password: defaultSecretaryPass,
+      mustChangePassword: true,
       newsletterSubscribed: true
     });
     saveDb(db);
@@ -1077,6 +1095,7 @@ function getDb() {
       paidAmount: 0,
       createdAt: new Date().toISOString(),
       password: defaultChairmanPass,
+      mustChangePassword: true,
       newsletterSubscribed: true
     });
     saveDb(db);
@@ -1970,6 +1989,16 @@ function saveDb(data: any) {
   saveDbToSqlite(data);
 }
 
+const DANGEROUS_FILE_EXTENSIONS = /\.(exe|bat|cmd|sh|bash|php|phtml|phar|pl|py|cgi|jar|war|ear|jsp|asp|aspx|cer|csr|vbs|vbe|wsf|wsh|hta|msi|msp|scr|pif|reg|ps1|ps2|psc1|psc2|inf|scf|lnk|com)$/i;
+
+const safeFileFilter = (req: any, file: any, cb: any) => {
+  const ext = path.extname(file.originalname || "").toLowerCase();
+  if (DANGEROUS_FILE_EXTENSIONS.test(ext) || (file.originalname && file.originalname.includes("\0"))) {
+    return cb(new Error("Dit bestandstype is om veiligheidsredenen niet toegestaan."), false);
+  }
+  cb(null, true);
+};
+
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     let subfolder = 'public/uploads';
@@ -2016,11 +2045,13 @@ const storage = multer.diskStorage({
     cb(null, fullDir);
   },
   filename: function (req, file, cb) {
+    const rawExt = path.extname(file.originalname).toLowerCase();
+    const safeExt = DANGEROUS_FILE_EXTENSIONS.test(rawExt) ? ".bin" : rawExt;
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
+    cb(null, uniqueSuffix + safeExt);
   }
 });
-const upload = multer({ storage: storage, limits: { fileSize: 600 * 1024 * 1024 } });
+const upload = multer({ storage: storage, fileFilter: safeFileFilter, limits: { fileSize: 600 * 1024 * 1024 } });
 
 const dossierDocStorage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -2031,12 +2062,15 @@ const dossierDocStorage = multer.diskStorage({
     cb(null, fullDir);
   },
   filename: function (req, file, cb) {
-    // Preserve exact original filename to match raadsstukken metadata
-    let name = path.basename(file.originalname);
+    // Preserve exact original filename to match raadsstukken metadata, sanitized against path traversal
+    let name = path.basename(file.originalname).replace(/[^a-zA-Z0-9._-]/g, "_").replace(/\.\.+/g, ".");
+    if (DANGEROUS_FILE_EXTENSIONS.test(name)) {
+      name = name + ".blocked";
+    }
     try {
       const fixed = Buffer.from(name, "latin1").toString("utf8");
       if (fixed && !fixed.includes("\ufffd")) {
-        name = fixed;
+        name = fixed.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/\.\.+/g, ".");
       }
     } catch (_e) {
       // Fallback to raw basename
@@ -2044,7 +2078,7 @@ const dossierDocStorage = multer.diskStorage({
     cb(null, name);
   }
 });
-const uploadDossierDocs = multer({ storage: dossierDocStorage, limits: { fileSize: 1024 * 1024 * 1024 } }); // 1GB limit for large ZIP archives
+const uploadDossierDocs = multer({ storage: dossierDocStorage, fileFilter: safeFileFilter, limits: { fileSize: 1024 * 1024 * 1024 } }); // 1GB limit for large ZIP archives
 
 const dossierThumbnailStorage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -2055,12 +2089,13 @@ const dossierThumbnailStorage = multer.diskStorage({
     cb(null, fullDir);
   },
   filename: function (req, file, cb) {
-    const ext = path.extname(file.originalname) || ".jpg";
+    const rawExt = path.extname(file.originalname) || ".jpg";
+    const ext = DANGEROUS_FILE_EXTENSIONS.test(rawExt) ? ".jpg" : rawExt;
     const name = `dossier-thumb-${Date.now()}-${Math.random().toString(36).substring(2, 7)}${ext}`;
     cb(null, name);
   },
 });
-const uploadDossierThumbnail = multer({ storage: dossierThumbnailStorage, limits: { fileSize: 15 * 1024 * 1024 } });
+const uploadDossierThumbnail = multer({ storage: dossierThumbnailStorage, fileFilter: safeFileFilter, limits: { fileSize: 15 * 1024 * 1024 } });
 
 const researchStorage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -2194,7 +2229,20 @@ async function startServer() {
 
   const app = express();
   const PORT = 3000;
+  app.disable('x-powered-by');
   app.set('trust proxy', true);
+
+  // Essential Defense-in-Depth HTTP Security Headers
+  app.use((req: any, res: any, next: any) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-XSS-Protection", "1; mode=block");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    // Respect existing X-Frame-Options if already set by dedicated endpoint
+    if (!res.getHeader("X-Frame-Options")) {
+      res.setHeader("X-Frame-Options", "SAMEORIGIN");
+    }
+    next();
+  });
 
   // Gzip/Brotli compression middleware for Core Web Vitals & fast LCP
   app.use(compression({
@@ -2300,7 +2348,7 @@ async function startServer() {
 
   const staticUploadsOptions = {
     maxAge: 86400000 * 7, // 7 days browser cache
-    dotfiles: 'allow' as const,
+    dotfiles: 'deny' as const,
     setHeaders: (res: any, filePath: string) => {
       res.setHeader("Access-Control-Allow-Origin", "*");
       if (filePath.endsWith('.pdf')) {
@@ -2336,7 +2384,8 @@ async function startServer() {
 
   // Dedicated routes with cross-folder fallback for uploaded documents/PDFs
   app.get("/uploads/stemgedrag/:filename", (req, res, next) => {
-    const filePath = path.join(uploadsPath, "stemgedrag", req.params.filename);
+    const safeFilename = path.basename(req.params.filename);
+    const filePath = path.join(uploadsPath, "stemgedrag", safeFilename);
     if (fs.existsSync(filePath)) {
       if (filePath.endsWith('.pdf')) {
         res.setHeader('Content-Type', 'application/pdf');
@@ -2344,7 +2393,7 @@ async function startServer() {
       }
       return res.sendFile(filePath);
     }
-    const fallbackPath = path.join(uploadsPath, "documents", req.params.filename);
+    const fallbackPath = path.join(uploadsPath, "documents", safeFilename);
     if (fs.existsSync(fallbackPath)) {
       if (fallbackPath.endsWith('.pdf')) {
         res.setHeader('Content-Type', 'application/pdf');
@@ -3167,6 +3216,55 @@ async function startServer() {
     }
   });
 
+  // Rate Limiting: Max 10 mislukte inlogpogingen per IP per 15 minuten tegen brute-force & credential stuffing
+  const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minuten
+    max: 10, // Max 10 mislukte pogingen per IP
+    skipSuccessfulRequests: true, // Succesvolle inlogs tellen niet mee tegen de limiet
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      error: "Te veel mislukte inlogpogingen vanaf dit IP-adres. Wacht 15 minuten voordat u het opnieuw probeert.",
+      code: "RATE_LIMIT_EXCEEDED"
+    }
+  });
+
+  // Rate Limiting: Max 5 wachtwoordherstel-aanvragen per IP per 15 minuten tegen spam en e-mail enumeration
+  const forgotPasswordLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minuten
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      error: "Te veel verzoeken voor wachtwoordherstel vanaf dit IP-adres. Probeer het over 15 minuten opnieuw.",
+      code: "RATE_LIMIT_EXCEEDED"
+    }
+  });
+
+  // Rate Limiting: Max 5 registraties per IP per uur ter voorkoming van spam-accounts
+  const registerLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 uur
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      error: "U heeft te veel registraties uitgevoerd vanaf dit IP-adres in een kort tijdsbestek. Probeer het over een uur opnieuw.",
+      code: "RATE_LIMIT_EXCEEDED"
+    }
+  });
+
+  // Rate Limiting: Max 10 nieuwsbrief inschrijvingen per IP per uur
+  const newsletterLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 uur
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      error: "Te veel aanmeldingen vanaf dit IP-adres. Probeer het later opnieuw.",
+      code: "RATE_LIMIT_EXCEEDED"
+    }
+  });
+
   // Helper to compute whether an account is officially a full 'lid' (active only 24 hours after registration / checkout)
   function computeMembershipDetails(user: any) {
     if (!user) {
@@ -3240,7 +3338,7 @@ async function startServer() {
   }
 
   function getSafeUserWithMembership(user: any) {
-    const { password, ...safeUser } = user;
+    const { password, failedLoginAttempts, lockoutUntil, resetToken, resetPasswordToken, twoFactorSecret, ...safeUser } = user;
     const memDetails = computeMembershipDetails(user);
     const resolvedEmail = safeUser.email || (safeUser.username?.includes("@") ? safeUser.username : "");
     const newsletterSubscribed = safeUser.newsletterSubscribed !== undefined ? Boolean(safeUser.newsletterSubscribed) : true;
@@ -3261,7 +3359,7 @@ async function startServer() {
   }
 
   // Auth Routes
-  app.post("/api/register", async (req, res) => {
+  app.post("/api/register", registerLimiter, async (req, res) => {
     const {
       salutation,
       fullName,
@@ -3416,13 +3514,47 @@ async function startServer() {
       return uName === identifier || uEmail === identifier;
     });
 
+    // Check of het account tijdelijk vergrendeld is wegens te veel mislukte inlogpogingen
+    if (user && user.lockoutUntil && Date.now() < user.lockoutUntil) {
+      const remainingMinutes = Math.max(1, Math.ceil((user.lockoutUntil - Date.now()) / 60000));
+      return res.status(429).json({
+        error: `Dit account is tijdelijk vergrendeld vanwege te veel opeenvolgende mislukte inlogpogingen. Probeer het over ${remainingMinutes} minuten opnieuw.`,
+        code: "ACCOUNT_LOCKED"
+      });
+    }
+
     if (!user) {
+      // Dummy bcrypt vergelijking om timing attacks (user enumeration) te neutraliseren
+      await bcrypt.compare(String(password), "$2a$10$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuu").catch(() => {});
       return res.status(401).json({ error: "Ongeldige inloggegevens" });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(401).json({ error: "Ongeldige inloggegevens" });
+      const MAX_ATTEMPTS = 5;
+      user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+      
+      if (user.failedLoginAttempts >= MAX_ATTEMPTS) {
+        user.lockoutUntil = Date.now() + 15 * 60 * 1000; // 15 minuten blokkade
+        saveVaultItem("users", user);
+        return res.status(429).json({
+          error: "Dit account is voor 15 minuten vergrendeld wegens 5 opeenvolgende onjuiste inlogpogingen.",
+          code: "ACCOUNT_LOCKED"
+        });
+      }
+
+      saveVaultItem("users", user);
+      const remainingAttempts = MAX_ATTEMPTS - user.failedLoginAttempts;
+      return res.status(401).json({ 
+        error: `Ongeldige inloggegevens. Let op: na nog ${remainingAttempts} mislukte ${remainingAttempts === 1 ? "poging" : "pogingen"} wordt dit account tijdelijk vergrendeld.` 
+      });
+    }
+
+    // Succesvolle inlog: reset eventuele eerdere gefaalde pogingen en lockout
+    if (user.failedLoginAttempts || user.lockoutUntil) {
+      user.failedLoginAttempts = 0;
+      delete user.lockoutUntil;
+      saveVaultItem("users", user);
     }
 
     // Approval check for accounts awaiting activation
@@ -3444,8 +3576,8 @@ async function startServer() {
     });
   };
 
-  app.post("/api/login", handleLoginLogic);
-  app.post("/api/auth/login", handleLoginLogic);
+  app.post("/api/login", loginLimiter, handleLoginLogic);
+  app.post("/api/auth/login", loginLimiter, handleLoginLogic);
 
   // User Approval Routes (Key-Users & Admins)
   app.get("/api/portal/pending-users", requireAuth, requireKeyUserOrAdmin, (_req: any, res: any) => {
@@ -3494,7 +3626,7 @@ async function startServer() {
   });
 
   // Forgot Password Request Endpoint
-  app.post("/api/auth/forgot-password", async (req: any, res: any) => {
+  app.post("/api/auth/forgot-password", forgotPasswordLimiter, async (req: any, res: any) => {
     const { email } = req.body;
     if (!email || typeof email !== "string" || !email.trim()) {
       return res.status(400).json({ error: "Vul een geldig e-mailadres in." });
@@ -3520,10 +3652,12 @@ async function startServer() {
 
     if (user) {
       const resetToken = crypto.randomBytes(32).toString("hex");
+      const tokenHash = crypto.createHash("sha256").update(resetToken).digest("hex");
       const expiresAt = now + 60 * 60 * 1000; // 1 hour
 
       db.passwordResetTokens.push({
-        token: resetToken,
+        token: tokenHash, // Store SHA-256 hash in database to protect token at rest
+        tokenHash,
         userId: user.id,
         email: user.email || normalizedEmail,
         expiresAt,
@@ -3532,7 +3666,7 @@ async function startServer() {
       saveDb(db);
 
       const resetUrl = `${origin}/reset-wachtwoord?token=${resetToken}`;
-      console.log(`[PASSWORD RESET] Wachtwoord herstellink aangemaakt voor ${user.username} (${user.email}): ${resetUrl}`);
+      console.log(`[PASSWORD RESET] Wachtwoord herstelverzoek aangemaakt voor ${user.username}`);
 
       const emailSubject = "Wachtwoord opnieuw instellen - Lijst van Andel";
       const emailHtml = `
@@ -3589,22 +3723,26 @@ async function startServer() {
         console.error(`[WACHTWOORD HERSTEL] Onverwachte fout bij e-mailverzending naar ${normalizedEmail}:`, err.message);
       }
 
-      return res.status(200).json({
+      const responsePayload: any = {
         success: true,
-        message: `Er is een herstellink verzonden naar ${normalizedEmail}.`,
-        previewResetUrl: resetUrl
-      });
+        message: "Als dit e-mailadres bij ons bekend is, ontvangt u een link om uw wachtwoord opnieuw in te stellen."
+      };
+      // In non-production environments where SMTP is simulated/not configured, include testlink for developers only
+      if (process.env.NODE_ENV !== "production" && !getEmailTransporter()) {
+        responsePayload.previewResetUrl = resetUrl;
+      }
+      return res.status(200).json(responsePayload);
     }
 
     // Return generic success to prevent email enumeration
     return res.status(200).json({
       success: true,
-      message: `Als dit e-mailadres bij ons bekend is, ontvangt u een link om uw wachtwoord opnieuw in te stellen.`
+      message: "Als dit e-mailadres bij ons bekend is, ontvangt u een link om uw wachtwoord opnieuw in te stellen."
     });
   });
 
   // Reset Password Execution Endpoint
-  app.post("/api/auth/reset-password", async (req: any, res: any) => {
+  app.post("/api/auth/reset-password", loginLimiter, async (req: any, res: any) => {
     const { token, newPassword } = req.body;
     if (!token || !newPassword) {
       return res.status(400).json({ error: "Ongeldige gegevens opgegeven." });
@@ -3620,8 +3758,9 @@ async function startServer() {
     }
 
     const now = Date.now();
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
     const tokenRecordIndex = db.passwordResetTokens.findIndex(
-      (t: any) => t.token === token && t.expiresAt > now
+      (t: any) => (t.token === token || t.token === tokenHash || t.tokenHash === tokenHash) && t.expiresAt > now
     );
 
     if (tokenRecordIndex === -1) {
@@ -6031,7 +6170,7 @@ async function startServer() {
   }
 
   // Public: Subscribe to newsletter
-  app.post("/api/newsletter/subscribe", (req: any, res: any) => {
+  app.post("/api/newsletter/subscribe", newsletterLimiter, (req: any, res: any) => {
     const { email, name } = req.body;
     if (!email || typeof email !== "string" || !email.includes("@")) {
       return res.status(400).json({ error: "Vul alstublieft een geldig e-mailadres in." });
@@ -7654,14 +7793,34 @@ async function startServer() {
   app.get("/api/news", (req, res) => {
     const db = getDb();
     let newsList = db.news || [];
-    const { wijkSlug, category, includeAll, includeHidden } = req.query;
+    const { wijkSlug, category, includeAll, includeHidden, memberId, authorId } = req.query;
 
     // By default, hide onzichtbaar/hidden news unless requested with includeHidden=true or includeAll=true
     if (includeHidden !== "true" && includeAll !== "true") {
       newsList = newsList.filter((n: any) => !n.isHidden && n.isHidden !== "true");
     }
 
-    if (wijkSlug) {
+    if (memberId || authorId) {
+      const targetId = String(memberId || authorId).trim();
+      const defaultMembers = [
+        { id: "1", name: "Sammy van Andel" },
+        { id: "2", name: "Lisa Mars" },
+        { id: "3", name: "Nathan ten Wolde" },
+        { id: "4", name: "Chris van Andel" }
+      ];
+      const targetMember = (db.fractieleden || []).find((f: any) => String(f.id) === targetId) ||
+        defaultMembers.find((f: any) => String(f.id) === targetId);
+      const targetName = targetMember ? targetMember.name.toLowerCase().trim() : "";
+
+      newsList = newsList.filter((n: any) => {
+        if (n.authorId && String(n.authorId) === targetId) return true;
+        if (targetName) {
+          const aName = (n.authorName || n.author || "").toLowerCase().trim();
+          if (aName === targetName || aName.includes(targetName) || targetName.includes(aName)) return true;
+        }
+        return false;
+      });
+    } else if (wijkSlug) {
       const ws = String(wijkSlug).toLowerCase().trim();
       newsList = newsList.filter(
         (n: any) =>
@@ -8141,6 +8300,45 @@ async function startServer() {
     return trimmed;
   }
 
+  function isEventExpired(item: any): boolean {
+    if (!item || !item.date) return false;
+    try {
+      const rawDate = String(item.date).trim();
+      const datePart = rawDate.split("T")[0];
+      const parts = datePart.split("-").map(Number);
+      if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+        const [year, month, day] = parts;
+        let hours = 23;
+        let minutes = 59;
+        let seconds = 59;
+
+        if (item.endTime) {
+          const cleanTime = String(item.endTime).replace(".", ":").trim();
+          const tParts = cleanTime.split(":");
+          if (tParts.length >= 2 && !isNaN(Number(tParts[0])) && !isNaN(Number(tParts[1]))) {
+            hours = Number(tParts[0]);
+            minutes = Number(tParts[1]);
+            seconds = 0;
+          }
+        }
+
+        const eventDate = new Date(year, month - 1, day, hours, minutes, seconds);
+        return eventDate.getTime() < Date.now();
+      }
+
+      const parsed = new Date(rawDate);
+      if (!isNaN(parsed.getTime())) {
+        if (!rawDate.includes(":") && !rawDate.includes("T")) {
+          parsed.setHours(23, 59, 59, 999);
+        }
+        return parsed.getTime() < Date.now();
+      }
+    } catch {
+      return false;
+    }
+    return false;
+  }
+
   // Events/Agenda Routes
   app.get("/api/events", (req: any, res: any) => {
     const db = getDb();
@@ -8166,6 +8364,17 @@ async function startServer() {
     if (!isMember) {
       events = events.filter((e: any) => e.isPublic);
     }
+
+    const includeExpired = req.query.includeExpired === "true" || req.query.all === "true";
+    if (!includeExpired) {
+      events = events.filter((e: any) => !isEventExpired(e));
+    }
+
+    events.sort((a: any, b: any) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      return dateA - dateB;
+    });
 
     // Sanitize address: only show street & house number if registered via portal or admin
     const sanitizedEvents = events.map((e: any) => {

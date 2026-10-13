@@ -93,13 +93,15 @@ const AppRoutes = () => {
         <Route element={<Layout />}>
           <Route path="/" element={<Home />} />
           <Route path="/fractie" element={<Raadsleden />} />
+          <Route path="/fractie/:id" element={<FractielidVideos />} />
           <Route path="/fractie/:id/videos" element={<FractielidVideos />} />
+          <Route path="/raadsleden" element={<Raadsleden />} />
+          <Route path="/raadsleden/:id" element={<FractielidVideos />} />
           <Route path="/raadsleden/:id/videos" element={<FractielidVideos />} />
           <Route path="/video/:id" element={<VideoRedirect />} />
           <Route path="/videos/:id" element={<VideoRedirect />} />
           <Route path="/bestuur" element={<Bestuur />} />
           <Route path="/steunfractie" element={<Steunfractie />} />
-          <Route path="/raadsleden" element={<Raadsleden />} />
           <Route path="/standpunten" element={<Standpunten />} />
           <Route path="/agenda" element={<Agenda />} />
           <Route path="/agenda/:id" element={<AgendaDetail />} />

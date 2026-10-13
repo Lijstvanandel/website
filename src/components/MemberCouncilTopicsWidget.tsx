@@ -339,7 +339,7 @@ export function MemberCouncilTopicsWidget({ token, currentUser }: MemberCouncilT
                           </span>
                         </div>
                         <Link
-                          to="/raadsleden"
+                          to={topic.assignedMemberId ? `/raadsleden/${topic.assignedMemberId}` : (topic.assignedTo ? `/raadsleden/${topic.assignedTo}` : "/raadsleden")}
                           onClick={(e) => e.stopPropagation()}
                           className="text-accent flex items-center gap-1 shrink-0 text-xs font-semibold hover:translate-x-1 transition-transform"
                         >

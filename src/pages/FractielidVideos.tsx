@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Video, Calendar, Tag, MapPin, AlertCircle, Share2, Check } from "lucide-react";
+import { ArrowLeft, Video, Calendar, Tag, MapPin, AlertCircle, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FractielidWidget, FractielidItem } from "@/components/FractielidWidget";
 import { BelafspraakDialog } from "@/components/BelafspraakDialog";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { ShareDialog } from "@/components/ShareDialog";
+import { VerticalNewsCarousel } from "@/components/VerticalNewsCarousel";
 import { getVideoThumbnail } from "@/lib/videoUtils";
 import { DEFAULT_FRACTIELEDEN } from "@/data/fractieleden";
+import { NewsItem, news as fallbackNews } from "@/data/news";
 
 interface VideoItem {
   id: string;
@@ -32,8 +34,10 @@ export default function FractielidVideos() {
 
   const [member, setMember] = useState<FractielidItem | null>(defaultMember);
   const [videos, setVideos] = useState<VideoItem[]>([]);
+  const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(!defaultMember);
   const [videosLoading, setVideosLoading] = useState(true);
+  const [newsLoading, setNewsLoading] = useState(true);
   const [belOpen, setBelOpen] = useState(false);
   const [voorgeselecteerd, setVoorgeselecteerd] = useState<string | undefined>(undefined);
 
@@ -43,10 +47,12 @@ export default function FractielidVideos() {
     title: string;
     description?: string;
     url?: string;
+    imageUrl?: string;
   }>({
     title: "",
     description: "",
     url: "",
+    imageUrl: "",
   });
 
   useEffect(() => {
@@ -57,8 +63,9 @@ export default function FractielidVideos() {
       setLoading(true);
     }
     setVideosLoading(true);
+    setNewsLoading(true);
 
-    // Fetch targeted fractielid videos with fast fallback
+    // 1. Fetch targeted fractielid videos with fast fallback
     fetch(`/api/videos?memberId=${encodeURIComponent(id || "")}`)
       .then((res) => (res.ok ? res.json() : []))
       .then((videosData: VideoItem[]) => {
@@ -75,7 +82,52 @@ export default function FractielidVideos() {
         setVideosLoading(false);
       });
 
-    // Optionally refresh member info in background if not default or custom edited
+    // 2. Fetch targeted fractielid gekoppelde nieuwsberichten
+    fetch(`/api/news?memberId=${encodeURIComponent(id || "")}&includeAll=true`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: NewsItem[]) => {
+        if (Array.isArray(data) && data.length > 0) {
+          const sorted = [...data].sort(
+            (a, b) =>
+              new Date(b.date || b.createdAt || 0).getTime() -
+              new Date(a.date || a.createdAt || 0).getTime()
+          );
+          setNewsItems(sorted);
+        } else {
+          // Fallback matching against all news / static fallback
+          fetch("/api/news?includeAll=true")
+            .then((res) => (res.ok ? res.json() : fallbackNews))
+            .then((allNews: NewsItem[]) => {
+              if (Array.isArray(allNews)) {
+                const targetMember = defaultMember;
+                const targetName = targetMember ? targetMember.name.toLowerCase().trim() : "";
+                const matched = allNews.filter((n) => {
+                  if (n.authorId && String(n.authorId) === String(id)) return true;
+                  if (targetName) {
+                    const aName = (n.authorName || n.author || "").toLowerCase().trim();
+                    if (aName === targetName || aName.includes(targetName) || targetName.includes(aName)) return true;
+                  }
+                  return false;
+                });
+                const sorted = matched.sort(
+                  (a, b) =>
+                    new Date(b.date || b.createdAt || 0).getTime() -
+                    new Date(a.date || a.createdAt || 0).getTime()
+                );
+                setNewsItems(sorted);
+              }
+            })
+            .catch(() => setNewsItems([]));
+        }
+      })
+      .catch((err) => {
+        console.warn("Fout bij ophalen gekoppelde nieuwsberichten:", err);
+      })
+      .finally(() => {
+        setNewsLoading(false);
+      });
+
+    // 3. Optionally refresh member info in background if customized
     fetch("/api/fractieleden")
       .then((res) => (res.ok ? res.json() : []))
       .then((ledenData: FractielidItem[]) => {
@@ -129,21 +181,33 @@ export default function FractielidVideos() {
   const handleShareMemberPage = () => {
     const pageUrl = window.location.origin + window.location.pathname;
     setShareData({
-      title: `Video's & Bijdragen van ${member?.name || "Fractielid"} | Lijst van Andel`,
-      description: `Bekijk alle videobijdragen, raadsdebatten en toelichtingen van ${member?.name || "Lijst van Andel"} in de gemeenteraad van Steenwijkerland.`,
+      title: `${member?.name || "Fractielid"} | Lijst van Andel`,
+      description: `Bekijk de debatten, videobijdragen en nieuwsberichten van ${member?.name || "Lijst van Andel"} in Steenwijkerland.`,
       url: pageUrl,
+      imageUrl: member?.imgUrl || "/assets/logo.png",
     });
     setShareDialogOpen(true);
   };
 
   const handleShareVideo = (video: VideoItem) => {
     const videoTitle = video.burgerraadslidTitle || video.title || "Videobijdrage";
-    // We provide ?v=video.id#video-item-video.id so both social crawlers (via ?v=) and the browser jump (via #) work flawlessly!
     const videoUrl = `${window.location.origin}${window.location.pathname}?v=${video.id}#video-item-${video.id}`;
     setShareData({
       title: `${videoTitle} - ${member?.name || "Lijst van Andel"}`,
       description: video.description || `Bekijk deze videobijdrage van ${member?.name || "Lijst van Andel"} in de gemeenteraad van Steenwijkerland.`,
       url: videoUrl,
+      imageUrl: video.thumbnailUrl || member?.imgUrl || "/assets/logo.png",
+    });
+    setShareDialogOpen(true);
+  };
+
+  const handleShareArticle = (article: NewsItem) => {
+    const articleUrl = `${window.location.origin}/nieuws/${article.id}`;
+    setShareData({
+      title: `${article.title} - ${member?.name || "Lijst van Andel"}`,
+      description: article.excerpt || article.description || `Lees dit bericht van ${member?.name || "Lijst van Andel"}.`,
+      url: articleUrl,
+      imageUrl: article.thumbnailUrl || article.headerUrl || member?.imgUrl || "/assets/logo.png",
     });
     setShareDialogOpen(true);
   };
@@ -162,8 +226,8 @@ export default function FractielidVideos() {
           <div className="h-5 w-full max-w-lg bg-muted/40 rounded animate-pulse" />
         </div>
         <div className="h-64 max-w-4xl bg-muted/30 rounded border border-border animate-pulse mb-14" />
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1, 2, 3].map((n) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {[1, 2].map((n) => (
             <div key={n} className="h-80 bg-muted/20 rounded border border-border/60 animate-pulse" />
           ))}
         </div>
@@ -209,7 +273,7 @@ export default function FractielidVideos() {
             onClick={handleShareMemberPage}
             className="text-xs uppercase tracking-wider border-border hover:border-accent text-foreground"
           >
-            <Share2 className="w-3.5 h-3.5 mr-1 text-accent" /> Deel profiel & video's
+            <Share2 className="w-3.5 h-3.5 mr-1 text-accent" /> Deel profiel & bijdragen
           </Button>
         </div>
       </div>
@@ -217,14 +281,14 @@ export default function FractielidVideos() {
       {/* Pagina Header */}
       <div className="max-w-3xl mb-10">
         <div className="text-xs uppercase tracking-[0.3em] text-accent mb-2">
-          {member.type} • Videobijdragen
+          {member.type} • Profiel & Bijdragen
         </div>
         <h1 className="font-display text-4xl sm:text-5xl md:text-6xl mb-4 border-gold-line pb-4">
-          Video's van {member.name}
+          {member.name}
         </h1>
         <p className="text-base text-muted-foreground">
-          Bekijk alle geregistreerde debatten, raadsvoorstellen en interviews van {member.name} in de gemeenteraad
-          van Steenwijkerland.
+          Bekijk alle geregistreerde debatten, videobijdragen en gekoppelde nieuwsberichten van {member.name} in de
+          gemeenteraad van Steenwijkerland.
         </p>
       </div>
 
@@ -242,157 +306,170 @@ export default function FractielidVideos() {
         />
       </div>
 
-      {/* OVERZICHT VAN ALLE GEKOPPELDE VIDEO'S */}
-      <div className="space-y-6 min-h-[380px]">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4">
-          <div>
-            <h2 className="font-display text-2xl sm:text-3xl flex items-center gap-2.5">
-              <Video className="w-6 h-6 text-accent" />
-              <span>Gekoppelde Video's</span>
-              <span className="text-sm font-sans font-semibold px-2.5 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/30">
-                {videos.length} {videos.length === 1 ? "video" : "video's"}
-              </span>
-            </h2>
-            <p className="text-xs text-muted-foreground mt-1">
-              {isBurgerraadslid
-                ? "Bijdragen en tussenkomsten van dit burgerraadslid, voorzien van onderwerp, titel en beschrijving."
-                : "Alle raadsbijdragen en mediaoptredens gekoppeld aan dit fractielid."}
-            </p>
+      {/* GEKOPPELDE VIDEO'S EN GEKOPPELDE BERICHTEN NAAST ELKAAR */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start mb-16">
+        {/* Kolom Links: Gekoppelde Video's (7 cols) */}
+        <div className="lg:col-span-7 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4">
+            <div>
+              <h2 className="font-display text-2xl sm:text-3xl flex items-center gap-2.5">
+                <Video className="w-6 h-6 text-accent" />
+                <span>Gekoppelde Video's</span>
+                <span className="text-sm font-sans font-semibold px-2.5 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/30">
+                  {videos.length} {videos.length === 1 ? "video" : "video's"}
+                </span>
+              </h2>
+              <p className="text-xs text-muted-foreground mt-1">
+                {isBurgerraadslid
+                  ? "Bijdragen en tussenkomsten van dit burgerraadslid."
+                  : "Alle raadsbijdragen en mediaoptredens gekoppeld aan dit fractielid."}
+              </p>
+            </div>
+
+            {videos.length > 0 && (
+              <div className="text-xs text-muted-foreground">
+                Gesorteerd op meest recente datum
+              </div>
+            )}
           </div>
 
-          {videos.length > 0 && (
-            <div className="text-xs text-muted-foreground">
-              Gesorteerd op meest recente datum
+          {videosLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-2 min-h-[300px]">
+              {[1, 2].map((n) => (
+                <div
+                  key={n}
+                  className="bg-card border border-border rounded-sm overflow-hidden flex flex-col h-72 animate-pulse"
+                >
+                  <div className="aspect-video bg-muted/60" />
+                  <div className="p-5 space-y-3 flex-1 flex flex-col justify-between">
+                    <div className="space-y-2">
+                      <div className="h-4 bg-muted/60 rounded w-3/4" />
+                      <div className="h-3 bg-muted/40 rounded w-1/2" />
+                    </div>
+                    <div className="h-8 bg-muted/30 rounded w-full" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : videos.length === 0 ? (
+            <div className="bg-card border border-border p-8 text-center rounded-sm min-h-[300px] flex flex-col items-center justify-center">
+              <div className="w-14 h-14 mx-auto mb-3.5 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent">
+                <Video className="w-7 h-7 opacity-70" />
+              </div>
+              <h3 className="font-display text-xl mb-1.5">Geen video's gevonden</h3>
+              <p className="text-xs text-muted-foreground mb-5 leading-relaxed max-w-md">
+                Er zijn op dit moment nog geen specifieke videobijdragen aan {member.name} gekoppeld.
+                Zodra er nieuwe raadsvergaderingen of interviews online komen, worden deze hier getoond.
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-2.5">
+                <Button asChild variant="outline" size="sm" className="uppercase tracking-wider text-xs">
+                  <Link to="/agenda">Bekijk raadsagenda</Link>
+                </Button>
+                <Button asChild size="sm" className="bg-primary hover:bg-primary/90 uppercase tracking-wider text-xs font-semibold">
+                  <Link to="/fractie">Andere fractieleden</Link>
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className={`grid grid-cols-1 ${videos.length > 1 ? "sm:grid-cols-2" : "sm:grid-cols-1"} gap-6 pt-2`}>
+              {videos.map((v) => {
+                const displayTitle = v.burgerraadslidTitle || v.title || "Videobijdrage";
+                const effectivePoster = getVideoThumbnail(v.videoUrl, v.thumbnailUrl);
+
+                return (
+                  <article
+                    key={v.id}
+                    id={`video-item-${v.id}`}
+                    className="bg-card border border-border rounded-sm overflow-hidden flex flex-col hover-lift transition-all group shadow-sm"
+                  >
+                    {/* Videospeler bovenaan */}
+                    <div className="aspect-video bg-black relative overflow-hidden flex-shrink-0">
+                      <VideoPlayer
+                        url={v.videoUrl}
+                        title={displayTitle}
+                        poster={effectivePoster || undefined}
+                        className="w-full h-full"
+                      />
+                      {v.wijkSlug && (
+                        <Link
+                          to={`/wijken-en-kernen/${v.wijkSlug}`}
+                          className="absolute top-2 left-2 bg-secondary/90 backdrop-blur text-secondary-foreground px-2 py-0.5 rounded text-[10px] font-semibold hover:bg-secondary transition-colors z-10 flex items-center gap-1 shadow-sm"
+                        >
+                          <MapPin className="w-3 h-3 text-accent" />
+                          <span className="capitalize">{v.wijkSlug.replace("-", " ")}</span>
+                        </Link>
+                      )}
+                    </div>
+
+                    {/* Video Metadata, Titel & Beschrijving */}
+                    <div className="p-5 flex-1 flex flex-col justify-between">
+                      <div>
+                        {/* Burgerraadslid badge als het lid burgerraadslid is */}
+                        {isBurgerraadslid && (
+                          <div className="mb-2.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-accent/15 border border-accent/30 text-[10px] uppercase tracking-wider text-accent font-semibold">
+                            <Tag className="w-3 h-3" />
+                            <span>Burgerraadslid Bijdrage</span>
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="uppercase tracking-wider text-accent font-semibold">
+                              {v.category || "Algemeen"}
+                            </span>
+                            <span>•</span>
+                            <span className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3 text-muted-foreground" />
+                              {v.date}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleShareVideo(v)}
+                            title="Deel deze video op Facebook, X, Telegram of kopieer link"
+                            className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent hover:text-accent/80 transition-colors cursor-pointer py-1 px-2 rounded-md hover:bg-accent/10"
+                          >
+                            <Share2 className="w-3.5 h-3.5" />
+                            <span>Deel video</span>
+                          </button>
+                        </div>
+
+                        {/* Prominente titel */}
+                        <h3 className="font-display text-xl sm:text-2xl font-semibold leading-snug mb-2 group-hover:text-accent transition-colors">
+                          {displayTitle}
+                        </h3>
+
+                        {/* Optionele beschrijving */}
+                        {v.description && (
+                          <p className="text-xs text-muted-foreground leading-relaxed mt-2 line-clamp-3">
+                            {v.description}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-border/60 text-[11px] text-muted-foreground flex items-center justify-between">
+                        <span className="text-foreground/80 font-medium">Spreker: {member.name}</span>
+                        <span className="text-[10px] uppercase tracking-widest text-accent font-semibold">
+                          {isBurgerraadslid ? "Burgerraad" : "Gemeenteraad"}
+                        </span>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           )}
         </div>
 
-        {videosLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2 min-h-[300px]">
-            {[1, 2, 3].map((n) => (
-              <div
-                key={n}
-                className="bg-card border border-border rounded-sm overflow-hidden flex flex-col h-72 animate-pulse"
-              >
-                <div className="aspect-video bg-muted/60" />
-                <div className="p-5 space-y-3 flex-1 flex flex-col justify-between">
-                  <div className="space-y-2">
-                    <div className="h-4 bg-muted/60 rounded w-3/4" />
-                    <div className="h-3 bg-muted/40 rounded w-1/2" />
-                  </div>
-                  <div className="h-8 bg-muted/30 rounded w-full" />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : videos.length === 0 ? (
-          <div className="bg-card border border-border p-8 md:p-12 text-center rounded-sm max-w-2xl mx-auto my-4 min-h-[260px] flex flex-col items-center justify-center">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent">
-              <Video className="w-8 h-8 opacity-70" />
-            </div>
-            <h3 className="font-display text-2xl mb-2">Geen video's gevonden</h3>
-            <p className="text-sm text-muted-foreground mb-6 leading-relaxed max-w-md">
-              Er zijn op dit moment nog geen specifieke videobijdragen aan {member.name} gekoppeld.
-              Zodra er nieuwe raadsvergaderingen of interviews online komen, worden deze hier getoond.
-            </p>
-            <div className="flex flex-wrap items-center justify-center gap-3">
-              <Button asChild variant="outline" size="sm" className="uppercase tracking-wider text-xs">
-                <Link to="/agenda">Bekijk raadsagenda</Link>
-              </Button>
-              <Button asChild size="sm" className="bg-primary hover:bg-primary/90 uppercase tracking-wider text-xs font-semibold">
-                <Link to="/fractie">Bekijk andere fractieleden</Link>
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
-            {videos.map((v) => {
-              const displayTitle = v.burgerraadslidTitle || v.title || "Videobijdrage";
-              const effectivePoster = getVideoThumbnail(v.videoUrl, v.thumbnailUrl);
-
-              return (
-                <article
-                  key={v.id}
-                  id={`video-item-${v.id}`}
-                  className="bg-card border border-border rounded-sm overflow-hidden flex flex-col hover-lift transition-all group"
-                >
-                  {/* Videospeler bovenaan */}
-                  <div className="aspect-video bg-black relative overflow-hidden flex-shrink-0">
-                    <VideoPlayer
-                      url={v.videoUrl}
-                      title={displayTitle}
-                      poster={effectivePoster || undefined}
-                      className="w-full h-full"
-                    />
-                    {v.wijkSlug && (
-                      <Link
-                        to={`/wijken-en-kernen/${v.wijkSlug}`}
-                        className="absolute top-2 left-2 bg-secondary/90 backdrop-blur text-secondary-foreground px-2 py-0.5 rounded text-[10px] font-semibold hover:bg-secondary transition-colors z-10 flex items-center gap-1 shadow-sm"
-                      >
-                        <MapPin className="w-3 h-3 text-accent" />
-                        <span className="capitalize">{v.wijkSlug.replace("-", " ")}</span>
-                      </Link>
-                    )}
-                  </div>
-
-                  {/* Video Metadata, Titel & Beschrijving */}
-                  <div className="p-5 flex-1 flex flex-col justify-between">
-                    <div>
-                      {/* Burgerraadslid badge als het lid burgerraadslid is */}
-                      {isBurgerraadslid && (
-                        <div className="mb-2.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-accent/15 border border-accent/30 text-[10px] uppercase tracking-wider text-accent font-semibold">
-                          <Tag className="w-3 h-3" />
-                          <span>Burgerraadslid Bijdrage</span>
-                        </div>
-                      )}
-
-                      <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="uppercase tracking-wider text-accent font-semibold">
-                            {v.category || "Algemeen"}
-                          </span>
-                          <span>•</span>
-                          <span className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3 text-muted-foreground" />
-                            {v.date}
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleShareVideo(v)}
-                          title="Deel deze video op Facebook, X, Telegram of kopieer link"
-                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent hover:text-accent/80 transition-colors cursor-pointer py-1 px-2 rounded-md hover:bg-accent/10"
-                        >
-                          <Share2 className="w-3.5 h-3.5" />
-                          <span>Deel video</span>
-                        </button>
-                      </div>
-
-                      {/* Prominente titel */}
-                      <h3 className="font-display text-xl sm:text-2xl font-semibold leading-snug mb-2 group-hover:text-accent transition-colors">
-                        {displayTitle}
-                      </h3>
-
-                      {/* Optionele beschrijving */}
-                      {v.description && (
-                        <p className="text-xs text-muted-foreground leading-relaxed mt-2 line-clamp-3">
-                          {v.description}
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="mt-4 pt-3 border-t border-border/60 text-[11px] text-muted-foreground flex items-center justify-between">
-                      <span className="text-foreground/80 font-medium">Spreker: {member.name}</span>
-                      <span className="text-[10px] uppercase tracking-widest text-accent font-semibold">
-                        {isBurgerraadslid ? "Burgerraad" : "Gemeenteraad"}
-                      </span>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        )}
+        {/* Kolom Rechts: Gekoppelde Berichten (Verticale Carrousel) (5 cols) */}
+        <div className="lg:col-span-5 space-y-6">
+          <VerticalNewsCarousel
+            member={member}
+            newsItems={newsItems}
+            loading={newsLoading}
+            onShareArticle={handleShareArticle}
+          />
+        </div>
       </div>
 
       {/* Social Share Dialog */}
@@ -402,6 +479,7 @@ export default function FractielidVideos() {
         title={shareData.title}
         description={shareData.description}
         url={shareData.url}
+        imageUrl={shareData.imageUrl}
       />
 
       {/* Belafspraak Dialog */}

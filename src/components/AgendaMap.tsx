@@ -5,7 +5,7 @@ import { MapPin, Navigation, Calendar, Lock, CheckCircle2 } from "lucide-react";
 
 import "leaflet/dist/leaflet.css";
 import { Button } from "@/components/ui/button";
-import { extractCity } from "@/lib/utils";
+import { extractCity, cn } from "@/lib/utils";
 import { safeJson } from "@/lib/api";
 
 // Custom Leaflet DivIcon for searched / clicked address
@@ -93,6 +93,7 @@ interface AgendaMapProps {
   events?: AgendaEventLocation[];
   selectedEventId?: string;
   onSelectEvent?: (eventId: string) => void;
+  className?: string;
 }
 
 // Steenwijk centrum defaults
@@ -102,6 +103,7 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
   events = [],
   selectedEventId,
   onSelectEvent,
+  className,
 }) => {
   const [activeMarker, setActiveMarker] = useState<{
     lat: number;
@@ -257,7 +259,7 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
   };
 
   return (
-    <div className="bg-card border border-border rounded-xl overflow-hidden shadow-lg mb-12">
+    <div className={cn("bg-card border border-border rounded-xl overflow-hidden shadow-lg", className || "mb-12")}>
       {/* Top Header Bar without Search Bar */}
       <div className="p-4 md:p-6 bg-secondary/50 border-b border-border">
         <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
@@ -290,7 +292,7 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
       </div>
 
       {/* Leaflet Map Canvas */}
-      <div className="relative w-full h-[380px] sm:h-[440px] md:h-[500px] z-0">
+      <div className="relative w-full h-[380px] sm:h-[440px] md:h-[500px] flex-1 z-0">
         <MapContainer
           center={STEENWIJK_CENTER}
           zoom={12}
