@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Video, Calendar, Tag, MapPin, AlertCircle, Share2 } from "lucide-react";
+import { ArrowLeft, Video, Calendar, Tag, MapPin, AlertCircle, Share2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FractielidWidget, FractielidItem } from "@/components/FractielidWidget";
 import { BelafspraakDialog } from "@/components/BelafspraakDialog";
@@ -40,6 +40,10 @@ export default function FractielidVideos() {
   const [newsLoading, setNewsLoading] = useState(true);
   const [belOpen, setBelOpen] = useState(false);
   const [voorgeselecteerd, setVoorgeselecteerd] = useState<string | undefined>(undefined);
+
+  // Paginering voor gekoppelde video's (per 6)
+  const [videoPage, setVideoPage] = useState(1);
+  const VIDEOS_PER_PAGE = 6;
 
   // Social share dialog state
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
@@ -140,6 +144,17 @@ export default function FractielidVideos() {
       })
       .catch(() => {});
   }, [id, defaultMember]);
+
+  // Reset paginering als het fractielid verandert
+  useEffect(() => {
+    setVideoPage(1);
+  }, [id]);
+
+  const totalVideoPages = Math.ceil(videos.length / VIDEOS_PER_PAGE) || 1;
+  const paginatedVideos = videos.slice(
+    (videoPage - 1) * VIDEOS_PER_PAGE,
+    videoPage * VIDEOS_PER_PAGE
+  );
 
   // Handle deep-link anchor or ?v=ID parameter scrolling without forced reflow
   useEffect(() => {
@@ -310,7 +325,7 @@ export default function FractielidVideos() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start mb-16">
         {/* Kolom Links: Gekoppelde Video's (7 cols) */}
         <div className="lg:col-span-7 space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4">
+          <div id="videos-header" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4">
             <div>
               <h2 className="font-display text-2xl sm:text-3xl flex items-center gap-2.5">
                 <Video className="w-6 h-6 text-accent" />
@@ -318,11 +333,16 @@ export default function FractielidVideos() {
                 <span className="text-sm font-sans font-semibold px-2.5 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/30">
                   {videos.length} {videos.length === 1 ? "video" : "video's"}
                 </span>
+                {totalVideoPages > 1 && (
+                  <span className="text-xs font-sans text-muted-foreground font-normal">
+                    (Pagina {videoPage} van {totalVideoPages})
+                  </span>
+                )}
               </h2>
               <p className="text-xs text-muted-foreground mt-1">
                 {isBurgerraadslid
-                  ? "Bijdragen en tussenkomsten van dit burgerraadslid."
-                  : "Alle raadsbijdragen en mediaoptredens gekoppeld aan dit fractielid."}
+                  ? "Bijdragen en tussenkomsten van dit burgerraadslid (6 per pagina)."
+                  : "Alle raadsbijdragen en mediaoptredens gekoppeld aan dit fractielid (6 per pagina)."}
               </p>
             </div>
 
@@ -371,92 +391,156 @@ export default function FractielidVideos() {
               </div>
             </div>
           ) : (
-            <div className={`grid grid-cols-1 ${videos.length > 1 ? "sm:grid-cols-2" : "sm:grid-cols-1"} gap-6 pt-2`}>
-              {videos.map((v) => {
-                const displayTitle = v.burgerraadslidTitle || v.title || "Videobijdrage";
-                const effectivePoster = getVideoThumbnail(v.videoUrl, v.thumbnailUrl);
+            <div className="space-y-6">
+              <div className={`grid grid-cols-1 ${paginatedVideos.length > 1 ? "sm:grid-cols-2" : "sm:grid-cols-1"} gap-6 pt-2`}>
+                {paginatedVideos.map((v) => {
+                  const displayTitle = v.burgerraadslidTitle || v.title || "Videobijdrage";
+                  const effectivePoster = getVideoThumbnail(v.videoUrl, v.thumbnailUrl);
 
-                return (
-                  <article
-                    key={v.id}
-                    id={`video-item-${v.id}`}
-                    className="bg-card border border-border rounded-sm overflow-hidden flex flex-col hover-lift transition-all group shadow-sm"
-                  >
-                    {/* Videospeler bovenaan */}
-                    <div className="aspect-video bg-black relative overflow-hidden flex-shrink-0">
-                      <VideoPlayer
-                        url={v.videoUrl}
-                        title={displayTitle}
-                        poster={effectivePoster || undefined}
-                        className="w-full h-full"
-                      />
-                      {v.wijkSlug && (
-                        <Link
-                          to={`/wijken-en-kernen/${v.wijkSlug}`}
-                          className="absolute top-2 left-2 bg-secondary/90 backdrop-blur text-secondary-foreground px-2 py-0.5 rounded text-[10px] font-semibold hover:bg-secondary transition-colors z-10 flex items-center gap-1 shadow-sm"
-                        >
-                          <MapPin className="w-3 h-3 text-accent" />
-                          <span className="capitalize">{v.wijkSlug.replace("-", " ")}</span>
-                        </Link>
-                      )}
-                    </div>
-
-                    {/* Video Metadata, Titel & Beschrijving */}
-                    <div className="p-5 flex-1 flex flex-col justify-between">
-                      <div>
-                        {/* Burgerraadslid badge als het lid burgerraadslid is */}
-                        {isBurgerraadslid && (
-                          <div className="mb-2.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-accent/15 border border-accent/30 text-[10px] uppercase tracking-wider text-accent font-semibold">
-                            <Tag className="w-3 h-3" />
-                            <span>Burgerraadslid Bijdrage</span>
-                          </div>
-                        )}
-
-                        <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="uppercase tracking-wider text-accent font-semibold">
-                              {v.category || "Algemeen"}
-                            </span>
-                            <span>•</span>
-                            <span className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3 text-muted-foreground" />
-                              {v.date}
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleShareVideo(v)}
-                            title="Deel deze video op Facebook, X, Telegram of kopieer link"
-                            className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent hover:text-accent/80 transition-colors cursor-pointer py-1 px-2 rounded-md hover:bg-accent/10"
+                  return (
+                    <article
+                      key={v.id}
+                      id={`video-item-${v.id}`}
+                      className="bg-card border border-border rounded-sm overflow-hidden flex flex-col hover-lift transition-all group shadow-sm"
+                    >
+                      {/* Videospeler bovenaan */}
+                      <div className="aspect-video bg-black relative overflow-hidden flex-shrink-0">
+                        <VideoPlayer
+                          url={v.videoUrl}
+                          title={displayTitle}
+                          poster={effectivePoster || undefined}
+                          className="w-full h-full"
+                        />
+                        {v.wijkSlug && (
+                          <Link
+                            to={`/wijken-en-kernen/${v.wijkSlug}`}
+                            className="absolute top-2 left-2 bg-secondary/90 backdrop-blur text-secondary-foreground px-2 py-0.5 rounded text-[10px] font-semibold hover:bg-secondary transition-colors z-10 flex items-center gap-1 shadow-sm"
                           >
-                            <Share2 className="w-3.5 h-3.5" />
-                            <span>Deel video</span>
-                          </button>
+                            <MapPin className="w-3 h-3 text-accent" />
+                            <span className="capitalize">{v.wijkSlug.replace("-", " ")}</span>
+                          </Link>
+                        )}
+                      </div>
+
+                      {/* Video Metadata, Titel & Beschrijving */}
+                      <div className="p-5 flex-1 flex flex-col justify-between">
+                        <div>
+                          {/* Burgerraadslid badge als het lid burgerraadslid is */}
+                          {isBurgerraadslid && (
+                            <div className="mb-2.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-accent/15 border border-accent/30 text-[10px] uppercase tracking-wider text-accent font-semibold">
+                              <Tag className="w-3 h-3" />
+                              <span>Burgerraadslid Bijdrage</span>
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="uppercase tracking-wider text-accent font-semibold">
+                                {v.category || "Algemeen"}
+                              </span>
+                              <span>•</span>
+                              <span className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3 text-muted-foreground" />
+                                {v.date}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleShareVideo(v)}
+                              title="Deel deze video op Facebook, X, Telegram of kopieer link"
+                              className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent hover:text-accent/80 transition-colors cursor-pointer py-1 px-2 rounded-md hover:bg-accent/10"
+                            >
+                              <Share2 className="w-3.5 h-3.5" />
+                              <span>Deel video</span>
+                            </button>
+                          </div>
+
+                          {/* Prominente titel */}
+                          <h3 className="font-display text-xl sm:text-2xl font-semibold leading-snug mb-2 group-hover:text-accent transition-colors">
+                            {displayTitle}
+                          </h3>
+
+                          {/* Optionele beschrijving */}
+                          {v.description && (
+                            <p className="text-xs text-muted-foreground leading-relaxed mt-2 line-clamp-3">
+                              {v.description}
+                            </p>
+                          )}
                         </div>
 
-                        {/* Prominente titel */}
-                        <h3 className="font-display text-xl sm:text-2xl font-semibold leading-snug mb-2 group-hover:text-accent transition-colors">
-                          {displayTitle}
-                        </h3>
-
-                        {/* Optionele beschrijving */}
-                        {v.description && (
-                          <p className="text-xs text-muted-foreground leading-relaxed mt-2 line-clamp-3">
-                            {v.description}
-                          </p>
-                        )}
+                        <div className="mt-4 pt-3 border-t border-border/60 text-[11px] text-muted-foreground flex items-center justify-between">
+                          <span className="text-foreground/80 font-medium">Spreker: {member.name}</span>
+                          <span className="text-[10px] uppercase tracking-widest text-accent font-semibold">
+                            {isBurgerraadslid ? "Burgerraad" : "Gemeenteraad"}
+                          </span>
+                        </div>
                       </div>
+                    </article>
+                  );
+                })}
+              </div>
 
-                      <div className="mt-4 pt-3 border-t border-border/60 text-[11px] text-muted-foreground flex items-center justify-between">
-                        <span className="text-foreground/80 font-medium">Spreker: {member.name}</span>
-                        <span className="text-[10px] uppercase tracking-widest text-accent font-semibold">
-                          {isBurgerraadslid ? "Burgerraad" : "Gemeenteraad"}
-                        </span>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
+              {/* Paginering voor video's (per 6) */}
+              {totalVideoPages > 1 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-6 border-t border-border">
+                  <div className="text-xs text-muted-foreground">
+                    Toont {(videoPage - 1) * VIDEOS_PER_PAGE + 1}–
+                    {Math.min(videoPage * VIDEOS_PER_PAGE, videos.length)} van {videos.length} video's
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={videoPage === 1}
+                      onClick={() => {
+                        setVideoPage((p) => Math.max(1, p - 1));
+                        document.getElementById("videos-header")?.scrollIntoView({ behavior: "smooth" });
+                      }}
+                      className="h-8 px-2.5 text-xs border-border hover:border-accent text-foreground"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5 mr-1" />
+                      <span>Vorige</span>
+                    </Button>
+
+                    {Array.from({ length: totalVideoPages }).map((_, idx) => {
+                      const pageNum = idx + 1;
+                      return (
+                        <Button
+                          key={pageNum}
+                          variant={videoPage === pageNum ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => {
+                            setVideoPage(pageNum);
+                            document.getElementById("videos-header")?.scrollIntoView({ behavior: "smooth" });
+                          }}
+                          className={`h-8 w-8 p-0 text-xs font-semibold ${
+                            videoPage === pageNum
+                              ? "bg-accent text-accent-foreground hover:bg-accent/90"
+                              : "border-border hover:border-accent text-foreground"
+                          }`}
+                        >
+                          {pageNum}
+                        </Button>
+                      );
+                    })}
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={videoPage === totalVideoPages}
+                      onClick={() => {
+                        setVideoPage((p) => Math.min(totalVideoPages, p + 1));
+                        document.getElementById("videos-header")?.scrollIntoView({ behavior: "smooth" });
+                      }}
+                      className="h-8 px-2.5 text-xs border-border hover:border-accent text-foreground"
+                    >
+                      <span>Volgende</span>
+                      <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

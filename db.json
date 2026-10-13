@@ -198,6 +198,77 @@
         "3"
       ],
       "wijkSlug": "steenwijk-centrum"
+    },
+    {
+      "id": "1003",
+      "title": "Motie behoud voorzieningen Weerribben-Wieden",
+      "category": "Raadsvergadering",
+      "date": "2024-07-02",
+      "videoUrl": "https://www.w3schools.com/html/mov_bbb.mp4",
+      "fractieledenIds": [
+        "1"
+      ],
+      "wijkSlug": "giethoorn",
+      "description": "Toelichting van Sammy van Andel op de unaniem aangenomen motie voor behoud van het voorzieningenniveau in Giethoorn en de Wieden."
+    },
+    {
+      "id": "1004",
+      "title": "Vragenronde over gemeentelijke lasten en OZB",
+      "category": "Vragenhalfuur",
+      "date": "2024-09-18",
+      "videoUrl": "https://www.w3schools.com/html/mov_bbb.mp4",
+      "fractieledenIds": [
+        "1"
+      ],
+      "wijkSlug": "steenwijk-centrum",
+      "description": "Scherpe vragen aan het college over de stijgende lokale woonlasten voor huishoudens in Steenwijkerland."
+    },
+    {
+      "id": "1005",
+      "title": "Inbreng kadernota: Kiezen voor onze eigen dorpen",
+      "category": "Kadernota",
+      "date": "2024-11-04",
+      "videoUrl": "https://www.w3schools.com/html/mov_bbb.mp4",
+      "fractieledenIds": [
+        "1"
+      ],
+      "wijkSlug": "steenwijk-west",
+      "description": "Algemene beschouwingen waarin Sammy de prioriteiten van Lijst van Andel uiteenzet voor de komende bestuursperiode."
+    },
+    {
+      "id": "1006",
+      "title": "Debat over verduurzaming sportaccommodaties",
+      "category": "Raadsdebat",
+      "date": "2025-01-20",
+      "videoUrl": "https://www.w3schools.com/html/mov_bbb.mp4",
+      "fractieledenIds": [
+        "1"
+      ],
+      "wijkSlug": "oostermeenthe",
+      "description": "Pleidooi voor een eerlijke subsidieregeling voor lokale sportverenigingen die kampen met hoge energiekosten."
+    },
+    {
+      "id": "1007",
+      "title": "Tussenkomst over veiligheid rondom schoolzones",
+      "category": "Commissievergadering",
+      "date": "2025-03-12",
+      "videoUrl": "https://www.w3schools.com/html/mov_bbb.mp4",
+      "fractieledenIds": [
+        "1"
+      ],
+      "wijkSlug": "tuk",
+      "description": "Sammy van Andel dringt aan op verkeersremmende maatregelen en veilige oversteekplaatsen bij basisscholen."
+    },
+    {
+      "id": "1008",
+      "title": "Slotoopmerkingen begrotingsbehandeling",
+      "category": "Begroting",
+      "date": "2025-05-28",
+      "videoUrl": "https://www.w3schools.com/html/mov_bbb.mp4",
+      "fractieledenIds": [
+        "1"
+      ],
+      "description": "Sammy vat de behaalde resultaten van Lijst van Andel samen tijdens de jaarlijkse begrotingsbehandeling."
     }
   ],
   "news": [
@@ -289,6 +360,40 @@
       "category": "Economie & MKB",
       "thumbnailUrl": "/assets/markt-steenwijk.jpg",
       "headerUrl": "/assets/markt-steenwijk.jpg"
+    },
+    {
+      "id": "duidelijke-taal-in-de-raad",
+      "title": "Sammy van Andel: Tijd voor duidelijke taal in het gemeentehuis",
+      "excerpt": "Inwoners hebben recht op begrijpelijke besluiten zonder ambtelijk jargon. Lijst van Andel dient een verbetervoorstel in.",
+      "description": "Inwoners hebben recht op begrijpelijke besluiten zonder ambtelijk jargon.",
+      "content": "<p>Bestuurlijke stukken zijn vaak onnodig ingewikkeld geschreven. Fractievoorzitter Sammy van Andel wil dat raadsvoorstellen en brieven aan inwoners voortaan in helder Nederlands worden opgesteld.</p>",
+      "date": "2026-05-18",
+      "createdAt": "2026-05-18T10:00:00.000Z",
+      "author": "Sammy van Andel",
+      "authorId": "1",
+      "authorName": "Sammy van Andel",
+      "authorRole": "Fractievoorzitter",
+      "authorAvatar": "/assets/sammy.png",
+      "category": "Bestuur & Democratie",
+      "thumbnailUrl": "/assets/markt-steenwijk.jpg",
+      "headerUrl": "/assets/markt-steenwijk.jpg"
+    },
+    {
+      "id": "behoud-openbaar-vervoer-dorpen",
+      "title": "Sammy van Andel verzet zich tegen schrappen buslijnen in buitengebied",
+      "excerpt": "De bereikbaarheid van de kleinere kernen staat onder druk. Sammy van Andel roept provincie en regio op de buslijnen te behouden.",
+      "description": "De bereikbaarheid van de kleinere kernen staat onder druk.",
+      "content": "<p>Zonder goed openbaar vervoer worden jongeren en ouderen in dorpen afhankelijk van de auto of familie. Sammy van Andel stelt dat een leefbare gemeente begint bij betrouwbare verbindingen tussen kernen en voorzieningen.</p>",
+      "date": "2026-05-25",
+      "createdAt": "2026-05-25T11:00:00.000Z",
+      "author": "Sammy van Andel",
+      "authorId": "1",
+      "authorName": "Sammy van Andel",
+      "authorRole": "Fractievoorzitter",
+      "authorAvatar": "/assets/sammy.png",
+      "category": "Bereikbaarheid",
+      "thumbnailUrl": "/assets/news-kopwijzer.jpg",
+      "headerUrl": "/assets/news-kopwijzer.jpg"
     }
   ],
   "events": [

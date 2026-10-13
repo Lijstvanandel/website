@@ -8,11 +8,8 @@ import {
   ArrowRight,
   Share2,
   MapPin,
-  Tag,
-  Clock,
   Play,
   Pause,
-  User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NewsItem } from "@/data/news";
@@ -33,51 +30,53 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
   onShareArticle,
   className = "",
 }) => {
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const ITEMS_PER_PAGE = 3;
+  const total = newsItems.length;
+  const totalPages = Math.ceil(total / ITEMS_PER_PAGE) || 1;
+
+  const [currentPage, setCurrentPage] = useState(0);
   const [direction, setDirection] = useState<"up" | "down">("down");
   const [isPaused, setIsPaused] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const total = newsItems.length;
-
-  // Reset index if items change or index is out of bounds
+  // Reset page when items change
   useEffect(() => {
-    if (currentIndex >= total && total > 0) {
-      setCurrentIndex(0);
+    if (currentPage >= totalPages && totalPages > 0) {
+      setCurrentPage(0);
     }
-  }, [total, currentIndex]);
+  }, [totalPages, currentPage]);
 
   const goToPrev = useCallback(() => {
-    if (total <= 1) return;
+    if (totalPages <= 1) return;
     setDirection("up");
-    setCurrentIndex((prev) => (prev - 1 + total) % total);
-  }, [total]);
+    setCurrentPage((prev) => (prev - 1 + totalPages) % totalPages);
+  }, [totalPages]);
 
   const goToNext = useCallback(() => {
-    if (total <= 1) return;
+    if (totalPages <= 1) return;
     setDirection("down");
-    setCurrentIndex((prev) => (prev + 1) % total);
-  }, [total]);
+    setCurrentPage((prev) => (prev + 1) % totalPages);
+  }, [totalPages]);
 
-  const goToIndex = (index: number) => {
-    if (index === currentIndex) return;
-    setDirection(index > currentIndex ? "down" : "up");
-    setCurrentIndex(index);
+  const goToPage = (page: number) => {
+    if (page === currentPage) return;
+    setDirection(page > currentPage ? "down" : "up");
+    setCurrentPage(page);
   };
 
-  // Autoplay ticker timer: advances every 6 seconds if not paused/hovered
+  // Autoplay ticker: advance every 7.5 seconds if multiple pages and not paused/hovered
   useEffect(() => {
-    if (total <= 1 || isPaused || isHovered) return;
+    if (totalPages <= 1 || isPaused || isHovered) return;
 
     const interval = setInterval(() => {
       goToNext();
-    }, 6500);
+    }, 7500);
 
     return () => clearInterval(interval);
-  }, [total, isPaused, isHovered, goToNext]);
+  }, [totalPages, isPaused, isHovered, goToNext]);
 
-  // Handle keyboard arrow navigation inside carousel
+  // Handle keyboard navigation (ArrowUp / ArrowDown)
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowUp") {
       e.preventDefault();
@@ -88,6 +87,12 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
     }
   };
 
+  // Get currently visible 3 items for this page
+  const visibleItems = newsItems.slice(
+    currentPage * ITEMS_PER_PAGE,
+    (currentPage + 1) * ITEMS_PER_PAGE
+  );
+
   if (loading) {
     return (
       <div className={`space-y-4 ${className}`}>
@@ -95,15 +100,20 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
           <div className="h-6 w-48 bg-muted rounded animate-pulse" />
           <div className="h-6 w-20 bg-muted rounded animate-pulse" />
         </div>
-        <div className="bg-card border border-border rounded-sm p-6 space-y-4 h-[440px] flex flex-col justify-between animate-pulse">
-          <div className="aspect-video bg-muted/70 rounded-sm" />
-          <div className="space-y-2">
-            <div className="h-4 bg-muted/60 rounded w-1/3" />
-            <div className="h-6 bg-muted/80 rounded w-4/5" />
-            <div className="h-3 bg-muted/50 rounded w-full" />
-            <div className="h-3 bg-muted/50 rounded w-2/3" />
-          </div>
-          <div className="h-9 bg-muted/70 rounded w-full" />
+        <div className="space-y-3.5">
+          {[1, 2, 3].map((n) => (
+            <div
+              key={n}
+              className="bg-card border border-border rounded-sm p-4 flex gap-4 h-[120px] animate-pulse"
+            >
+              <div className="w-28 bg-muted/70 rounded-sm shrink-0" />
+              <div className="flex-1 space-y-2 py-1">
+                <div className="h-3 bg-muted/60 rounded w-1/4" />
+                <div className="h-4 bg-muted/80 rounded w-3/4" />
+                <div className="h-3 bg-muted/50 rounded w-full" />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -130,11 +140,11 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
             </span>
           </h2>
           <p className="text-xs text-muted-foreground mt-1">
-            Nieuwsberichten, opiniestukken en verslagen gekoppeld aan {member.name}.
+            Nieuwsberichten en bijdragen gekoppeld aan {member.name} (3 per weergave).
           </p>
         </div>
 
-        {total > 1 && (
+        {totalPages > 1 && (
           <div className="flex items-center gap-1.5 shrink-0">
             {/* Auto-scroll toggle knop */}
             <button
@@ -147,23 +157,23 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
               {isPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
             </button>
 
-            {/* Omhoog / Vorig bericht knop */}
+            {/* Omhoog / Vorige 3 artikelen */}
             <button
               type="button"
               onClick={goToPrev}
-              title="Vorig bericht"
-              aria-label="Vorig bericht"
+              title="Vorige berichten"
+              aria-label="Vorige berichten"
               className="w-8 h-8 rounded-sm border border-border hover:border-accent text-foreground hover:text-accent flex items-center justify-center transition-colors bg-secondary/30 hover:bg-secondary/70"
             >
               <ChevronUp className="w-4 h-4" />
             </button>
 
-            {/* Omlaag / Volgend bericht knop */}
+            {/* Omlaag / Volgende 3 artikelen */}
             <button
               type="button"
               onClick={goToNext}
-              title="Volgend bericht"
-              aria-label="Volgend bericht"
+              title="Volgende berichten"
+              aria-label="Volgende berichten"
               className="w-8 h-8 rounded-sm border border-border hover:border-accent text-foreground hover:text-accent flex items-center justify-center transition-colors bg-secondary/30 hover:bg-secondary/70"
             >
               <ChevronDown className="w-4 h-4" />
@@ -188,16 +198,21 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
           </Button>
         </div>
       ) : (
-        <div className="relative">
-          {/* Verticale carrousel viewport met vloeiende transitie */}
-          <div className="relative overflow-hidden min-h-[460px] rounded-sm">
-            {newsItems.map((article, idx) => {
-              if (idx !== currentIndex) return null;
-
+        <div className="space-y-3.5">
+          {/* Weergave van 3 artikelen onder elkaar met soepele overgang */}
+          <div
+            key={currentPage}
+            className={`space-y-3.5 ${
+              direction === "down" ? "animate-fade-up" : "animate-fade-down"
+            }`}
+          >
+            {visibleItems.map((article) => {
               const cleanExcerpt =
                 article.excerpt ||
                 article.description ||
-                (article.content ? article.content.replace(/<[^>]*>/g, "").slice(0, 180) + "..." : "");
+                (article.content
+                  ? article.content.replace(/<[^>]*>/g, "").slice(0, 140) + "..."
+                  : "");
 
               const effectiveThumbnail =
                 article.thumbnailUrl ||
@@ -205,133 +220,94 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
                 article.image ||
                 "/assets/markt-steenwijk.jpg";
 
+              const formattedDate = article.date
+                ? new Date(article.date).toLocaleDateString("nl-NL", {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  })
+                : "Recent";
+
               return (
                 <article
                   key={article.id}
                   id={`carousel-article-${article.id}`}
-                  className={`bg-card border border-border rounded-sm overflow-hidden flex flex-col justify-between h-full shadow-sm hover:border-accent/60 transition-all duration-500 ${
-                    direction === "down" ? "animate-fade-up" : "animate-fade-down"
-                  }`}
+                  className="bg-card border border-border hover:border-accent/60 rounded-sm p-3.5 sm:p-4 flex gap-3.5 sm:gap-4 items-stretch hover-lift transition-all group shadow-sm"
                 >
-                  {/* Artikel Afbeelding & Tags */}
-                  <div className="relative aspect-[16/9] bg-muted overflow-hidden group">
+                  {/* Thumbnail afbeelding links */}
+                  <Link
+                    to={`/nieuws/${article.id}`}
+                    className="w-24 sm:w-28 md:w-32 aspect-[4/3] rounded-sm overflow-hidden bg-muted shrink-0 relative block"
+                    title={article.title}
+                  >
                     <img
                       src={effectiveThumbnail}
                       alt={article.title}
-                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                       onError={(e) => {
                         (e.target as HTMLImageElement).src = "/assets/markt-steenwijk.jpg";
                       }}
                     />
-
-                    {/* Gradient overlay voor leesbaarheid */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent pointer-events-none" />
-
-                    {/* Categorie & Wijk tags */}
-                    <div className="absolute top-2.5 left-2.5 flex flex-wrap gap-1.5 z-10">
-                      <span className="bg-primary/90 backdrop-blur-sm text-primary-foreground text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-sm shadow">
-                        {article.category || "Nieuws"}
-                      </span>
-                      {article.wijkSlug && (
-                        <span className="bg-background/90 backdrop-blur-sm text-foreground text-[10px] font-semibold px-2 py-0.5 rounded-sm shadow flex items-center gap-1 border border-border/50">
-                          <MapPin className="w-2.5 h-2.5 text-accent" />
-                          <span className="capitalize">
-                            {article.wijkNaam || article.wijkSlug.replace("-", " ")}
-                          </span>
-                        </span>
-                      )}
+                    <div className="absolute top-1 left-1 bg-black/80 backdrop-blur-sm text-accent text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-sm">
+                      {article.category || "Nieuws"}
                     </div>
+                  </Link>
 
-                    {/* Datum & Auteur overlay onderaan afbeelding */}
-                    <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between text-[11px] text-white/90 z-10">
-                      <div className="flex items-center gap-1.5 drop-shadow-sm">
-                        <Calendar className="w-3.5 h-3.5 text-accent" />
-                        <span>
-                          {article.date
-                            ? new Date(article.date).toLocaleDateString("nl-NL", {
-                                day: "numeric",
-                                month: "long",
-                                year: "numeric",
-                              })
-                            : "Onlangs"}
-                        </span>
-                      </div>
-
-                      {total > 1 && (
-                        <div className="bg-black/60 backdrop-blur-sm text-accent text-[10px] font-mono font-semibold px-2 py-0.5 rounded-sm border border-accent/40">
-                          {currentIndex + 1} / {total}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Artikel Tekst & Informatie */}
-                  <div className="p-5 flex-1 flex flex-col justify-between">
+                  {/* Tekst en metadata rechts */}
+                  <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
                     <div>
-                      {/* Gekoppeld aan fractielid auteur badge */}
-                      <div className="flex items-center gap-2 mb-3 pb-2.5 border-b border-border/60 text-xs">
-                        <div className="w-6 h-6 rounded-full overflow-hidden bg-muted shrink-0 border border-accent/40">
-                          {article.authorAvatar || member.imgUrl ? (
-                            <img
-                              src={article.authorAvatar || member.imgUrl}
-                              alt={member.name}
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).src = "/assets/silhouette.png";
-                              }}
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-accent/20 text-accent font-semibold text-[10px]">
-                              {member.name.charAt(0)}
-                            </div>
-                          )}
-                        </div>
-                        <span className="font-medium text-foreground truncate">
-                          {article.authorName || article.author || member.name}
-                          <span className="text-muted-foreground ml-1.5 font-normal">
-                            • {article.authorRole || member.role}
-                          </span>
+                      {/* Datum en optionele wijkbadge */}
+                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground mb-1">
+                        <span className="flex items-center gap-1 shrink-0">
+                          <Calendar className="w-3 h-3 text-accent" />
+                          <span>{formattedDate}</span>
                         </span>
+                        {article.wijkSlug && (
+                          <>
+                            <span className="text-muted-foreground/60">•</span>
+                            <span className="flex items-center gap-0.5 truncate text-[10px] text-foreground/80">
+                              <MapPin className="w-2.5 h-2.5 text-accent shrink-0" />
+                              <span className="capitalize truncate">
+                                {article.wijkNaam || article.wijkSlug.replace("-", " ")}
+                              </span>
+                            </span>
+                          </>
+                        )}
                       </div>
 
-                      {/* Titel met directe doorkliklink */}
-                      <h3 className="font-display text-xl sm:text-2xl font-bold leading-snug mb-3 hover:text-accent transition-colors">
+                      {/* Titel */}
+                      <h3 className="font-display text-sm sm:text-base font-bold leading-snug line-clamp-2 group-hover:text-accent transition-colors">
                         <Link to={`/nieuws/${article.id}`}>{article.title}</Link>
                       </h3>
 
-                      {/* Inleiding / Excerpt */}
+                      {/* Korte inleiding */}
                       {cleanExcerpt && (
-                        <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed line-clamp-4 mb-4">
+                        <p className="text-xs text-muted-foreground leading-relaxed line-clamp-1 sm:line-clamp-2 mt-1">
                           {cleanExcerpt}
                         </p>
                       )}
                     </div>
 
-                    {/* Actieknoppen onderaan */}
-                    <div className="pt-4 border-t border-border/60 flex items-center justify-between gap-3">
-                      <Button
-                        asChild
-                        size="sm"
-                        className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs uppercase tracking-wider font-semibold shadow-sm flex-1"
+                    {/* Actielinks onderaan het kaartje */}
+                    <div className="flex items-center justify-between gap-2 mt-2 pt-1.5 border-t border-border/40">
+                      <Link
+                        to={`/nieuws/${article.id}`}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent hover:text-accent/80 transition-colors"
                       >
-                        <Link to={`/nieuws/${article.id}`}>
-                          <span>Lees bericht</span>
-                          <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
-                        </Link>
-                      </Button>
+                        <span>Lees bericht</span>
+                        <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                      </Link>
 
                       {onShareArticle && (
-                        <Button
+                        <button
                           type="button"
-                          variant="outline"
-                          size="sm"
                           onClick={() => onShareArticle(article)}
                           title="Deel dit bericht"
                           aria-label={`Deel bericht: ${article.title}`}
-                          className="text-xs border-border hover:border-accent text-foreground hover:text-accent px-3 shrink-0"
+                          className="text-muted-foreground hover:text-accent p-1 transition-colors rounded hover:bg-accent/10"
                         >
                           <Share2 className="w-3.5 h-3.5" />
-                        </Button>
+                        </button>
                       )}
                     </div>
                   </div>
@@ -340,23 +316,30 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
             })}
           </div>
 
-          {/* Verticale stappen / bullet navigatie (indien meerdere berichten) */}
-          {total > 1 && (
-            <div className="flex items-center justify-center gap-2 mt-3 pt-2">
-              {newsItems.map((item, idx) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => goToIndex(idx)}
-                  className={`transition-all duration-300 rounded-full ${
-                    idx === currentIndex
-                      ? "w-6 h-2 bg-accent shadow"
-                      : "w-2 h-2 bg-muted-foreground/30 hover:bg-muted-foreground/60"
-                  }`}
-                  aria-label={`Ga naar bericht ${idx + 1}: ${item.title}`}
-                  title={`${item.title} (${idx + 1}/${total})`}
-                />
-              ))}
+          {/* Pagina-indicatoren en teller onderaan */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between gap-2 pt-2 px-1 text-xs text-muted-foreground">
+              <span>
+                Toont {currentPage * ITEMS_PER_PAGE + 1}–
+                {Math.min((currentPage + 1) * ITEMS_PER_PAGE, total)} van {total} berichten
+              </span>
+
+              <div className="flex items-center gap-1.5">
+                {Array.from({ length: totalPages }).map((_, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => goToPage(idx)}
+                    className={`transition-all duration-300 rounded-full ${
+                      idx === currentPage
+                        ? "w-5 h-2 bg-accent shadow"
+                        : "w-2 h-2 bg-muted-foreground/30 hover:bg-muted-foreground/60"
+                    }`}
+                    aria-label={`Ga naar pagina ${idx + 1}`}
+                    title={`Pagina ${idx + 1} van ${totalPages}`}
+                  />
+                ))}
+              </div>
             </div>
           )}
         </div>
