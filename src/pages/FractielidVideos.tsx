@@ -324,8 +324,8 @@ export default function FractielidVideos() {
       {/* GEKOPPELDE VIDEO'S EN GEKOPPELDE BERICHTEN NAAST ELKAAR */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch mb-16">
         {/* Kolom Links: Gekoppelde Video's (6 cols) */}
-        <div className="lg:col-span-6 flex flex-col justify-between h-full space-y-6">
-          <div id="videos-header" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4 shrink-0">
+        <div className="lg:col-span-6 flex flex-col justify-between">
+          <div id="videos-header" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4 min-h-[76px]">
             <div>
               <h2 className="font-display text-2xl sm:text-3xl flex items-center gap-2.5">
                 <Video className="w-6 h-6 text-accent" />
@@ -347,7 +347,7 @@ export default function FractielidVideos() {
             </div>
 
             {videos.length > 0 && (
-              <div className="text-xs text-muted-foreground shrink-0">
+              <div className="text-xs text-muted-foreground shrink-0 hidden sm:block">
                 Meest recente datum
               </div>
             )}
@@ -391,8 +391,8 @@ export default function FractielidVideos() {
               </div>
             </div>
           ) : (
-            <div className="flex-1 flex flex-col justify-between space-y-6 min-h-0">
-              <div className={`grid grid-cols-1 ${paginatedVideos.length > 1 ? "sm:grid-cols-2" : "sm:grid-cols-1"} gap-6 pt-2`}>
+            <div className="flex-1 flex flex-col justify-between">
+              <div className={`grid grid-cols-1 ${paginatedVideos.length > 1 ? "sm:grid-cols-2" : "sm:grid-cols-1"} gap-5 pt-2`}>
                 {paginatedVideos.map((v) => {
                   const displayTitle = v.burgerraadslidTitle || v.title || "Videobijdrage";
                   const effectivePoster = getVideoThumbnail(v.videoUrl, v.thumbnailUrl);
@@ -439,17 +439,17 @@ export default function FractielidVideos() {
                       </Link>
 
                       {/* Video Metadata, Titel & Beschrijving */}
-                      <div className="p-5 flex-1 flex flex-col justify-between">
+                      <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between">
                         <div>
                           {/* Burgerraadslid badge als het lid burgerraadslid is */}
                           {isBurgerraadslid && (
-                            <div className="mb-2.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-accent/15 border border-accent/30 text-[10px] uppercase tracking-wider text-accent font-semibold">
+                            <div className="mb-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-accent/15 border border-accent/30 text-[10px] uppercase tracking-wider text-accent font-semibold">
                               <Tag className="w-3 h-3" />
                               <span>Burgerraadslid Bijdrage</span>
                             </div>
                           )}
 
-                          <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-2">
+                          <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground mb-1.5">
                             <div className="flex items-center gap-2">
                               <span className="uppercase tracking-wider text-accent font-semibold">
                                 {v.category || "Algemeen"}
@@ -472,19 +472,19 @@ export default function FractielidVideos() {
                           </div>
 
                           {/* Prominente titel (linkt naar losse videopagina) */}
-                          <h3 className="font-display text-xl sm:text-2xl font-semibold leading-snug mb-2 group-hover:text-accent transition-colors">
+                          <h3 className="font-display text-lg sm:text-xl font-semibold leading-snug mb-1.5 group-hover:text-accent transition-colors line-clamp-2">
                             <Link to={`/video/${v.id}`}>{displayTitle}</Link>
                           </h3>
 
                           {/* Optionele beschrijving */}
                           {v.description && (
-                            <p className="text-xs text-muted-foreground leading-relaxed mt-2 line-clamp-3">
+                            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 mb-2">
                               {v.description}
                             </p>
                           )}
                         </div>
 
-                        <div className="mt-4 pt-3 border-t border-border/60 text-[11px] text-muted-foreground flex items-center justify-between">
+                        <div className="mt-2 pt-2.5 border-t border-border/60 text-[11px] text-muted-foreground flex items-center justify-between">
                           <Link
                             to={`/video/${v.id}`}
                             className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:text-accent/80 transition-colors"
@@ -502,8 +502,8 @@ export default function FractielidVideos() {
                 })}
               </div>
 
-              {/* Paginering voor video's (per 6) - vast verankerd onderaan */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-6 border-t border-border mt-auto shrink-0">
+              {/* Paginering voor video's (per 6) - sluit strak aan onder de videokaarten, gelijk aan de berichtenpaginering */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-6 border-t border-border mt-auto min-h-[56px]">
                 <div className="text-xs text-muted-foreground">
                   Toont {(videoPage - 1) * VIDEOS_PER_PAGE + 1}–
                   {Math.min(videoPage * VIDEOS_PER_PAGE, videos.length)} van {videos.length} video's
@@ -572,13 +572,13 @@ export default function FractielidVideos() {
         </div>
 
         {/* Kolom Rechts: Gekoppelde Berichten (Verticale Carrousel) (6 cols) */}
-        <div className="lg:col-span-6 flex flex-col justify-between h-full">
+        <div className="lg:col-span-6 flex flex-col justify-between">
           <VerticalNewsCarousel
             member={member}
             newsItems={newsItems}
             loading={newsLoading}
             onShareArticle={handleShareArticle}
-            className="h-full flex flex-col justify-between"
+            className="flex-1 flex flex-col justify-between"
           />
         </div>
       </div>

@@ -108,26 +108,26 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
 
   if (loading) {
     return (
-      <div className={`h-full flex flex-col justify-between ${className}`}>
-        <div className="flex items-center justify-between border-b border-border pb-4 shrink-0">
+      <div className={`flex flex-col space-y-6 ${className}`}>
+        <div className="flex items-center justify-between border-b border-border pb-4">
           <div className="h-7 w-52 bg-muted rounded animate-pulse" />
           <div className="h-6 w-20 bg-muted rounded animate-pulse" />
         </div>
-        <div className="flex-1 flex flex-col justify-between py-4 space-y-4 min-h-0">
+        <div className="space-y-6 pt-2">
           {[1, 2, 3].map((n) => (
             <div
               key={n}
-              className="flex-1 min-h-0 bg-card rounded-xl border border-border overflow-hidden animate-pulse flex flex-col justify-between"
+              className="bg-card rounded-xl border border-border overflow-hidden animate-pulse flex flex-col"
             >
-              <div className="h-32 sm:h-36 bg-muted/60 shrink-0" />
-              <div className="p-4 space-y-2 flex-1 flex flex-col justify-between">
+              <div className="h-40 sm:h-44 bg-muted/60 shrink-0" />
+              <div className="p-4 sm:p-5 space-y-2.5">
                 <div className="flex justify-between">
                   <div className="h-3 bg-muted/50 rounded w-24" />
                   <div className="h-3 bg-muted/50 rounded w-16" />
                 </div>
                 <div className="h-5 bg-muted/70 rounded w-3/4" />
                 <div className="h-3 bg-muted/40 rounded w-full" />
-                <div className="pt-2 border-t border-border/40 flex justify-between">
+                <div className="pt-2.5 border-t border-border/40 flex justify-between">
                   <div className="h-4 bg-muted/50 rounded w-20" />
                   <div className="h-5 w-5 rounded-full bg-muted/50" />
                 </div>
@@ -135,7 +135,7 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
             </div>
           ))}
         </div>
-        <div className="pt-6 border-t border-border mt-auto shrink-0 h-10 bg-muted/20 rounded animate-pulse" />
+        <div className="pt-6 border-t border-border mt-6 h-10 bg-muted/20 rounded animate-pulse" />
       </div>
     );
   }
@@ -143,7 +143,7 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
   return (
     <section
       id="gekoppelde-berichten-section"
-      className={`h-full flex flex-col justify-between ${className}`}
+      className={`flex-1 flex flex-col justify-between ${className}`}
       aria-label={`Gekoppelde berichten van ${member.name}`}
       tabIndex={0}
       onKeyDown={handleKeyDown}
@@ -152,7 +152,7 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
       ref={containerRef}
     >
       {/* Header met titel, teller en carrousel knoppen */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4 shrink-0">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4 min-h-[76px]">
         <div>
           <h2 className="font-display text-2xl sm:text-3xl flex items-center gap-2.5">
             <Newspaper className="w-6 h-6 text-accent" />
@@ -209,9 +209,9 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
         )}
       </div>
 
-      {/* Carrousel Inhoud - vult precies de ruimte tussen header en paginering */}
+      {/* Carrousel Inhoud */}
       {total === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center bg-card border border-border p-8 text-center rounded-xl min-h-[300px] shadow-sm my-auto">
+        <div className="bg-card border border-border p-8 text-center rounded-xl min-h-[300px] shadow-sm flex flex-col items-center justify-center">
           <div className="w-14 h-14 mx-auto mb-3.5 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent">
             <Newspaper className="w-7 h-7 opacity-75" />
           </div>
@@ -225,11 +225,11 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
           </Button>
         </div>
       ) : (
-        <div className="flex-1 flex flex-col justify-between py-3 min-h-0 space-y-4">
-          {/* Weergave van 3 grote artikelen die meeschalen met de hoogte */}
+        <div className="flex-1 flex flex-col justify-between pt-2">
+          {/* Weergave van 3 artikelen onder elkaar */}
           <div
             key={currentPage}
-            className={`flex-1 flex flex-col justify-between min-h-0 space-y-4 ${
+            className={`space-y-5 ${
               direction === "down" ? "animate-fade-up" : "animate-fade-down"
             }`}
           >
@@ -261,13 +261,13 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
                 <article
                   key={article.id}
                   id={`carousel-article-${article.id}`}
-                  className="flex-1 min-h-0 group bg-card rounded-xl border border-border overflow-hidden hover-lift flex flex-col justify-between transition-all hover:border-accent/50 shadow-sm"
+                  className="group bg-card rounded-xl border border-border overflow-hidden hover-lift flex flex-col transition-all hover:border-accent/50 shadow-sm"
                   style={{ animationDelay: `${index * 80}ms` }}
                 >
-                  {/* Grote Afbeelding bovenaan met badges */}
+                  {/* Afbeelding bovenaan: compacte en beschaafde hoogte, GEEN overdreven grote foto */}
                   <Link
                     to={`/nieuws/${article.id}`}
-                    className="h-32 sm:h-36 md:h-40 w-full bg-muted relative overflow-hidden shrink-0 block"
+                    className="h-36 sm:h-40 w-full bg-muted relative overflow-hidden block shrink-0"
                     title={article.title}
                   >
                     {effectiveThumbnail ? (
@@ -309,28 +309,26 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
                     </div>
                   </Link>
 
-                  {/* Kaart Inhoud met Datum, Leestijd, Titel en Beschrijving */}
-                  <div className="p-4 sm:p-5 flex flex-col flex-1 justify-between min-h-0">
-                    <div>
-                      <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5 font-medium">
-                        <span>{formattedDate}</span>
-                        <span className="flex items-center gap-1 text-[11px]">
-                          <Clock className="w-3 h-3 text-accent" />
-                          {readingTime} min
-                        </span>
-                      </div>
-
-                      <h3 className="text-base sm:text-lg font-display font-bold mb-2 leading-snug group-hover:text-accent transition-colors line-clamp-2">
-                        <Link to={`/nieuws/${article.id}`}>{article.title}</Link>
-                      </h3>
-
-                      <p className="text-muted-foreground text-xs sm:text-sm line-clamp-2 leading-relaxed">
-                        {excerptText}
-                      </p>
+                  {/* Kaart Inhoud: ingekorte, directe afstand tussen beschrijving en lees meer */}
+                  <div className="p-4 sm:p-5 flex flex-col justify-start">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5 font-medium">
+                      <span>{formattedDate}</span>
+                      <span className="flex items-center gap-1 text-[11px]">
+                        <Clock className="w-3 h-3 text-accent" />
+                        {readingTime} min
+                      </span>
                     </div>
 
-                    {/* Footer van de kaart met Lees meer en Deel knop */}
-                    <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-border/60">
+                    <h3 className="text-base sm:text-lg font-display font-bold mb-1.5 leading-snug group-hover:text-accent transition-colors line-clamp-2">
+                      <Link to={`/nieuws/${article.id}`}>{article.title}</Link>
+                    </h3>
+
+                    <p className="text-muted-foreground text-xs sm:text-sm line-clamp-2 leading-relaxed mb-2.5">
+                      {excerptText}
+                    </p>
+
+                    {/* Footer direct strak en compact aansluitend onder de beschrijving */}
+                    <div className="flex items-center justify-between pt-2.5 border-t border-border/60 mt-0">
                       <Link
                         to={`/nieuws/${article.id}`}
                         className="inline-flex items-center text-xs font-semibold text-primary group-hover:text-accent transition-colors"
@@ -347,7 +345,7 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
                             e.stopPropagation();
                             onShareArticle(article);
                           }}
-                          className="p-1 rounded-full text-muted-foreground hover:text-accent hover:bg-accent/15 transition-all"
+                          className="p-1 rounded-full text-muted-foreground hover:text-accent hover:bg-accent/15 transition-all cursor-pointer"
                           title="Deel dit nieuwsbericht"
                           aria-label={`Deel bericht: ${article.title}`}
                         >
@@ -360,63 +358,63 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
               );
             })}
           </div>
+
+          {/* Pagina-indicatoren en teller onderaan - sluit direct en strak aan onder de 3 artikelen, uitgelijnd met videopaginering */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-6 border-t border-border mt-auto min-h-[56px] text-xs text-muted-foreground">
+            <span>
+              Toont {total > 0 ? currentPage * ITEMS_PER_PAGE + 1 : 0}–
+              {Math.min((currentPage + 1) * ITEMS_PER_PAGE, total)} van {total} berichten
+            </span>
+
+            {totalPages > 1 ? (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage === 0}
+                  onClick={goToPrev}
+                  className="h-8 px-2.5 text-xs border-border hover:border-accent text-foreground"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5 mr-1" />
+                  <span>Vorige</span>
+                </Button>
+
+                <div className="flex items-center gap-1.5 px-1">
+                  {Array.from({ length: totalPages }).map((_, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => goToPage(idx)}
+                      className={`transition-all duration-300 rounded-full ${
+                        idx === currentPage
+                          ? "w-5 h-2 bg-accent shadow"
+                          : "w-2 h-2 bg-muted-foreground/30 hover:bg-muted-foreground/60"
+                      }`}
+                      aria-label={`Ga naar pagina ${idx + 1}`}
+                      title={`Pagina ${idx + 1} van ${totalPages}`}
+                    />
+                  ))}
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage === totalPages - 1}
+                  onClick={goToNext}
+                  className="h-8 px-2.5 text-xs border-border hover:border-accent text-foreground"
+                >
+                  <span>Volgende</span>
+                  <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                </Button>
+              </div>
+            ) : (
+              <div className="text-[11px] text-muted-foreground/80">
+                Alle berichten weergegeven
+              </div>
+            )}
+          </div>
         </div>
       )}
-
-      {/* Pagina-indicatoren en teller onderaan - exact uitgelijnd met de videopaginering */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-6 border-t border-border mt-auto shrink-0 text-xs text-muted-foreground">
-        <span>
-          Toont {total > 0 ? currentPage * ITEMS_PER_PAGE + 1 : 0}–
-          {Math.min((currentPage + 1) * ITEMS_PER_PAGE, total)} van {total} berichten
-        </span>
-
-        {totalPages > 1 ? (
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={currentPage === 0}
-              onClick={goToPrev}
-              className="h-8 px-2.5 text-xs border-border hover:border-accent text-foreground"
-            >
-              <ChevronLeft className="w-3.5 h-3.5 mr-1" />
-              <span>Vorige</span>
-            </Button>
-
-            <div className="flex items-center gap-1.5 px-1">
-              {Array.from({ length: totalPages }).map((_, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => goToPage(idx)}
-                  className={`transition-all duration-300 rounded-full ${
-                    idx === currentPage
-                      ? "w-5 h-2 bg-accent shadow"
-                      : "w-2 h-2 bg-muted-foreground/30 hover:bg-muted-foreground/60"
-                  }`}
-                  aria-label={`Ga naar pagina ${idx + 1}`}
-                  title={`Pagina ${idx + 1} van ${totalPages}`}
-                />
-              ))}
-            </div>
-
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={currentPage === totalPages - 1}
-              onClick={goToNext}
-              className="h-8 px-2.5 text-xs border-border hover:border-accent text-foreground"
-            >
-              <span>Volgende</span>
-              <ChevronRight className="w-3.5 h-3.5 ml-1" />
-            </Button>
-          </div>
-        ) : (
-          <div className="text-[11px] text-muted-foreground/80">
-            Alle berichten weergegeven
-          </div>
-        )}
-      </div>
     </section>
   );
 };

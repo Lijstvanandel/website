@@ -63,8 +63,6 @@ export default function VideoDetail() {
   // Random carousel state for right column
   const [shuffledVideos, setShuffledVideos] = useState<VideoItem[]>([]);
   const [carouselPage, setCarouselPage] = useState(0);
-  const [isPaused, setIsPaused] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
   const ITEMS_PER_CAROUSEL_PAGE = 5;
 
   // 1. Fetch fractieleden
@@ -170,15 +168,6 @@ export default function VideoDetail() {
     setCarouselPage(0);
     toast.success("Video's opnieuw willekeurig geschud!");
   }, [allVideos, currentVideo]);
-
-  // Autoplay ticker voor de carrousel met willekeurige video's
-  useEffect(() => {
-    if (totalCarouselPages <= 1 || isPaused || isHovered) return;
-    const interval = setInterval(() => {
-      goToNextCarousel();
-    }, 8500);
-    return () => clearInterval(interval);
-  }, [totalCarouselPages, isPaused, isHovered, goToNextCarousel]);
 
   // URL voor delen
   const shareUrl = typeof window !== "undefined" ? `${window.location.origin}/video/${id}` : "";
@@ -348,105 +337,21 @@ export default function VideoDetail() {
               </h1>
             </div>
 
-            {/* Actiebalk: Social Share knoppen (geïnspireerd op referentie) */}
-            <div className="py-3 px-4 bg-card rounded-lg border border-border flex flex-wrap items-center justify-between gap-3 shadow-sm">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mr-1">
-                  Deel video:
-                </span>
-
-                {/* X (Twitter) */}
-                <a
-                  href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(
-                    displayTitle
-                  )}&url=${encodeURIComponent(shareUrl)}&hashtags=LijstvanAndel,Steenwijkerland`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-8 h-8 rounded-full bg-secondary/80 hover:bg-secondary text-foreground flex items-center justify-center transition-transform hover:scale-110"
-                  title="Deel op X (Twitter)"
-                  aria-label="Deel op X"
-                >
-                  <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
-                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 24.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-                  </svg>
-                </a>
-
-                {/* Facebook */}
-                <a
-                  href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center transition-transform hover:scale-110"
-                  title="Deel op Facebook"
-                  aria-label="Deel op Facebook"
-                >
-                  <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-                  </svg>
-                </a>
-
-                {/* WhatsApp */}
-                <a
-                  href={`https://api.whatsapp.com/send?text=${encodeURIComponent(
-                    `${displayTitle} - ${shareUrl}`
-                  )}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center transition-transform hover:scale-110"
-                  title="Deel via WhatsApp"
-                  aria-label="Deel via WhatsApp"
-                >
-                  <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                    <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z" />
-                  </svg>
-                </a>
-
-                {/* Telegram */}
-                <a
-                  href={`https://telegram.me/share/url?url=${encodeURIComponent(
-                    shareUrl
-                  )}&text=${encodeURIComponent(displayTitle)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-8 h-8 rounded-full bg-sky-500 text-white flex items-center justify-center transition-transform hover:scale-110"
-                  title="Deel via Telegram"
-                  aria-label="Deel via Telegram"
-                >
-                  <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                    <path d="M12 0c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.197 1.006.128.828.942z" />
-                  </svg>
-                </a>
-
-                {/* Link kopiëren */}
-                <button
-                  type="button"
-                  onClick={handleCopyLink}
-                  className="h-8 px-2.5 rounded-full bg-secondary hover:bg-secondary/80 text-foreground text-xs font-semibold flex items-center gap-1.5 transition-colors border border-border"
-                  title="Kopieer directe videolink"
-                >
-                  {copied ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-emerald-500" />
-                      <span className="text-emerald-500">Gekopieerd!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5 text-accent" />
-                      <span>Kopieer link</span>
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {/* Uitgebreide deelmodal knop */}
-              <button
+            {/* Actiebalk: Alleen de deelknop met alle opties in de dialoog */}
+            <div className="py-2.5 px-4 bg-card rounded-lg border border-border flex items-center justify-between gap-3 shadow-sm">
+              <span className="text-xs text-muted-foreground font-medium">
+                Vind je deze bijdrage waardevol? Deel hem met anderen:
+              </span>
+              <Button
                 type="button"
                 onClick={() => setShareDialogOpen(true)}
-                className="text-xs font-semibold text-accent hover:text-accent/80 transition-colors flex items-center gap-1.5"
+                variant="outline"
+                size="sm"
+                className="border-border hover:border-accent text-foreground hover:text-accent font-semibold text-xs gap-2 shrink-0 cursor-pointer"
               >
-                <Share2 className="w-3.5 h-3.5" />
-                <span>Meer opties</span>
-              </button>
+                <Share2 className="w-3.5 h-3.5 text-accent" />
+                <span>Video delen</span>
+              </Button>
             </div>
 
             {/* Beschrijving */}
@@ -540,12 +445,10 @@ export default function VideoDetail() {
             )}
           </div>
 
-          {/* RECHTER KOLOM: Verticale Carrousel met Willekeurige Video's van Alle Raadsleden */}
+          {/* RECHTER KOLOM: Verticale Carrousel met Willekeurige Video's van Alle Raadsleden (handmatig bladeren) */}
           <aside
             className="lg:col-span-4 space-y-4"
             aria-label="Willekeurige video's van alle raadsleden"
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
           >
             {/* Carrousel Header met shuffle & navigatieknoppen */}
             <div className="flex items-center justify-between gap-2 border-b border-border pb-3">
@@ -573,17 +476,6 @@ export default function VideoDetail() {
 
                 {totalCarouselPages > 1 && (
                   <>
-                    {/* Auto-scroll pauzeren/hervatten */}
-                    <button
-                      type="button"
-                      onClick={() => setIsPaused(!isPaused)}
-                      title={isPaused ? "Carrousel hervatten" : "Carrousel pauzeren"}
-                      className="w-7 h-7 rounded-sm border border-border hover:border-accent text-muted-foreground hover:text-accent flex items-center justify-center transition-colors"
-                      aria-label={isPaused ? "Carrousel hervatten" : "Carrousel pauzeren"}
-                    >
-                      {isPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
-                    </button>
-
                     {/* Vorige pagina */}
                     <button
                       type="button"
