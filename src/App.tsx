@@ -67,7 +67,7 @@ const Register = safeLazy(() => import("./pages/Register"));
 // Lazy-load heavier administrative, dashboard and portal sub-routes
 const Raadspaneel = safeLazy(() => import("./pages/Raadspaneel"));
 const FractielidVideos = safeLazy(() => import("./pages/FractielidVideos"));
-const VideoRedirect = safeLazy(() => import("./pages/VideoRedirect"));
+const VideoDetail = safeLazy(() => import("./pages/VideoDetail"));
 const ResetPassword = safeLazy(() => import("./pages/ResetPassword"));
 const Dashboard = safeLazy(() => import("./pages/Dashboard"));
 const AdminDashboard = safeLazy(() => import("./pages/AdminDashboard"));
@@ -98,8 +98,8 @@ const AppRoutes = () => {
           <Route path="/raadsleden" element={<Raadsleden />} />
           <Route path="/raadsleden/:id" element={<FractielidVideos />} />
           <Route path="/raadsleden/:id/videos" element={<FractielidVideos />} />
-          <Route path="/video/:id" element={<VideoRedirect />} />
-          <Route path="/videos/:id" element={<VideoRedirect />} />
+          <Route path="/video/:id" element={<VideoDetail />} />
+          <Route path="/videos/:id" element={<VideoDetail />} />
           <Route path="/bestuur" element={<Bestuur />} />
           <Route path="/steunfractie" element={<Steunfractie />} />
           <Route path="/standpunten" element={<Standpunten />} />

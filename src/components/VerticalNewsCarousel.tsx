@@ -8,12 +8,25 @@ import {
   ArrowRight,
   Share2,
   MapPin,
+  Tag,
+  Clock,
+  Headphones,
+  Video,
   Play,
   Pause,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NewsItem } from "@/data/news";
 import { FractielidItem } from "@/components/FractielidWidget";
+
+function getReadingTime(item: NewsItem): number {
+  const text = `${item.title || ""} ${item.description || item.excerpt || ""} ${item.content || ""}`;
+  const clean = text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  const words = clean ? clean.split(/\s+/).length : 0;
+  return Math.max(1, Math.ceil(words / 200));
+}
 
 interface VerticalNewsCarouselProps {
   member: FractielidItem;
@@ -65,13 +78,13 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
     setCurrentPage(page);
   };
 
-  // Autoplay ticker: advance every 7.5 seconds if multiple pages and not paused/hovered
+  // Autoplay ticker: advance every 8.5 seconds if multiple pages and not paused/hovered
   useEffect(() => {
     if (totalPages <= 1 || isPaused || isHovered) return;
 
     const interval = setInterval(() => {
       goToNext();
-    }, 7500);
+    }, 8500);
 
     return () => clearInterval(interval);
   }, [totalPages, isPaused, isHovered, goToNext]);
@@ -95,33 +108,42 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
 
   if (loading) {
     return (
-      <div className={`space-y-4 ${className}`}>
-        <div className="flex items-center justify-between border-b border-border pb-4">
-          <div className="h-6 w-48 bg-muted rounded animate-pulse" />
+      <div className={`h-full flex flex-col justify-between ${className}`}>
+        <div className="flex items-center justify-between border-b border-border pb-4 shrink-0">
+          <div className="h-7 w-52 bg-muted rounded animate-pulse" />
           <div className="h-6 w-20 bg-muted rounded animate-pulse" />
         </div>
-        <div className="space-y-3.5">
+        <div className="flex-1 flex flex-col justify-between py-4 space-y-4 min-h-0">
           {[1, 2, 3].map((n) => (
             <div
               key={n}
-              className="bg-card border border-border rounded-sm p-4 flex gap-4 h-[120px] animate-pulse"
+              className="flex-1 min-h-0 bg-card rounded-xl border border-border overflow-hidden animate-pulse flex flex-col justify-between"
             >
-              <div className="w-28 bg-muted/70 rounded-sm shrink-0" />
-              <div className="flex-1 space-y-2 py-1">
-                <div className="h-3 bg-muted/60 rounded w-1/4" />
-                <div className="h-4 bg-muted/80 rounded w-3/4" />
-                <div className="h-3 bg-muted/50 rounded w-full" />
+              <div className="h-32 sm:h-36 bg-muted/60 shrink-0" />
+              <div className="p-4 space-y-2 flex-1 flex flex-col justify-between">
+                <div className="flex justify-between">
+                  <div className="h-3 bg-muted/50 rounded w-24" />
+                  <div className="h-3 bg-muted/50 rounded w-16" />
+                </div>
+                <div className="h-5 bg-muted/70 rounded w-3/4" />
+                <div className="h-3 bg-muted/40 rounded w-full" />
+                <div className="pt-2 border-t border-border/40 flex justify-between">
+                  <div className="h-4 bg-muted/50 rounded w-20" />
+                  <div className="h-5 w-5 rounded-full bg-muted/50" />
+                </div>
               </div>
             </div>
           ))}
         </div>
+        <div className="pt-6 border-t border-border mt-auto shrink-0 h-10 bg-muted/20 rounded animate-pulse" />
       </div>
     );
   }
 
   return (
     <section
-      className={`space-y-4 ${className}`}
+      id="gekoppelde-berichten-section"
+      className={`h-full flex flex-col justify-between ${className}`}
       aria-label={`Gekoppelde berichten van ${member.name}`}
       tabIndex={0}
       onKeyDown={handleKeyDown}
@@ -130,7 +152,7 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
       ref={containerRef}
     >
       {/* Header met titel, teller en carrousel knoppen */}
-      <div className="flex items-center justify-between gap-3 border-b border-border pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4 shrink-0">
         <div>
           <h2 className="font-display text-2xl sm:text-3xl flex items-center gap-2.5">
             <Newspaper className="w-6 h-6 text-accent" />
@@ -138,6 +160,11 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
             <span className="text-sm font-sans font-semibold px-2.5 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/30">
               {total} {total === 1 ? "bericht" : "berichten"}
             </span>
+            {totalPages > 1 && (
+              <span className="text-xs font-sans text-muted-foreground font-normal">
+                (Pagina {currentPage + 1} van {totalPages})
+              </span>
+            )}
           </h2>
           <p className="text-xs text-muted-foreground mt-1">
             Nieuwsberichten en bijdragen gekoppeld aan {member.name} (3 per weergave).
@@ -145,7 +172,7 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
         </div>
 
         {totalPages > 1 && (
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0 self-start sm:self-center">
             {/* Auto-scroll toggle knop */}
             <button
               type="button"
@@ -161,8 +188,8 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
             <button
               type="button"
               onClick={goToPrev}
-              title="Vorige berichten"
-              aria-label="Vorige berichten"
+              title="Vorige 3 berichten"
+              aria-label="Vorige 3 berichten"
               className="w-8 h-8 rounded-sm border border-border hover:border-accent text-foreground hover:text-accent flex items-center justify-center transition-colors bg-secondary/30 hover:bg-secondary/70"
             >
               <ChevronUp className="w-4 h-4" />
@@ -172,8 +199,8 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
             <button
               type="button"
               onClick={goToNext}
-              title="Volgende berichten"
-              aria-label="Volgende berichten"
+              title="Volgende 3 berichten"
+              aria-label="Volgende 3 berichten"
               className="w-8 h-8 rounded-sm border border-border hover:border-accent text-foreground hover:text-accent flex items-center justify-center transition-colors bg-secondary/30 hover:bg-secondary/70"
             >
               <ChevronDown className="w-4 h-4" />
@@ -182,9 +209,9 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
         )}
       </div>
 
-      {/* Carrousel Inhoud */}
+      {/* Carrousel Inhoud - vult precies de ruimte tussen header en paginering */}
       {total === 0 ? (
-        <div className="bg-card border border-border p-8 text-center rounded-sm min-h-[300px] flex flex-col items-center justify-center">
+        <div className="flex-1 flex flex-col items-center justify-center bg-card border border-border p-8 text-center rounded-xl min-h-[300px] shadow-sm my-auto">
           <div className="w-14 h-14 mx-auto mb-3.5 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent">
             <Newspaper className="w-7 h-7 opacity-75" />
           </div>
@@ -198,113 +225,131 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
           </Button>
         </div>
       ) : (
-        <div className="space-y-3.5">
-          {/* Weergave van 3 artikelen onder elkaar met soepele overgang */}
+        <div className="flex-1 flex flex-col justify-between py-3 min-h-0 space-y-4">
+          {/* Weergave van 3 grote artikelen die meeschalen met de hoogte */}
           <div
             key={currentPage}
-            className={`space-y-3.5 ${
+            className={`flex-1 flex flex-col justify-between min-h-0 space-y-4 ${
               direction === "down" ? "animate-fade-up" : "animate-fade-down"
             }`}
           >
-            {visibleItems.map((article) => {
-              const cleanExcerpt =
-                article.excerpt ||
-                article.description ||
-                (article.content
-                  ? article.content.replace(/<[^>]*>/g, "").slice(0, 140) + "..."
-                  : "");
-
+            {visibleItems.map((article, index) => {
               const effectiveThumbnail =
                 article.thumbnailUrl ||
                 article.headerUrl ||
                 article.image ||
                 "/assets/markt-steenwijk.jpg";
 
-              const formattedDate = article.date
-                ? new Date(article.date).toLocaleDateString("nl-NL", {
+              const formattedDate = article.date || article.createdAt
+                ? new Date(article.date || article.createdAt || "").toLocaleDateString("nl-NL", {
                     day: "numeric",
-                    month: "short",
+                    month: "long",
                     year: "numeric",
                   })
                 : "Recent";
+
+              const excerptText =
+                article.description ||
+                article.excerpt ||
+                (article.content
+                  ? article.content.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 160) + "..."
+                  : "");
+
+              const readingTime = getReadingTime(article);
 
               return (
                 <article
                   key={article.id}
                   id={`carousel-article-${article.id}`}
-                  className="bg-card border border-border hover:border-accent/60 rounded-sm p-3.5 sm:p-4 flex gap-3.5 sm:gap-4 items-stretch hover-lift transition-all group shadow-sm"
+                  className="flex-1 min-h-0 group bg-card rounded-xl border border-border overflow-hidden hover-lift flex flex-col justify-between transition-all hover:border-accent/50 shadow-sm"
+                  style={{ animationDelay: `${index * 80}ms` }}
                 >
-                  {/* Thumbnail afbeelding links */}
+                  {/* Grote Afbeelding bovenaan met badges */}
                   <Link
                     to={`/nieuws/${article.id}`}
-                    className="w-24 sm:w-28 md:w-32 aspect-[4/3] rounded-sm overflow-hidden bg-muted shrink-0 relative block"
+                    className="h-32 sm:h-36 md:h-40 w-full bg-muted relative overflow-hidden shrink-0 block"
                     title={article.title}
                   >
-                    <img
-                      src={effectiveThumbnail}
-                      alt={article.title}
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = "/assets/markt-steenwijk.jpg";
-                      }}
-                    />
-                    <div className="absolute top-1 left-1 bg-black/80 backdrop-blur-sm text-accent text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-sm">
-                      {article.category || "Nieuws"}
+                    {effectiveThumbnail ? (
+                      <img
+                        src={effectiveThumbnail}
+                        alt={article.title}
+                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = "/assets/markt-steenwijk.jpg";
+                        }}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-muted-foreground bg-muted/50">
+                        <Newspaper className="w-10 h-10 opacity-20" />
+                      </div>
+                    )}
+
+                    <div className="absolute top-2.5 left-2.5 flex flex-wrap gap-1.5 max-w-[90%] z-10">
+                      <span className="px-2 py-0.5 bg-background/90 backdrop-blur-sm text-foreground text-[10px] font-semibold uppercase tracking-wider rounded-full shadow-sm flex items-center gap-1 border border-border/50">
+                        <Tag className="w-2.5 h-2.5 text-accent" />
+                        {article.category || "Algemeen"}
+                      </span>
+                      {(article.isPodcast || article.podcastAudioUrl) && (
+                        <span className="px-2 py-0.5 bg-purple-600/95 backdrop-blur-sm text-white text-[10px] font-semibold rounded-full shadow-sm flex items-center gap-1 border border-purple-400/40">
+                          <Headphones className="w-2.5 h-2.5" /> Podcast
+                        </span>
+                      )}
+                      {article.videoUrl && (
+                        <span className="px-2 py-0.5 bg-blue-600/95 backdrop-blur-sm text-white text-[10px] font-semibold rounded-full shadow-sm flex items-center gap-1 border border-blue-400/40">
+                          <Video className="w-2.5 h-2.5" /> Video
+                        </span>
+                      )}
+                      {article.wijkNaam && (
+                        <span className="px-2 py-0.5 bg-accent/90 backdrop-blur-sm text-accent-foreground text-[10px] font-semibold rounded-full shadow-sm flex items-center gap-1">
+                          <MapPin className="w-2.5 h-2.5" />
+                          {article.wijkNaam}
+                        </span>
+                      )}
                     </div>
                   </Link>
 
-                  {/* Tekst en metadata rechts */}
-                  <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
+                  {/* Kaart Inhoud met Datum, Leestijd, Titel en Beschrijving */}
+                  <div className="p-4 sm:p-5 flex flex-col flex-1 justify-between min-h-0">
                     <div>
-                      {/* Datum en optionele wijkbadge */}
-                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground mb-1">
-                        <span className="flex items-center gap-1 shrink-0">
-                          <Calendar className="w-3 h-3 text-accent" />
-                          <span>{formattedDate}</span>
+                      <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5 font-medium">
+                        <span>{formattedDate}</span>
+                        <span className="flex items-center gap-1 text-[11px]">
+                          <Clock className="w-3 h-3 text-accent" />
+                          {readingTime} min
                         </span>
-                        {article.wijkSlug && (
-                          <>
-                            <span className="text-muted-foreground/60">•</span>
-                            <span className="flex items-center gap-0.5 truncate text-[10px] text-foreground/80">
-                              <MapPin className="w-2.5 h-2.5 text-accent shrink-0" />
-                              <span className="capitalize truncate">
-                                {article.wijkNaam || article.wijkSlug.replace("-", " ")}
-                              </span>
-                            </span>
-                          </>
-                        )}
                       </div>
 
-                      {/* Titel */}
-                      <h3 className="font-display text-sm sm:text-base font-bold leading-snug line-clamp-2 group-hover:text-accent transition-colors">
+                      <h3 className="text-base sm:text-lg font-display font-bold mb-2 leading-snug group-hover:text-accent transition-colors line-clamp-2">
                         <Link to={`/nieuws/${article.id}`}>{article.title}</Link>
                       </h3>
 
-                      {/* Korte inleiding */}
-                      {cleanExcerpt && (
-                        <p className="text-xs text-muted-foreground leading-relaxed line-clamp-1 sm:line-clamp-2 mt-1">
-                          {cleanExcerpt}
-                        </p>
-                      )}
+                      <p className="text-muted-foreground text-xs sm:text-sm line-clamp-2 leading-relaxed">
+                        {excerptText}
+                      </p>
                     </div>
 
-                    {/* Actielinks onderaan het kaartje */}
-                    <div className="flex items-center justify-between gap-2 mt-2 pt-1.5 border-t border-border/40">
+                    {/* Footer van de kaart met Lees meer en Deel knop */}
+                    <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-border/60">
                       <Link
                         to={`/nieuws/${article.id}`}
-                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent hover:text-accent/80 transition-colors"
+                        className="inline-flex items-center text-xs font-semibold text-primary group-hover:text-accent transition-colors"
                       >
-                        <span>Lees bericht</span>
-                        <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                        Lees meer{" "}
+                        <ArrowRight className="ml-1.5 w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
                       </Link>
 
                       {onShareArticle && (
                         <button
                           type="button"
-                          onClick={() => onShareArticle(article)}
-                          title="Deel dit bericht"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onShareArticle(article);
+                          }}
+                          className="p-1 rounded-full text-muted-foreground hover:text-accent hover:bg-accent/15 transition-all"
+                          title="Deel dit nieuwsbericht"
                           aria-label={`Deel bericht: ${article.title}`}
-                          className="text-muted-foreground hover:text-accent p-1 transition-colors rounded hover:bg-accent/10"
                         >
                           <Share2 className="w-3.5 h-3.5" />
                         </button>
@@ -315,35 +360,63 @@ export const VerticalNewsCarousel: React.FC<VerticalNewsCarouselProps> = ({
               );
             })}
           </div>
-
-          {/* Pagina-indicatoren en teller onderaan */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between gap-2 pt-2 px-1 text-xs text-muted-foreground">
-              <span>
-                Toont {currentPage * ITEMS_PER_PAGE + 1}–
-                {Math.min((currentPage + 1) * ITEMS_PER_PAGE, total)} van {total} berichten
-              </span>
-
-              <div className="flex items-center gap-1.5">
-                {Array.from({ length: totalPages }).map((_, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => goToPage(idx)}
-                    className={`transition-all duration-300 rounded-full ${
-                      idx === currentPage
-                        ? "w-5 h-2 bg-accent shadow"
-                        : "w-2 h-2 bg-muted-foreground/30 hover:bg-muted-foreground/60"
-                    }`}
-                    aria-label={`Ga naar pagina ${idx + 1}`}
-                    title={`Pagina ${idx + 1} van ${totalPages}`}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       )}
+
+      {/* Pagina-indicatoren en teller onderaan - exact uitgelijnd met de videopaginering */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-6 border-t border-border mt-auto shrink-0 text-xs text-muted-foreground">
+        <span>
+          Toont {total > 0 ? currentPage * ITEMS_PER_PAGE + 1 : 0}–
+          {Math.min((currentPage + 1) * ITEMS_PER_PAGE, total)} van {total} berichten
+        </span>
+
+        {totalPages > 1 ? (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage === 0}
+              onClick={goToPrev}
+              className="h-8 px-2.5 text-xs border-border hover:border-accent text-foreground"
+            >
+              <ChevronLeft className="w-3.5 h-3.5 mr-1" />
+              <span>Vorige</span>
+            </Button>
+
+            <div className="flex items-center gap-1.5 px-1">
+              {Array.from({ length: totalPages }).map((_, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => goToPage(idx)}
+                  className={`transition-all duration-300 rounded-full ${
+                    idx === currentPage
+                      ? "w-5 h-2 bg-accent shadow"
+                      : "w-2 h-2 bg-muted-foreground/30 hover:bg-muted-foreground/60"
+                  }`}
+                  aria-label={`Ga naar pagina ${idx + 1}`}
+                  title={`Pagina ${idx + 1} van ${totalPages}`}
+                />
+              ))}
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage === totalPages - 1}
+              onClick={goToNext}
+              className="h-8 px-2.5 text-xs border-border hover:border-accent text-foreground"
+            >
+              <span>Volgende</span>
+              <ChevronRight className="w-3.5 h-3.5 ml-1" />
+            </Button>
+          </div>
+        ) : (
+          <div className="text-[11px] text-muted-foreground/80">
+            Alle berichten weergegeven
+          </div>
+        )}
+      </div>
     </section>
   );
 };

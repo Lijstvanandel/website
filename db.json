@@ -269,6 +269,29 @@
         "1"
       ],
       "description": "Sammy vat de behaalde resultaten van Lijst van Andel samen tijdens de jaarlijkse begrotingsbehandeling."
+    },
+    {
+      "id": "1009",
+      "title": "Lisa Mars over behoud van sociale ontmoetingsplekken en dorpshuizen",
+      "category": "Raadsvergadering",
+      "date": "2024-10-14",
+      "videoUrl": "https://www.w3schools.com/html/mov_bbb.mp4",
+      "fractieledenIds": [
+        "2"
+      ],
+      "wijkSlug": "steenwijk-centrum",
+      "description": "Raadslid Lisa Mars pleit tijdens de raadsvergadering krachtig voor het behoud en stimuleren van buurthuizen en sociale voorzieningen in onze dorpen en wijken."
+    },
+    {
+      "id": "1010",
+      "title": "Inbreng over jeugdzorg en ondersteuning van mantelzorgers",
+      "category": "Commissiedebat",
+      "date": "2025-02-05",
+      "videoUrl": "https://www.w3schools.com/html/mov_bbb.mp4",
+      "fractieledenIds": [
+        "2"
+      ],
+      "description": "Lisa Mars vraagt aandacht voor de toenemende druk op mantelzorgers en een snellere toekenning van passende ondersteuning in Steenwijkerland."
     }
   ],
   "news": [

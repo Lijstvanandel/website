@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Video, Calendar, Tag, MapPin, AlertCircle, Share2, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, Video, Calendar, Tag, MapPin, AlertCircle, Share2, ChevronLeft, ChevronRight, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FractielidWidget, FractielidItem } from "@/components/FractielidWidget";
 import { BelafspraakDialog } from "@/components/BelafspraakDialog";
@@ -206,7 +206,7 @@ export default function FractielidVideos() {
 
   const handleShareVideo = (video: VideoItem) => {
     const videoTitle = video.burgerraadslidTitle || video.title || "Videobijdrage";
-    const videoUrl = `${window.location.origin}${window.location.pathname}?v=${video.id}#video-item-${video.id}`;
+    const videoUrl = `${window.location.origin}/video/${video.id}`;
     setShareData({
       title: `${videoTitle} - ${member?.name || "Lijst van Andel"}`,
       description: video.description || `Bekijk deze videobijdrage van ${member?.name || "Lijst van Andel"} in de gemeenteraad van Steenwijkerland.`,
@@ -322,10 +322,10 @@ export default function FractielidVideos() {
       </div>
 
       {/* GEKOPPELDE VIDEO'S EN GEKOPPELDE BERICHTEN NAAST ELKAAR */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start mb-16">
-        {/* Kolom Links: Gekoppelde Video's (7 cols) */}
-        <div className="lg:col-span-7 space-y-6">
-          <div id="videos-header" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch mb-16">
+        {/* Kolom Links: Gekoppelde Video's (6 cols) */}
+        <div className="lg:col-span-6 flex flex-col justify-between h-full space-y-6">
+          <div id="videos-header" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4 shrink-0">
             <div>
               <h2 className="font-display text-2xl sm:text-3xl flex items-center gap-2.5">
                 <Video className="w-6 h-6 text-accent" />
@@ -347,8 +347,8 @@ export default function FractielidVideos() {
             </div>
 
             {videos.length > 0 && (
-              <div className="text-xs text-muted-foreground">
-                Gesorteerd op meest recente datum
+              <div className="text-xs text-muted-foreground shrink-0">
+                Meest recente datum
               </div>
             )}
           </div>
@@ -372,7 +372,7 @@ export default function FractielidVideos() {
               ))}
             </div>
           ) : videos.length === 0 ? (
-            <div className="bg-card border border-border p-8 text-center rounded-sm min-h-[300px] flex flex-col items-center justify-center">
+            <div className="bg-card border border-border p-8 text-center rounded-sm min-h-[300px] flex flex-col items-center justify-center flex-1">
               <div className="w-14 h-14 mx-auto mb-3.5 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent">
                 <Video className="w-7 h-7 opacity-70" />
               </div>
@@ -391,7 +391,7 @@ export default function FractielidVideos() {
               </div>
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className="flex-1 flex flex-col justify-between space-y-6 min-h-0">
               <div className={`grid grid-cols-1 ${paginatedVideos.length > 1 ? "sm:grid-cols-2" : "sm:grid-cols-1"} gap-6 pt-2`}>
                 {paginatedVideos.map((v) => {
                   const displayTitle = v.burgerraadslidTitle || v.title || "Videobijdrage";
@@ -403,24 +403,40 @@ export default function FractielidVideos() {
                       id={`video-item-${v.id}`}
                       className="bg-card border border-border rounded-sm overflow-hidden flex flex-col hover-lift transition-all group shadow-sm"
                     >
-                      {/* Videospeler bovenaan */}
-                      <div className="aspect-video bg-black relative overflow-hidden flex-shrink-0">
-                        <VideoPlayer
-                          url={v.videoUrl}
-                          title={displayTitle}
-                          poster={effectivePoster || undefined}
-                          className="w-full h-full"
-                        />
+                      {/* Klikbare Videothumbnail met speelknop overlay die naar de losse videopagina leidt */}
+                      <Link
+                        to={`/video/${v.id}`}
+                        className="aspect-video bg-black relative overflow-hidden flex-shrink-0 block cursor-pointer group/thumb"
+                        title={`Bekijk video: ${displayTitle}`}
+                      >
+                        {effectivePoster ? (
+                          <img
+                            src={effectivePoster}
+                            alt={displayTitle}
+                            className="w-full h-full object-cover transition-transform duration-500 group-hover/thumb:scale-105 opacity-90 group-hover/thumb:opacity-100"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = "/assets/markt-steenwijk.jpg";
+                            }}
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-zinc-900 text-muted-foreground">
+                            <Video className="w-12 h-12 opacity-30" />
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-black/30 group-hover/thumb:bg-black/15 transition-colors flex items-center justify-center">
+                          <div className="w-12 h-12 rounded-full bg-accent text-accent-foreground flex items-center justify-center shadow-xl group-hover/thumb:scale-110 transition-transform">
+                            <Play className="w-5 h-5 fill-current translate-x-0.5" />
+                          </div>
+                        </div>
                         {v.wijkSlug && (
-                          <Link
-                            to={`/wijken-en-kernen/${v.wijkSlug}`}
-                            className="absolute top-2 left-2 bg-secondary/90 backdrop-blur text-secondary-foreground px-2 py-0.5 rounded text-[10px] font-semibold hover:bg-secondary transition-colors z-10 flex items-center gap-1 shadow-sm"
+                          <span
+                            className="absolute top-2 left-2 bg-secondary/90 backdrop-blur text-secondary-foreground px-2 py-0.5 rounded text-[10px] font-semibold z-10 flex items-center gap-1 shadow-sm"
                           >
                             <MapPin className="w-3 h-3 text-accent" />
                             <span className="capitalize">{v.wijkSlug.replace("-", " ")}</span>
-                          </Link>
+                          </span>
                         )}
-                      </div>
+                      </Link>
 
                       {/* Video Metadata, Titel & Beschrijving */}
                       <div className="p-5 flex-1 flex flex-col justify-between">
@@ -455,9 +471,9 @@ export default function FractielidVideos() {
                             </button>
                           </div>
 
-                          {/* Prominente titel */}
+                          {/* Prominente titel (linkt naar losse videopagina) */}
                           <h3 className="font-display text-xl sm:text-2xl font-semibold leading-snug mb-2 group-hover:text-accent transition-colors">
-                            {displayTitle}
+                            <Link to={`/video/${v.id}`}>{displayTitle}</Link>
                           </h3>
 
                           {/* Optionele beschrijving */}
@@ -469,7 +485,13 @@ export default function FractielidVideos() {
                         </div>
 
                         <div className="mt-4 pt-3 border-t border-border/60 text-[11px] text-muted-foreground flex items-center justify-between">
-                          <span className="text-foreground/80 font-medium">Spreker: {member.name}</span>
+                          <Link
+                            to={`/video/${v.id}`}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:text-accent/80 transition-colors"
+                          >
+                            <span>Bekijk video</span>
+                            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                          </Link>
                           <span className="text-[10px] uppercase tracking-widest text-accent font-semibold">
                             {isBurgerraadslid ? "Burgerraad" : "Gemeenteraad"}
                           </span>
@@ -480,14 +502,14 @@ export default function FractielidVideos() {
                 })}
               </div>
 
-              {/* Paginering voor video's (per 6) */}
-              {totalVideoPages > 1 && (
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-6 border-t border-border">
-                  <div className="text-xs text-muted-foreground">
-                    Toont {(videoPage - 1) * VIDEOS_PER_PAGE + 1}–
-                    {Math.min(videoPage * VIDEOS_PER_PAGE, videos.length)} van {videos.length} video's
-                  </div>
+              {/* Paginering voor video's (per 6) - vast verankerd onderaan */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-6 border-t border-border mt-auto shrink-0">
+                <div className="text-xs text-muted-foreground">
+                  Toont {(videoPage - 1) * VIDEOS_PER_PAGE + 1}–
+                  {Math.min(videoPage * VIDEOS_PER_PAGE, videos.length)} van {videos.length} video's
+                </div>
 
+                {totalVideoPages > 1 ? (
                   <div className="flex items-center gap-1.5">
                     <Button
                       variant="outline"
@@ -539,19 +561,24 @@ export default function FractielidVideos() {
                       <ChevronRight className="w-3.5 h-3.5 ml-1" />
                     </Button>
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="text-[11px] text-muted-foreground/80">
+                    Alle bijdragen weergegeven
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
 
-        {/* Kolom Rechts: Gekoppelde Berichten (Verticale Carrousel) (5 cols) */}
-        <div className="lg:col-span-5 space-y-6">
+        {/* Kolom Rechts: Gekoppelde Berichten (Verticale Carrousel) (6 cols) */}
+        <div className="lg:col-span-6 flex flex-col justify-between h-full">
           <VerticalNewsCarousel
             member={member}
             newsItems={newsItems}
             loading={newsLoading}
             onShareArticle={handleShareArticle}
+            className="h-full flex flex-col justify-between"
           />
         </div>
       </div>
