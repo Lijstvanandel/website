@@ -709,6 +709,9 @@ export const DossierDetail: React.FC<DossierDetailProps> = ({
             user={user}
             favoritesSet={favoritesSet}
             onToggleFavorite={handleToggleFavorite}
+            onFilterWijk={(newWijk) => {
+              setSelectedWijkFilter(newWijk || null);
+            }}
             initialTab={subdossierInitialTab}
           />
         </ErrorBoundary>

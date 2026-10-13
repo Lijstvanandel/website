@@ -54,6 +54,7 @@ interface SubdossierDetailViewProps {
   user: any;
   favoritesSet: Set<string>;
   onToggleFavorite: (doc: DossierDocument, e: React.MouseEvent) => void;
+  onFilterWijk?: (wijk: string) => void;
   initialTab?: "graph" | "documents" | "timeline" | "wijken";
 }
 
@@ -72,9 +73,10 @@ export const SubdossierDetailView: React.FC<SubdossierDetailViewProps> = ({
   isCouncilOrAdmin,
   favoritesSet,
   onToggleFavorite,
+  onFilterWijk,
   initialTab = "graph",
 }) => {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const effectiveWijk =
     wijkFilter ||
     searchParams.get("wijk") ||
@@ -107,6 +109,60 @@ export const SubdossierDetailView: React.FC<SubdossierDetailViewProps> = ({
       .replace(/[^\w\s-]/g, "")
       .replace(/[\s_-]+/g, "-")
       .replace(/^-+|-+$/g, "");
+
+  // Handler to switch the perspective to a specific wijk/kern
+  const handleSwitchPerspective = useCallback(
+    (newWijkNaam: string) => {
+      const cleanWijk = newWijkNaam.trim();
+      const raw = cleanWijk.toLowerCase();
+      const found = BUURTKAART_WIJKEN.find(
+        (w) =>
+          w.naam.toLowerCase() === raw ||
+          w.slug.toLowerCase() === raw ||
+          slugify(w.naam) === slugify(cleanWijk)
+      );
+      const isKern = found?.type === "Kern";
+
+      // Call parent filter handler if provided
+      if (onFilterWijk) {
+        onFilterWijk(cleanWijk);
+      }
+
+      // Update URL search parameters so previous wijk is replaced
+      const newParams = new URLSearchParams(searchParams);
+      // Remove any previous wijk/kern/wijkSlug params
+      newParams.delete("wijk");
+      newParams.delete("kern");
+      newParams.delete("wijkSlug");
+      // Remove specific document to show the full perspective of this wijk in the subdossier
+      newParams.delete("doc");
+
+      if (isKern) {
+        newParams.set("kern", cleanWijk);
+        newParams.set("wijk", cleanWijk);
+      } else {
+        newParams.set("wijk", cleanWijk);
+      }
+
+      setSearchParams(newParams, { replace: true });
+      setActiveTab("graph");
+      toast.info(`Perspectief gewisseld naar ${isKern ? "kern" : "wijk"} '${cleanWijk}'`);
+    },
+    [onFilterWijk, searchParams, setSearchParams]
+  );
+
+  const handleClearPerspective = useCallback(() => {
+    if (onFilterWijk) {
+      onFilterWijk("");
+    }
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete("wijk");
+    newParams.delete("kern");
+    newParams.delete("wijkSlug");
+    newParams.delete("doc");
+    setSearchParams(newParams, { replace: true });
+    toast.info("Gebiedsfilter gewist: volledig subdossier perspectief");
+  }, [onFilterWijk, searchParams, setSearchParams]);
 
   // All documents strictly belonging to this subdossier
   const subDocs = useMemo(() => {
@@ -640,15 +696,28 @@ export const SubdossierDetailView: React.FC<SubdossierDetailViewProps> = ({
                   ))}
 
                 {subdossier.wijken &&
-                  subdossier.wijken.map((w, idx) => (
-                    <span
-                      key={idx}
-                      className="px-2 py-0.5 rounded-md bg-accent/30 text-white text-[11px] font-medium border border-accent/40 flex items-center gap-1 backdrop-blur-sm"
-                    >
-                      <MapPin className="w-3 h-3 text-accent" />
-                      {w}
-                    </span>
-                  ))}
+                  subdossier.wijken.map((w, idx) => {
+                    const isSelected =
+                      effectiveWijk &&
+                      (w.toLowerCase() === effectiveWijk.toLowerCase() ||
+                        slugify(w) === slugify(effectiveWijk));
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => handleSwitchPerspective(w)}
+                        title={`Bekijk subdossier vanuit perspectief van ${w}`}
+                        className={`px-2 py-0.5 rounded-md text-[11px] font-medium border flex items-center gap-1 backdrop-blur-sm transition-all cursor-pointer ${
+                          isSelected
+                            ? "bg-accent text-accent-foreground border-white/60 ring-2 ring-white/40 shadow-sm font-bold"
+                            : "bg-accent/30 hover:bg-accent/50 text-white border-accent/40"
+                        }`}
+                      >
+                        <MapPin className="w-3 h-3 text-accent shrink-0" />
+                        {w}
+                      </button>
+                    );
+                  })}
 
                 {(subdossier.dateRange?.start || subdossier.dateRange?.end) && (
                   <span className="px-2 py-0.5 rounded-md bg-black/40 text-white/80 text-[11px] font-mono flex items-center gap-1 border border-white/10">
@@ -879,7 +948,16 @@ export const SubdossierDetailView: React.FC<SubdossierDetailViewProps> = ({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 self-start sm:self-auto">
+                <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleClearPerspective}
+                    className="h-8 text-xs rounded-xl text-muted-foreground hover:text-foreground"
+                    title="Verwijder gebiedsfilter en toon alle stukken in het subdossier"
+                  >
+                    Wis filter
+                  </Button>
                   {wijkOrKernInfo?.slug && (
                     <Button
                       asChild
@@ -1447,19 +1525,41 @@ export const SubdossierDetailView: React.FC<SubdossierDetailViewProps> = ({
                     d.wijken?.some((w) => String(w || "").toLowerCase().includes(targetWijk))
                 );
 
+                const isCurrentPerspective =
+                  effectiveWijk &&
+                  (targetWijk === effectiveWijk.toLowerCase() ||
+                    slugify(wijkNaam) === slugify(effectiveWijk));
+
                 return (
                   <div
                     key={idx}
-                    className="p-5 rounded-2xl border border-border bg-background hover:border-accent/50 transition-all flex flex-col justify-between shadow-2xs group"
+                    className={`p-5 rounded-2xl border transition-all flex flex-col justify-between shadow-2xs group ${
+                      isCurrentPerspective
+                        ? "border-accent bg-accent/5 ring-2 ring-accent/30 shadow-md"
+                        : "border-border bg-background hover:border-accent/50"
+                    }`}
                   >
                     <div>
                       <div className="flex items-center justify-between mb-3">
-                        <div className="w-10 h-10 rounded-xl bg-accent/10 text-accent flex items-center justify-center">
+                        <div
+                          className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                            isCurrentPerspective
+                              ? "bg-accent text-accent-foreground shadow-sm"
+                              : "bg-accent/10 text-accent"
+                          }`}
+                        >
                           <MapPin className="w-5 h-5" />
                         </div>
-                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-muted text-foreground">
-                          {wijkDocs.length} {wijkDocs.length === 1 ? "stuk" : "stukken"}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          {isCurrentPerspective && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-accent text-accent-foreground">
+                              Huidig perspectief
+                            </span>
+                          )}
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-muted text-foreground">
+                            {wijkDocs.length} {wijkDocs.length === 1 ? "stuk" : "stukken"}
+                          </span>
+                        </div>
                       </div>
 
                       <h5 className="font-bold text-base text-foreground mb-1 group-hover:text-accent transition-colors">
@@ -1488,17 +1588,21 @@ export const SubdossierDetailView: React.FC<SubdossierDetailViewProps> = ({
                       )}
                     </div>
 
-                    <div className="pt-3 border-t border-border mt-2">
+                    <div className="pt-3 border-t border-border mt-2 space-y-1.5">
                       <Button
                         size="sm"
-                        variant="outline"
-                        className="w-full text-xs rounded-xl border-accent/30 text-accent hover:bg-accent/15"
-                        onClick={() => {
-                          setDocSearch(wijkNaam);
-                          setActiveTab("documents");
-                        }}
+                        variant={isCurrentPerspective ? "default" : "outline"}
+                        className={`w-full text-xs rounded-xl font-semibold ${
+                          isCurrentPerspective
+                            ? "bg-accent text-accent-foreground hover:bg-accent/90"
+                            : "border-accent/40 text-accent hover:bg-accent/15"
+                        }`}
+                        onClick={() => handleSwitchPerspective(wijkNaam)}
                       >
-                        Filter stukken op {wijkNaam}
+                        <MapPin className="w-3.5 h-3.5 mr-1" />
+                        {isCurrentPerspective
+                          ? `Bekijk relatiekaart (${wijkNaam})`
+                          : `Filter stukken op ${wijkNaam}`}
                       </Button>
                     </div>
                   </div>
