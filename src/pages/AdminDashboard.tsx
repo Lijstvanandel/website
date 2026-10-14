@@ -1104,6 +1104,8 @@ export default function AdminDashboard() {
     formData.append("linkedin", newFLinkedin);
     if (newFFile) formData.append("img", newFFile);
     if (newFCutoutFile) formData.append("cutout", newFCutoutFile);
+    if (editingFImgUrl) formData.append("imgUrl", editingFImgUrl);
+    if (editingFCutoutUrl) formData.append("cutoutImageUrl", editingFCutoutUrl);
 
     try {
       const url = editingFractielidId

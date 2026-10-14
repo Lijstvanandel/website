@@ -8,6 +8,26 @@ import { DEFAULT_FRACTIELEDEN } from "../data/fractieleden.js";
 const thumbnailCache = new Map<string, { buffer: Buffer; expiresAt: number }>();
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
+let cachedFontBase64 = "";
+function getEmbeddedFontBase64(): string {
+  if (cachedFontBase64) return cachedFontBase64;
+  const fontCandidates = [
+    path.join(process.cwd(), "src/assets/fonts/LiberationSans-Bold.ttf"),
+    path.join(process.cwd(), "public/assets/fonts/LiberationSans-Bold.ttf"),
+    path.join(process.cwd(), "node_modules/pdfjs-dist/standard_fonts/LiberationSans-Bold.ttf"),
+    path.join(process.cwd(), "dist/assets/fonts/LiberationSans-Bold.ttf"),
+  ];
+  for (const fp of fontCandidates) {
+    if (fs.existsSync(fp)) {
+      try {
+        cachedFontBase64 = fs.readFileSync(fp).toString("base64");
+        return cachedFontBase64;
+      } catch (_e) {}
+    }
+  }
+  return "";
+}
+
 export function invalidateVideoThumbnailCache(videoId?: string): void {
   if (videoId) {
     thumbnailCache.delete(String(videoId));
@@ -61,6 +81,79 @@ function buildHeadlineSpans(line: string, memberName: string): string {
   return escapeXml(line);
 }
 
+// Automatically removes solid white or near-white studio backdrop to produce a true freestanding transparent cutout
+async function autoCutoutIfNeeded(buf: Buffer): Promise<Buffer> {
+  try {
+    const meta = await sharp(buf).metadata();
+    const { data, info } = await sharp(buf).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const { width, height } = info;
+
+    // Check if borders already have transparency (already an alpha cutout)
+    const corners = [0, (width - 1) * 4, (height - 1) * width * 4, ((height - 1) * width + (width - 1)) * 4];
+    let hasTransparentCorner = false;
+    for (const c of corners) {
+      if (data[c + 3] === 0) {
+        hasTransparentCorner = true;
+        break;
+      }
+    }
+
+    if (meta.hasAlpha && hasTransparentCorner) {
+      return buf;
+    }
+
+    // Near-white or light grey studio background detector
+    const isBg = (r: number, g: number, b: number, a: number) =>
+      a > 0 && r > 190 && g > 190 && b > 190 && Math.abs(r - g) < 32 && Math.abs(r - b) < 32;
+
+    const visited = new Uint8Array(width * height);
+    const queue: number[] = [];
+
+    // Seed outer borders
+    for (let x = 0; x < width; x++) {
+      queue.push(x, 0);
+      queue.push(x, height - 1);
+    }
+    for (let y = 0; y < height; y++) {
+      queue.push(0, y);
+      queue.push(width - 1, y);
+    }
+
+    let head = 0;
+    let clearedCount = 0;
+    while (head < queue.length) {
+      const x = queue[head++];
+      const y = queue[head++];
+      const idx = y * width + x;
+      if (visited[idx]) continue;
+      visited[idx] = 1;
+
+      const pIdx = idx * 4;
+      const r = data[pIdx];
+      const g = data[pIdx + 1];
+      const b = data[pIdx + 2];
+      const a = data[pIdx + 3];
+
+      if (isBg(r, g, b, a)) {
+        data[pIdx + 3] = 0;
+        clearedCount++;
+        if (x > 0 && !visited[y * width + (x - 1)]) queue.push(x - 1, y);
+        if (x < width - 1 && !visited[y * width + (x + 1)]) queue.push(x + 1, y);
+        if (y > 0 && !visited[(y - 1) * width + x]) queue.push(x, y - 1);
+        if (y < height - 1 && !visited[(y + 1) * width + x]) queue.push(x, y + 1);
+      }
+    }
+
+    if (clearedCount > 50) {
+      return await sharp(data, { raw: { width, height, channels: 4 } }).png().toBuffer();
+    }
+    return buf;
+  } catch (err) {
+    console.warn("[VIDEO THUMBNAIL] autoCutout error:", err);
+    return buf;
+  }
+}
+
 async function loadSafeImageBuffer(
   imageSource?: string,
   fallbackRelativePath = "public/assets/hero-banner.jpg"
@@ -89,15 +182,14 @@ async function loadSafeImageBuffer(
         path.join(process.cwd(), relPath),
         path.join(process.cwd(), "public", relPath),
         path.join(process.cwd(), "src", relPath),
+        path.join(process.cwd(), "dist", relPath),
       ];
 
       for (const p of candidates) {
         if (fs.existsSync(p) && fs.statSync(p).isFile()) {
           try {
             return fs.readFileSync(p);
-          } catch (_err) {
-            // file read fallback
-          }
+          } catch (_err) {}
         }
       }
 
@@ -106,12 +198,15 @@ async function loadSafeImageBuffer(
         const baseWithoutExt = clean.replace(/\.(webp|jpg|jpeg|png)$/i, "");
         for (const ext of [".jpg", ".png", ".webp"]) {
           const alt = (baseWithoutExt + ext).replace(/^\//, "");
-          const p = path.join(process.cwd(), "public", alt);
-          if (fs.existsSync(p) && fs.statSync(p).isFile()) {
-            try {
-              return fs.readFileSync(p);
-            } catch (_err) {
-              // alternate extension read fallback
+          const candidatesAlt = [
+            path.join(process.cwd(), alt),
+            path.join(process.cwd(), "public", alt),
+          ];
+          for (const p of candidatesAlt) {
+            if (fs.existsSync(p) && fs.statSync(p).isFile()) {
+              try {
+                return fs.readFileSync(p);
+              } catch (_err) {}
             }
           }
         }
@@ -124,6 +219,7 @@ async function loadSafeImageBuffer(
     path.join(process.cwd(), fallbackRelativePath),
     path.join(process.cwd(), "public/assets/hero-banner.jpg"),
     path.join(process.cwd(), "src/assets/hero-banner.jpg"),
+    path.join(process.cwd(), "dist/assets/hero-banner.jpg"),
     path.join(process.cwd(), "public/assets/hero-banner.webp"),
   ];
 
@@ -131,9 +227,7 @@ async function loadSafeImageBuffer(
     if (fs.existsSync(fb) && fs.statSync(fb).isFile()) {
       try {
         return fs.readFileSync(fb);
-      } catch (_err) {
-        // fallback banner read error
-      }
+      } catch (_err) {}
     }
   }
 
@@ -168,9 +262,7 @@ async function loadPersonCutoutBuffer(
           const ab = await res.arrayBuffer();
           rawBuf = Buffer.from(ab);
         }
-      } catch (_err) {
-        // network fetch error
-      }
+      } catch (_err) {}
     } else {
       const relPath = clean.startsWith("/") ? clean.slice(1) : clean;
       const candidates = [
@@ -185,9 +277,7 @@ async function loadPersonCutoutBuffer(
           try {
             rawBuf = fs.readFileSync(p);
             break;
-          } catch (_err) {
-            // candidate read error
-          }
+          } catch (_err) {}
         }
       }
     }
@@ -199,15 +289,14 @@ async function loadPersonCutoutBuffer(
       path.join(process.cwd(), "public/assets/silhouette.png"),
       path.join(process.cwd(), "src/assets/silhouette.png"),
       path.join(process.cwd(), "public/assets/silhouette.webp"),
+      path.join(process.cwd(), "dist/assets/silhouette.png"),
     ];
     for (const sil of silCandidates) {
       if (fs.existsSync(sil) && fs.statSync(sil).isFile()) {
         try {
           rawBuf = fs.readFileSync(sil);
           break;
-        } catch (_err) {
-          // silhouette read error
-        }
+        } catch (_err) {}
       }
     }
   }
@@ -215,7 +304,10 @@ async function loadPersonCutoutBuffer(
   if (!rawBuf) return null;
 
   try {
-    const resized = await sharp(rawBuf)
+    // Automatically convert any solid white or near-white background to transparent
+    const transparentCutoutBuf = await autoCutoutIfNeeded(rawBuf);
+
+    const resized = await sharp(transparentCutoutBuf)
       .resize({ height: 580, width: 520, fit: "inside", withoutEnlargement: false })
       .png()
       .toBuffer();
@@ -277,13 +369,16 @@ export async function generateVideoThumbnailBuffer(
     foundMember?.role?.toLowerCase().includes("burgerraadslid");
   const memberRole = foundMember ? (isBurger ? "Burgerraadslid" : (foundMember.role || "Raadslid")) : "Gemeenteraad Steenwijkerland";
 
-  // Find Cutout Image: prioritize cutoutImageUrl / photoNoBgUrl, then matching default png
+  // Find Cutout Image: prioritize cutoutImageUrl / photoNoBgUrl, then uploaded imgUrl, then matching default png
   let cutoutUrl = foundMember?.cutoutImageUrl || foundMember?.photoNoBgUrl || "";
+  if (!cutoutUrl && foundMember?.imgUrl && foundMember.imgUrl.startsWith("/uploads/")) {
+    cutoutUrl = foundMember.imgUrl;
+  }
   if (!cutoutUrl && foundMember) {
     const defaultMatch = DEFAULT_FRACTIELEDEN.find(
       (df) =>
         String(df.id) === String(foundMember.id) ||
-        df.name.toLowerCase() === foundMember.name.toLowerCase()
+        df.name.toLowerCase() === (foundMember.name || "").toLowerCase()
     );
     if (defaultMatch?.cutoutImageUrl) {
       cutoutUrl = defaultMatch.cutoutImageUrl;
@@ -353,10 +448,28 @@ export async function generateVideoThumbnailBuffer(
   const lineHeight = titleLines.length >= 4 ? 42 : titleLines.length === 3 ? 48 : 54;
   const titleStartY = titleLines.length >= 4 ? 180 : titleLines.length === 3 ? 205 : 240;
 
-  // 7. Generate Vector SVG Overlay
+  // 7. Generate Vector SVG Overlay with embedded TTF font (guarantees text rendering on all Linux VPS hosts)
+  const fontB64 = getEmbeddedFontBase64();
+  const fontFaceStyle = fontB64
+    ? `
+        @font-face {
+          font-family: 'ThumbnailFont';
+          src: url('data:font/truetype;charset=utf-8;base64,${fontB64}') format('truetype');
+          font-weight: bold;
+          font-style: normal;
+        }
+      `
+    : "";
+
   const svgOverlay = Buffer.from(`
     <svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
       <defs>
+        <style>
+          ${fontFaceStyle}
+          .thumb-font {
+            font-family: 'ThumbnailFont', 'Liberation Sans', 'DejaVu Sans', 'Arial', sans-serif;
+          }
+        </style>
         <!-- Horizontal gradient protecting title legibility on the left -->
         <linearGradient id="leftGrad" x1="0%" y1="0%" x2="100%" y2="0%">
           <stop offset="0%" stop-color="#08101d" stop-opacity="0.97"/>
@@ -382,8 +495,8 @@ export async function generateVideoThumbnailBuffer(
       <!-- Party Branding Badge (Top Left) -->
       <g transform="translate(60, 48)">
         <rect width="44" height="28" rx="6" fill="#f59e0b"/>
-        <text x="22" y="19" font-family="'Inter', Arial, sans-serif" font-weight="900" font-size="14" fill="#000000" text-anchor="middle">LvA</text>
-        <text x="56" y="20" font-family="'Inter', Arial, sans-serif" font-weight="800" font-size="16" fill="#ffffff" letter-spacing="1.5">LIJST VAN ANDEL</text>
+        <text x="22" y="19" class="thumb-font" font-weight="900" font-size="14" fill="#000000" text-anchor="middle">LvA</text>
+        <text x="56" y="20" class="thumb-font" font-weight="800" font-size="16" fill="#ffffff" letter-spacing="1.5">LIJST VAN ANDEL</text>
       </g>
 
       <!-- Context Badges: Wijk (if linked) & Categorie -->
@@ -392,22 +505,23 @@ export async function generateVideoThumbnailBuffer(
           wijkNaam
             ? `
           <g>
-            <rect width="${Math.min(260, Math.max(120, wijkNaam.length * 11 + 45))}" height="32" rx="16" fill="rgba(245, 158, 11, 0.22)" stroke="#f59e0b" stroke-width="1.5"/>
-            <text x="${Math.min(130, Math.max(60, (wijkNaam.length * 11 + 45) / 2))}" y="21" font-family="'Inter', Arial, sans-serif" font-weight="700" font-size="13" fill="#fcd34d" text-anchor="middle">📍 ${escapeXml(wijkNaam)}</text>
+            <rect width="${Math.min(270, Math.max(120, wijkNaam.length * 11 + 55))}" height="32" rx="16" fill="rgba(245, 158, 11, 0.22)" stroke="#f59e0b" stroke-width="1.5"/>
+            <path d="M12 2C8.13 2 5 5.13 5 9c0 4.5 7 11 7 11s7-6.5 7-11c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z" fill="#f59e0b" transform="translate(4, 5) scale(0.85)"/>
+            <text x="${Math.min(135, Math.max(65, (wijkNaam.length * 11 + 55) / 2 + 8))}" y="21" class="thumb-font" font-weight="700" font-size="13" fill="#fcd34d" text-anchor="middle">${escapeXml(wijkNaam)}</text>
           </g>
-          <g transform="translate(${Math.min(270, Math.max(130, wijkNaam.length * 11 + 55))}, 0)">
+          <g transform="translate(${Math.min(280, Math.max(130, wijkNaam.length * 11 + 65))}, 0)">
             <rect width="${Math.min(180, Math.max(100, category.length * 9 + 30))}" height="32" rx="16" fill="rgba(255, 255, 255, 0.12)" stroke="rgba(255, 255, 255, 0.25)" stroke-width="1"/>
-            <text x="${Math.min(90, Math.max(50, (category.length * 9 + 30) / 2))}" y="21" font-family="'Inter', Arial, sans-serif" font-weight="600" font-size="13" fill="#e2e8f0" text-anchor="middle">${escapeXml(category)}</text>
+            <text x="${Math.min(90, Math.max(50, (category.length * 9 + 30) / 2))}" y="21" class="thumb-font" font-weight="600" font-size="13" fill="#e2e8f0" text-anchor="middle">${escapeXml(category)}</text>
           </g>
         `
             : `
           <g>
             <rect width="${Math.min(180, Math.max(110, category.length * 9 + 30))}" height="32" rx="16" fill="rgba(245, 158, 11, 0.18)" stroke="#f59e0b" stroke-width="1.5"/>
-            <text x="${Math.min(90, Math.max(55, (category.length * 9 + 30) / 2))}" y="21" font-family="'Inter', Arial, sans-serif" font-weight="700" font-size="13" fill="#fcd34d" text-anchor="middle">${escapeXml(category)}</text>
+            <text x="${Math.min(90, Math.max(55, (category.length * 9 + 30) / 2))}" y="21" class="thumb-font" font-weight="700" font-size="13" fill="#fcd34d" text-anchor="middle">${escapeXml(category)}</text>
           </g>
           <g transform="translate(${Math.min(190, Math.max(120, category.length * 9 + 40))}, 0)">
             <rect width="180" height="32" rx="16" fill="rgba(255, 255, 255, 0.10)" stroke="rgba(255, 255, 255, 0.20)" stroke-width="1"/>
-            <text x="90" y="21" font-family="'Inter', Arial, sans-serif" font-weight="600" font-size="12" fill="#cbd5e1" text-anchor="middle">Steenwijkerland</text>
+            <text x="90" y="21" class="thumb-font" font-weight="600" font-size="12" fill="#cbd5e1" text-anchor="middle">Steenwijkerland</text>
           </g>
         `
         }
@@ -418,15 +532,15 @@ export async function generateVideoThumbnailBuffer(
         ${titleLines
           .map(
             (line, idx) =>
-              `<text x="0" y="${idx * lineHeight}" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="800" font-size="${fontSize}" fill="#ffffff">${buildHeadlineSpans(line, memberName)}</text>`
+              `<text x="0" y="${idx * lineHeight}" class="thumb-font" font-weight="800" font-size="${fontSize}" fill="#ffffff">${buildHeadlineSpans(line, memberName)}</text>`
           )
           .join("\n")}
       </g>
 
       <!-- Speaker / Fractielid Badge (Bottom Left) -->
       <g transform="translate(60, 525)" filter="url(#textDrop)">
-        <text x="0" y="0" font-family="'Inter', Arial, sans-serif" font-weight="700" font-size="20" fill="#f59e0b">LIJST VAN ANDEL <tspan fill="#cbd5e1" font-weight="500">• ${escapeXml(memberRole)}</tspan></text>
-        <text x="0" y="24" font-family="'Inter', Arial, sans-serif" font-weight="500" font-size="14" fill="#94a3b8">Gemeenteraad Steenwijkerland</text>
+        <text x="0" y="0" class="thumb-font" font-weight="700" font-size="20" fill="#f59e0b">LIJST VAN ANDEL <tspan fill="#cbd5e1" font-weight="500">• ${escapeXml(memberRole)}</tspan></text>
+        <text x="0" y="24" class="thumb-font" font-weight="500" font-size="14" fill="#94a3b8">Gemeenteraad Steenwijkerland</text>
       </g>
 
       <!-- Video Play Icon (Top Right) -->

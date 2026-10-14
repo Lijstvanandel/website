@@ -376,7 +376,15 @@ UPLOAD_DIRS.forEach((dir) => {
 function getDb() {
   const db = getDbFromSqlite();
   if (!db.users) db.users = [];
-  if (!db.fractieleden) db.fractieleden = [];
+  if (!db.fractieleden || db.fractieleden.length === 0) {
+    db.fractieleden = JSON.parse(JSON.stringify(DEFAULT_FRACTIELEDEN));
+  } else {
+    for (const def of DEFAULT_FRACTIELEDEN) {
+      if (!db.fractieleden.some((f: any) => String(f.id) === String(def.id) || f.name?.toLowerCase() === def.name.toLowerCase())) {
+        db.fractieleden.push({ ...def });
+      }
+    }
+  }
   if (!db.videos) db.videos = [];
   if (!db.belafspraken) db.belafspraken = [];
   if (!db.newsletterSubscribers) db.newsletterSubscribers = [];
