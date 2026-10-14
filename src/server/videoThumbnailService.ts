@@ -25,7 +25,7 @@ export function escapeXml(unsafe: string): string {
     .replace(/'/g, "&apos;");
 }
 
-function wrapThumbnailTitle(text: string, maxCharsPerLine = 25, maxLines = 3): string[] {
+function wrapThumbnailHeadline(text: string, maxCharsPerLine = 24, maxLines = 4): string[] {
   const words = (text || "").trim().split(/\s+/);
   const lines: string[] = [];
   let currentLine = "";
@@ -41,7 +41,24 @@ function wrapThumbnailTitle(text: string, maxCharsPerLine = 25, maxLines = 3): s
   if (currentLine && lines.length < maxLines) {
     lines.push(currentLine);
   }
-  return lines.length > 0 ? lines : ["Videobijdrage"];
+  return lines.length > 0 ? lines : [text || "Lijst van Andel"];
+}
+
+function buildHeadlineSpans(line: string, memberName: string): string {
+  if (!memberName) return escapeXml(line);
+  if (line.includes(memberName)) {
+    const parts = line.split(memberName);
+    return `${escapeXml(parts[0])}<tspan fill="#f59e0b">${escapeXml(memberName)}</tspan>${escapeXml(parts[1])}`;
+  }
+  const nameWords = memberName.split(/\s+/);
+  for (let i = nameWords.length; i >= 1; i--) {
+    const subName = nameWords.slice(0, i).join(" ");
+    if (line.startsWith(subName)) {
+      const rest = line.slice(subName.length);
+      return `<tspan fill="#f59e0b">${escapeXml(subName)}</tspan>${escapeXml(rest)}`;
+    }
+  }
+  return escapeXml(line);
 }
 
 async function loadSafeImageBuffer(
@@ -160,6 +177,7 @@ async function loadPersonCutoutBuffer(
         path.join(process.cwd(), relPath),
         path.join(process.cwd(), "public", relPath),
         path.join(process.cwd(), "src", relPath),
+        path.join(process.cwd(), "dist", relPath),
       ];
 
       for (const p of candidates) {
@@ -226,37 +244,10 @@ export async function generateVideoThumbnailBuffer(
   },
   db?: any
 ): Promise<Buffer> {
-  const cacheKey = String(
-    video.id || `${video.title}_${video.wijkSlug}_${video.fractieledenIds?.join(",")}_${video.personId}`
-  );
-
-  const cached = thumbnailCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.buffer;
-  }
-
-  const effectiveTitle = (video.burgerraadslidTitle || video.title || "Videobijdrage").trim();
   const category = (video.category || "Raadsdebat").trim();
   const rawWijkSlug = (video.wijkSlug || "").trim().toLowerCase();
 
-  // 1. Resolve Wijk and background
-  let wijkNaam = "";
-  let wijkBackgroundUrl = "";
-
-  if (rawWijkSlug) {
-    const allWijken = db?.wijken && db.wijken.length > 0 ? db.wijken : BUURTKAART_43_WIJKEN;
-    const foundWijk = allWijken.find(
-      (w: any) =>
-        (w.slug && w.slug.toLowerCase() === rawWijkSlug) ||
-        (w.naam && w.naam.toLowerCase() === rawWijkSlug)
-    );
-    if (foundWijk) {
-      wijkNaam = foundWijk.naam;
-      wijkBackgroundUrl = foundWijk.bannerUrl || foundWijk.heroBannerUrl || "";
-    }
-  }
-
-  // 2. Resolve Person and Cutout Image
+  // 1. Resolve Person and Cutout Image
   const targetMemberId =
     (video.fractieledenIds && video.fractieledenIds.length > 0
       ? String(video.fractieledenIds[0]).toLowerCase()
@@ -299,7 +290,47 @@ export async function generateVideoThumbnailBuffer(
     }
   }
 
-  // 3. Load Background Image
+  // 2. Resolve Wijk and background
+  let wijkNaam = "";
+  let wijkBackgroundUrl = "";
+
+  if (rawWijkSlug) {
+    const allWijken = db?.wijken && db.wijken.length > 0 ? db.wijken : BUURTKAART_43_WIJKEN;
+    const foundWijk = allWijken.find(
+      (w: any) =>
+        (w.slug && w.slug.toLowerCase() === rawWijkSlug) ||
+        (w.naam && w.naam.toLowerCase() === rawWijkSlug)
+    );
+    if (foundWijk) {
+      wijkNaam = foundWijk.naam;
+      wijkBackgroundUrl = foundWijk.bannerUrl || foundWijk.heroBannerUrl || "";
+    }
+  }
+
+  // 3. Clean raw title and construct headline: '%naam%' over '%titel van de video%'
+  let rawTitle = (video.burgerraadslidTitle || video.title || "").trim();
+  if (rawTitle) {
+    const nameOverRegex = new RegExp(`^${memberName}\\s+over\\s+`, "i");
+    rawTitle = rawTitle.replace(nameOverRegex, "");
+    const tussenkomstRegex = new RegExp(`^tussenkomst(?:\\s+van)?(?:\\s+${memberName})?\\s+over\\s+`, "i");
+    rawTitle = rawTitle.replace(tussenkomstRegex, "");
+    rawTitle = rawTitle.replace(/^(?:bijdrage|inbreng|toelichting)\s+over\s+/i, "");
+    rawTitle = rawTitle.replace(/^['"‘“](.*)['"’”]$/, "$1").trim();
+  }
+  const cleanTitle = rawTitle || "het raadsvoorstel";
+  const fullHeadline = `${memberName} over ‘${cleanTitle}’`;
+
+  // Dynamic Cache Key: accounts for cutoutUrl, wijk background, and headline
+  const cacheKey = String(
+    `${video.id || "preview"}_${cutoutUrl}_${wijkBackgroundUrl}_${fullHeadline}`
+  );
+
+  const cached = thumbnailCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.buffer;
+  }
+
+  // 4. Load Background Image
   // "de achtergrondfoto van de wijk- of kernpagina (indien gekoppeld) als er geen wijk of kern is gekoppeld moet de standaardfoto van de hero worden gepakt"
   const rawBgBuffer = await loadSafeImageBuffer(
     wijkBackgroundUrl || "/assets/hero-banner.jpg",
@@ -310,16 +341,16 @@ export async function generateVideoThumbnailBuffer(
     .resize(1200, 630, { fit: "cover", position: "center" })
     .toBuffer();
 
-  // 4. Load Person Cutout Image
+  // 5. Load Person Cutout Image
   const personRes = await loadPersonCutoutBuffer(cutoutUrl);
 
-  // 5. Wrap Title Text
-  const titleLines = wrapThumbnailTitle(effectiveTitle, 24, 3);
-  const fontSize = titleLines.length >= 3 ? 42 : 48;
-  const lineHeight = titleLines.length >= 3 ? 52 : 58;
-  const titleStartY = titleLines.length === 1 ? 280 : titleLines.length === 2 ? 245 : 215;
+  // 6. Wrap Headline Text
+  const titleLines = wrapThumbnailHeadline(fullHeadline, 24, 4);
+  const fontSize = titleLines.length >= 4 ? 33 : titleLines.length === 3 ? 38 : 44;
+  const lineHeight = titleLines.length >= 4 ? 42 : titleLines.length === 3 ? 48 : 54;
+  const titleStartY = titleLines.length >= 4 ? 180 : titleLines.length === 3 ? 205 : 240;
 
-  // 6. Generate Vector SVG Overlay
+  // 7. Generate Vector SVG Overlay
   const svgOverlay = Buffer.from(`
     <svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
       <defs>
@@ -379,20 +410,20 @@ export async function generateVideoThumbnailBuffer(
         }
       </g>
 
-      <!-- Video Title (Multi-line) -->
+      <!-- Video Headline: '%naam%' over '%titel van de video%' -->
       <g transform="translate(60, ${titleStartY})" filter="url(#textDrop)">
         ${titleLines
           .map(
             (line, idx) =>
-              `<text x="0" y="${idx * lineHeight}" font-family="'Inter', Arial, sans-serif" font-weight="bold" font-size="${fontSize}" fill="#ffffff">${escapeXml(line)}</text>`
+              `<text x="0" y="${idx * lineHeight}" font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="800" font-size="${fontSize}" fill="#ffffff">${buildHeadlineSpans(line, memberName)}</text>`
           )
           .join("\n")}
       </g>
 
       <!-- Speaker / Fractielid Badge (Bottom Left) -->
-      <g transform="translate(60, 520)" filter="url(#textDrop)">
-        <text x="0" y="0" font-family="'Inter', Arial, sans-serif" font-weight="bold" font-size="26" fill="#f59e0b">${escapeXml(memberName)}</text>
-        <text x="0" y="28" font-family="'Inter', Arial, sans-serif" font-weight="500" font-size="16" fill="#cbd5e1">${escapeXml(memberRole)} • Gemeenteraad Steenwijkerland</text>
+      <g transform="translate(60, 525)" filter="url(#textDrop)">
+        <text x="0" y="0" font-family="'Inter', Arial, sans-serif" font-weight="700" font-size="20" fill="#f59e0b">LIJST VAN ANDEL <tspan fill="#cbd5e1" font-weight="500">• ${escapeXml(memberRole)}</tspan></text>
+        <text x="0" y="24" font-family="'Inter', Arial, sans-serif" font-weight="500" font-size="14" fill="#94a3b8">Gemeenteraad Steenwijkerland</text>
       </g>
 
       <!-- Video Play Icon (Top Right) -->

@@ -781,11 +781,21 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
         : null;
 
       if (targetVideo) {
-        // Specifieke video opgevraagd
-        const videoTitle = targetVideo.burgerraadslidTitle || targetVideo.title || "Videobijdrage";
+        // Specifieke video opgevraagd: '%naam%' over '%titel van de video%'
+        let rawVTitle = (targetVideo.burgerraadslidTitle || targetVideo.title || "").trim();
+        if (rawVTitle) {
+          const nameOverRegex = new RegExp(`^${member.name}\\s+over\\s+`, "i");
+          rawVTitle = rawVTitle.replace(nameOverRegex, "");
+          const tussenkomstRegex = new RegExp(`^tussenkomst(?:\\s+van)?(?:\\s+${member.name})?\\s+over\\s+`, "i");
+          rawVTitle = rawVTitle.replace(tussenkomstRegex, "");
+          rawVTitle = rawVTitle.replace(/^(?:bijdrage|inbreng|toelichting)\s+over\s+/i, "");
+          rawVTitle = rawVTitle.replace(/^['"‘“](.*)['"’”]$/, "$1").trim();
+        }
+        const cleanVTitle = rawVTitle || "het raadsvoorstel";
+        const formattedHeadline = `${member.name} over ‘${cleanVTitle}’`;
         const cleanDesc = targetVideo.description
           ? truncate(stripHtml(targetVideo.description), 160)
-          : `Bekijk de videobijdrage "${videoTitle}" van ${member.name} in de gemeenteraad van Steenwijkerland.`;
+          : `Bekijk de bijdrage van ${member.name} over ‘${cleanVTitle}’ in de gemeenteraad van Steenwijkerland.`;
         
         let videoImage = "";
         if (targetVideo.thumbnailUrl && !targetVideo.thumbnailUrl.includes("ytimg") && !targetVideo.thumbnailUrl.includes("hqdefault")) {
@@ -794,19 +804,19 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
           videoImage = `${baseUrl}/api/videos/${targetVideo.id}/thumbnail.jpg`;
         }
 
-        const title = `${videoTitle} - ${member.name} | Lijst van Andel`;
+        const title = `${formattedHeadline} | Lijst van Andel`;
         const specificCanonical = `${baseUrl}${cleanPath}?v=${targetVideo.id}`;
 
         return {
           title,
           description: cleanDesc,
-          ogTitle: `${videoTitle} - ${member.name}`,
+          ogTitle: formattedHeadline,
           ogDescription: cleanDesc,
           ogImage: videoImage,
           ogImageType: videoImage.endsWith(".png") ? "image/png" : "image/jpeg",
           ogImageWidth: 1200,
           ogImageHeight: 630,
-          ogImageAlt: `${videoTitle} - ${member.name}`,
+          ogImageAlt: formattedHeadline,
           ogType: "video.other",
           canonicalUrl: specificCanonical
         };
@@ -858,10 +868,32 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
     const videoId = directVideoMatch[1].toLowerCase();
     const video = (db?.videos || []).find((v: any) => String(v.id).toLowerCase() === videoId);
     if (video) {
-      const videoTitle = video.burgerraadslidTitle || video.title || "Videobijdrage";
+      // Zoek eventueel gekoppeld fractielid voor extra context
+      let speakerName = "Lijst van Andel";
+      if (video.fractieledenIds && video.fractieledenIds.length > 0) {
+        const firstFid = String(video.fractieledenIds[0]).toLowerCase();
+        const member = (db?.fractieleden || []).find((m: any) => String(m.id).toLowerCase() === firstFid);
+        if (member) {
+          speakerName = member.name;
+        }
+      }
+
+      // Format: '%naam%' over '%titel van de video%'
+      let rawVTitle = (video.burgerraadslidTitle || video.title || "").trim();
+      if (rawVTitle) {
+        const nameOverRegex = new RegExp(`^${speakerName}\\s+over\\s+`, "i");
+        rawVTitle = rawVTitle.replace(nameOverRegex, "");
+        const tussenkomstRegex = new RegExp(`^tussenkomst(?:\\s+van)?(?:\\s+${speakerName})?\\s+over\\s+`, "i");
+        rawVTitle = rawVTitle.replace(tussenkomstRegex, "");
+        rawVTitle = rawVTitle.replace(/^(?:bijdrage|inbreng|toelichting)\s+over\s+/i, "");
+        rawVTitle = rawVTitle.replace(/^['"‘“](.*)['"’”]$/, "$1").trim();
+      }
+      const cleanVTitle = rawVTitle || "het raadsvoorstel";
+      const formattedHeadline = `${speakerName} over ‘${cleanVTitle}’`;
+
       const cleanDesc = video.description
         ? truncate(stripHtml(video.description), 160)
-        : `Bekijk de videobijdrage "${videoTitle}" in de gemeenteraad van Steenwijkerland.`;
+        : `Bekijk de bijdrage van ${speakerName} over ‘${cleanVTitle}’ in de gemeenteraad van Steenwijkerland.`;
 
       let videoImage = "";
       if (video.thumbnailUrl && !video.thumbnailUrl.includes("ytimg") && !video.thumbnailUrl.includes("hqdefault")) {
@@ -870,35 +902,18 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
         videoImage = `${baseUrl}/api/videos/${video.id}/thumbnail.jpg`;
       }
 
-      // Zoek eventueel gekoppeld fractielid voor extra context
-      let speakerName = "Lijst van Andel";
-      if (video.fractieledenIds && video.fractieledenIds.length > 0) {
-        const firstFid = String(video.fractieledenIds[0]).toLowerCase();
-        const member = (db?.fractieleden || []).find((m: any) => String(m.id).toLowerCase() === firstFid);
-        if (member) {
-          speakerName = member.name;
-          if (!videoImage) {
-            videoImage = resolveImageUrl(baseUrl, member.imgUrl);
-          }
-        }
-      }
-
-      if (!videoImage) {
-        videoImage = DEFAULT_IMAGE;
-      }
-
-      const title = `${videoTitle} - ${speakerName} | Lijst van Andel`;
+      const title = `${formattedHeadline} | Lijst van Andel`;
 
       return {
         title,
         description: cleanDesc,
-        ogTitle: `${videoTitle} - ${speakerName}`,
+        ogTitle: formattedHeadline,
         ogDescription: cleanDesc,
         ogImage: videoImage,
         ogImageType: videoImage.endsWith(".png") ? "image/png" : "image/jpeg",
         ogImageWidth: 1200,
         ogImageHeight: 630,
-        ogImageAlt: `${videoTitle} - ${speakerName}`,
+        ogImageAlt: formattedHeadline,
         ogType: "video.other",
         canonicalUrl
       };

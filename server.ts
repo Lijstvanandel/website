@@ -7579,19 +7579,20 @@ async function startServer() {
       if (!video) {
         const fallbackBuf = await generateVideoThumbnailBuffer(
           {
-            title: "Videobijdrage Lijst van Andel",
+            title: "het raadsvoorstel",
             category: "Raadsdebat",
           },
           db
         );
         res.setHeader("Content-Type", "image/jpeg");
-        res.setHeader("Cache-Control", "public, max-age=3600");
+        res.setHeader("Cache-Control", "public, max-age=60");
         return res.send(fallbackBuf);
       }
 
       const buffer = await generateVideoThumbnailBuffer(video, db);
       res.setHeader("Content-Type", "image/jpeg");
-      res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=86400");
+      // Responsive cache headers so new uploaded cutout photos take effect immediately across all videos
+      res.setHeader("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=86400");
       return res.send(buffer);
     } catch (err: any) {
       console.error("[VIDEO THUMBNAIL GET ERROR]:", err);
@@ -7603,7 +7604,7 @@ async function startServer() {
   app.get("/api/thumbnail/video/compose", async (req, res) => {
     try {
       const db = getDb();
-      const title = (req.query.title as string) || "Videobijdrage";
+      const title = (req.query.title as string) || "het raadsvoorstel";
       const wijkSlug = (req.query.wijk as string) || "";
       const personId = (req.query.personId as string) || "";
       const category = (req.query.category as string) || "Raadsdebat";

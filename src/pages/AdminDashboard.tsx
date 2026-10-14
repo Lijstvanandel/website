@@ -2956,7 +2956,7 @@ export default function AdminDashboard() {
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    De thumbnail van elke video wordt standaard automatisch opgebouwd met de foto van het gekoppelde lid (zonder achtergrond), de achtergrondfoto van de gekoppelde wijk- of kernpagina (of de standaard hero-afbeelding indien geen wijk gekoppeld) en de titel van de video.
+                    De thumbnail van elke video wordt standaard automatisch opgebouwd als <strong className="text-foreground">&apos;%naam%&apos; over &apos;%titel van de video%&apos;</strong> met daarnaast de foto zonder achtergrond, en op de achtergrond de foto van de betreffende wijk- of kernpagina (of de algemene hero-afbeelding indien niet gekoppeld). Dit werkt direct met terugwerkende kracht zodra er een nieuwe vrijstaande foto wordt geüpload.
                   </p>
                   
                   {/* Live preview canvas image */}
@@ -2965,7 +2965,7 @@ export default function AdminDashboard() {
                       <img
                         key={`${newVBurgerTitle || newVTitle}_${newVWijk}_${selectedFleden[0]}_${newVCategory}`}
                         src={`/api/thumbnail/video/compose?title=${encodeURIComponent(
-                          newVBurgerTitle || newVTitle || "Videobijdrage"
+                          newVBurgerTitle || newVTitle || "het raadsvoorstel"
                         )}&wijk=${encodeURIComponent(newVWijk)}&personId=${encodeURIComponent(
                           selectedFleden[0] || ""
                         )}&category=${encodeURIComponent(newVCategory || "Raadsdebat")}`}
