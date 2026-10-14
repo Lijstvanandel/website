@@ -7576,11 +7576,25 @@ async function startServer() {
     if (req.query.standpuntNr) videos = videos.filter((v: any) => Number(v.standpuntNr) === Number(req.query.standpuntNr));
     
     // Zorg dat elke video standaard de automatisch samengestelde thumbnail heeft (met lid + wijk/hero), tenzij een eigen custom upload is gedaan
+    const allMembers = (db.fractieleden && db.fractieleden.length > 0) ? db.fractieleden : DEFAULT_FRACTIELEDEN;
     const sanitized = videos.map((v: any) => {
       const memberId = (v.fractieledenIds && v.fractieledenIds.length > 0) ? v.fractieledenIds[0] : (v.personId || "");
-      const linkedMember = memberId ? (db.fractieleden || []).find((m: any) => String(m.id) === String(memberId)) : null;
-      const memberVer = linkedMember?.cutoutImageUrl ? path.basename(linkedMember.cutoutImageUrl) : (linkedMember?.imgUrl ? path.basename(linkedMember.imgUrl) : "");
-      const versionQuery = memberVer ? `?v=${encodeURIComponent(memberVer)}` : "";
+      let linkedMember = memberId ? allMembers.find((m: any) => String(m.id) === String(memberId)) : null;
+      if (!linkedMember && v.title) {
+        for (const m of allMembers) {
+          if (m.name && v.title.toLowerCase().includes(m.name.toLowerCase())) {
+            linkedMember = m;
+            break;
+          }
+        }
+      }
+      const memberCutout = linkedMember?.cutoutImageUrl || linkedMember?.photoNoBgUrl;
+      const memberVer = memberCutout ? path.basename(memberCutout) : (linkedMember?.imgUrl ? path.basename(linkedMember.imgUrl) : "");
+
+      const params = new URLSearchParams();
+      if (linkedMember?.id || memberId) params.set("personId", String(linkedMember?.id || memberId));
+      if (memberVer) params.set("v", memberVer);
+      const queryStr = params.toString() ? `?${params.toString()}` : "";
 
       const needsAutoThumb =
         !v.thumbnailUrl ||
@@ -7592,7 +7606,7 @@ async function startServer() {
       return {
         ...v,
         thumbnailUrl: needsAutoThumb
-          ? `/api/videos/${v.id}/thumbnail.jpg${versionQuery}`
+          ? `/api/videos/${v.id}/thumbnail.jpg${queryStr}`
           : v.thumbnailUrl
       };
     });

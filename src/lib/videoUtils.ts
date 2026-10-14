@@ -12,16 +12,12 @@ export function getVideoThumbnail(
   videoId?: string,
   memberId?: string
 ): string | null {
-  // If an explicit custom uploaded image is provided (not YouTube fallback or dynamic API), use it
-  if (
-    explicitThumbnail &&
-    explicitThumbnail.trim() &&
-    !explicitThumbnail.includes("ytimg") &&
-    !explicitThumbnail.includes("hqdefault") &&
-    !explicitThumbnail.includes("/api/videos/") &&
-    !explicitThumbnail.includes("/api/thumbnail/")
-  ) {
-    return explicitThumbnail.trim();
+  // If an explicit custom uploaded image or API-provided versioned thumbnail is present, use it
+  if (explicitThumbnail && explicitThumbnail.trim()) {
+    const trimmed = explicitThumbnail.trim();
+    if (!trimmed.includes("ytimg") && !trimmed.includes("hqdefault")) {
+      return trimmed;
+    }
   }
   // Standardly use the automatically composed thumbnail (person cutout + wijk/hero bg + title)
   if (videoId) {

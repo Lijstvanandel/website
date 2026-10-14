@@ -22,20 +22,12 @@ function cleanFrontendAssets() {
     }
   }
 
-  // Ensure dist/assets exists and copy static media from public/assets
+  // Ensure dist/assets exists and recursively copy static media from public/assets
   const publicAssetsDir = path.join(process.cwd(), 'public', 'assets');
   if (fs.existsSync(publicAssetsDir)) {
     try {
       fs.mkdirSync(assetsDir, { recursive: true });
-      for (const f of fs.readdirSync(publicAssetsDir)) {
-        const src = path.join(publicAssetsDir, f);
-        const dest = path.join(assetsDir, f);
-        try {
-          if (fs.statSync(src).isFile()) {
-            fs.copyFileSync(src, dest);
-          }
-        } catch (_) {}
-      }
+      fs.cpSync(publicAssetsDir, assetsDir, { recursive: true });
     } catch (err) {
       console.warn('Notice: Could not pre-populate dist/assets from public/assets:', err.message);
     }

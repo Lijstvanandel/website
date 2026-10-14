@@ -4,20 +4,10 @@ import sharp from "sharp";
 import { BUURTKAART_43_WIJKEN } from "../data/defaultWijken.js";
 import { DEFAULT_FRACTIELEDEN } from "../data/fractieleden.js";
 
-// Safely load opentype either from bundled file or fallback, avoiding startup crash if npm install was not run on VPS
-let opentypeModule: any = null;
-try {
-  // @ts-ignore
-  opentypeModule = require("./opentype-bundled.cjs");
-} catch (_err1) {
-  try {
-    // @ts-ignore
-    opentypeModule = require("opentype.js");
-  } catch (_err2) {
-    console.warn("[VIDEO THUMBNAIL] opentype not available on host, fallback text will be used");
-  }
-}
-const opentype = opentypeModule;
+// Bundled opentype engine for guaranteed zero-dependency vector text rendering on any VPS/host
+// @ts-expect-error Bundled opentype CommonJS module
+import opentypeModule from "./opentype-bundled.cjs";
+const opentype: any = opentypeModule?.default || opentypeModule;
 
 // In-memory cache for ultra-fast serving
 const thumbnailCache = new Map<string, { buffer: Buffer; expiresAt: number }>();
@@ -26,26 +16,36 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 let cachedBoldFont: any = null;
 let cachedRegFont: any = null;
 
-function getThumbnailFonts(): { bold: opentype.Font | null; regular: opentype.Font | null } {
+function getThumbnailFonts(): { bold: any; regular: any } {
   if (cachedBoldFont && cachedRegFont) {
     return { bold: cachedBoldFont, regular: cachedRegFont };
   }
 
   const boldCandidates = [
     path.join(process.cwd(), "public/assets/fonts/LiberationSans-Bold.ttf"),
-    path.join(process.cwd(), "src/assets/fonts/LiberationSans-Bold.ttf"),
-    path.join(process.cwd(), "node_modules/pdfjs-dist/standard_fonts/LiberationSans-Bold.ttf"),
     path.join(process.cwd(), "dist/assets/fonts/LiberationSans-Bold.ttf"),
+    path.join(process.cwd(), "src/assets/fonts/LiberationSans-Bold.ttf"),
+    path.join(__dirname, "../public/assets/fonts/LiberationSans-Bold.ttf"),
+    path.join(__dirname, "assets/fonts/LiberationSans-Bold.ttf"),
+    path.join(__dirname, "../assets/fonts/LiberationSans-Bold.ttf"),
+    path.join(process.cwd(), "node_modules/pdfjs-dist/standard_fonts/LiberationSans-Bold.ttf"),
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
   ];
 
   const regCandidates = [
     path.join(process.cwd(), "public/assets/fonts/LiberationSans-Regular.ttf"),
-    path.join(process.cwd(), "src/assets/fonts/LiberationSans-Regular.ttf"),
-    path.join(process.cwd(), "node_modules/pdfjs-dist/standard_fonts/LiberationSans-Regular.ttf"),
     path.join(process.cwd(), "dist/assets/fonts/LiberationSans-Regular.ttf"),
+    path.join(process.cwd(), "src/assets/fonts/LiberationSans-Regular.ttf"),
+    path.join(__dirname, "../public/assets/fonts/LiberationSans-Regular.ttf"),
+    path.join(__dirname, "assets/fonts/LiberationSans-Regular.ttf"),
+    path.join(__dirname, "../assets/fonts/LiberationSans-Regular.ttf"),
+    path.join(process.cwd(), "node_modules/pdfjs-dist/standard_fonts/LiberationSans-Regular.ttf"),
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Regular.ttf",
   ];
 
-  if (!cachedBoldFont) {
+  if (!cachedBoldFont && opentype && typeof opentype.parse === "function") {
     for (const fp of boldCandidates) {
       if (fs.existsSync(fp)) {
         try {
@@ -53,7 +53,7 @@ function getThumbnailFonts(): { bold: opentype.Font | null; regular: opentype.Fo
           cachedBoldFont = opentype.parse(
             buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
           );
-          break;
+          if (cachedBoldFont) break;
         } catch (_e) {
           /* ignore font load error */
         }
@@ -61,7 +61,7 @@ function getThumbnailFonts(): { bold: opentype.Font | null; regular: opentype.Fo
     }
   }
 
-  if (!cachedRegFont) {
+  if (!cachedRegFont && opentype && typeof opentype.parse === "function") {
     for (const fp of regCandidates) {
       if (fs.existsSync(fp)) {
         try {
@@ -69,7 +69,7 @@ function getThumbnailFonts(): { bold: opentype.Font | null; regular: opentype.Fo
           cachedRegFont = opentype.parse(
             buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
           );
-          break;
+          if (cachedRegFont) break;
         } catch (_e) {
           /* ignore font load error */
         }
@@ -81,29 +81,35 @@ function getThumbnailFonts(): { bold: opentype.Font | null; regular: opentype.Fo
 }
 
 function textToVectorPath(
-  font: opentype.Font | null,
+  font: any,
   text: string,
   x: number,
   y: number,
   fontSize: number,
   fill = "#ffffff"
 ): string {
-  if (!text || !font) return "";
-  try {
-    const p = font.getPath(text, x, y, fontSize);
-    return `<path d="${p.toPathData(2)}" fill="${fill}" />`;
-  } catch (_e) {
-    return "";
+  if (!text) return "";
+  if (font && typeof font.getPath === "function") {
+    try {
+      const p = font.getPath(text, x, y, fontSize);
+      return `<path d="${p.toPathData(2)}" fill="${fill}" />`;
+    } catch (_e) {
+      /* fallback to SVG text element */
+    }
   }
+  return `<text x="${x}" y="${y}" font-family="sans-serif" font-weight="bold" font-size="${fontSize}" fill="${fill}">${escapeXml(text)}</text>`;
 }
 
-function measureTextWidth(font: opentype.Font | null, text: string, fontSize: number): number {
-  if (!text || !font) return text.length * fontSize * 0.55;
-  try {
-    return font.getAdvanceWidth(text, fontSize);
-  } catch (_e) {
-    return text.length * fontSize * 0.55;
+function measureTextWidth(font: any, text: string, fontSize: number): number {
+  if (!text) return 0;
+  if (font && typeof font.getAdvanceWidth === "function") {
+    try {
+      return font.getAdvanceWidth(text, fontSize);
+    } catch (_e) {
+      /* fallback estimation */
+    }
   }
+  return text.length * fontSize * 0.55;
 }
 
 export function invalidateVideoThumbnailCache(videoId?: string): void {
@@ -196,18 +202,19 @@ async function autoCutoutIfNeeded(buf: Buffer): Promise<Buffer> {
     const { data, info } = await sharp(buf).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     const { width, height } = info;
 
-    // Check if borders already have transparency (already an alpha cutout)
-    const corners = [0, (width - 1) * 4, (height - 1) * width * 4, ((height - 1) * width + (width - 1)) * 4];
-    let hasTransparentCorner = false;
-    for (const c of corners) {
-      if (data[c + 3] === 0) {
-        hasTransparentCorner = true;
-        break;
+    // If the image already has transparency (PNG/WebP with alpha channel), check if there are transparent areas
+    if (meta.hasAlpha) {
+      let transparentSampleCount = 0;
+      const step = Math.max(1, Math.floor(data.length / 4000));
+      for (let i = 3; i < data.length; i += step * 4) {
+        if (data[i] < 60) {
+          transparentSampleCount++;
+          if (transparentSampleCount > 10) {
+            // Pre-cut transparent image: preserve without alteration
+            return buf;
+          }
+        }
       }
-    }
-
-    if (meta.hasAlpha && hasTransparentCorner) {
-      return buf;
     }
 
     // Near-white or light grey studio background detector
@@ -356,13 +363,18 @@ async function loadPersonCutoutBuffer(
       }
     } else {
       const relPath = clean.startsWith("/") ? clean.slice(1) : clean;
+      const withoutPublic = relPath.startsWith("public/") ? relPath.slice(7) : relPath;
       const candidates = [
         path.join(process.cwd(), relPath),
-        path.join(process.cwd(), "public", relPath),
-        path.join(process.cwd(), "dist", relPath),
-        path.join(process.cwd(), "dist/client", relPath),
-        path.join(process.cwd(), "dist/public", relPath),
-        path.join(process.cwd(), "src", relPath),
+        path.join(process.cwd(), withoutPublic),
+        path.join(process.cwd(), "public", withoutPublic),
+        path.join(process.cwd(), "dist", withoutPublic),
+        path.join(process.cwd(), "dist/client", withoutPublic),
+        path.join(process.cwd(), "dist/public", withoutPublic),
+        path.join(process.cwd(), "src", withoutPublic),
+        path.join(__dirname, "../public", withoutPublic),
+        path.join(__dirname, "../dist", withoutPublic),
+        path.join(__dirname, "../../public", withoutPublic),
       ];
 
       for (const p of candidates) {

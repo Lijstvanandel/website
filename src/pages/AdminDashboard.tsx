@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { getVideoThumbnail } from "@/lib/videoUtils";
 import {
   Users,
   Video,
@@ -1121,6 +1122,7 @@ export default function AdminDashboard() {
         toast.success(editingFractielidId ? "Fractielid succesvol bijgewerkt!" : "Lid toegevoegd!");
         cancelEditFractielid();
         fetchFractieleden();
+        fetchVideos();
       } else {
         toast.error("Fout bij opslaan van fractielid");
       }
@@ -1134,6 +1136,7 @@ export default function AdminDashboard() {
       await fetch(`/api/admin/fractieleden/${id}`, { method: "DELETE", headers });
       toast.success("Lid verwijderd");
       fetchFractieleden();
+      fetchVideos();
     }
   };
 
