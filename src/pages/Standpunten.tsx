@@ -78,10 +78,17 @@ interface StandpuntCardProps {
   s: Standpunt;
   dynamicVideos: VideoItem[];
   fractieleden: FractielidItem[];
+  isSelected?: boolean;
 }
 
-const StandpuntCard = ({ hNr, s, dynamicVideos, fractieleden }: StandpuntCardProps) => {
+const StandpuntCard = ({ hNr, s, dynamicVideos, fractieleden, isSelected }: StandpuntCardProps) => {
   const [tab, setTab] = useState<TabKey>("standpunt");
+
+  useEffect(() => {
+    if (isSelected) {
+      setTab("standpunt");
+    }
+  }, [isSelected]);
 
   // Combine static videos from partijprogramma with dynamic database videos
   const combinedVideos = [
@@ -89,11 +96,14 @@ const StandpuntCard = ({ hNr, s, dynamicVideos, fractieleden }: StandpuntCardPro
       id: `static-${hNr}-${s.nr}-${i}`,
       title: v.titel || s.titel,
       videoUrl: v.url,
+      thumbnailUrl: undefined as string | undefined,
+      description: undefined as string | undefined,
       category: "Raadsbijdrage",
       date: "",
       fractieledenIds: [] as string[],
       wijkSlug: undefined as string | undefined,
       isBurger: false,
+      isStatic: true,
     })),
     ...dynamicVideos.map((v) => {
       const isBurger = fractieleden.some(
@@ -105,11 +115,14 @@ const StandpuntCard = ({ hNr, s, dynamicVideos, fractieleden }: StandpuntCardPro
         id: v.id,
         title: v.burgerraadslidTitle || v.title,
         videoUrl: v.videoUrl,
+        thumbnailUrl: v.thumbnailUrl,
+        description: v.description,
         category: v.category,
         date: v.date,
         fractieledenIds: v.fractieledenIds || [],
         wijkSlug: v.wijkSlug,
         isBurger,
+        isStatic: false,
       };
     }),
   ];
@@ -119,9 +132,19 @@ const StandpuntCard = ({ hNr, s, dynamicVideos, fractieleden }: StandpuntCardPro
   return (
     <div
       id={`standpunt-h${hNr}-s${s.nr}`}
-      className="bg-secondary/40 border border-border p-5 md:p-6 rounded-sm flex flex-col justify-between transition-all duration-300"
+      className={`border p-5 md:p-6 rounded-sm flex flex-col justify-between transition-all duration-300 ${
+        isSelected
+          ? "bg-accent/10 border-accent ring-2 ring-accent/70 shadow-lg"
+          : "bg-secondary/40 border-border"
+      }`}
     >
       <div>
+        {isSelected && (
+          <div className="mb-3 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-sm bg-accent text-accent-foreground text-[10px] font-bold uppercase tracking-wider">
+            <BookOpen className="w-3 h-3" />
+            <span>Geopend standpunt (H{hNr}.{s.nr})</span>
+          </div>
+        )}
         <div className="flex items-start gap-3 mb-4">
           <div className="font-display text-3xl text-accent leading-none shrink-0 w-9">
             {s.nr.toString().padStart(2, "0")}
@@ -196,7 +219,14 @@ const StandpuntCard = ({ hNr, s, dynamicVideos, fractieleden }: StandpuntCardPro
                           cleanT = cleanT.replace(nameOverRegex, "");
                           cleanT = cleanT.replace(/^(?:videobijdrage|video bijdrage|videobijdragen|video-bijdrage|tussenkomst|bijdrage|inbreng|toelichting)\s*(?:over\s*)?/i, "");
                           cleanT = cleanT.replace(/^['"‘“](.*)['"’”]$/, "$1").trim() || "het raadsvoorstel";
-                          return `${speakerName} over ‘${cleanT}’`;
+                          const formattedTitle = `${speakerName} over ‘${cleanT}’`;
+                          return !v.isStatic ? (
+                            <Link to={`/video/${v.id}`} className="hover:text-accent transition-colors">
+                              {formattedTitle}
+                            </Link>
+                          ) : (
+                            formattedTitle
+                          );
                         })()}
                       </div>
                       <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground mt-1">
@@ -312,24 +342,25 @@ const Standpunten = () => {
       const h = Number(paramHoofdstuk) - 1;
       if (h >= 0 && h < 10) {
         setOpenIdx(h);
-        const timer = setTimeout(() => {
+        const scrollTarget = () => {
           requestAnimationFrame(() => {
             if (paramStandpunt) {
               const el = document.getElementById(`standpunt-h${paramHoofdstuk}-s${paramStandpunt}`);
               if (el) {
                 el.scrollIntoView({ behavior: "smooth", block: "center" });
-                el.classList.add("ring-2", "ring-accent", "ring-offset-4");
-                setTimeout(() => {
-                  el.classList.remove("ring-2", "ring-accent", "ring-offset-4");
-                }, 4000);
               }
             } else {
               const hEl = document.getElementById(`hoofdstuk-${paramHoofdstuk}`);
               if (hEl) hEl.scrollIntoView({ behavior: "smooth", block: "start" });
             }
           });
-        }, 300);
-        return () => clearTimeout(timer);
+        };
+        const timer1 = setTimeout(scrollTarget, 120);
+        const timer2 = setTimeout(scrollTarget, 380);
+        return () => {
+          clearTimeout(timer1);
+          clearTimeout(timer2);
+        };
       }
     }
   }, [paramHoofdstuk, paramStandpunt]);
@@ -468,6 +499,7 @@ const Standpunten = () => {
                           s={s}
                           dynamicVideos={standpuntVideos}
                           fractieleden={fractieleden}
+                          isSelected={Number(paramHoofdstuk) === h.nr && Number(paramStandpunt) === s.nr}
                         />
                       );
                     })}

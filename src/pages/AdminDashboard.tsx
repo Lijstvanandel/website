@@ -3472,7 +3472,7 @@ export default function AdminDashboard() {
                           <div className="flex items-center gap-1.5 mt-2">
                             <span className="text-[10px] text-muted-foreground font-medium">Standpunt:</span>
                             <Link
-                              to="/standpunten"
+                              to={`/standpunten?hoofdstuk=${v.hoofdstukNr}&standpunt=${v.standpuntNr}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-[10px] px-2 py-0.5 rounded bg-primary/20 text-primary-foreground border border-primary/30 font-semibold hover:border-accent inline-flex items-center gap-1 transition-colors"

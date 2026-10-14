@@ -7560,10 +7560,35 @@ async function startServer() {
     res.json({ success: true, message: "Inzending verwijderd." });
   });
 
+  // Default standpunt-koppelingen voor de standaard seed-video's wanneer nog niet handmatig ingesteld of ontkoppeld
+  const DEFAULT_VIDEO_STANDPUNTEN: Record<string, { hoofdstukNr: number; standpuntNr: number; standpuntTitel: string }> = {
+    "1001": { hoofdstukNr: 5, standpuntNr: 3, standpuntTitel: "Meer betaalbare koopwoningen" },
+    "1002": { hoofdstukNr: 6, standpuntNr: 1, standpuntTitel: "Betere bereikbaarheid en doorstroming" },
+    "1003": { hoofdstukNr: 6, standpuntNr: 4, standpuntTitel: "Geen betaald parkeren Weerribben-Wieden" },
+    "1004": { hoofdstukNr: 7, standpuntNr: 1, standpuntTitel: "Lagere lokale lasten voor inwoners en ondernemers" },
+    "1005": { hoofdstukNr: 1, standpuntNr: 6, standpuntTitel: "Lokale autonomie herstellen" },
+    "1006": { hoofdstukNr: 8, standpuntNr: 11, standpuntTitel: "Sterke lokale sportverenigingen" },
+    "1007": { hoofdstukNr: 6, standpuntNr: 13, standpuntTitel: "Lokale knelpunten oplossen" },
+    "1008": { hoofdstukNr: 1, standpuntNr: 12, standpuntTitel: "Verantwoordelijke financiën" },
+    "1009": { hoofdstukNr: 4, standpuntNr: 7, standpuntTitel: "Ondersteuning van lokale verenigingen" },
+    "1010": { hoofdstukNr: 8, standpuntNr: 5, standpuntTitel: "Regie terug in de jeugdzorg" },
+  };
+
   // Admin Routes - Videos
   app.get("/api/videos", (req, res) => {
     const db = getDb();
-    let videos = db.videos || [];
+    let videos = (db.videos || []).map((v: any) => {
+      const defSp = DEFAULT_VIDEO_STANDPUNTEN[String(v.id)];
+      if (defSp && v.hoofdstukNr === undefined && v.standpuntNr === undefined) {
+        return {
+          ...v,
+          hoofdstukNr: defSp.hoofdstukNr,
+          standpuntNr: defSp.standpuntNr,
+          standpuntTitel: v.standpuntTitel || defSp.standpuntTitel,
+        };
+      }
+      return v;
+    });
     if (req.query.memberId) {
       const mId = String(req.query.memberId).toLowerCase();
       videos = videos.filter((v: any) =>

@@ -18,6 +18,8 @@ import {
   Phone,
   User,
   Eye,
+  BookOpen,
+  ArrowRight,
   ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -25,6 +27,7 @@ import { VideoPlayer } from "@/components/VideoPlayer";
 import { getVideoThumbnail } from "@/lib/videoUtils";
 import { FractielidItem } from "@/components/FractielidWidget";
 import { DEFAULT_FRACTIELEDEN } from "@/data/fractieleden";
+import { hoofdstukken } from "@/data/partijprogramma";
 import { ShareDialog } from "@/components/ShareDialog";
 import { BelafspraakDialog } from "@/components/BelafspraakDialog";
 import { toast } from "sonner";
@@ -41,6 +44,9 @@ interface VideoItem {
   fractieledenIds?: string[];
   wijkSlug?: string;
   views?: number;
+  hoofdstukNr?: number | null;
+  standpuntNr?: number | null;
+  standpuntTitel?: string | null;
 }
 
 export default function VideoDetail() {
@@ -132,6 +138,19 @@ export default function VideoDetail() {
       ) || fractieleden[0]
     );
   }, [currentVideo, fractieleden]);
+
+  // Gekoppeld standpunt uit het partijprogramma
+  const linkedStandpunt = useMemo(() => {
+    if (!currentVideo || !currentVideo.hoofdstukNr || !currentVideo.standpuntNr) {
+      return null;
+    }
+    const hNr = Number(currentVideo.hoofdstukNr);
+    const sNr = Number(currentVideo.standpuntNr);
+    const hoofdstuk = hoofdstukken.find((h) => h.nr === hNr);
+    const standpunt = hoofdstuk?.standpunten.find((s) => s.nr === sNr);
+    if (!hoofdstuk || !standpunt) return null;
+    return { hoofdstuk, standpunt };
+  }, [currentVideo]);
 
   // Helper om een spreker voor een willekeurige video in de carrousel te vinden
   const getSpeakerForVideo = useCallback(
@@ -301,7 +320,7 @@ export default function VideoDetail() {
           </Link>
         </div>
 
-        {/* Hoofdindeling: Video links (8 cols), Willekeurige carrousel rechts (4 cols) */}
+        {/* Hoofdindeling: Video links (8 cols), Standpunt & Willekeurige carrousel rechts (4 cols) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-start">
           {/* LINKER KOLOM: Grote videospeler, titel, deelknoppen, beschrijving en spreker profiel */}
           <div className="lg:col-span-8 space-y-6">
@@ -334,6 +353,18 @@ export default function VideoDetail() {
                   >
                     <MapPin className="w-3 h-3 text-accent" />
                     <span className="capitalize">{currentVideo.wijkSlug.replace("-", " ")}</span>
+                  </Link>
+                )}
+
+                {linkedStandpunt && (
+                  <Link
+                    to={`/standpunten?hoofdstuk=${linkedStandpunt.hoofdstuk.nr}&standpunt=${linkedStandpunt.standpunt.nr}`}
+                    className="flex items-center gap-1 text-muted-foreground hover:text-accent transition-colors"
+                  >
+                    <BookOpen className="w-3 h-3 text-accent" />
+                    <span>
+                      Standpunt H{linkedStandpunt.hoofdstuk.nr}.{linkedStandpunt.standpunt.nr}
+                    </span>
                   </Link>
                 )}
               </div>
@@ -451,62 +482,119 @@ export default function VideoDetail() {
             )}
           </div>
 
-          {/* RECHTER KOLOM: Verticale Carrousel met Willekeurige Video's van Alle Raadsleden (handmatig bladeren) */}
+          {/* RECHTER KOLOM: Gekoppeld Standpunt (boven Meer Video's) + Verticale Carrousel */}
           <aside
-            className="lg:col-span-4 space-y-4"
-            aria-label="Willekeurige video's van alle raadsleden"
+            className="lg:col-span-4 space-y-6"
+            aria-label="Gekoppeld standpunt en meer video's"
           >
-            {/* Carrousel Header met shuffle & navigatieknoppen */}
-            <div className="flex items-center justify-between gap-2 border-b border-border pb-3">
-              <div>
-                <h2 className="font-display text-xl font-bold flex items-center gap-2">
-                  <VideoIcon className="w-5 h-5 text-accent" />
-                  <span>Meer Video's</span>
-                </h2>
-                <p className="text-[11px] text-muted-foreground">
-                  Willekeurige video's van alle raadsleden
-                </p>
-              </div>
+            {/* Gekoppeld Standpunt (boven Meer Video's) */}
+            {linkedStandpunt && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2 border-b border-border pb-3">
+                  <div className="min-w-0">
+                    <h2 className="font-display text-xl font-bold flex items-center gap-2">
+                      <BookOpen className="w-5 h-5 text-accent shrink-0" />
+                      <span>Gekoppeld Standpunt</span>
+                    </h2>
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      Hoofdstuk {linkedStandpunt.hoofdstuk.nr}: {linkedStandpunt.hoofdstuk.titel}
+                    </p>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-sm bg-accent/15 border border-accent/30 text-[11px] font-bold text-accent shrink-0">
+                    H{linkedStandpunt.hoofdstuk.nr}.{linkedStandpunt.standpunt.nr}
+                  </span>
+                </div>
 
-              <div className="flex items-center gap-1 shrink-0">
-                {/* Shuffle knop */}
-                <button
-                  type="button"
-                  onClick={shuffleVideos}
-                  title="Video's willekeurig husselen"
-                  className="w-7 h-7 rounded-sm border border-border hover:border-accent text-muted-foreground hover:text-accent flex items-center justify-center transition-colors"
-                  aria-label="Video's willekeurig husselen"
-                >
-                  <Shuffle className="w-3.5 h-3.5" />
-                </button>
+                <div className="bg-card border border-accent/30 rounded-xl p-4 sm:p-5 shadow-sm space-y-3.5">
+                  <div className="flex items-start gap-3">
+                    <div className="font-display text-2xl sm:text-3xl text-accent leading-none shrink-0 pt-0.5">
+                      {linkedStandpunt.standpunt.nr.toString().padStart(2, "0")}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[10px] uppercase tracking-widest text-accent font-semibold mb-0.5">
+                        Ons standpunt
+                      </div>
+                      <h3 className="font-display text-lg sm:text-xl font-bold text-foreground leading-snug">
+                        {linkedStandpunt.standpunt.titel}
+                      </h3>
+                    </div>
+                  </div>
 
-                {totalCarouselPages > 1 && (
-                  <>
-                    {/* Vorige pagina */}
-                    <button
-                      type="button"
-                      onClick={goToPrevCarousel}
-                      title="Vorige video's"
-                      className="w-7 h-7 rounded-sm border border-border hover:border-accent text-foreground hover:text-accent flex items-center justify-center transition-colors bg-secondary/30 hover:bg-secondary/70"
-                      aria-label="Vorige video's"
+                  <p className="text-xs sm:text-sm text-foreground/85 leading-relaxed">
+                    {linkedStandpunt.standpunt.standpunt}
+                  </p>
+
+                  <div className="pt-1">
+                    <Button
+                      asChild
+                      size="sm"
+                      className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-semibold text-xs uppercase tracking-wider flex items-center justify-center gap-2"
                     >
-                      <ChevronUp className="w-3.5 h-3.5" />
-                    </button>
-
-                    {/* Volgende pagina */}
-                    <button
-                      type="button"
-                      onClick={goToNextCarousel}
-                      title="Volgende video's"
-                      className="w-7 h-7 rounded-sm border border-border hover:border-accent text-foreground hover:text-accent flex items-center justify-center transition-colors bg-secondary/30 hover:bg-secondary/70"
-                      aria-label="Volgende video's"
-                    >
-                      <ChevronDown className="w-3.5 h-3.5" />
-                    </button>
-                  </>
-                )}
+                      <Link
+                        to={`/standpunten?hoofdstuk=${linkedStandpunt.hoofdstuk.nr}&standpunt=${linkedStandpunt.standpunt.nr}`}
+                      >
+                        <span>Bekijk meer over dit standpunt</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* Carrousel met Meer Video's */}
+            <div className="space-y-4">
+              {/* Carrousel Header met shuffle & navigatieknoppen */}
+              <div className="flex items-center justify-between gap-2 border-b border-border pb-3">
+                <div>
+                  <h2 className="font-display text-xl font-bold flex items-center gap-2">
+                    <VideoIcon className="w-5 h-5 text-accent" />
+                    <span>Meer Video's</span>
+                  </h2>
+                  <p className="text-[11px] text-muted-foreground">
+                    Willekeurige video's van alle raadsleden
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-1 shrink-0">
+                  {/* Shuffle knop */}
+                  <button
+                    type="button"
+                    onClick={shuffleVideos}
+                    title="Video's willekeurig husselen"
+                    className="w-7 h-7 rounded-sm border border-border hover:border-accent text-muted-foreground hover:text-accent flex items-center justify-center transition-colors"
+                    aria-label="Video's willekeurig husselen"
+                  >
+                    <Shuffle className="w-3.5 h-3.5" />
+                  </button>
+
+                  {totalCarouselPages > 1 && (
+                    <>
+                      {/* Vorige pagina */}
+                      <button
+                        type="button"
+                        onClick={goToPrevCarousel}
+                        title="Vorige video's"
+                        className="w-7 h-7 rounded-sm border border-border hover:border-accent text-foreground hover:text-accent flex items-center justify-center transition-colors bg-secondary/30 hover:bg-secondary/70"
+                        aria-label="Vorige video's"
+                      >
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      </button>
+
+                      {/* Volgende pagina */}
+                      <button
+                        type="button"
+                        onClick={goToNextCarousel}
+                        title="Volgende video's"
+                        className="w-7 h-7 rounded-sm border border-border hover:border-accent text-foreground hover:text-accent flex items-center justify-center transition-colors bg-secondary/30 hover:bg-secondary/70"
+                        aria-label="Volgende video's"
+                      >
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
 
             {/* Lijst met willekeurige video's (verticale carrousel items) */}
             {shuffledVideos.length === 0 ? (
@@ -623,6 +711,7 @@ export default function VideoDetail() {
                 )}
               </div>
             )}
+            </div>
           </aside>
         </div>
       </div>
