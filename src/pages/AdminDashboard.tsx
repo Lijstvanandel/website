@@ -3429,8 +3429,7 @@ export default function AdminDashboard() {
                       <div className="w-full sm:w-44 aspect-video bg-black rounded-lg overflow-hidden shrink-0 border border-border">
                         <VideoPlayer
                           url={v.videoUrl}
-                          title={displayTitle}
-                          poster={v.thumbnailUrl || `/api/videos/${v.id}/thumbnail.jpg`}
+                          poster={getVideoThumbnail(v.videoUrl, v.thumbnailUrl, v.id, v.fractieledenIds?.[0]) || `/api/videos/${v.id}/thumbnail.jpg?personId=${encodeURIComponent(v.fractieledenIds?.[0] || "")}`}
                           className="w-full h-full"
                         />
                       </div>

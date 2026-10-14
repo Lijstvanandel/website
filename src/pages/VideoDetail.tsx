@@ -241,8 +241,8 @@ export default function VideoDetail() {
   const displayTitle = `${speakerName} over ‘${cleanVideoTitle}’`;
 
   const effectivePoster =
-    getVideoThumbnail(currentVideo.videoUrl, currentVideo.thumbnailUrl, currentVideo.id) ||
-    `/api/videos/${currentVideo.id}/thumbnail.jpg`;
+    getVideoThumbnail(currentVideo.videoUrl, currentVideo.thumbnailUrl, currentVideo.id, speaker?.id) ||
+    `/api/videos/${currentVideo.id}/thumbnail.jpg?personId=${encodeURIComponent(speaker?.id || "")}`;
 
   const formattedDate = currentVideo.date
     ? new Date(currentVideo.date).toLocaleDateString("nl-NL", {

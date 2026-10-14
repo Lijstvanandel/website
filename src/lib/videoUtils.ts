@@ -9,20 +9,24 @@ export function extractYouTubeId(rawUrl?: string): string | null {
 export function getVideoThumbnail(
   videoUrl?: string,
   explicitThumbnail?: string,
-  videoId?: string
+  videoId?: string,
+  memberId?: string
 ): string | null {
-  // If an explicit custom uploaded image is provided (not YouTube fallback), use it
+  // If an explicit custom uploaded image is provided (not YouTube fallback or dynamic API), use it
   if (
     explicitThumbnail &&
     explicitThumbnail.trim() &&
     !explicitThumbnail.includes("ytimg") &&
-    !explicitThumbnail.includes("hqdefault")
+    !explicitThumbnail.includes("hqdefault") &&
+    !explicitThumbnail.includes("/api/videos/") &&
+    !explicitThumbnail.includes("/api/thumbnail/")
   ) {
     return explicitThumbnail.trim();
   }
   // Standardly use the automatically composed thumbnail (person cutout + wijk/hero bg + title)
   if (videoId) {
-    return `/api/videos/${videoId}/thumbnail.jpg`;
+    const memberParam = memberId ? `?personId=${encodeURIComponent(memberId)}` : "";
+    return `/api/videos/${videoId}/thumbnail.jpg${memberParam}`;
   }
   if (explicitThumbnail && explicitThumbnail.trim()) {
     return explicitThumbnail.trim();

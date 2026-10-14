@@ -7564,18 +7564,38 @@ async function startServer() {
   app.get("/api/videos", (req, res) => {
     const db = getDb();
     let videos = db.videos || [];
-    if (req.query.memberId) videos = videos.filter((v: any) => v.fractieledenIds?.includes(req.query.memberId));
+    if (req.query.memberId) {
+      const mId = String(req.query.memberId).toLowerCase();
+      videos = videos.filter((v: any) =>
+        (v.fractieledenIds && v.fractieledenIds.some((id: any) => String(id).toLowerCase() === mId)) ||
+        (v.personId && String(v.personId).toLowerCase() === mId)
+      );
+    }
     if (req.query.wijkSlug) videos = videos.filter((v: any) => v.wijkSlug === req.query.wijkSlug);
     if (req.query.hoofdstukNr) videos = videos.filter((v: any) => Number(v.hoofdstukNr) === Number(req.query.hoofdstukNr));
     if (req.query.standpuntNr) videos = videos.filter((v: any) => Number(v.standpuntNr) === Number(req.query.standpuntNr));
     
     // Zorg dat elke video standaard de automatisch samengestelde thumbnail heeft (met lid + wijk/hero), tenzij een eigen custom upload is gedaan
-    const sanitized = videos.map((v: any) => ({
-      ...v,
-      thumbnailUrl: (!v.thumbnailUrl || v.thumbnailUrl.includes("ytimg") || v.thumbnailUrl.includes("hqdefault"))
-        ? `/api/videos/${v.id}/thumbnail.jpg`
-        : v.thumbnailUrl
-    }));
+    const sanitized = videos.map((v: any) => {
+      const memberId = (v.fractieledenIds && v.fractieledenIds.length > 0) ? v.fractieledenIds[0] : (v.personId || "");
+      const linkedMember = memberId ? (db.fractieleden || []).find((m: any) => String(m.id) === String(memberId)) : null;
+      const memberVer = linkedMember?.cutoutImageUrl ? path.basename(linkedMember.cutoutImageUrl) : (linkedMember?.imgUrl ? path.basename(linkedMember.imgUrl) : "");
+      const versionQuery = memberVer ? `?v=${encodeURIComponent(memberVer)}` : "";
+
+      const needsAutoThumb =
+        !v.thumbnailUrl ||
+        v.thumbnailUrl.includes("ytimg") ||
+        v.thumbnailUrl.includes("hqdefault") ||
+        v.thumbnailUrl.includes("/api/videos/") ||
+        v.thumbnailUrl.includes("/api/thumbnail/");
+
+      return {
+        ...v,
+        thumbnailUrl: needsAutoThumb
+          ? `/api/videos/${v.id}/thumbnail.jpg${versionQuery}`
+          : v.thumbnailUrl
+      };
+    });
     res.json(sanitized);
   });
 
@@ -7591,23 +7611,40 @@ async function startServer() {
     try {
       const db = getDb();
       const video = (db.videos || []).find((v: any) => String(v.id) === String(req.params.id));
+      const queryPersonId = (req.query.personId || req.query.memberId) as string;
+      const queryTitle = req.query.title as string;
+      const queryWijk = req.query.wijk as string;
+
       if (!video) {
         const fallbackBuf = await generateVideoThumbnailBuffer(
           {
-            title: "het raadsvoorstel",
+            title: queryTitle || "het raadsvoorstel",
             category: "Raadsdebat",
+            personId: queryPersonId,
+            wijkSlug: queryWijk,
           },
           db
         );
         res.setHeader("Content-Type", "image/jpeg");
-        res.setHeader("Cache-Control", "public, max-age=60");
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
         return res.send(fallbackBuf);
       }
 
-      const buffer = await generateVideoThumbnailBuffer(video, db);
+      const targetVideo = {
+        ...video,
+        personId: queryPersonId || video.personId,
+        title: queryTitle || video.title,
+        wijkSlug: queryWijk || video.wijkSlug,
+      };
+
+      const buffer = await generateVideoThumbnailBuffer(targetVideo, db);
       res.setHeader("Content-Type", "image/jpeg");
-      // Responsive cache headers so new uploaded cutout photos take effect immediately across all videos
-      res.setHeader("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=86400");
+      // Direct cache validation so newly uploaded cutout photos take effect immediately
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
       return res.send(buffer);
     } catch (err: any) {
       console.error("[VIDEO THUMBNAIL GET ERROR]:", err);
@@ -7621,7 +7658,7 @@ async function startServer() {
       const db = getDb();
       const title = (req.query.title as string) || "het raadsvoorstel";
       const wijkSlug = (req.query.wijk as string) || "";
-      const personId = (req.query.personId as string) || "";
+      const personId = (req.query.personId || req.query.memberId as string) || "";
       const category = (req.query.category as string) || "Raadsdebat";
 
       const buffer = await generateVideoThumbnailBuffer(
@@ -7635,7 +7672,8 @@ async function startServer() {
       );
 
       res.setHeader("Content-Type", "image/jpeg");
-      res.setHeader("Cache-Control", "public, max-age=300");
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.setHeader("Pragma", "no-cache");
       return res.send(buffer);
     } catch (err: any) {
       console.error("[VIDEO THUMBNAIL COMPOSE ERROR]:", err);

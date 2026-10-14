@@ -406,8 +406,8 @@ export default function FractielidVideos() {
                   cleanVideoTitle = cleanVideoTitle.replace(/^['"‘“](.*)['"’”]$/, "$1").trim() || "het raadsvoorstel";
                   const displayTitle = `${member?.name || "Lijst van Andel"} over ‘${cleanVideoTitle}’`;
                   const effectivePoster =
-                    getVideoThumbnail(v.videoUrl, v.thumbnailUrl, v.id) ||
-                    `/api/videos/${v.id}/thumbnail.jpg`;
+                    getVideoThumbnail(v.videoUrl, v.thumbnailUrl, v.id, member?.id) ||
+                    `/api/videos/${v.id}/thumbnail.jpg?personId=${encodeURIComponent(member?.id || "")}`;
 
                   return (
                     <article
@@ -427,7 +427,7 @@ export default function FractielidVideos() {
                             alt={displayTitle}
                             className="w-full h-full object-cover transition-transform duration-500 group-hover/thumb:scale-105"
                             onError={(e) => {
-                              (e.target as HTMLImageElement).src = `/api/thumbnail/video/compose?title=${encodeURIComponent(cleanVideoTitle)}&personId=${member?.id || ""}&wijk=${v.wijkSlug || ""}`;
+                              (e.target as HTMLImageElement).src = `/api/thumbnail/video/compose?title=${encodeURIComponent(cleanVideoTitle)}&personId=${encodeURIComponent(member?.id || "")}&wijk=${encodeURIComponent(v.wijkSlug || "")}`;
                             }}
                           />
                         ) : (
