@@ -74,7 +74,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Ultra-lightweight click-to-play facade: eliminates 10MB+ video buffering overhead on page load
   if (!isPlaying) {
-    const webpPoster = poster?.replace(/\.(jpg|jpeg|png)$/i, ".webp");
+    const webpPoster = poster && !poster.startsWith("/api/") ? poster.replace(/\.(jpg|jpeg|png)$/i, ".webp") : undefined;
     return (
       <div
         className={`relative w-full h-full bg-black overflow-hidden group cursor-pointer select-none ${className}`}

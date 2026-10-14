@@ -182,11 +182,22 @@ const StandpuntCard = ({ hNr, s, dynamicVideos, fractieleden }: StandpuntCardPro
                     <div>
                       {v.isBurger && (
                         <span className="inline-block text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded bg-accent/20 text-accent border border-accent/30 mb-1.5">
-                          Burgerraadslid Bijdrage
+                          Burgerraadslid
                         </span>
                       )}
                       <div className="font-semibold text-sm text-foreground leading-snug">
-                        {v.title}
+                        {(() => {
+                          const fl = v.fractieledenIds && v.fractieledenIds.length > 0
+                            ? fractieleden.find((f) => String(f.id) === String(v.fractieledenIds[0]))
+                            : null;
+                          const speakerName = fl?.name || "Lijst van Andel";
+                          let cleanT = (v.title || "").trim();
+                          const nameOverRegex = new RegExp(`^${speakerName}\\s+over\\s+`, "i");
+                          cleanT = cleanT.replace(nameOverRegex, "");
+                          cleanT = cleanT.replace(/^(?:videobijdrage|video bijdrage|videobijdragen|video-bijdrage|tussenkomst|bijdrage|inbreng|toelichting)\s*(?:over\s*)?/i, "");
+                          cleanT = cleanT.replace(/^['"‘“](.*)['"’”]$/, "$1").trim() || "het raadsvoorstel";
+                          return `${speakerName} over ‘${cleanT}’`;
+                        })()}
                       </div>
                       <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground mt-1">
                         <span className="text-accent font-medium uppercase tracking-wider">{v.category}</span>
@@ -219,7 +230,7 @@ const StandpuntCard = ({ hNr, s, dynamicVideos, fractieleden }: StandpuntCardPro
                       <VideoPlayer
                         url={v.videoUrl}
                         title={v.title}
-                        poster={getVideoThumbnail(v.videoUrl, v.thumbnailUrl, v.id) || v.thumbnailUrl}
+                        poster={getVideoThumbnail(v.videoUrl, v.thumbnailUrl, v.id) || `/api/videos/${v.id}/thumbnail.jpg`}
                         className="w-full h-full"
                       />
                     </div>

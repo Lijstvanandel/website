@@ -788,14 +788,17 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
           rawVTitle = rawVTitle.replace(nameOverRegex, "");
           const tussenkomstRegex = new RegExp(`^tussenkomst(?:\\s+van)?(?:\\s+${member.name})?\\s+over\\s+`, "i");
           rawVTitle = rawVTitle.replace(tussenkomstRegex, "");
-          rawVTitle = rawVTitle.replace(/^(?:bijdrage|inbreng|toelichting)\s+over\s+/i, "");
+          rawVTitle = rawVTitle.replace(/^(?:videobijdrage|video bijdrage|videobijdragen|video-bijdrage|bijdrage|inbreng|toelichting)\s*(?:over\s*)?/i, "");
           rawVTitle = rawVTitle.replace(/^['"‘“](.*)['"’”]$/, "$1").trim();
         }
-        const cleanVTitle = rawVTitle || "het raadsvoorstel";
+        let cleanVTitle = rawVTitle;
+        if (!cleanVTitle || cleanVTitle.toLowerCase() === "videobijdrage" || cleanVTitle.toLowerCase() === "video bijdrage" || cleanVTitle.toLowerCase() === "bijdrage") {
+          cleanVTitle = "het raadsvoorstel";
+        }
         const formattedHeadline = `${member.name} over ‘${cleanVTitle}’`;
         const cleanDesc = targetVideo.description
           ? truncate(stripHtml(targetVideo.description), 160)
-          : `Bekijk de bijdrage van ${member.name} over ‘${cleanVTitle}’ in de gemeenteraad van Steenwijkerland.`;
+          : `Bekijk de toelichting van ${member.name} over ‘${cleanVTitle}’ in de gemeenteraad van Steenwijkerland.`;
         
         let videoImage = "";
         if (targetVideo.thumbnailUrl && !targetVideo.thumbnailUrl.includes("ytimg") && !targetVideo.thumbnailUrl.includes("hqdefault")) {
@@ -885,15 +888,18 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
         rawVTitle = rawVTitle.replace(nameOverRegex, "");
         const tussenkomstRegex = new RegExp(`^tussenkomst(?:\\s+van)?(?:\\s+${speakerName})?\\s+over\\s+`, "i");
         rawVTitle = rawVTitle.replace(tussenkomstRegex, "");
-        rawVTitle = rawVTitle.replace(/^(?:bijdrage|inbreng|toelichting)\s+over\s+/i, "");
+        rawVTitle = rawVTitle.replace(/^(?:videobijdrage|video bijdrage|videobijdragen|video-bijdrage|bijdrage|inbreng|toelichting)\s*(?:over\s*)?/i, "");
         rawVTitle = rawVTitle.replace(/^['"‘“](.*)['"’”]$/, "$1").trim();
       }
-      const cleanVTitle = rawVTitle || "het raadsvoorstel";
+      let cleanVTitle = rawVTitle;
+      if (!cleanVTitle || cleanVTitle.toLowerCase() === "videobijdrage" || cleanVTitle.toLowerCase() === "video bijdrage" || cleanVTitle.toLowerCase() === "bijdrage") {
+        cleanVTitle = "het raadsvoorstel";
+      }
       const formattedHeadline = `${speakerName} over ‘${cleanVTitle}’`;
 
       const cleanDesc = video.description
         ? truncate(stripHtml(video.description), 160)
-        : `Bekijk de bijdrage van ${speakerName} over ‘${cleanVTitle}’ in de gemeenteraad van Steenwijkerland.`;
+        : `Bekijk hoe ${speakerName} spreekt over ‘${cleanVTitle}’ in de gemeenteraad van Steenwijkerland.`;
 
       let videoImage = "";
       if (video.thumbnailUrl && !video.thumbnailUrl.includes("ytimg") && !video.thumbnailUrl.includes("hqdefault")) {

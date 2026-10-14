@@ -3409,7 +3409,16 @@ export default function AdminDashboard() {
                 )}
 
                 {paginatedVideos.map((v) => {
-                  const displayTitle = v.burgerraadslidTitle || v.title;
+                  const linkedMember = v.fractieledenIds && v.fractieledenIds.length > 0
+                    ? availableFractieleden.find((f) => String(f.id) === String(v.fractieledenIds[0]))
+                    : null;
+                  const speakerName = linkedMember ? linkedMember.name : "Lijst van Andel";
+                  let cleanVTitle = (v.burgerraadslidTitle || v.title || "").trim();
+                  const nameOverRegex = new RegExp(`^${speakerName}\\s+over\\s+`, "i");
+                  cleanVTitle = cleanVTitle.replace(nameOverRegex, "");
+                  cleanVTitle = cleanVTitle.replace(/^(?:videobijdrage|video bijdrage|videobijdragen|video-bijdrage|tussenkomst|bijdrage|inbreng|toelichting)\s*(?:over\s*)?/i, "");
+                  cleanVTitle = cleanVTitle.replace(/^['"‘“](.*)['"’”]$/, "$1").trim() || "het raadsvoorstel";
+                  const displayTitle = `${speakerName} over ‘${cleanVTitle}’`;
                   return (
                     <div
                       key={v.id}
@@ -3425,9 +3434,9 @@ export default function AdminDashboard() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold text-sm leading-snug">{displayTitle}</div>
-                        {v.burgerraadslidTitle && v.burgerraadslidTitle !== v.title && (
+                        {v.title && v.title !== cleanVTitle && (
                           <div className="text-[11px] text-muted-foreground italic mt-0.5">
-                            Algemene titel: {v.title}
+                            Oorspronkelijke titel: {v.title}
                           </div>
                         )}
                         <div className="text-xs text-muted-foreground mt-1 flex flex-wrap items-center gap-1.5">

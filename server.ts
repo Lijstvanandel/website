@@ -7572,7 +7572,14 @@ async function startServer() {
   });
 
   // Dynamisch samengestelde thumbnail voor een opgeslagen video (voor videoplayer poster en OpenGraph)
-  app.get("/api/videos/:id/thumbnail.jpg", async (req, res) => {
+  app.get([
+    "/api/videos/:id/thumbnail.jpg",
+    "/api/videos/:id/thumbnail.webp",
+    "/api/videos/:id/thumbnail.png",
+    "/api/videos/:id/thumbnail",
+    "/api/videos/:id/poster.jpg",
+    "/api/videos/:id/poster"
+  ], async (req, res) => {
     try {
       const db = getDb();
       const video = (db.videos || []).find((v: any) => String(v.id) === String(req.params.id));

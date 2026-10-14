@@ -314,10 +314,13 @@ export async function generateVideoThumbnailBuffer(
     rawTitle = rawTitle.replace(nameOverRegex, "");
     const tussenkomstRegex = new RegExp(`^tussenkomst(?:\\s+van)?(?:\\s+${memberName})?\\s+over\\s+`, "i");
     rawTitle = rawTitle.replace(tussenkomstRegex, "");
-    rawTitle = rawTitle.replace(/^(?:bijdrage|inbreng|toelichting)\s+over\s+/i, "");
+    rawTitle = rawTitle.replace(/^(?:videobijdrage|video bijdrage|videobijdragen|video-bijdrage|bijdrage|inbreng|toelichting)\s*(?:over\s*)?/i, "");
     rawTitle = rawTitle.replace(/^['"‘“](.*)['"’”]$/, "$1").trim();
   }
-  const cleanTitle = rawTitle || "het raadsvoorstel";
+  let cleanTitle = rawTitle;
+  if (!cleanTitle || cleanTitle.toLowerCase() === "videobijdrage" || cleanTitle.toLowerCase() === "video bijdrage" || cleanTitle.toLowerCase() === "bijdrage") {
+    cleanTitle = "het raadsvoorstel";
+  }
   const fullHeadline = `${memberName} over ‘${cleanTitle}’`;
 
   // Dynamic Cache Key: accounts for cutoutUrl, wijk background, and headline
@@ -341,7 +344,7 @@ export async function generateVideoThumbnailBuffer(
     .resize(1200, 630, { fit: "cover", position: "center" })
     .toBuffer();
 
-  // 5. Load Person Cutout Image
+  // 5. Load Person Cutout Image (vrijstaande foto)
   const personRes = await loadPersonCutoutBuffer(cutoutUrl);
 
   // 6. Wrap Headline Text
@@ -358,8 +361,8 @@ export async function generateVideoThumbnailBuffer(
         <linearGradient id="leftGrad" x1="0%" y1="0%" x2="100%" y2="0%">
           <stop offset="0%" stop-color="#08101d" stop-opacity="0.97"/>
           <stop offset="38%" stop-color="#08101d" stop-opacity="0.92"/>
-          <stop offset="62%" stop-color="#08101d" stop-opacity="0.60"/>
-          <stop offset="100%" stop-color="#08101d" stop-opacity="0.15"/>
+          <stop offset="60%" stop-color="#08101d" stop-opacity="0.55"/>
+          <stop offset="100%" stop-color="#08101d" stop-opacity="0.10"/>
         </linearGradient>
         <!-- Bottom vignette for speaker badge -->
         <linearGradient id="bottomGrad" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -432,11 +435,11 @@ export async function generateVideoThumbnailBuffer(
     </svg>
   `);
 
-  // 7. Layer composition
-  const compositeLayers: sharp.OverlayOptions[] = [{ input: svgOverlay, top: 0, left: 0 }];
+  // 7. Layer composition: background -> person cutout on right -> SVG text & badge overlay
+  const compositeLayers: sharp.OverlayOptions[] = [];
 
   if (personRes) {
-    const personLeft = Math.max(680, 1200 - personRes.width - 25);
+    const personLeft = Math.max(650, 1200 - personRes.width - 20);
     const personTop = 630 - personRes.height;
     compositeLayers.push({
       input: personRes.buffer,
@@ -444,6 +447,9 @@ export async function generateVideoThumbnailBuffer(
       left: personLeft,
     });
   }
+
+  // Overlay SVG on top of background and person cutout
+  compositeLayers.push({ input: svgOverlay, top: 0, left: 0 });
 
   const resultBuffer = await sharp(bgBuffer)
     .composite(compositeLayers)

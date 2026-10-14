@@ -232,11 +232,17 @@ export default function VideoDetail() {
     );
   }
 
-  const displayTitle = currentVideo.burgerraadslidTitle || currentVideo.title;
+  const speakerName = speaker?.name || "Lijst van Andel";
+  let cleanVideoTitle = (currentVideo.burgerraadslidTitle || currentVideo.title || "").trim();
+  const nameOverRegex = new RegExp(`^${speakerName}\\s+over\\s+`, "i");
+  cleanVideoTitle = cleanVideoTitle.replace(nameOverRegex, "");
+  cleanVideoTitle = cleanVideoTitle.replace(/^(?:videobijdrage|video bijdrage|videobijdragen|video-bijdrage|tussenkomst|bijdrage|inbreng|toelichting)\s*(?:over\s*)?/i, "");
+  cleanVideoTitle = cleanVideoTitle.replace(/^['"‘“](.*)['"’”]$/, "$1").trim() || "het raadsvoorstel";
+  const displayTitle = `${speakerName} over ‘${cleanVideoTitle}’`;
+
   const effectivePoster =
     getVideoThumbnail(currentVideo.videoUrl, currentVideo.thumbnailUrl, currentVideo.id) ||
-    speaker?.imgUrl ||
-    "/assets/markt-steenwijk.jpg";
+    `/api/videos/${currentVideo.id}/thumbnail.jpg`;
 
   const formattedDate = currentVideo.date
     ? new Date(currentVideo.date).toLocaleDateString("nl-NL", {
@@ -313,7 +319,7 @@ export default function VideoDetail() {
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground mb-2.5">
                 <span className="px-2.5 py-0.5 rounded-sm bg-accent/15 border border-accent/30 text-[11px] uppercase tracking-wider text-accent font-semibold flex items-center gap-1">
                   <Tag className="w-3 h-3" />
-                  {currentVideo.category || (isBurger ? "Burgerraadslid Bijdrage" : "Raadsdebat")}
+                  {currentVideo.category || (isBurger ? "Burgerraadslid" : "Raadsdebat")}
                 </span>
 
                 <span className="flex items-center gap-1">
@@ -514,11 +520,17 @@ export default function VideoDetail() {
                   className="space-y-2.5 animate-fade-up"
                 >
                   {visibleCarouselVideos.map((v) => {
-                    const vTitle = v.burgerraadslidTitle || v.title || "Videobijdrage";
+                    const vSpeaker = getSpeakerForVideo(v);
+                    const vSpeakerName = vSpeaker?.name || "Lijst van Andel";
+                    let cleanVTitle = (v.burgerraadslidTitle || v.title || "").trim();
+                    const nameOverRegex = new RegExp(`^${vSpeakerName}\\s+over\\s+`, "i");
+                    cleanVTitle = cleanVTitle.replace(nameOverRegex, "");
+                    cleanVTitle = cleanVTitle.replace(/^(?:videobijdrage|video bijdrage|videobijdragen|video-bijdrage|tussenkomst|bijdrage|inbreng|toelichting)\s*(?:over\s*)?/i, "");
+                    cleanVTitle = cleanVTitle.replace(/^['"‘“](.*)['"’”]$/, "$1").trim() || "het raadsvoorstel";
+                    const vTitle = `${vSpeakerName} over ‘${cleanVTitle}’`;
                     const vPoster =
                       getVideoThumbnail(v.videoUrl, v.thumbnailUrl, v.id) ||
-                      "/assets/markt-steenwijk.jpg";
-                    const vSpeaker = getSpeakerForVideo(v);
+                      `/api/videos/${v.id}/thumbnail.jpg`;
 
                     const vDate = v.date
                       ? new Date(v.date).toLocaleDateString("nl-NL", {
@@ -619,8 +631,8 @@ export default function VideoDetail() {
       <ShareDialog
         open={shareDialogOpen}
         onOpenChange={setShareDialogOpen}
-        title={`${displayTitle} - ${speaker?.name || "Lijst van Andel"}`}
-        description={currentVideo.description || `Bekijk deze videobijdrage in Steenwijkerland.`}
+        title={`${displayTitle} | Lijst van Andel`}
+        description={currentVideo.description || `Bekijk hoe ${speaker?.name || "Lijst van Andel"} spreekt over ‘${cleanVideoTitle}’ in de gemeenteraad van Steenwijkerland.`}
         url={shareUrl}
         imageUrl={effectivePoster}
       />

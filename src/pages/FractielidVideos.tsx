@@ -205,13 +205,18 @@ export default function FractielidVideos() {
   };
 
   const handleShareVideo = (video: VideoItem) => {
-    const videoTitle = video.burgerraadslidTitle || video.title || "Videobijdrage";
+    let cleanVTitle = (video.burgerraadslidTitle || video.title || "").trim();
+    const nameOverRegex = new RegExp(`^${member?.name || "Lijst van Andel"}\\s+over\\s+`, "i");
+    cleanVTitle = cleanVTitle.replace(nameOverRegex, "");
+    cleanVTitle = cleanVTitle.replace(/^(?:videobijdrage|video bijdrage|videobijdragen|video-bijdrage|tussenkomst|bijdrage|inbreng|toelichting)\s*(?:over\s*)?/i, "");
+    cleanVTitle = cleanVTitle.replace(/^['"‘“](.*)['"’”]$/, "$1").trim() || "het raadsvoorstel";
+    const formattedTitle = `${member?.name || "Lijst van Andel"} over ‘${cleanVTitle}’`;
     const videoUrl = `${window.location.origin}/video/${video.id}`;
     setShareData({
-      title: `${videoTitle} - ${member?.name || "Lijst van Andel"}`,
-      description: video.description || `Bekijk deze videobijdrage van ${member?.name || "Lijst van Andel"} in de gemeenteraad van Steenwijkerland.`,
+      title: `${formattedTitle} | Lijst van Andel`,
+      description: video.description || `Bekijk hoe ${member?.name || "Lijst van Andel"} spreekt over ‘${cleanVTitle}’ in de gemeenteraad van Steenwijkerland.`,
       url: videoUrl,
-      imageUrl: video.thumbnailUrl || member?.imgUrl || "/assets/logo.png",
+      imageUrl: video.thumbnailUrl || `/api/videos/${video.id}/thumbnail.jpg`,
     });
     setShareDialogOpen(true);
   };
@@ -394,8 +399,15 @@ export default function FractielidVideos() {
             <div className="flex-1 flex flex-col justify-between">
               <div className={`grid grid-cols-1 ${paginatedVideos.length > 1 ? "sm:grid-cols-2" : "sm:grid-cols-1"} gap-5 pt-2`}>
                 {paginatedVideos.map((v) => {
-                  const displayTitle = v.burgerraadslidTitle || v.title || "Videobijdrage";
-                  const effectivePoster = getVideoThumbnail(v.videoUrl, v.thumbnailUrl, v.id);
+                  let cleanVideoTitle = (v.burgerraadslidTitle || v.title || "").trim();
+                  const nameOverRegex = new RegExp(`^${member?.name || "Lijst van Andel"}\\s+over\\s+`, "i");
+                  cleanVideoTitle = cleanVideoTitle.replace(nameOverRegex, "");
+                  cleanVideoTitle = cleanVideoTitle.replace(/^(?:videobijdrage|video bijdrage|videobijdragen|video-bijdrage|tussenkomst|bijdrage|inbreng|toelichting)\s*(?:over\s*)?/i, "");
+                  cleanVideoTitle = cleanVideoTitle.replace(/^['"‘“](.*)['"’”]$/, "$1").trim() || "het raadsvoorstel";
+                  const displayTitle = `${member?.name || "Lijst van Andel"} over ‘${cleanVideoTitle}’`;
+                  const effectivePoster =
+                    getVideoThumbnail(v.videoUrl, v.thumbnailUrl, v.id) ||
+                    `/api/videos/${v.id}/thumbnail.jpg`;
 
                   return (
                     <article
@@ -413,9 +425,9 @@ export default function FractielidVideos() {
                           <img
                             src={effectivePoster}
                             alt={displayTitle}
-                            className="w-full h-full object-cover transition-transform duration-500 group-hover/thumb:scale-105 opacity-90 group-hover/thumb:opacity-100"
+                            className="w-full h-full object-cover transition-transform duration-500 group-hover/thumb:scale-105"
                             onError={(e) => {
-                              (e.target as HTMLImageElement).src = "/assets/markt-steenwijk.jpg";
+                              (e.target as HTMLImageElement).src = `/api/thumbnail/video/compose?title=${encodeURIComponent(cleanVideoTitle)}&personId=${member?.id || ""}&wijk=${v.wijkSlug || ""}`;
                             }}
                           />
                         ) : (
@@ -423,8 +435,9 @@ export default function FractielidVideos() {
                             <Video className="w-12 h-12 opacity-30" />
                           </div>
                         )}
-                        <div className="absolute inset-0 bg-black/30 group-hover/thumb:bg-black/15 transition-colors flex items-center justify-center">
-                          <div className="w-12 h-12 rounded-full bg-accent text-accent-foreground flex items-center justify-center shadow-xl group-hover/thumb:scale-110 transition-transform">
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60 group-hover/thumb:opacity-20 transition-opacity pointer-events-none" />
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <div className="w-12 h-12 rounded-full bg-accent/90 text-accent-foreground flex items-center justify-center shadow-xl group-hover/thumb:scale-110 group-hover/thumb:bg-accent transition-all ring-4 ring-black/40">
                             <Play className="w-5 h-5 fill-current translate-x-0.5" />
                           </div>
                         </div>
@@ -445,7 +458,7 @@ export default function FractielidVideos() {
                           {isBurgerraadslid && (
                             <div className="mb-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-accent/15 border border-accent/30 text-[10px] uppercase tracking-wider text-accent font-semibold">
                               <Tag className="w-3 h-3" />
-                              <span>Burgerraadslid Bijdrage</span>
+                              <span>Burgerraadslid</span>
                             </div>
                           )}
 
