@@ -2238,7 +2238,7 @@ async function startServer() {
   });
 
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
   app.disable('x-powered-by');
   // Trust first proxy hop (e.g. Cloud Run, reverse proxy) securely without allowing permissive spoofing
   app.set('trust proxy', 1);

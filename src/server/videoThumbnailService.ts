@@ -1,16 +1,30 @@
 import fs from "fs";
 import path from "path";
-import opentype from "opentype.js";
 import sharp from "sharp";
 import { BUURTKAART_43_WIJKEN } from "../data/defaultWijken.js";
 import { DEFAULT_FRACTIELEDEN } from "../data/fractieleden.js";
+
+// Safely load opentype either from bundled file or fallback, avoiding startup crash if npm install was not run on VPS
+let opentypeModule: any = null;
+try {
+  // @ts-ignore
+  opentypeModule = require("./opentype-bundled.cjs");
+} catch (_err1) {
+  try {
+    // @ts-ignore
+    opentypeModule = require("opentype.js");
+  } catch (_err2) {
+    console.warn("[VIDEO THUMBNAIL] opentype not available on host, fallback text will be used");
+  }
+}
+const opentype = opentypeModule;
 
 // In-memory cache for ultra-fast serving
 const thumbnailCache = new Map<string, { buffer: Buffer; expiresAt: number }>();
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-let cachedBoldFont: opentype.Font | null = null;
-let cachedRegFont: opentype.Font | null = null;
+let cachedBoldFont: any = null;
+let cachedRegFont: any = null;
 
 function getThumbnailFonts(): { bold: opentype.Font | null; regular: opentype.Font | null } {
   if (cachedBoldFont && cachedRegFont) {
