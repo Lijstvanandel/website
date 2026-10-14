@@ -25,9 +25,6 @@ function getThumbnailFonts(): { bold: any; regular: any } {
     path.join(process.cwd(), "public/assets/fonts/LiberationSans-Bold.ttf"),
     path.join(process.cwd(), "dist/assets/fonts/LiberationSans-Bold.ttf"),
     path.join(process.cwd(), "src/assets/fonts/LiberationSans-Bold.ttf"),
-    path.join(__dirname, "../public/assets/fonts/LiberationSans-Bold.ttf"),
-    path.join(__dirname, "assets/fonts/LiberationSans-Bold.ttf"),
-    path.join(__dirname, "../assets/fonts/LiberationSans-Bold.ttf"),
     path.join(process.cwd(), "node_modules/pdfjs-dist/standard_fonts/LiberationSans-Bold.ttf"),
     "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -37,9 +34,6 @@ function getThumbnailFonts(): { bold: any; regular: any } {
     path.join(process.cwd(), "public/assets/fonts/LiberationSans-Regular.ttf"),
     path.join(process.cwd(), "dist/assets/fonts/LiberationSans-Regular.ttf"),
     path.join(process.cwd(), "src/assets/fonts/LiberationSans-Regular.ttf"),
-    path.join(__dirname, "../public/assets/fonts/LiberationSans-Regular.ttf"),
-    path.join(__dirname, "assets/fonts/LiberationSans-Regular.ttf"),
-    path.join(__dirname, "../assets/fonts/LiberationSans-Regular.ttf"),
     path.join(process.cwd(), "node_modules/pdfjs-dist/standard_fonts/LiberationSans-Regular.ttf"),
     "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Regular.ttf",
@@ -271,7 +265,7 @@ async function autoCutoutIfNeeded(buf: Buffer): Promise<Buffer> {
 
 async function loadSafeImageBuffer(
   imageSource?: string,
-  fallbackRelativePath = "public/assets/hero-banner.jpg"
+  fallbackRelativePath = "public/assets/steenwijk-aerial.webp"
 ): Promise<Buffer> {
   if (imageSource && typeof imageSource === "string") {
     const clean = imageSource.trim();
@@ -311,10 +305,14 @@ async function loadSafeImageBuffer(
 
   const fallbackCandidates = [
     path.join(process.cwd(), fallbackRelativePath),
+    path.join(process.cwd(), "public/assets/steenwijk-aerial.webp"),
+    path.join(process.cwd(), "src/assets/steenwijk-aerial.webp"),
+    path.join(process.cwd(), "dist/assets/steenwijk-aerial.webp"),
+    path.join(process.cwd(), "public/assets/steenwijk-aerial.jpg"),
+    path.join(process.cwd(), "src/assets/steenwijk-aerial.jpg"),
+    path.join(process.cwd(), "dist/assets/steenwijk-aerial.jpg"),
     path.join(process.cwd(), "public/assets/hero-banner.jpg"),
     path.join(process.cwd(), "src/assets/hero-banner.jpg"),
-    path.join(process.cwd(), "dist/assets/hero-banner.jpg"),
-    path.join(process.cwd(), "public/assets/markt-steenwijk.jpg"),
   ];
 
   for (const fp of fallbackCandidates) {
@@ -372,9 +370,6 @@ async function loadPersonCutoutBuffer(
         path.join(process.cwd(), "dist/client", withoutPublic),
         path.join(process.cwd(), "dist/public", withoutPublic),
         path.join(process.cwd(), "src", withoutPublic),
-        path.join(__dirname, "../public", withoutPublic),
-        path.join(__dirname, "../dist", withoutPublic),
-        path.join(__dirname, "../../public", withoutPublic),
       ];
 
       for (const p of candidates) {
@@ -564,8 +559,9 @@ export async function generateVideoThumbnailBuffer(
   const fullHeadline = `${memberName} over ‘${cleanTitle}’`;
 
   // Dynamic Cache Key: accounts for cutoutUrl, wijk background, and headline
+  const effectiveBgUrl = wijkBackgroundUrl || "/assets/steenwijk-aerial.webp";
   const cacheKey = String(
-    `${video.id || "preview"}_${cutoutUrl}_${wijkBackgroundUrl}_${fullHeadline}`
+    `${video.id || "preview"}_${cutoutUrl}_${effectiveBgUrl}_${fullHeadline}`
   );
 
   const cached = thumbnailCache.get(cacheKey);
@@ -574,10 +570,10 @@ export async function generateVideoThumbnailBuffer(
   }
 
   // 4. Load Background Image
-  // Background photo of the connected wijk/kern (or general hero-banner.jpg)
+  // Background photo of the connected wijk/kern (or default steenwijk-aerial.webp if none connected)
   const rawBgBuffer = await loadSafeImageBuffer(
-    wijkBackgroundUrl || "/assets/hero-banner.jpg",
-    "public/assets/hero-banner.jpg"
+    effectiveBgUrl,
+    "public/assets/steenwijk-aerial.webp"
   );
 
   const bgBuffer = await sharp(rawBgBuffer)

@@ -2961,7 +2961,7 @@ export default function AdminDashboard() {
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    De thumbnail van elke video wordt standaard automatisch opgebouwd als <strong className="text-foreground">&apos;%naam%&apos; over &apos;%titel van de video%&apos;</strong> met daarnaast de foto zonder achtergrond, en op de achtergrond de foto van de betreffende wijk- of kernpagina (of de algemene hero-afbeelding indien niet gekoppeld). Dit werkt direct met terugwerkende kracht zodra er een nieuwe vrijstaande foto wordt geüpload.
+                    De thumbnail van elke video wordt standaard automatisch opgebouwd als <strong className="text-foreground">&apos;%naam%&apos; over &apos;%titel van de video%&apos;</strong> met daarnaast de foto zonder achtergrond, en op de achtergrond de foto van de betreffende wijk- of kernpagina (of de algemene luchtfoto van Steenwijk indien niet gekoppeld). Dit werkt direct met terugwerkende kracht zodra er een nieuwe vrijstaande foto wordt geüpload.
                   </p>
                   
                   {/* Live preview canvas image */}
@@ -2998,7 +2998,7 @@ export default function AdminDashboard() {
                       <strong className="text-foreground">
                         {(() => {
                           const w = WIJKEN_EN_KERNEN.find((wk) => wk.slug === newVWijk);
-                          return w ? `${w.naam} (${w.type})` : "Standaard hero-afbeelding";
+                          return w ? `${w.naam} (${w.type})` : "Luchtfoto Steenwijk (standaard)";
                         })()}
                       </strong>
                     </span>
