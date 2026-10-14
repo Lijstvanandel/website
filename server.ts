@@ -40,6 +40,8 @@ const appDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
 import Stripe from "stripe";
 import { createServer as createViteServer } from "vite";
 import { BUURTKAART_43_WIJKEN, syncWijkenWithBuurtkaart, LEGACY_SLUG_MAP } from "./src/data/defaultWijken.js";
+import { DEFAULT_FRACTIELEDEN } from "./src/data/fractieleden.js";
+import { generateVideoThumbnailBuffer, invalidateVideoThumbnailCache } from "./src/server/videoThumbnailService.js";
 import { LEGAL_DOCUMENTS } from "./src/data/legalDocuments.js";
 import { getPageMetadata, injectMetadataIntoHtml } from "./src/server/metaGenerator.js";
 import { generateNewsletterHtml, generateNewsletterText, prepareNewsletterForDispatch } from "./src/server/newsletterTemplate.js";
@@ -2003,7 +2005,7 @@ const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     let subfolder = 'public/uploads';
     const url = req.originalUrl || req.url || '';
-    if (file.fieldname === 'img') {
+    if (file.fieldname === 'img' || file.fieldname === 'cutout') {
       subfolder = 'public/uploads/fractieleden';
     } else if (file.fieldname === 'video' || url.includes('/upload-video') || file.originalname.match(/\.(mp4|webm|mov)$/i)) {
       subfolder = 'public/uploads/videos';
@@ -2230,7 +2232,8 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
   app.disable('x-powered-by');
-  app.set('trust proxy', true);
+  // Trust first proxy hop (e.g. Cloud Run, reverse proxy) securely without allowing permissive spoofing
+  app.set('trust proxy', 1);
 
   // Essential Defense-in-Depth HTTP Security Headers
   app.use((req: any, res: any, next: any) => {
@@ -6629,14 +6632,25 @@ async function startServer() {
     }
   });
 
-  // Helper to sanitize internal asset photos to modern lightweight WebP format
+  // Helper to sanitize internal asset photos to modern lightweight WebP format and resolve cutout photo
   const sanitizeFractielidPhoto = (m: any) => {
     if (!m) return m;
     let img = m.imgUrl || m.img || "";
     if (img.startsWith("/assets/") && (img.endsWith(".png") || img.endsWith(".jpg"))) {
       img = img.replace(/\.(png|jpg)$/i, ".webp");
     }
-    return { ...m, imgUrl: img, img: img };
+    let cutout = m.cutoutImageUrl || m.photoNoBgUrl || "";
+    if (!cutout) {
+      const matchDefault = DEFAULT_FRACTIELEDEN.find(
+        (df) =>
+          String(df.id) === String(m.id) ||
+          df.name.toLowerCase() === (m.name || "").toLowerCase()
+      );
+      if (matchDefault?.cutoutImageUrl) {
+        cutout = matchDefault.cutoutImageUrl;
+      }
+    }
+    return { ...m, imgUrl: img, img: img, cutoutImageUrl: cutout };
   };
 
   // Public & Admin Routes - Fractieleden
@@ -6653,20 +6667,83 @@ async function startServer() {
     res.json(sanitizeFractielidPhoto(lid));
   });
 
-  app.post("/api/admin/fractieleden", requireAuth, requireAdmin, upload.single('img'), (req: any, res: any) => {
-    const db = getDb();
-    const { name, firstName, role, type, bio, speerpunten, email, facebook, instagram, linkedin } = req.body;
-    const imgUrl = req.file ? `/uploads/fractieleden/${req.file.filename}` : '';
-    const newLid = {
-      id: Date.now().toString(),
-      name, firstName, role, type, bio,
-      speerpunten: speerpunten ? JSON.parse(speerpunten) : [],
-      email, socials: { facebook, instagram, linkedin }, imgUrl
-    };
-    db.fractieleden.push(newLid);
-    saveDb(db);
-    res.status(201).json(newLid);
-  });
+  app.post(
+    "/api/admin/fractieleden",
+    requireAuth,
+    requireAdmin,
+    upload.fields([{ name: "img", maxCount: 1 }, { name: "cutout", maxCount: 1 }]),
+    (req: any, res: any) => {
+      const db = getDb();
+      const { name, firstName, role, type, bio, speerpunten, email, facebook, instagram, linkedin } = req.body;
+      const imgFile = req.files?.["img"]?.[0];
+      const cutoutFile = req.files?.["cutout"]?.[0];
+      if (imgFile?.path) syncFileAcrossUploadDirs(imgFile.path);
+      if (cutoutFile?.path) syncFileAcrossUploadDirs(cutoutFile.path);
+      const imgUrl = imgFile ? `/uploads/fractieleden/${imgFile.filename}` : (req.body.imgUrl || "");
+      const cutoutImageUrl = cutoutFile ? `/uploads/fractieleden/${cutoutFile.filename}` : (req.body.cutoutImageUrl || "");
+      const newLid = {
+        id: Date.now().toString(),
+        name,
+        firstName,
+        role,
+        type,
+        bio,
+        speerpunten: speerpunten ? (typeof speerpunten === "string" ? JSON.parse(speerpunten) : speerpunten) : [],
+        email,
+        socials: { facebook, instagram, linkedin },
+        imgUrl,
+        cutoutImageUrl,
+      };
+      if (!db.fractieleden) db.fractieleden = [];
+      db.fractieleden.push(newLid);
+      saveDb(db);
+      invalidateVideoThumbnailCache();
+      res.status(201).json(sanitizeFractielidPhoto(newLid));
+    }
+  );
+
+  app.put(
+    "/api/admin/fractieleden/:id",
+    requireAuth,
+    requireAdmin,
+    upload.fields([{ name: "img", maxCount: 1 }, { name: "cutout", maxCount: 1 }]),
+    (req: any, res: any) => {
+      const db = getDb();
+      const idx = (db.fractieleden || []).findIndex((f: any) => String(f.id) === String(req.params.id));
+      if (idx === -1) return res.status(404).json({ error: "Fractielid niet gevonden" });
+      const current = db.fractieleden[idx];
+      const { name, firstName, role, type, bio, speerpunten, email, facebook, instagram, linkedin } = req.body;
+      const imgFile = req.files?.["img"]?.[0];
+      const cutoutFile = req.files?.["cutout"]?.[0];
+      if (imgFile?.path) syncFileAcrossUploadDirs(imgFile.path);
+      if (cutoutFile?.path) syncFileAcrossUploadDirs(cutoutFile.path);
+
+      const imgUrl = imgFile ? `/uploads/fractieleden/${imgFile.filename}` : (req.body.imgUrl !== undefined ? req.body.imgUrl : current.imgUrl);
+      const cutoutImageUrl = cutoutFile ? `/uploads/fractieleden/${cutoutFile.filename}` : (req.body.cutoutImageUrl !== undefined ? req.body.cutoutImageUrl : current.cutoutImageUrl);
+
+      const updatedLid = {
+        ...current,
+        name: name !== undefined ? name : current.name,
+        firstName: firstName !== undefined ? firstName : current.firstName,
+        role: role !== undefined ? role : current.role,
+        type: type !== undefined ? type : current.type,
+        bio: bio !== undefined ? bio : current.bio,
+        speerpunten: speerpunten !== undefined ? (typeof speerpunten === "string" ? JSON.parse(speerpunten) : speerpunten) : current.speerpunten,
+        email: email !== undefined ? email : current.email,
+        socials: {
+          facebook: facebook !== undefined ? facebook : current.socials?.facebook,
+          instagram: instagram !== undefined ? instagram : current.socials?.instagram,
+          linkedin: linkedin !== undefined ? linkedin : current.socials?.linkedin,
+        },
+        imgUrl,
+        cutoutImageUrl,
+      };
+      db.fractieleden[idx] = updatedLid;
+      saveDb(db);
+      invalidateVideoThumbnailCache();
+      res.json(sanitizeFractielidPhoto(updatedLid));
+    }
+  );
 
   app.delete("/api/admin/fractieleden/:id", requireAuth, requireAdmin, (req: any, res: any) => {
     const db = getDb();
@@ -7483,7 +7560,71 @@ async function startServer() {
     if (req.query.wijkSlug) videos = videos.filter((v: any) => v.wijkSlug === req.query.wijkSlug);
     if (req.query.hoofdstukNr) videos = videos.filter((v: any) => Number(v.hoofdstukNr) === Number(req.query.hoofdstukNr));
     if (req.query.standpuntNr) videos = videos.filter((v: any) => Number(v.standpuntNr) === Number(req.query.standpuntNr));
-    res.json(videos);
+    
+    // Zorg dat elke video standaard de automatisch samengestelde thumbnail heeft (met lid + wijk/hero), tenzij een eigen custom upload is gedaan
+    const sanitized = videos.map((v: any) => ({
+      ...v,
+      thumbnailUrl: (!v.thumbnailUrl || v.thumbnailUrl.includes("ytimg") || v.thumbnailUrl.includes("hqdefault"))
+        ? `/api/videos/${v.id}/thumbnail.jpg`
+        : v.thumbnailUrl
+    }));
+    res.json(sanitized);
+  });
+
+  // Dynamisch samengestelde thumbnail voor een opgeslagen video (voor videoplayer poster en OpenGraph)
+  app.get("/api/videos/:id/thumbnail.jpg", async (req, res) => {
+    try {
+      const db = getDb();
+      const video = (db.videos || []).find((v: any) => String(v.id) === String(req.params.id));
+      if (!video) {
+        const fallbackBuf = await generateVideoThumbnailBuffer(
+          {
+            title: "Videobijdrage Lijst van Andel",
+            category: "Raadsdebat",
+          },
+          db
+        );
+        res.setHeader("Content-Type", "image/jpeg");
+        res.setHeader("Cache-Control", "public, max-age=3600");
+        return res.send(fallbackBuf);
+      }
+
+      const buffer = await generateVideoThumbnailBuffer(video, db);
+      res.setHeader("Content-Type", "image/jpeg");
+      res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=86400");
+      return res.send(buffer);
+    } catch (err: any) {
+      console.error("[VIDEO THUMBNAIL GET ERROR]:", err);
+      res.status(500).send("Fout bij genereren van video thumbnail");
+    }
+  });
+
+  // Dynamisch gegenereerde preview thumbnail op basis van query params (voor admin live preview)
+  app.get("/api/thumbnail/video/compose", async (req, res) => {
+    try {
+      const db = getDb();
+      const title = (req.query.title as string) || "Videobijdrage";
+      const wijkSlug = (req.query.wijk as string) || "";
+      const personId = (req.query.personId as string) || "";
+      const category = (req.query.category as string) || "Raadsdebat";
+
+      const buffer = await generateVideoThumbnailBuffer(
+        {
+          title,
+          category,
+          wijkSlug,
+          personId,
+        },
+        db
+      );
+
+      res.setHeader("Content-Type", "image/jpeg");
+      res.setHeader("Cache-Control", "public, max-age=300");
+      return res.send(buffer);
+    } catch (err: any) {
+      console.error("[VIDEO THUMBNAIL COMPOSE ERROR]:", err);
+      res.status(500).send("Fout bij samenstellen van thumbnail preview");
+    }
   });
 
   // Chunked upload for large video files (supports up to 600 MB reliably across Cloud Run / proxies)
@@ -7662,16 +7803,14 @@ async function startServer() {
           });
         }
 
-        // Automatische YouTube thumbnail genereren als er geen thumbnail is meegegeven
-        if (!thumbnailUrl && videoUrl) {
-          const ytMatch = videoUrl.match(/(?:youtube\.com\/(?:[^/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
-          if (ytMatch && ytMatch[1]) {
-            thumbnailUrl = `https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg`;
-          }
+        const videoId = Date.now().toString();
+        // Als er geen expliciete thumbnail is meegegeven, stel automatisch de dynamische thumbnail in
+        if (!thumbnailUrl) {
+          thumbnailUrl = `/api/videos/${videoId}/thumbnail.jpg`;
         }
 
         const newVideo = {
-          id: Date.now().toString(),
+          id: videoId,
           title: effectiveTitle || "Videobijdrage",
           burgerraadslidTitle: burgerraadslidTitle?.trim() || effectiveTitle || "",
           description: description ? String(description).trim() : "",
@@ -7687,6 +7826,7 @@ async function startServer() {
         };
         db.videos.push(newVideo);
         saveDb(db);
+        invalidateVideoThumbnailCache(videoId);
         return res.status(201).json(newVideo);
       } catch (err: any) {
         console.error("[POST /api/admin/videos ERROR]", err);
@@ -7743,11 +7883,8 @@ async function startServer() {
         const videoUrl = videoFile ? `/uploads/videos/${videoFile.filename}` : (req.body.videoUrl !== undefined ? String(req.body.videoUrl).trim() : existingVideo.videoUrl);
         let thumbnailUrl = thumbFile ? `/uploads/videos/${thumbFile.filename}` : (req.body.thumbnailUrl !== undefined ? String(req.body.thumbnailUrl).trim() : existingVideo.thumbnailUrl);
 
-        if (!thumbnailUrl && videoUrl) {
-          const ytMatch = videoUrl.match(/(?:youtube\.com\/(?:[^/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
-          if (ytMatch && ytMatch[1]) {
-            thumbnailUrl = `https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg`;
-          }
+        if (!thumbnailUrl || thumbnailUrl.includes("/thumbnail.jpg") || thumbnailUrl.includes("ytimg")) {
+          thumbnailUrl = `/api/videos/${req.params.id}/thumbnail.jpg`;
         }
 
         const updatedVideo = {
@@ -7768,6 +7905,7 @@ async function startServer() {
 
         db.videos[index] = updatedVideo;
         saveDb(db);
+        invalidateVideoThumbnailCache(req.params.id);
         return res.json(updatedVideo);
       } catch (err: any) {
         console.error("[PUT /api/admin/videos ERROR]", err);
@@ -7782,6 +7920,7 @@ async function startServer() {
       if (!db.videos) db.videos = [];
       db.videos = db.videos.filter((v: any) => String(v.id) !== String(req.params.id));
       saveDb(db);
+      invalidateVideoThumbnailCache(req.params.id);
       res.json({ message: "Verwijderd" });
     } catch (err: any) {
       console.error("[DELETE /api/admin/videos ERROR]", err);

@@ -7,6 +7,7 @@ export interface DefaultFractielidData {
   speerpunten?: string[];
   email?: string;
   imgUrl: string;
+  cutoutImageUrl?: string;
   socials?: {
     facebook?: string;
     instagram?: string;
@@ -22,6 +23,7 @@ export const DEFAULT_FRACTIELEDEN: DefaultFractielidData[] = [
     type: "Raadslid",
     bio: "Fractievoorzitter van Lijst van Andel in de gemeenteraad van Steenwijkerland. Zet zich met nuchter verstand in voor betaalbare starterswoningen, behoud van de dorpsvoorzieningen en lage lokale lasten.",
     imgUrl: "/assets/sammy.webp",
+    cutoutImageUrl: "/assets/sammy.png",
     email: "fractie@lijstvanandel.nl",
     speerpunten: [
       "Voorrang voor eigen inwoners bij woningtoewijzing",
@@ -39,6 +41,7 @@ export const DEFAULT_FRACTIELEDEN: DefaultFractielidData[] = [
     type: "Raadslid",
     bio: "Raadslid voor Lijst van Andel in Steenwijkerland. Toegewijd aan zorg dichtbij, sterke jeugdhulp, kwalitatief onderwijs en een menselijke maat in het sociaal domein.",
     imgUrl: "/assets/lisa.webp",
+    cutoutImageUrl: "/assets/lisa.png",
     email: "lisa@lijstvanandel.nl",
     speerpunten: [
       "Zorg en ondersteuning dichtbij de inwoner",
@@ -53,6 +56,7 @@ export const DEFAULT_FRACTIELEDEN: DefaultFractielidData[] = [
     type: "Burgerraadslid",
     bio: "Burgerraadslid voor Lijst van Andel in Steenwijkerland met focus op financiën, economie, ondernemersruimte en lokale werkgelegenheid.",
     imgUrl: "/assets/nathan.webp",
+    cutoutImageUrl: "/assets/nathan.png",
     speerpunten: [
       "Ruimte voor lokale mkb-bedrijven en familiebedrijven",
       "Eerlijke en transparante gemeentelijke begrotingen",
@@ -65,6 +69,7 @@ export const DEFAULT_FRACTIELEDEN: DefaultFractielidData[] = [
     type: "Burgerraadslid",
     bio: "Burgerraadslid voor Lijst van Andel in Steenwijkerland met focus op leefomgeving, agrarische sector, waterbeheer en buitengebied.",
     imgUrl: "/assets/chris.webp",
+    cutoutImageUrl: "/assets/silhouette.png",
     speerpunten: [
       "Bescherming van het karakter van ons buitengebied",
       "Snelle en nuchtere vergunningverlening",

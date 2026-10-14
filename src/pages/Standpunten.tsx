@@ -219,7 +219,7 @@ const StandpuntCard = ({ hNr, s, dynamicVideos, fractieleden }: StandpuntCardPro
                       <VideoPlayer
                         url={v.videoUrl}
                         title={v.title}
-                        poster={getVideoThumbnail(v.videoUrl, v.thumbnailUrl) || v.thumbnailUrl}
+                        poster={getVideoThumbnail(v.videoUrl, v.thumbnailUrl, v.id) || v.thumbnailUrl}
                         className="w-full h-full"
                       />
                     </div>

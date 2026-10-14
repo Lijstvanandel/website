@@ -788,14 +788,10 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
           : `Bekijk de videobijdrage "${videoTitle}" van ${member.name} in de gemeenteraad van Steenwijkerland.`;
         
         let videoImage = "";
-        if (targetVideo.thumbnailUrl) {
+        if (targetVideo.thumbnailUrl && !targetVideo.thumbnailUrl.includes("ytimg") && !targetVideo.thumbnailUrl.includes("hqdefault")) {
           videoImage = resolveImageUrl(baseUrl, targetVideo.thumbnailUrl);
         } else {
-          const ytThumb = extractYouTubeThumb(targetVideo.videoUrl);
-          if (ytThumb) videoImage = ytThumb;
-        }
-        if (!videoImage) {
-          videoImage = resolveImageUrl(baseUrl, member.imgUrl);
+          videoImage = `${baseUrl}/api/videos/${targetVideo.id}/thumbnail.jpg`;
         }
 
         const title = `${videoTitle} - ${member.name} | Lijst van Andel`;
@@ -821,11 +817,10 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
       let videoCustomDesc = "";
       if (memberVideos.length > 0) {
         const topVideo = memberVideos[0];
-        if (topVideo.thumbnailUrl) {
+        if (topVideo.thumbnailUrl && !topVideo.thumbnailUrl.includes("ytimg") && !topVideo.thumbnailUrl.includes("hqdefault")) {
           selectedImage = resolveImageUrl(baseUrl, topVideo.thumbnailUrl);
         } else {
-          const ytThumb = extractYouTubeThumb(topVideo.videoUrl);
-          if (ytThumb) selectedImage = ytThumb;
+          selectedImage = `${baseUrl}/api/videos/${topVideo.id}/thumbnail.jpg`;
         }
 
         if (topVideo.description) {
@@ -869,11 +864,10 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
         : `Bekijk de videobijdrage "${videoTitle}" in de gemeenteraad van Steenwijkerland.`;
 
       let videoImage = "";
-      if (video.thumbnailUrl) {
+      if (video.thumbnailUrl && !video.thumbnailUrl.includes("ytimg") && !video.thumbnailUrl.includes("hqdefault")) {
         videoImage = resolveImageUrl(baseUrl, video.thumbnailUrl);
       } else {
-        const ytThumb = extractYouTubeThumb(video.videoUrl);
-        if (ytThumb) videoImage = ytThumb;
+        videoImage = `${baseUrl}/api/videos/${video.id}/thumbnail.jpg`;
       }
 
       // Zoek eventueel gekoppeld fractielid voor extra context
@@ -909,6 +903,33 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
         canonicalUrl
       };
     }
+  }
+
+  // 11c. Video's overzichtspagina: /videos
+  if (cleanPath === "/videos") {
+    const allVideos = (db?.videos || []).slice().sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    let ogImage = DEFAULT_IMAGE;
+    if (allVideos.length > 0) {
+      const topVideo = allVideos[0];
+      if (topVideo.thumbnailUrl && !topVideo.thumbnailUrl.includes("ytimg") && !topVideo.thumbnailUrl.includes("hqdefault")) {
+        ogImage = resolveImageUrl(baseUrl, topVideo.thumbnailUrl);
+      } else {
+        ogImage = `${baseUrl}/api/videos/${topVideo.id}/thumbnail.jpg`;
+      }
+    }
+    return {
+      title: "Video's & Debatten | Lijst van Andel Steenwijkerland",
+      description: "Bekijk alle videobijdragen, raadstoespraken en debatten van de fractie Lijst van Andel in de gemeenteraad van Steenwijkerland.",
+      ogTitle: "Video's & Debatten - Lijst van Andel Steenwijkerland",
+      ogDescription: "Bekijk alle videobijdragen, debatten en toespraken van Lijst van Andel in de gemeenteraad van Steenwijkerland.",
+      ogImage,
+      ogImageType: ogImage.endsWith(".png") ? "image/png" : "image/jpeg",
+      ogImageWidth: 1200,
+      ogImageHeight: 630,
+      ogImageAlt: "Video's & Debatten Lijst van Andel",
+      ogType: "video.other",
+      canonicalUrl: `${baseUrl}/videos`
+    };
   }
 
   // 12. Doneren & Giftenreglement

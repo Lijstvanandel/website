@@ -56,6 +56,7 @@ import {
   Waves,
   FolderKanban,
   ChevronLeft,
+  ChevronRight,
   Gavel,
   Banknote,
   Save,
@@ -92,6 +93,7 @@ import { safeJson } from "@/lib/api";
 import { WIJKEN_EN_KERNEN } from "@/data/wijken";
 import { NewsItem } from "@/data/news";
 import { hoofdstukken } from "@/data/partijprogramma";
+import { DEFAULT_FRACTIELEDEN } from "@/data/fractieleden";
 
 interface UserItem {
   id: string;
@@ -128,6 +130,8 @@ interface FractielidItem {
   instagram?: string;
   linkedin?: string;
   imageUrl?: string;
+  imgUrl?: string;
+  cutoutImageUrl?: string;
 }
 
 interface VideoItem {
@@ -264,6 +268,10 @@ export default function AdminDashboard() {
   const [newFInstagram, setNewFInstagram] = useState("");
   const [newFLinkedin, setNewFLinkedin] = useState("");
   const [newFFile, setNewFFile] = useState<File | null>(null);
+  const [newFCutoutFile, setNewFCutoutFile] = useState<File | null>(null);
+  const [editingFractielidId, setEditingFractielidId] = useState<string | null>(null);
+  const [editingFImgUrl, setEditingFImgUrl] = useState<string>("");
+  const [editingFCutoutUrl, setEditingFCutoutUrl] = useState<string>("");
 
   // -- State for new / edit Video --
   const [newVTitle, setNewVTitle] = useState("");
@@ -286,6 +294,131 @@ export default function AdminDashboard() {
     totalMb: string;
     speedMb: string;
   } | null>(null);
+
+  // -- Video search, raadslid filter & paginering (5 per pagina) --
+  const VIDEOS_PER_PAGE = 5;
+  const [videoSearch, setVideoSearch] = useState("");
+  const [videoRaadslidFilter, setVideoRaadslidFilter] = useState<string>("all");
+  const [videoCurrentPage, setVideoCurrentPage] = useState<number>(1);
+
+  // Beschikbare fractieleden (state of defaults als fallback)
+  const availableFractieleden = useMemo(() => {
+    if (fractieleden && fractieleden.length > 0) return fractieleden;
+    return DEFAULT_FRACTIELEDEN.map((df) => ({
+      id: df.id,
+      name: df.name,
+      role: df.role,
+      type: df.type,
+      bio: df.bio,
+      speerpunten: df.speerpunten,
+      email: df.email,
+      imageUrl: df.imgUrl,
+      cutoutImageUrl: df.cutoutImageUrl,
+    }));
+  }, [fractieleden]);
+
+  // Aantal video's per raadslid
+  const raadslidVideoCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const v of videos) {
+      if (v.fractieledenIds && Array.isArray(v.fractieledenIds)) {
+        for (const rawFid of v.fractieledenIds) {
+          const fid = String(rawFid).trim();
+          counts[fid] = (counts[fid] || 0) + 1;
+          const member = availableFractieleden.find(
+            (f) => String(f.id) === fid || f.name.toLowerCase() === fid.toLowerCase()
+          );
+          if (member && String(member.id) !== fid) {
+            counts[String(member.id)] = (counts[String(member.id)] || 0) + 1;
+          }
+        }
+      }
+    }
+    return counts;
+  }, [videos, availableFractieleden]);
+
+  const videosWithoutRaadslidCount = useMemo(() => {
+    return videos.filter((v) => !v.fractieledenIds || v.fractieledenIds.length === 0).length;
+  }, [videos]);
+
+  // Gefilterde video's op basis van zoekbalk en raadslid
+  const filteredVideos = useMemo(() => {
+    return videos.filter((v) => {
+      // 1. Filter per raadslid
+      if (videoRaadslidFilter !== "all") {
+        if (videoRaadslidFilter === "none") {
+          if (v.fractieledenIds && v.fractieledenIds.length > 0) {
+            return false;
+          }
+        } else {
+          const targetMember = availableFractieleden.find(
+            (f) => String(f.id) === String(videoRaadslidFilter)
+          );
+          const hasMatch = v.fractieledenIds?.some((rawFid) => {
+            const fidStr = String(rawFid).trim().toLowerCase();
+            const targetId = String(videoRaadslidFilter).trim().toLowerCase();
+            if (fidStr === targetId) return true;
+            if (targetMember) {
+              if (fidStr === targetMember.name.toLowerCase()) return true;
+              if (targetMember.firstName && fidStr === targetMember.firstName.toLowerCase()) return true;
+            }
+            return false;
+          });
+          if (!hasMatch) {
+            return false;
+          }
+        }
+      }
+
+      // 2. Zoekbalk filter
+      if (videoSearch.trim()) {
+        const query = videoSearch.toLowerCase().trim();
+        const displayTitle = (v.burgerraadslidTitle || v.title || "").toLowerCase();
+        const originalTitle = (v.title || "").toLowerCase();
+        const description = (v.description || "").toLowerCase();
+        const category = (v.category || "").toLowerCase();
+        const wijk = (v.wijkSlug || "").toLowerCase();
+        const standpunt = (v.standpuntTitel || "").toLowerCase();
+        const date = (v.date || "").toLowerCase();
+
+        const linkedMemberNames = (v.fractieledenIds || [])
+          .map((fid) => {
+            const member = availableFractieleden.find(
+              (f) => String(f.id) === String(fid) || f.name.toLowerCase() === String(fid).toLowerCase()
+            );
+            return member
+              ? `${member.name} ${member.role || ""} ${member.type || ""}`.toLowerCase()
+              : String(fid).toLowerCase();
+          })
+          .join(" ");
+
+        const matches =
+          displayTitle.includes(query) ||
+          originalTitle.includes(query) ||
+          description.includes(query) ||
+          category.includes(query) ||
+          wijk.includes(query) ||
+          standpunt.includes(query) ||
+          date.includes(query) ||
+          linkedMemberNames.includes(query);
+
+        if (!matches) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [videos, videoRaadslidFilter, videoSearch, availableFractieleden]);
+
+  // Paginering berekeningen
+  const videoTotalPages = Math.max(1, Math.ceil(filteredVideos.length / VIDEOS_PER_PAGE));
+  const activeVideoPage = Math.min(Math.max(1, videoCurrentPage), videoTotalPages);
+
+  const paginatedVideos = useMemo(() => {
+    const startIndex = (activeVideoPage - 1) * VIDEOS_PER_PAGE;
+    return filteredVideos.slice(startIndex, startIndex + VIDEOS_PER_PAGE);
+  }, [filteredVideos, activeVideoPage]);
 
   // -- State for new News --
   const [nTitle, setNTitle] = useState("");
@@ -917,6 +1050,42 @@ export default function AdminDashboard() {
     }
   };
 
+  const startEditFractielid = (item: FractielidItem) => {
+    setEditingFractielidId(item.id);
+    setNewFNaam(item.name || "");
+    setNewFVoornaam(item.firstName || "");
+    setNewFRol(item.role || "");
+    setNewFType(item.type || "Raadslid");
+    setNewFBio(item.bio || "");
+    setNewFSpeerpunten(item.speerpunten ? item.speerpunten.join("\n") : "");
+    setNewFEmail(item.email || "");
+    setNewFFacebook(item.facebook || "");
+    setNewFInstagram(item.instagram || "");
+    setNewFLinkedin(item.linkedin || "");
+    setNewFFile(null);
+    setNewFCutoutFile(null);
+    setEditingFImgUrl(item.imageUrl || item.imgUrl || "");
+    setEditingFCutoutUrl(item.cutoutImageUrl || "");
+  };
+
+  const cancelEditFractielid = () => {
+    setEditingFractielidId(null);
+    setNewFNaam("");
+    setNewFVoornaam("");
+    setNewFRol("");
+    setNewFType("Raadslid");
+    setNewFBio("");
+    setNewFSpeerpunten("");
+    setNewFEmail("");
+    setNewFFacebook("");
+    setNewFInstagram("");
+    setNewFLinkedin("");
+    setNewFFile(null);
+    setNewFCutoutFile(null);
+    setEditingFImgUrl("");
+    setEditingFCutoutUrl("");
+  };
+
   const submitFractielid = async (e: React.FormEvent) => {
     e.preventDefault();
     const formData = new FormData();
@@ -934,16 +1103,24 @@ export default function AdminDashboard() {
     formData.append("instagram", newFInstagram);
     formData.append("linkedin", newFLinkedin);
     if (newFFile) formData.append("img", newFFile);
+    if (newFCutoutFile) formData.append("cutout", newFCutoutFile);
 
     try {
-      const res = await fetch("/api/admin/fractieleden", {
-        method: "POST",
+      const url = editingFractielidId
+        ? `/api/admin/fractieleden/${editingFractielidId}`
+        : "/api/admin/fractieleden";
+      const method = editingFractielidId ? "PUT" : "POST";
+      const res = await fetch(url, {
+        method,
         headers,
         body: formData,
       });
       if (res.ok) {
-        toast.success("Lid toegevoegd!");
+        toast.success(editingFractielidId ? "Fractielid succesvol bijgewerkt!" : "Lid toegevoegd!");
+        cancelEditFractielid();
         fetchFractieleden();
+      } else {
+        toast.error("Fout bij opslaan van fractielid");
       }
     } catch (error) {
       toast.error("Fout bij opslaan");
@@ -2374,7 +2551,29 @@ export default function AdminDashboard() {
         <TabsContent value="fractie">
           <div className="grid md:grid-cols-2 gap-8">
             <div className="bg-card rounded-lg border border-border p-6">
-              <h2 className="text-2xl font-display mb-6">Nieuw Fractielid</h2>
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-2xl font-display">
+                    {editingFractielidId ? "Fractielid Bewerken" : "Nieuw Fractielid Toevoegen"}
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {editingFractielidId
+                      ? "Pas de gegevens, profielfoto of vrijstaande foto aan."
+                      : "Voeg een nieuw raadslid of burgerraadslid toe inclusief vrijstaande foto voor video-thumbnails."}
+                  </p>
+                </div>
+                {editingFractielidId && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={cancelEditFractielid}
+                    className="text-xs"
+                  >
+                    Annuleren
+                  </Button>
+                )}
+              </div>
               <form onSubmit={submitFractielid} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -2470,40 +2669,148 @@ export default function AdminDashboard() {
                     />
                   </div>
                 </div>
-                <div>
-                  <label className="text-xs font-medium mb-1 block">Profielfoto</label>
-                  <Input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => setNewFFile(e.target.files?.[0] || null)}
-                  />
+
+                <div className="space-y-4 pt-2 border-t border-border/50">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs font-semibold mb-1 block">Profielfoto (standaard)</label>
+                      <Input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => setNewFFile(e.target.files?.[0] || null)}
+                      />
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        Getoond op de website, fractiepagina en bij artikelen.
+                      </p>
+                      {(newFFile || editingFImgUrl) && (
+                        <div className="mt-2 flex items-center gap-2.5 p-2 rounded border border-border bg-muted/40">
+                          <div className="w-9 h-9 rounded-full overflow-hidden border border-border bg-muted shrink-0">
+                            <img
+                              src={newFFile ? URL.createObjectURL(newFFile) : editingFImgUrl}
+                              alt="Profielfoto"
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <span className="text-xs truncate font-medium text-foreground">
+                            {newFFile ? newFFile.name : "Huidige profielfoto"}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold mb-1 block flex items-center gap-1.5">
+                        <span>Foto zonder achtergrond (cutout / vrijstaand)</span>
+                        <span className="px-1.5 py-0.2 rounded text-[10px] bg-accent/15 text-accent font-bold">
+                          Voor video-thumbnails
+                        </span>
+                      </label>
+                      <Input
+                        type="file"
+                        accept="image/png,image/webp,image/*"
+                        onChange={(e) => setNewFCutoutFile(e.target.files?.[0] || null)}
+                      />
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        Transparante PNG/WEBP. Wordt over de video-thumbnail en OpenGraph geplaatst.
+                      </p>
+                      {(newFCutoutFile || editingFCutoutUrl) && (
+                        <div className="mt-2 flex items-center gap-2.5 p-2 rounded border border-accent/30 bg-accent/5">
+                          <div className="w-9 h-9 rounded-md overflow-hidden border border-dashed border-accent/50 bg-background/80 shrink-0 flex items-center justify-center p-0.5">
+                            <img
+                              src={newFCutoutFile ? URL.createObjectURL(newFCutoutFile) : editingFCutoutUrl}
+                              alt="Cutout Preview"
+                              className="w-full h-full object-contain"
+                            />
+                          </div>
+                          <span className="text-xs truncate font-medium text-accent">
+                            {newFCutoutFile ? newFCutoutFile.name : "Huidige vrijstaande foto"}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
+
                 <Button type="submit" className="w-full mt-4">
-                  <Upload className="w-4 h-4 mr-2" /> Opslaan
+                  <Upload className="w-4 h-4 mr-2" /> {editingFractielidId ? "Wijzigingen Opslaan" : "Fractielid Opslaan"}
                 </Button>
               </form>
             </div>
-            <div className="bg-card rounded-lg border border-border p-6">
-              <h2 className="text-2xl font-display mb-6">Bestaande Fractieleden</h2>
-              <div className="space-y-4">
+            <div className="bg-card rounded-lg border border-border p-6 flex flex-col">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-display">Bestaande Fractieleden ({fractieleden.length})</h2>
+              </div>
+              <p className="text-xs text-muted-foreground mb-4">
+                Klik op &quot;Bewerken&quot; om een fractielid aan te passen of een foto zonder achtergrond te uploaden voor automatische video-thumbnails.
+              </p>
+              <div className="space-y-3 overflow-y-auto max-h-[700px] pr-1">
                 {fractieleden.map((f) => (
                   <div
                     key={f.id}
-                    className="flex justify-between items-center p-4 border border-border/50 rounded bg-background/50"
+                    className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 p-3.5 border rounded-lg transition-colors ${
+                      editingFractielidId === f.id
+                        ? "border-accent bg-accent/5"
+                        : "border-border/60 bg-background/50 hover:bg-background/80"
+                    }`}
                   >
-                    <div>
-                      <div className="font-semibold">{f.name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {f.role} ({f.type})
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-11 h-11 rounded-full overflow-hidden border border-border bg-muted shrink-0 relative">
+                        <img
+                          src={f.imageUrl || f.imgUrl || "/assets/logo.png"}
+                          alt={f.name}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = "/assets/logo.png";
+                          }}
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-semibold text-sm leading-tight flex items-center gap-1.5 truncate">
+                          <span>{f.name}</span>
+                          {editingFractielidId === f.id && (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-accent text-accent-foreground font-bold">
+                              Actief
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {f.role} ({f.type})
+                        </div>
+                        <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                          {f.cutoutImageUrl ? (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 font-semibold">
+                              <span>✂️</span> Vrijstaande foto aanwezig
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-muted text-muted-foreground border border-border">
+                              Geen vrijstaande foto
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => deleteFractielid(f.id)}
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
+                    <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                      <Button
+                        type="button"
+                        variant={editingFractielidId === f.id ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => startEditFractielid(f)}
+                        className="text-xs h-8 px-2.5"
+                      >
+                        <Pencil className="w-3.5 h-3.5 mr-1" />
+                        {editingFractielidId === f.id ? "Aan het bewerken" : "Bewerken"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => deleteFractielid(f.id)}
+                        className="h-8 w-8 p-0"
+                        title="Verwijderen"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -2637,9 +2944,65 @@ export default function AdminDashboard() {
                     </div>
                   )}
                 </div>
+                {/* Dynamische Thumbnail Live Preview (standaard opgebouwd met lid + wijk/hero + titel) */}
+                <div className="p-4 rounded-xl border border-accent/40 bg-accent/5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs font-bold text-accent">
+                      <Sparkles className="w-4 h-4" />
+                      <span>Standaard thumbnail (automatisch opgebouwd)</span>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent/20 text-accent font-semibold">
+                      OpenGraph &amp; Website
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    De thumbnail van elke video wordt standaard automatisch opgebouwd met de foto van het gekoppelde lid (zonder achtergrond), de achtergrondfoto van de gekoppelde wijk- of kernpagina (of de standaard hero-afbeelding indien geen wijk gekoppeld) en de titel van de video.
+                  </p>
+                  
+                  {/* Live preview canvas image */}
+                  <div className="space-y-1.5">
+                    <div className="aspect-[1200/630] w-full max-w-[440px] rounded-lg overflow-hidden border border-border bg-black/50 shadow-md relative group">
+                      <img
+                        key={`${newVBurgerTitle || newVTitle}_${newVWijk}_${selectedFleden[0]}_${newVCategory}`}
+                        src={`/api/thumbnail/video/compose?title=${encodeURIComponent(
+                          newVBurgerTitle || newVTitle || "Videobijdrage"
+                        )}&wijk=${encodeURIComponent(newVWijk)}&personId=${encodeURIComponent(
+                          selectedFleden[0] || ""
+                        )}&category=${encodeURIComponent(newVCategory || "Raadsdebat")}`}
+                        alt="Automatisch gegenereerde thumbnail preview"
+                        className="w-full h-full object-cover transition-opacity duration-300"
+                      />
+                      <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-black/75 backdrop-blur-sm text-[10px] text-white font-mono">
+                        1200 × 630 HD
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-[11px] text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 pt-1 border-t border-border/40">
+                    <span>
+                      👤 Spreker:{" "}
+                      <strong className="text-foreground">
+                        {(() => {
+                          const m = fractieleden.find((fl) => String(fl.id) === String(selectedFleden[0]));
+                          return m ? `${m.name} (${m.role})` : "Standaard fractielid";
+                        })()}
+                      </strong>
+                    </span>
+                    <span>
+                      📍 Achtergrond:{" "}
+                      <strong className="text-foreground">
+                        {(() => {
+                          const w = WIJKEN_EN_KERNEN.find((wk) => wk.slug === newVWijk);
+                          return w ? `${w.naam} (${w.type})` : "Standaard hero-afbeelding";
+                        })()}
+                      </strong>
+                    </span>
+                  </div>
+                </div>
+
                 <div>
-                  <label className="text-sm font-medium mb-1 block">
-                    Thumbnail / Voorbeeldweergave (optioneel)
+                  <label className="text-xs font-semibold mb-1 block">
+                    Eigen omslagafbeelding uploaden (optioneel)
                   </label>
                   <Input
                     type="file"
@@ -2647,7 +3010,7 @@ export default function AdminDashboard() {
                     onChange={(e) => setNewVThumbnail(e.target.files?.[0] || null)}
                   />
                   <p className="text-[11px] text-muted-foreground mt-1">
-                    Upload een omslagafbeelding voor de videospeler en voor social media previews (WhatsApp, Facebook, Twitter). Bij YouTube wordt er automatisch een thumbnail gegenereerd als u dit leeg laat.
+                    Laat leeg om standaard de automatisch samengestelde thumbnail met raadslid en wijk te behouden.
                   </p>
                 </div>
                 <div>
@@ -2864,23 +3227,201 @@ export default function AdminDashboard() {
               </form>
             </div>
 
-            <div className="bg-card rounded-lg border border-border p-6">
-              <h2 className="text-2xl font-display mb-6">Geüploade Video's ({videos.length})</h2>
-              <div className="space-y-4">
+            <div className="bg-card rounded-lg border border-border p-6 flex flex-col">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                <div>
+                  <h2 className="text-2xl font-display flex items-center gap-2">
+                    Geüploade Video's
+                    <span className="text-sm font-sans font-normal text-muted-foreground">
+                      {filteredVideos.length === videos.length
+                        ? `(${videos.length})`
+                        : `(${filteredVideos.length} van ${videos.length})`}
+                    </span>
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Zoek, filter op raadslid en beheer video's ({VIDEOS_PER_PAGE} per pagina).
+                  </p>
+                </div>
+                {(videoSearch || videoRaadslidFilter !== "all") && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setVideoSearch("");
+                      setVideoRaadslidFilter("all");
+                      setVideoCurrentPage(1);
+                    }}
+                    className="text-xs h-8 text-muted-foreground hover:text-foreground self-start sm:self-auto cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3 mr-1" />
+                    Filters wissen
+                  </Button>
+                )}
+              </div>
+
+              {/* Zoekbalk en Filter per raadslid */}
+              <div className="space-y-2.5 mb-5 p-3 rounded-xl bg-muted/30 border border-border/60">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {/* Zoekbalk */}
+                  <div className="relative">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                    <Input
+                      value={videoSearch}
+                      onChange={(e) => {
+                        setVideoSearch(e.target.value);
+                        setVideoCurrentPage(1);
+                      }}
+                      placeholder="Zoek op titel, beschrijving, wijk..."
+                      className="pl-9 pr-8 text-xs h-9 rounded-lg bg-background"
+                    />
+                    {videoSearch && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVideoSearch("");
+                          setVideoCurrentPage(1);
+                        }}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5 rounded cursor-pointer"
+                        title="Zoekopdracht wissen"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Filter per raadslid */}
+                  <div className="relative">
+                    <select
+                      value={videoRaadslidFilter}
+                      onChange={(e) => {
+                        setVideoRaadslidFilter(e.target.value);
+                        setVideoCurrentPage(1);
+                      }}
+                      className="w-full h-9 px-3 py-1.5 text-xs rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+                    >
+                      <option value="all">
+                        Alle raadsleden & fractieleden ({videos.length})
+                      </option>
+                      <optgroup label="Raadsleden & Burgerraadsleden">
+                        {availableFractieleden.map((fl) => {
+                          const count = raadslidVideoCounts[String(fl.id)] || 0;
+                          const isBurger =
+                            fl.type?.toLowerCase() === "burgerraadslid" ||
+                            fl.role?.toLowerCase().includes("burgerraadslid");
+                          return (
+                            <option key={fl.id} value={fl.id}>
+                              {fl.name} ({isBurger ? "Burgerraadslid" : fl.role || fl.type}) • {count} {count === 1 ? "video" : "video's"}
+                            </option>
+                          );
+                        })}
+                      </optgroup>
+                      <optgroup label="Overig">
+                        <option value="none">
+                          Zonder gekoppeld raadslid ({videosWithoutRaadslidCount})
+                        </option>
+                      </optgroup>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Actieve filters & badges */}
+                {(videoSearch.trim() || videoRaadslidFilter !== "all") && (
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px]">
+                    <span className="text-muted-foreground font-medium">Actief:</span>
+                    {videoSearch.trim() && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                        <Search className="w-3 h-3" />
+                        "{videoSearch}"
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setVideoSearch("");
+                            setVideoCurrentPage(1);
+                          }}
+                          className="hover:text-destructive cursor-pointer ml-0.5"
+                          title="Verwijder zoekterm"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    )}
+                    {videoRaadslidFilter !== "all" && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/30 font-medium">
+                        <User className="w-3 h-3" />
+                        {videoRaadslidFilter === "none"
+                          ? "Zonder raadslid koppeling"
+                          : availableFractieleden.find((f) => String(f.id) === String(videoRaadslidFilter))?.name || "Geselecteerd raadslid"}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setVideoRaadslidFilter("all");
+                            setVideoCurrentPage(1);
+                          }}
+                          className="hover:text-destructive cursor-pointer ml-0.5"
+                          title="Verwijder raadslidfilter"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    )}
+                    <span className="text-muted-foreground ml-auto">
+                      {filteredVideos.length} {filteredVideos.length === 1 ? "video gevonden" : "video's gevonden"}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Lijst met video's */}
+              <div className="space-y-4 flex-1">
                 {videos.length === 0 && (
-                  <div className="text-sm text-muted-foreground italic py-6 text-center">
+                  <div className="text-sm text-muted-foreground italic py-8 text-center border border-dashed border-border/70 rounded-xl">
                     Nog geen video's geüpload.
                   </div>
                 )}
-                {videos.map((v) => {
+
+                {videos.length > 0 && filteredVideos.length === 0 && (
+                  <div className="text-center py-10 px-4 text-xs text-muted-foreground border border-dashed border-border/80 rounded-xl space-y-3">
+                    <div className="flex justify-center">
+                      <Search className="w-8 h-8 text-muted-foreground/40" />
+                    </div>
+                    <p className="font-medium text-foreground">
+                      Geen video's gevonden voor de huidige zoekopdracht of filter.
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Probeer een andere zoekterm of hef het raadslidfilter op.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setVideoSearch("");
+                        setVideoRaadslidFilter("all");
+                        setVideoCurrentPage(1);
+                      }}
+                      className="text-xs h-8 cursor-pointer"
+                    >
+                      <RotateCcw className="w-3 h-3 mr-1.5" />
+                      Filters wissen
+                    </Button>
+                  </div>
+                )}
+
+                {paginatedVideos.map((v) => {
                   const displayTitle = v.burgerraadslidTitle || v.title;
                   return (
                     <div
                       key={v.id}
-                      className="p-4 border border-border/50 rounded bg-background/50 flex flex-col sm:flex-row gap-4 items-start"
+                      className="p-4 border border-border/50 rounded-xl bg-background/50 hover:bg-background/80 transition-colors flex flex-col sm:flex-row gap-4 items-start"
                     >
-                      <div className="w-full sm:w-44 aspect-video bg-black rounded overflow-hidden shrink-0 border border-border">
-                        <VideoPlayer url={v.videoUrl} title={displayTitle} poster={v.thumbnailUrl} className="w-full h-full" />
+                      <div className="w-full sm:w-44 aspect-video bg-black rounded-lg overflow-hidden shrink-0 border border-border">
+                        <VideoPlayer
+                          url={v.videoUrl}
+                          title={displayTitle}
+                          poster={v.thumbnailUrl || `/api/videos/${v.id}/thumbnail.jpg`}
+                          className="w-full h-full"
+                        />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold text-sm leading-snug">{displayTitle}</div>
@@ -2889,13 +3430,21 @@ export default function AdminDashboard() {
                             Algemene titel: {v.title}
                           </div>
                         )}
-                        <div className="text-xs text-muted-foreground mt-1">
-                          {v.category} • {v.date}
-                          {v.wijkSlug && ` • Wijk: ${v.wijkSlug}`}
-                          {v.thumbnailUrl && " • Met thumbnail"}
+                        <div className="text-xs text-muted-foreground mt-1 flex flex-wrap items-center gap-1.5">
+                          <span>{v.category} • {v.date}</span>
+                          {v.wijkSlug && <span>• Wijk: {v.wijkSlug}</span>}
+                          {v.thumbnailUrl && !v.thumbnailUrl.includes("/thumbnail.jpg") && !v.thumbnailUrl.includes("ytimg") ? (
+                            <span className="px-1.5 py-0.2 rounded text-[10px] bg-muted border border-border font-medium">
+                              Eigen omslagafbeelding
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.2 rounded text-[10px] bg-accent/15 text-accent border border-accent/25 font-semibold">
+                              ✨ Automatische thumbnail (Lid + Wijk/Hero)
+                            </span>
+                          )}
                         </div>
                         {v.description && (
-                          <p className="text-xs text-foreground/85 line-clamp-2 mt-1.5 leading-relaxed bg-muted/40 p-1.5 rounded border border-border/50">
+                          <p className="text-xs text-foreground/85 line-clamp-2 mt-1.5 leading-relaxed bg-muted/40 p-1.5 rounded-lg border border-border/50">
                             {v.description}
                           </p>
                         )}
@@ -2923,30 +3472,47 @@ export default function AdminDashboard() {
                           </div>
                         )}
 
-                        {/* Gekoppelde fractieleden tags met links naar hun videopagina */}
+                        {/* Gekoppelde fractieleden tags met links naar hun videopagina en quick-filter knop */}
                         {v.fractieledenIds && v.fractieledenIds.length > 0 && (
                           <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
                             <span className="text-[10px] text-muted-foreground font-medium">Gekoppeld:</span>
                             {v.fractieledenIds.map((fid) => {
-                              const flid = fractieleden.find((f) => String(f.id) === String(fid));
+                              const flid = availableFractieleden.find((f) => String(f.id) === String(fid) || f.name.toLowerCase() === String(fid).toLowerCase());
                               if (!flid) return null;
                               const isBurger =
                                 flid.type?.toLowerCase() === "burgerraadslid" ||
                                 flid.role?.toLowerCase().includes("burgerraadslid");
+                              const isFilteredToThis = String(videoRaadslidFilter) === String(flid.id);
                               return (
-                                <Link
-                                  key={fid}
-                                  to={`/fractie/${flid.id}/videos`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors inline-flex items-center gap-1 ${
-                                    isBurger
-                                      ? "bg-accent/20 border-accent/40 text-accent font-semibold hover:bg-accent hover:text-accent-foreground"
-                                      : "bg-secondary text-secondary-foreground border-border hover:border-accent"
-                                  }`}
-                                >
-                                  {flid.name} {isBurger ? "(Burgerraadslid)" : ""} ↗
-                                </Link>
+                                <div key={fid} className="inline-flex items-center gap-1">
+                                  <Link
+                                    to={`/fractie/${flid.id}/videos`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className={`text-[10px] px-1.5 py-0.5 rounded-md border transition-colors inline-flex items-center gap-1 ${
+                                      isBurger
+                                        ? "bg-accent/20 border-accent/40 text-accent font-semibold hover:bg-accent hover:text-accent-foreground"
+                                        : "bg-secondary text-secondary-foreground border-border hover:border-accent"
+                                    }`}
+                                  >
+                                    {flid.name} {isBurger ? "(Burgerraadslid)" : ""} ↗
+                                  </Link>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setVideoRaadslidFilter(String(flid.id));
+                                      setVideoCurrentPage(1);
+                                    }}
+                                    title={`Toon alleen video's van ${flid.name}`}
+                                    className={`text-[9px] px-1.5 py-0.5 rounded border transition-colors cursor-pointer ${
+                                      isFilteredToThis
+                                        ? "bg-primary text-primary-foreground border-primary font-bold shadow-2xs"
+                                        : "bg-muted/70 text-muted-foreground hover:text-foreground hover:bg-muted border-border"
+                                    }`}
+                                  >
+                                    {isFilteredToThis ? "Gefilterd" : "Filter"}
+                                  </button>
+                                </div>
                               );
                             })}
                           </div>
@@ -2958,7 +3524,7 @@ export default function AdminDashboard() {
                           size="sm"
                           onClick={() => startEditVideo(v)}
                           title="Video bewerken"
-                          className="h-8 w-8 p-0"
+                          className="h-8 w-8 p-0 cursor-pointer"
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </Button>
@@ -2967,7 +3533,7 @@ export default function AdminDashboard() {
                           size="sm"
                           onClick={() => deleteVideo(v.id)}
                           title="Video verwijderen"
-                          className="h-8 w-8 p-0"
+                          className="h-8 w-8 p-0 cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
@@ -2976,6 +3542,100 @@ export default function AdminDashboard() {
                   );
                 })}
               </div>
+
+              {/* Paginering controls per 5 videos */}
+              {filteredVideos.length > 0 && (
+                <div className="pt-4 mt-4 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                  <div className="text-muted-foreground text-[11px] sm:text-xs">
+                    Weergave{" "}
+                    <span className="font-semibold text-foreground">
+                      {(activeVideoPage - 1) * VIDEOS_PER_PAGE + 1}
+                    </span>{" "}
+                    tot{" "}
+                    <span className="font-semibold text-foreground">
+                      {Math.min(activeVideoPage * VIDEOS_PER_PAGE, filteredVideos.length)}
+                    </span>{" "}
+                    van{" "}
+                    <span className="font-semibold text-foreground">
+                      {filteredVideos.length}
+                    </span>{" "}
+                    {filteredVideos.length === 1 ? "video" : "video's"}
+                    {videoTotalPages > 1 && (
+                      <span className="ml-1 text-muted-foreground/80">
+                        • Pagina {activeVideoPage} van {videoTotalPages}
+                      </span>
+                    )}
+                  </div>
+
+                  {videoTotalPages > 1 && (
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setVideoCurrentPage((p) => Math.max(1, p - 1))}
+                        disabled={activeVideoPage <= 1}
+                        className="h-8 px-2.5 text-xs rounded-lg cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="Vorige 5 video's"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5 mr-1" />
+                        Vorige
+                      </Button>
+
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: videoTotalPages }, (_, i) => i + 1).map((pageNum) => {
+                          const isCurrent = pageNum === activeVideoPage;
+                          if (
+                            videoTotalPages <= 7 ||
+                            pageNum === 1 ||
+                            pageNum === videoTotalPages ||
+                            Math.abs(pageNum - activeVideoPage) <= 1
+                          ) {
+                            return (
+                              <button
+                                key={pageNum}
+                                type="button"
+                                onClick={() => setVideoCurrentPage(pageNum)}
+                                className={`min-w-8 h-8 px-2 text-xs rounded-lg font-medium transition-colors cursor-pointer ${
+                                  isCurrent
+                                    ? "bg-primary text-primary-foreground shadow-xs font-bold"
+                                    : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                }`}
+                              >
+                                {pageNum}
+                              </button>
+                            );
+                          }
+                          if (
+                            (pageNum === 2 && activeVideoPage > 3) ||
+                            (pageNum === videoTotalPages - 1 && activeVideoPage < videoTotalPages - 2)
+                          ) {
+                            return (
+                              <span key={pageNum} className="px-1 text-muted-foreground text-xs select-none">
+                                …
+                              </span>
+                            );
+                          }
+                          return null;
+                        })}
+                      </div>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setVideoCurrentPage((p) => Math.min(videoTotalPages, p + 1))}
+                        disabled={activeVideoPage >= videoTotalPages}
+                        className="h-8 px-2.5 text-xs rounded-lg cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="Volgende 5 video's"
+                      >
+                        Volgende
+                        <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </TabsContent>

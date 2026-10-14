@@ -395,7 +395,7 @@ export default function FractielidVideos() {
               <div className={`grid grid-cols-1 ${paginatedVideos.length > 1 ? "sm:grid-cols-2" : "sm:grid-cols-1"} gap-5 pt-2`}>
                 {paginatedVideos.map((v) => {
                   const displayTitle = v.burgerraadslidTitle || v.title || "Videobijdrage";
-                  const effectivePoster = getVideoThumbnail(v.videoUrl, v.thumbnailUrl);
+                  const effectivePoster = getVideoThumbnail(v.videoUrl, v.thumbnailUrl, v.id);
 
                   return (
                     <article

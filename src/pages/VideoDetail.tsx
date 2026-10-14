@@ -234,7 +234,7 @@ export default function VideoDetail() {
 
   const displayTitle = currentVideo.burgerraadslidTitle || currentVideo.title;
   const effectivePoster =
-    getVideoThumbnail(currentVideo.videoUrl, currentVideo.thumbnailUrl) ||
+    getVideoThumbnail(currentVideo.videoUrl, currentVideo.thumbnailUrl, currentVideo.id) ||
     speaker?.imgUrl ||
     "/assets/markt-steenwijk.jpg";
 
@@ -516,7 +516,7 @@ export default function VideoDetail() {
                   {visibleCarouselVideos.map((v) => {
                     const vTitle = v.burgerraadslidTitle || v.title || "Videobijdrage";
                     const vPoster =
-                      getVideoThumbnail(v.videoUrl, v.thumbnailUrl) ||
+                      getVideoThumbnail(v.videoUrl, v.thumbnailUrl, v.id) ||
                       "/assets/markt-steenwijk.jpg";
                     const vSpeaker = getSpeakerForVideo(v);
 
