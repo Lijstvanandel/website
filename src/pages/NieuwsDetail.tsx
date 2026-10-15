@@ -31,6 +31,7 @@ import { useAuth } from "@/context/AuthContext";
 import { ShareDialog } from "@/components/ShareDialog";
 import { InteractiveArticleRenderer } from "@/components/InteractiveArticleRenderer";
 import { ChromecastButton } from "@/components/ChromecastButton";
+import { mathToSpeechText, FormattedMathText } from "@/utils/mathRenderer";
 
 export default function NieuwsDetail() {
   const { id } = useParams<{ id: string }>();
@@ -330,7 +331,8 @@ export default function NieuwsDetail() {
     // Prepare clear text for speech synthesis
     const titleText = `Nieuwsbericht van Lijst van Andel: ${article.title}. `;
     const authorText = article.authorName ? `Geschreven door ${article.authorName}. ` : "";
-    const bodyContent = (article.content || article.description || "")
+    const rawBody = mathToSpeechText(article.content || article.description || "");
+    const bodyContent = rawBody
       .replace(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi, "$1. ")
       .replace(/<li[^>]*>(.*?)<\/li>/gi, "$1. ")
       .replace(/<p[^>]*>(.*?)<\/p>/gi, "$1. ")
@@ -499,7 +501,7 @@ export default function NieuwsDetail() {
           </div>
 
           <h1 className="text-3xl md:text-5xl font-display leading-tight mb-6">
-            {article.title}
+            <FormattedMathText text={article.title} />
           </h1>
 
           {/* Beheerderspaneel voor Kijkduur-diepte & ThruPlays (indien ingelogd als admin) */}
@@ -969,18 +971,12 @@ export default function NieuwsDetail() {
           <div className="mb-12" ref={articleContentRef}>
             {(article.description || article.excerpt) && (
               <p className="lead font-medium text-lg md:text-xl text-foreground mb-8 border-l-4 border-accent pl-4 py-1 leading-relaxed bg-accent/5 rounded-r">
-                {article.description || article.excerpt}
+                <FormattedMathText text={article.description || article.excerpt || ""} />
               </p>
             )}
 
-            {/* Render formatted HTML content with interactive dataproducts & hover-activated maps */}
-            {article.content?.includes("<") ? (
-              <InteractiveArticleRenderer content={article.content} />
-            ) : (
-              <div className="whitespace-pre-wrap text-foreground/90 leading-relaxed text-base md:text-lg">
-                {article.content}
-              </div>
-            )}
+            {/* Render formatted content with interactive dataproducts, maps and mathematical formulas */}
+            <InteractiveArticleRenderer content={article.content || ""} />
           </div>
 
           {/* Social Share Section - Alleen 'Deel via sociale media' */}

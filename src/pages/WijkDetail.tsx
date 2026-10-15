@@ -52,6 +52,7 @@ import { Dossier } from "@/types/dossier";
 import { useAuth } from "@/context/AuthContext";
 import { getSubdossierClientThumbnail } from "@/lib/dossierClientUtils";
 import { BUURTKAART_WIJKEN, LEGACY_SLUG_MAP } from "@/data/defaultWijken";
+import { FormattedMathText } from "@/utils/mathRenderer";
 
 function formatSocialUrl(platform: string, value?: string): string | undefined {
   if (!value) return undefined;
@@ -673,9 +674,11 @@ const WijkDetail = () => {
                     <div className="text-[10px] uppercase tracking-widest text-accent mb-2">
                       {n.category}
                     </div>
-                    <h3 className="font-display text-lg mb-2 leading-snug">{n.title}</h3>
+                    <h3 className="font-display text-lg mb-2 leading-snug">
+                      <FormattedMathText text={n.title} />
+                    </h3>
                     <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
-                      {n.excerpt}
+                      <FormattedMathText text={n.excerpt || n.description || ""} />
                     </p>
                   </div>
                 </Link>

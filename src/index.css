@@ -308,3 +308,28 @@ html.cb-monochrome #root {
 html.contrast-high.cb-monochrome #root {
   filter: grayscale(100%) contrast(135%) !important;
 }
+
+/* KaTeX Mathematical Formulas Styling */
+.katex {
+  font-size: 1.08em;
+  text-rendering: auto;
+  color: inherit;
+}
+
+.katex-display {
+  margin: 1.25rem 0 !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.5rem 0;
+  max-width: 100%;
+}
+
+.katex-inline-wrapper {
+  vertical-align: baseline;
+  display: inline-block;
+  margin: 0 0.15rem;
+}
+
+.katex-block-wrapper {
+  max-width: 100%;
+}

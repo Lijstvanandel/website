@@ -11,6 +11,7 @@ import { WijkItem } from "@/types/wijk";
 import { BUURTKAART_WIJKEN, LEGACY_SLUG_MAP } from "@/data/defaultWijken";
 import { format, parseISO } from "date-fns";
 import { nl } from "date-fns/locale";
+import { FormattedMathText } from "@/utils/mathRenderer";
 
 const formatDateSafe = (dateStr?: string) => {
   if (!dateStr) return "";
@@ -486,8 +487,12 @@ const Home = () => {
                       <CalIcon className="w-3 h-3" /> {formatDateSafe(n.date || n.createdAt)}
                     </span>
                   </div>
-                  <h3 className="font-display text-xl mb-2 leading-tight line-clamp-2">{n.title}</h3>
-                  <p className="text-xs text-muted-foreground leading-relaxed mb-4 line-clamp-3">{n.excerpt || n.description}</p>
+                  <h3 className="font-display text-xl mb-2 leading-tight line-clamp-2">
+                    <FormattedMathText text={n.title} />
+                  </h3>
+                  <p className="text-xs text-muted-foreground leading-relaxed mb-4 line-clamp-3">
+                    <FormattedMathText text={n.excerpt || n.description || ""} />
+                  </p>
                   <div className="mt-auto text-[11px] uppercase tracking-widest text-accent flex items-center gap-1.5 group-hover:gap-2.5 transition-all">
                     Lees verder <ArrowRight className="w-3 h-3" />
                   </div>

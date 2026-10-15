@@ -22,6 +22,7 @@ import { NewsItem } from "@/data/news";
 import { NewsCategory } from "@/components/CategoryManager";
 import { ShareDialog } from "@/components/ShareDialog";
 import { useAuth } from "@/context/AuthContext";
+import { FormattedMathText } from "@/utils/mathRenderer";
 
 export interface ExternalNewsItem {
   id: string;
@@ -274,10 +275,10 @@ export default function Nieuws() {
                   </span>
                 </div>
                 <h3 className="text-xl font-display mb-3 leading-snug group-hover:text-accent transition-colors">
-                  {item.title}
+                  <FormattedMathText text={item.title} />
                 </h3>
                 <p className="text-muted-foreground text-sm line-clamp-3 mb-4 flex-1 leading-relaxed">
-                  {item.description || item.excerpt}
+                  <FormattedMathText text={item.description || item.excerpt || ""} />
                 </p>
 
                 {(item.authorName || (item.author && item.author !== "Redactie" && item.author !== "Lijst van Andel")) && (

@@ -31,7 +31,13 @@ import {
   Layers,
   Table as TableIcon,
   Video,
+  Calculator,
+  Sigma,
+  Superscript,
+  Subscript,
+  FileText,
 } from "lucide-react";
+import katex from "katex";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -86,6 +92,13 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
   const [videoTitle, setVideoTitle] = useState<string>("");
   const [videoControls, setVideoControls] = useState<boolean>(true);
   const [videoAutoplay, setVideoAutoplay] = useState<boolean>(false);
+
+  // Math & Formula insertion form state
+  const [showMathModal, setShowMathModal] = useState<boolean>(false);
+  const [mathInput, setMathInput] = useState<string>("z_0 = 0,05\\text{ m}");
+  const [mathIsBlock, setMathIsBlock] = useState<boolean>(false);
+  const [showPdfImportModal, setShowPdfImportModal] = useState<boolean>(false);
+  const [pdfPasteText, setPdfPasteText] = useState<string>("");
 
   // Helper: insert HTML snippet at exact cursor position in textarea, with optional focus position
   const insertAtCursor = (htmlToInsert: string, moveCursorOffset?: number) => {
@@ -187,6 +200,78 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
     const tableHtml = `\n<div class="my-6 overflow-x-auto rounded-lg border border-border">\n  <table class="w-full text-left text-sm">\n    <thead class="bg-secondary/60 text-xs font-semibold uppercase text-muted-foreground border-b border-border">\n      <tr>\n        <th class="px-4 py-2.5">Wijk / Kern</th>\n        <th class="px-4 py-2.5">Onderwerp / Indicator</th>\n        <th class="px-4 py-2.5">Resultaat / Aantal</th>\n      </tr>\n    </thead>\n    <tbody class="divide-y divide-border/60">\n      <tr class="hover:bg-muted/30">\n        <td class="px-4 py-2.5 font-medium text-foreground">Steenwijk West</td>\n        <td class="px-4 py-2.5 text-muted-foreground">Woningzoekenden</td>\n        <td class="px-4 py-2.5 font-semibold text-accent">142</td>\n      </tr>\n      <tr class="hover:bg-muted/30">\n        <td class="px-4 py-2.5 font-medium text-foreground">Oldemarkt</td>\n        <td class="px-4 py-2.5 text-muted-foreground">Woningzoekenden</td>\n        <td class="px-4 py-2.5 font-semibold text-accent">58</td>\n      </tr>\n      <tr class="hover:bg-muted/30">\n        <td class="px-4 py-2.5 font-medium text-foreground">Vollenhove</td>\n        <td class="px-4 py-2.5 text-muted-foreground">Woningzoekenden</td>\n        <td class="px-4 py-2.5 font-semibold text-accent">89</td>\n      </tr>\n    </tbody>\n  </table>\n</div>\n<p class="mb-4 leading-relaxed"></p>\n`;
     insertAtCursor(tableHtml);
     toast.success("Gegevens-tabel ingevoegd!");
+  };
+
+  // Insert math formula with dollar delimiters
+  const handleInsertMath = () => {
+    const trimmed = mathInput.trim();
+    if (!trimmed) {
+      toast.error("Voer een wiskundige formule in");
+      return;
+    }
+    const snippet = mathIsBlock ? `\n\n$$${trimmed}$$\n\n` : `$${trimmed}$`;
+    insertAtCursor(snippet);
+    setShowMathModal(false);
+    toast.success("Wiskundige formule ingevoegd!");
+  };
+
+  const insertInlineMathQuick = () => {
+    const textarea = textareaRef.current;
+    const start = textarea?.selectionStart ?? value.length;
+    const end = textarea?.selectionEnd ?? value.length;
+    const selected = value.substring(start, end) || "z_0 = 0,05\\text{ m}";
+    insertAtCursor(`$${selected}$`);
+  };
+
+  const insertBlockMathQuick = () => {
+    const textarea = textareaRef.current;
+    const start = textarea?.selectionStart ?? value.length;
+    const end = textarea?.selectionEnd ?? value.length;
+    const selected = value.substring(start, end) || "P = \\frac{1}{2} \\rho A v^3 C_p";
+    insertAtCursor(`\n\n$$${selected}$$\n\n`);
+  };
+
+  // Convert pasted PDF or research paper text into clean LaTeX math and HTML paragraphs
+  const handleProcessPdfText = () => {
+    if (!pdfPasteText.trim()) {
+      toast.error("Plak eerst de tekst uit de PDF of het document.");
+      return;
+    }
+
+    let processed = pdfPasteText;
+
+    // Convert raw degree symbols or parameters copied from scientific PDFs into proper LaTeX math notation
+    processed = processed
+      .replace(/\(z0\s*=\s*0,05\s*m\)/gi, "($z_0 = 0,05\\text{ m}$)")
+      .replace(/\(z_0\s*=\s*0,05\s*m\)/gi, "($z_0 = 0,05\\text{ m}$)")
+      .replace(/\(z0\s*=\s*0,25\s*tot\s*0,40\s*m\)/gi, "($z_0 = 0,25\\text{ tot }0,40\\text{ m}$)")
+      .replace(/\(z_0\s*=\s*0,25\s*tot\s*0,40\s*m\)/gi, "($z_0 = 0,25\\text{ tot }0,40\\text{ m}$)")
+      .replace(/\(210°?\s*-\s*250°?\)/gi, "($210^\\circ - 250^\\circ$)")
+      .replace(/<\s*0,01°?/gi, "$< 0,01^\\circ$")
+      .replace(/onder\s+de\s+3°?\s+buiten/gi, "onder de $3^\\circ$ buiten")
+      .replace(/circa\s+0,533°?\./gi, "circa $0,533^\\circ$.")
+      .replace(/circa\s+107,4\s*[x×]\s*de/gi, "circa $107,4 \\times$ de")
+      .replace(/\(b_?max\)/gi, "($b_{\\text{max}}$)")
+      .replace(/12\s*[x×]\s*rotordiameter/gi, "$12 \\times \\text{rotordiameter}$")
+      .replace(/\(12D\)/gi, "($12D$)");
+
+    // Convert newlines into clean <p> tags
+    const paragraphs = processed
+      .split(/\n\s*\n/)
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .map((p) => `<p class="mb-4 leading-relaxed">${p.replace(/\n/g, "<br/>")}</p>`)
+      .join("\n\n");
+
+    if (value && value.trim()) {
+      onChange(value + "\n\n" + paragraphs);
+    } else {
+      onChange(paragraphs);
+    }
+
+    setShowPdfImportModal(false);
+    setPdfPasteText("");
+    toast.success("Wetenschappelijke tekst met wiskundige formules succesvol ingevoegd!");
   };
 
   // Handle uploading and inserting an image with responsive sizing and alignment
@@ -548,6 +633,30 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
             <Map className="w-3.5 h-3.5 mr-1.5" /> 📊 Dataproduct / Kaart (.html)
           </Button>
 
+          {/* Button: Invoegen van Wiskundige Formule & LaTeX ($) */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setShowMathModal(true)}
+            className="h-8 text-xs font-semibold border-amber-500/50 bg-amber-500/15 text-amber-700 dark:text-amber-300 hover:bg-amber-500 hover:text-white transition-colors"
+            title="Wiskundige symbolen en LaTeX formules invoegen ($z_0$, $^\circ$, koordebreedte, etc.)"
+          >
+            <Calculator className="w-3.5 h-3.5 mr-1.5" /> 🧮 Wiskundige Formule ($)
+          </Button>
+
+          {/* Button: PDF / Rapport tekst converteren */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setShowPdfImportModal(true)}
+            className="h-8 text-xs font-semibold border-border bg-background hover:bg-secondary text-foreground"
+            title="Plak tekst uit een PDF-onderzoek; behoudt formules en maakt automatisch nette alinea's"
+          >
+            <FileText className="w-3.5 h-3.5 mr-1.5 text-accent" /> PDF Tekst Plakken
+          </Button>
+
           {/* Button: Invoegen van MP4 Video */}
           <Button
             type="button"
@@ -716,6 +825,34 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
               title="Uitgelicht kader invoegen"
             >
               Kader
+            </button>
+          </div>
+
+          {/* Quick Math Tools */}
+          <div className="flex items-center gap-1 px-2 border-r border-border/60">
+            <button
+              type="button"
+              onClick={insertInlineMathQuick}
+              className="px-2 py-1 text-xs font-mono font-bold rounded-md hover:bg-muted text-amber-600 dark:text-amber-400"
+              title="Inline formule invoegen ($...$)"
+            >
+              $ ... $
+            </button>
+            <button
+              type="button"
+              onClick={insertBlockMathQuick}
+              className="px-2 py-1 text-xs font-mono font-bold rounded-md hover:bg-muted text-amber-600 dark:text-amber-400"
+              title="Gecentreerde blokformule invoegen ($$...$$)"
+            >
+              $$ ... $$
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowMathModal(true)}
+              className="p-1.5 rounded-md hover:bg-muted text-foreground/80 hover:text-amber-500"
+              title="Wiskundig formulepaneel openen"
+            >
+              <Sigma className="w-4 h-4" />
             </button>
           </div>
 
@@ -1342,6 +1479,278 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
                   className="bg-accent text-accent-foreground hover:bg-accent/90 text-xs font-semibold"
                 >
                   {isUploading ? "Video Uploaden..." : "MP4 Video Invoegen"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 4: Wiskundige Formules & LaTeX ($) invoegen */}
+      {showMathModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                  <Calculator className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-foreground text-sm">
+                    Wiskundige Symbolen & Formules Invoegen (LaTeX)
+                  </h3>
+                  <p className="text-[11px] text-muted-foreground">
+                    Ondersteunt alle wetenschappelijke notaties zoals windturbinesimulaties, aerodynamica en wiskunde
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMathModal(false)}
+                className="text-muted-foreground hover:text-foreground p-1 rounded-md"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              {/* Formula input */}
+              <div>
+                <label className="text-xs font-semibold block mb-1 text-foreground flex items-center justify-between">
+                  <span>LaTeX Formule of Symbool</span>
+                  <span className="text-[11px] text-muted-foreground">Typ of klik op een snelknop hieronder</span>
+                </label>
+                <Input
+                  type="text"
+                  value={mathInput}
+                  onChange={(e) => setMathInput(e.target.value)}
+                  placeholder="bijv. z_0 = 0,05\text{ m} of 210^\circ - 250^\circ"
+                  className="font-mono text-sm"
+                  autoFocus
+                />
+              </div>
+
+              {/* Mode: Inline vs Block */}
+              <div className="flex items-center gap-4 p-2.5 rounded-lg bg-muted/40 border border-border text-xs">
+                <span className="font-medium text-foreground">Weergave:</span>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="mathMode"
+                    checked={!mathIsBlock}
+                    onChange={() => setMathIsBlock(false)}
+                    className="text-amber-500 focus:ring-amber-500"
+                  />
+                  <span>Inline formule ($...$) in lopende tekst</span>
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="mathMode"
+                    checked={mathIsBlock}
+                    onChange={() => setMathIsBlock(true)}
+                    className="text-amber-500 focus:ring-amber-500"
+                  />
+                  <span>Blokformule ($$...$$) gecentreerd op eigen regel</span>
+                </label>
+              </div>
+
+              {/* Live KaTeX Preview */}
+              <div>
+                <label className="text-xs font-semibold block mb-1 text-foreground">
+                  Live KaTeX Voorbeeld
+                </label>
+                <div className="min-h-[60px] p-4 rounded-xl bg-[#0c1311] border border-border/80 flex items-center justify-center text-center text-foreground overflow-x-auto">
+                  {(() => {
+                    if (!mathInput.trim()) {
+                      return (
+                        <span className="text-muted-foreground italic text-xs">
+                          Typ hierboven een formule of klik op een snelknop hieronder om het voorbeeld te zien...
+                        </span>
+                      );
+                    }
+                    try {
+                      const rendered = katex.renderToString(mathInput.trim(), {
+                        displayMode: mathIsBlock,
+                        throwOnError: false,
+                        strict: false,
+                      });
+                      return <div dangerouslySetInnerHTML={{ __html: rendered }} />;
+                    } catch (e: unknown) {
+                      const err = e as Error;
+                      return <span className="text-amber-500 text-xs">Controleren... {err?.message}</span>;
+                    }
+                  })()}
+                </div>
+              </div>
+
+              {/* Quick Presets: Category 1 Windturbines / Groot Verlaat */}
+              <div className="space-y-2">
+                <span className="text-xs font-semibold text-accent flex items-center gap-1">
+                  <span>🌬️</span> Wetenschappelijke Modellering Windturbines & Groot Verlaat (uit PDF):
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { label: "z₀ = 0,05 m (Polder)", formula: "z_0 = 0,05\\text{ m}" },
+                    { label: "z₀ = 0,25 tot 0,40 m (Bebouwing)", formula: "z_0 = 0,25\\text{ tot }0,40\\text{ m}" },
+                    { label: "210° - 250° (Windrichting)", formula: "210^\\circ - 250^\\circ" },
+                    { label: "< 0,01° (Precisie)", formula: "< 0,01^\\circ" },
+                    { label: "3° (Minimale zonshoogte)", formula: "3^\\circ" },
+                    { label: "0,533° (Zonshoekdiameter)", formula: "0,533^\\circ" },
+                    { label: "107,4 × (Kernschaduw)", formula: "107,4 \\times" },
+                    { label: "b_max (Koordebreedte)", formula: "b_{\\text{max}}" },
+                    { label: "12 × rotordiameter (12D)", formula: "12 \\times \\text{rotordiameter}" },
+                    { label: "12D (Wettelijke norm)", formula: "12D" },
+                    { label: "Betz Vermogen P = ½ρAv³Cp", formula: "P = \\frac{1}{2} \\rho A v^3 C_p" },
+                  ].map((p, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setMathInput(p.formula)}
+                      className="px-2.5 py-1 text-xs rounded-md bg-secondary/80 hover:bg-amber-500 hover:text-white border border-border/80 text-foreground transition-colors font-mono"
+                      title={`Kies formule: ${p.formula}`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Quick Presets: Category 2 Math symbols */}
+              <div className="space-y-2">
+                <span className="text-xs font-semibold text-foreground flex items-center gap-1">
+                  <span>📐</span> Symbolen & Berekeningen:
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { label: "° Graden", formula: "^\\circ" },
+                    { label: "× Maal", formula: "\\times" },
+                    { label: "· Punt", formula: "\\cdot" },
+                    { label: "≤ Kleiner/gelijk", formula: "\\le" },
+                    { label: "≥ Groter/gelijk", formula: "\\ge" },
+                    { label: "≈ Ongeveer", formula: "\\approx" },
+                    { label: "± Plusminus", formula: "\\pm" },
+                    { label: "≠ Ongelijk", formula: "\\ne" },
+                    { label: "a/b Breuk", formula: "\\frac{a}{b}" },
+                    { label: "√x Wortel", formula: "\\sqrt{x}" },
+                    { label: "x² Kwadraat", formula: "x^2" },
+                    { label: "x₀ Subscript", formula: "x_0" },
+                    { label: "\\text{...}", formula: "\\text{tekst}" },
+                  ].map((p, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setMathInput((prev) => (prev ? `${prev} ${p.formula}` : p.formula))}
+                      className="px-2 py-0.5 text-xs rounded bg-muted/60 hover:bg-muted border border-border text-muted-foreground hover:text-foreground font-mono"
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Quick Presets: Category 3 Greek letters */}
+              <div className="space-y-1">
+                <span className="text-xs font-semibold text-foreground">Griekse Letters:</span>
+                <div className="flex flex-wrap gap-1">
+                  {["\\alpha", "\\beta", "\\gamma", "\\Delta", "\\theta", "\\lambda", "\\mu", "\\pi", "\\rho", "\\sigma", "\\Omega"].map((letter) => (
+                    <button
+                      key={letter}
+                      type="button"
+                      onClick={() => setMathInput((prev) => (prev ? `${prev} ${letter}` : letter))}
+                      className="px-2 py-0.5 text-xs rounded bg-muted/40 hover:bg-muted border border-border font-mono text-muted-foreground hover:text-foreground"
+                    >
+                      {letter}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div className="pt-3 border-t border-border flex items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowMathModal(false)}
+                  className="text-xs"
+                >
+                  Annuleren
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleInsertMath}
+                  className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold"
+                >
+                  Formule Invoegen in Artikel ({mathIsBlock ? "$$...$$" : "$...$"})
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 5: PDF / Wetenschappelijke tekst importeren & repareren */}
+      {showPdfImportModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-accent/15 text-accent flex items-center justify-center">
+                  <FileText className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-foreground text-sm">
+                    PDF / Wetenschappelijk Artikel Plakken & Repareren
+                  </h3>
+                  <p className="text-[11px] text-muted-foreground">
+                    Zet gekopieerde PDF-teksten automatisch om met behoud van wiskundige formules en nette alinea's
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPdfImportModal(false)}
+                className="text-muted-foreground hover:text-foreground p-1 rounded-md"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="text-xs font-semibold block mb-1 text-foreground">
+                  Plak hier de ruwe tekst uit uw PDF of onderzoeksrapport
+                </label>
+                <Textarea
+                  value={pdfPasteText}
+                  onChange={(e) => setPdfPasteText(e.target.value)}
+                  placeholder="Plak hier bijvoorbeeld: 'Waarom de locatie Groot Verlaat (Steenwijk-West) extra kwetsbaar is. De onderzochte locatie op het Groot Verlaat... ($z_0 = 0,05 m$)... ($210° - 250°)...'"
+                  className="min-h-[220px] text-xs font-normal leading-relaxed"
+                />
+                <p className="text-[11px] text-muted-foreground mt-1.5">
+                  Herstelt automatisch windturbinemodellen (zoals <code className="text-accent">$z_0$</code>, <code className="text-accent">$^\circ$</code>, <code className="text-accent">b_max</code>, <code className="text-accent">12D</code>), voorkomt dat haakjes leeg blijven en maakt nette HTML-alinea's.
+                </p>
+              </div>
+
+              <div className="pt-3 border-t border-border flex items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowPdfImportModal(false)}
+                  className="text-xs"
+                >
+                  Annuleren
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleProcessPdfText}
+                  className="bg-accent text-accent-foreground hover:bg-accent/90 text-xs font-semibold"
+                >
+                  Tekst met Formules Converteren & Invoegen
                 </Button>
               </div>
             </div>
