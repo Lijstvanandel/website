@@ -54,6 +54,7 @@ export default defineConfig(({ mode }) => ({
     dedupe: [
       "react",
       "react-dom",
+      "react-dom/client",
       "react/jsx-runtime",
       "react/jsx-dev-runtime",
       "react-router-dom",
@@ -64,9 +65,14 @@ export default defineConfig(({ mode }) => ({
     include: [
       "react",
       "react-dom",
+      "react-dom/client",
+      "react/jsx-runtime",
+      "react/jsx-dev-runtime",
       "react-router-dom",
       "@tanstack/react-query",
       "lucide-react",
+      "katex",
+      "dompurify",
     ],
     exclude: ["pdfjs-dist"],
   },

@@ -333,3 +333,169 @@ html.contrast-high.cb-monochrome #root {
 .katex-block-wrapper {
   max-width: 100%;
 }
+
+/* ==========================================================================
+   De Correspondent-stijl: Interactieve Bronvermeldingen & Uitklapbare Voetnoten
+   ========================================================================== */
+.token-source__wrapper {
+  display: inline;
+  position: relative;
+}
+
+.token-source__trigger,
+.sidenote-trigger,
+.infocard-trigger {
+  display: inline;
+  cursor: pointer;
+  color: inherit;
+  border-bottom: 1.5px dotted hsl(var(--accent));
+  text-decoration: none;
+  transition: all 0.2s ease;
+  padding: 0 1px;
+  border-radius: 2px;
+}
+
+.token-source__trigger:hover,
+.sidenote-trigger:hover,
+.infocard-trigger:hover {
+  color: hsl(var(--accent));
+  background-color: hsl(var(--accent) / 0.12);
+}
+
+.token-source__trigger[aria-expanded="true"],
+.sidenote-trigger[aria-expanded="true"],
+.infocard-trigger[aria-expanded="true"] {
+  color: hsl(var(--accent));
+  background-color: hsl(var(--accent) / 0.18);
+  border-bottom-style: solid;
+  font-weight: 500;
+}
+
+/* Superscript sterretje (*) */
+.token-source__star,
+.token-source__trigger sup,
+sup.svelte-1h6c41 {
+  color: hsl(var(--accent));
+  font-weight: 700;
+  font-size: 0.82em;
+  margin-left: 1.5px;
+  padding: 0 1px;
+  line-height: 0;
+  vertical-align: super;
+  transition: transform 0.2s ease;
+}
+
+.token-source__trigger[aria-expanded="true"] .token-source__star,
+.token-source__trigger[aria-expanded="true"] sup {
+  transform: scale(1.25);
+  display: inline-block;
+}
+
+/* Uitklapbare Bronkaart / Sidenote / InfoCard */
+.token-source__card[hidden],
+.sidenote-card[hidden],
+.infocard-card[hidden],
+.infocard-content[hidden] {
+  display: none !important;
+}
+
+.token-source__card:not([hidden]),
+.token-source__card.is-open,
+.sidenote-card:not([hidden]),
+.sidenote-card.is-open,
+.infocard-card:not([hidden]),
+.infocard-card.is-open {
+  display: block;
+  margin: 0.65rem 0 0.85rem 0;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  background-color: hsl(var(--card));
+  border: 1px solid hsl(var(--accent) / 0.4);
+  box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.35);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: hsl(var(--foreground));
+  animation: fadeInSourceCard 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  clear: both;
+}
+
+@keyframes fadeInSourceCard {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.source--label,
+.token-source__label {
+  display: inline-flex;
+  align-items: center;
+  font-weight: 700;
+  color: hsl(var(--accent));
+  margin-right: 0.4rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.source--link,
+.token-source__card a,
+.sidenote-card a,
+.infocard-card a {
+  color: hsl(var(--accent));
+  text-decoration: underline;
+  text-underline-offset: 2.5px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  transition: opacity 0.15s ease;
+}
+
+.source--link:hover,
+.token-source__card a:hover,
+.sidenote-card a:hover,
+.infocard-card a:hover {
+  opacity: 0.85;
+  text-decoration-thickness: 2px;
+}
+
+.source--note,
+.token-source__note {
+  display: block;
+  margin-top: 0.35rem;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.825rem;
+  font-style: italic;
+  border-top: 1px dashed hsl(var(--border) / 0.5);
+  padding-top: 0.35rem;
+}
+
+.source-card__close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.source-card__close:hover {
+  color: hsl(var(--foreground));
+  background-color: hsl(var(--muted));
+}
+

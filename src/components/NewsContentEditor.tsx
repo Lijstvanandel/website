@@ -36,6 +36,9 @@ import {
   Superscript,
   Subscript,
   FileText,
+  BookOpen,
+  Asterisk,
+  ExternalLink,
 } from "lucide-react";
 import katex from "katex";
 import { Button } from "@/components/ui/button";
@@ -99,6 +102,15 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
   const [mathIsBlock, setMathIsBlock] = useState<boolean>(false);
   const [showPdfImportModal, setShowPdfImportModal] = useState<boolean>(false);
   const [pdfPasteText, setPdfPasteText] = useState<string>("");
+
+  // Interactive Source & Footnote insertion form state (De Correspondent style)
+  const [showSourceModal, setShowSourceModal] = useState<boolean>(false);
+  const [sourceSelectedText, setSourceSelectedText] = useState<string>("");
+  const [sourceTitle, setSourceTitle] = useState<string>("");
+  const [sourceUrl, setSourceUrl] = useState<string>("");
+  const [sourceNote, setSourceNote] = useState<string>("");
+  const [sourceVariant, setSourceVariant] = useState<"asterisk" | "infocard" | "sidenote">("asterisk");
+  const [previewCardOpen, setPreviewCardOpen] = useState<boolean>(true);
 
   // Helper: insert HTML snippet at exact cursor position in textarea, with optional focus position
   const insertAtCursor = (htmlToInsert: string, moveCursorOffset?: number) => {
@@ -272,6 +284,84 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
     setShowPdfImportModal(false);
     setPdfPasteText("");
     toast.success("Wetenschappelijke tekst met wiskundige formules succesvol ingevoegd!");
+  };
+
+  // Open the source / footnote insertion modal, capturing selected text from textarea if available
+  const handleOpenSourceModal = () => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const selected = value.substring(start, end).trim();
+      setSourceSelectedText(selected || "");
+    } else {
+      setSourceSelectedText("");
+    }
+    setPreviewCardOpen(true);
+    setShowSourceModal(true);
+  };
+
+  // Insert the interactive source token and expandable footnote card
+  const handleInsertSource = () => {
+    const textToAnnotate = sourceSelectedText.trim();
+    if (!textToAnnotate) {
+      toast.error("Geef a.u.b. het zinsdeel of woord op dat u wilt voorzien van een bronvermelding.");
+      return;
+    }
+
+    const title = sourceTitle.trim();
+    const url = sourceUrl.trim();
+    const note = sourceNote.trim();
+
+    if (!title && !url) {
+      toast.error("Geef a.u.b. minimaal een brontitel of bron-URL op.");
+      return;
+    }
+
+    const uniqueId = `src-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
+    const effectiveTitle = title || url;
+
+    let snippet = "";
+
+    if (sourceVariant === "asterisk") {
+      // De Correspondent style: Text with asterisk (*) that expands an inline source card
+      snippet = `<span class="token-source__wrapper" data-source-id="${uniqueId}"><a class="token-source__trigger" role="button" tabindex="0" aria-expanded="false" aria-controls="${uniqueId}-card">${textToAnnotate}<sup aria-hidden="true" class="token-source__star">*</sup></a><div class="token-source__card" aria-live="polite" id="${uniqueId}-card" hidden><small><span class="source--label">Bron: </span>${
+        url
+          ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="source--link">${effectiveTitle} <svg class="w-3.5 h-3.5 inline ml-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></a>`
+          : `<span class="source--title font-medium">${effectiveTitle}</span>`
+      }${note ? `<span class="source--note">${note}</span>` : ""}</small></div></span>`;
+    } else if (sourceVariant === "infocard") {
+      // Infocard style with dropdown arrow
+      snippet = `<span class="token-source__wrapper" data-source-id="${uniqueId}"><a class="infocard-trigger" role="button" tabindex="0" aria-expanded="false" aria-controls="${uniqueId}-card">${textToAnnotate} <span class="text-xs text-accent">▼</span></a><div class="infocard-card" aria-live="polite" id="${uniqueId}-card" hidden><small><span class="source--label">Toelichting: </span><span class="source--title font-medium">${effectiveTitle}</span>${
+        url
+          ? `<div class="mt-1"><a href="${url}" target="_blank" rel="noopener noreferrer" class="source--link">Bekijk bron ↗</a></div>`
+          : ""
+      }${note ? `<span class="source--note">${note}</span>` : ""}</small></div></span>`;
+    } else {
+      // Sidenote style with external link arrow
+      snippet = `<span class="token-source__wrapper" data-source-id="${uniqueId}"><a class="sidenote-trigger" role="button" tabindex="0" aria-expanded="false" aria-controls="${uniqueId}-card"><em>${textToAnnotate}</em> <span class="text-xs text-accent">↗</span></a><div class="sidenote-card" aria-live="polite" id="${uniqueId}-card" hidden><small><span class="source--label">Referentie: </span>${
+        url
+          ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="source--link">${effectiveTitle} ↗</a>`
+          : `<span class="source--title font-medium">${effectiveTitle}</span>`
+      }${note ? `<span class="source--note">${note}</span>` : ""}</small></div></span>`;
+    }
+
+    const textarea = textareaRef.current;
+    if (textarea && textarea.selectionStart !== textarea.selectionEnd) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const newValue = value.substring(0, start) + snippet + value.substring(end);
+      onChange(newValue);
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(start + snippet.length, start + snippet.length);
+      }, 20);
+    } else {
+      insertAtCursor(snippet);
+    }
+
+    setShowSourceModal(false);
+    toast.success("Interactieve bronvermelding (*) succesvol toegevoegd!");
   };
 
   // Handle uploading and inserting an image with responsive sizing and alignment
@@ -645,6 +735,18 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
             <Calculator className="w-3.5 h-3.5 mr-1.5" /> 🧮 Wiskundige Formule ($)
           </Button>
 
+          {/* Button: Invoegen van Bronvermelding / Voetnoot (*) */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleOpenSourceModal}
+            className="h-8 text-xs font-semibold border-accent/50 bg-accent/15 text-accent hover:bg-accent hover:text-accent-foreground transition-colors"
+            title="Selecteer tekst en voeg een interactieve bronvermelding (*) of uitvouw toe (zoals De Correspondent)"
+          >
+            <BookOpen className="w-3.5 h-3.5 mr-1.5 text-accent" /> 📚 Bron toevoegen (*)
+          </Button>
+
           {/* Button: PDF / Rapport tekst converteren */}
           <Button
             type="button"
@@ -825,6 +927,16 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
               title="Uitgelicht kader invoegen"
             >
               Kader
+            </button>
+            <button
+              type="button"
+              onClick={handleOpenSourceModal}
+              className="text-xs px-2 py-1 rounded-md hover:bg-muted text-accent font-semibold flex items-center gap-1 border border-accent/30 bg-accent/10"
+              title="Geselecteerde tekst koppelen aan een interactieve bronvermelding (*)"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-accent" />
+              <span>Bron</span>
+              <sup className="font-bold text-accent text-sm leading-none">*</sup>
             </button>
           </div>
 
@@ -1751,6 +1863,290 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
                   className="bg-accent text-accent-foreground hover:bg-accent/90 text-xs font-semibold"
                 >
                   Tekst met Formules Converteren & Invoegen
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Dialog: Invoegen van Interactieve Bronvermelding / Voetnoot (De Correspondent stijl) */}
+      {showSourceModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-xl shadow-2xl max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="p-4 bg-muted/40 border-b border-border flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-accent/15 text-accent flex items-center justify-center">
+                  <BookOpen className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-foreground text-sm">
+                    Interactieve Bronvermelding & Voetnoot Toevoegen
+                  </h3>
+                  <p className="text-[11px] text-muted-foreground">
+                    Koppel geselecteerde tekst aan een aanklikbare bron met een asterisk (*), uitvouw en link (De Correspondent-stijl)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSourceModal(false)}
+                className="text-muted-foreground hover:text-foreground p-1 rounded-md"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4 overflow-y-auto">
+              {/* 1. Geselecteerde tekst */}
+              <div>
+                <label className="text-xs font-semibold block mb-1 text-foreground">
+                  Geselecteerd zinsdeel of woord in het artikel <span className="text-destructive">*</span>
+                </label>
+                <Input
+                  type="text"
+                  value={sourceSelectedText}
+                  onChange={(e) => setSourceSelectedText(e.target.value)}
+                  placeholder="Bijv. moreel verdacht of onderzoek op onderzoek toont aan"
+                  className="text-xs font-medium"
+                />
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Dit is het zinsdeel waar de lezer op klikt om de bronvermelding uit te klappen.
+                </p>
+              </div>
+
+              {/* 2. Brontitel / Publicatie */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-foreground">
+                    Bronvermelding / Publicatie / Rapport <span className="text-destructive">*</span>
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-muted-foreground">Snelle sjablonen:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSourceTitle("Mads Gamborg et al., ‘Long-term nationwide emulated trial’ (2025)");
+                        setSourceUrl("https://www.sciencedirect.com/");
+                        setSourceNote("Gepubliceerd in toonaangevend medisch vakblad. Onderzoek over 10 jaar.");
+                      }}
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-secondary hover:bg-secondary/80 text-foreground"
+                    >
+                      Studie
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSourceTitle("CBS Bevolkings- en Woningstatistieken Steenwijkerland (2024)");
+                        setSourceUrl("https://www.cbs.nl/");
+                        setSourceNote("Officiële kerncijfers per wijk en kern van gemeente Steenwijkerland.");
+                      }}
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-secondary hover:bg-secondary/80 text-foreground"
+                    >
+                      CBS
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSourceTitle("Gemeenteraad Steenwijkerland, Raadsbesluit Energietransitie & Groot Verlaat");
+                        setSourceUrl("https://steenwijkerland.notubiz.nl/");
+                        setSourceNote("Officieel verslag en stemgedrag van de gemeenteraad.");
+                      }}
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-secondary hover:bg-secondary/80 text-foreground"
+                    >
+                      Gemeente
+                    </button>
+                  </div>
+                </div>
+                <Input
+                  type="text"
+                  value={sourceTitle}
+                  onChange={(e) => setSourceTitle(e.target.value)}
+                  placeholder="Bijv. Mads Gamborg et al., ‘Long-term cancer risk in users of GLP-1 agonists’ (2025)"
+                  className="text-xs"
+                />
+              </div>
+
+              {/* 3. Bron URL / Weblink */}
+              <div>
+                <label className="text-xs font-semibold block mb-1 text-foreground">
+                  Aanklikbare Bron-URL / Weblink (optioneel, maar aanbevolen)
+                </label>
+                <Input
+                  type="url"
+                  value={sourceUrl}
+                  onChange={(e) => setSourceUrl(e.target.value)}
+                  placeholder="https://www.sciencedirect.com/... of https://cbs.nl/..."
+                  className="text-xs font-mono"
+                />
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  De lezer kan hier direct op doorklikken om het originele rapport of de wetenschappelijke pagina te openen.
+                </p>
+              </div>
+
+              {/* 4. Extra toelichting / samenvatting */}
+              <div>
+                <label className="text-xs font-semibold block mb-1 text-foreground">
+                  Extra toelichting of duiding (optioneel)
+                </label>
+                <Textarea
+                  value={sourceNote}
+                  onChange={(e) => setSourceNote(e.target.value)}
+                  placeholder="Bijv. Nationaal registeronderzoek onder 45.000 deelnemers. Toont aan dat risico's niet significant verhoogd zijn."
+                  className="text-xs min-h-[60px]"
+                  rows={2}
+                />
+              </div>
+
+              {/* 5. Weergavestijl */}
+              <div>
+                <label className="text-xs font-semibold block mb-1.5 text-foreground">
+                  Weergavestijl in het artikel
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSourceVariant("asterisk")}
+                    className={`p-2.5 rounded-lg border text-left transition-all ${
+                      sourceVariant === "asterisk"
+                        ? "bg-accent/15 border-accent text-accent"
+                        : "bg-secondary/30 border-border hover:bg-secondary/60 text-muted-foreground"
+                    }`}
+                  >
+                    <div className="font-semibold text-xs flex items-center justify-between">
+                      <span>De Correspondent (*)</span>
+                      <span className="font-bold text-accent">*</span>
+                    </div>
+                    <p className="text-[10px] mt-1 text-muted-foreground leading-tight">
+                      Woord met asterisk (*), vouwt bronkaart direct inline uit.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSourceVariant("infocard")}
+                    className={`p-2.5 rounded-lg border text-left transition-all ${
+                      sourceVariant === "infocard"
+                        ? "bg-accent/15 border-accent text-accent"
+                        : "bg-secondary/30 border-border hover:bg-secondary/60 text-muted-foreground"
+                    }`}
+                  >
+                    <div className="font-semibold text-xs flex items-center justify-between">
+                      <span>Infokaart (▼)</span>
+                      <span className="text-xs text-accent">▼</span>
+                    </div>
+                    <p className="text-[10px] mt-1 text-muted-foreground leading-tight">
+                      Met uitvouwpijltje voor verdere toelichting en link.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSourceVariant("sidenote")}
+                    className={`p-2.5 rounded-lg border text-left transition-all ${
+                      sourceVariant === "sidenote"
+                        ? "bg-accent/15 border-accent text-accent"
+                        : "bg-secondary/30 border-border hover:bg-secondary/60 text-muted-foreground"
+                    }`}
+                  >
+                    <div className="font-semibold text-xs flex items-center justify-between">
+                      <span>Zijnoot (↗)</span>
+                      <span className="text-xs text-accent">↗</span>
+                    </div>
+                    <p className="text-[10px] mt-1 text-muted-foreground leading-tight">
+                      Cursieve titel met extern icoon naar de publicatie.
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              {/* 6. Live interactief voorbeeld van hoe het eruit ziet */}
+              <div className="bg-muted/20 border border-border/80 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] uppercase tracking-wider font-bold text-accent">
+                    Live Voorbeeldweergave (Klik om te testen)
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {previewCardOpen ? "Uitgevouwen" : "Ingeklapt (klik op het zinsdeel)"}
+                  </span>
+                </div>
+
+                <div className="text-xs leading-relaxed text-foreground">
+                  <span>De situatie is </span>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewCardOpen(!previewCardOpen)}
+                    className="inline cursor-pointer text-accent border-b border-dotted border-accent hover:bg-accent/10 px-0.5 rounded-xs"
+                    title="Klik om bron te bekijken"
+                  >
+                    <span>{sourceSelectedText.trim() || "dit onderzochte zinsdeel"}</span>
+                    {sourceVariant === "asterisk" && <sup className="font-bold text-accent ml-0.5">*</sup>}
+                    {sourceVariant === "infocard" && <span className="text-[10px] text-accent ml-0.5">▼</span>}
+                    {sourceVariant === "sidenote" && <span className="text-[10px] text-accent ml-0.5">↗</span>}
+                  </button>
+                  <span> en vormt een belangrijke conclusie in het rapport.</span>
+
+                  {/* Expandable Preview Card */}
+                  {previewCardOpen && (
+                    <div className="mt-2 p-3 rounded-lg bg-card border border-accent/40 shadow-xs relative text-xs animate-in fade-in-50 duration-150">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewCardOpen(false)}
+                        className="absolute top-1.5 right-1.5 text-muted-foreground hover:text-foreground text-xs p-1"
+                        title="Sluiten"
+                      >
+                        ✕
+                      </button>
+                      <div>
+                        <span className="font-bold text-accent uppercase text-[10px] tracking-wide mr-1.5">
+                          {sourceVariant === "infocard" ? "Toelichting:" : "Bron:"}
+                        </span>
+                        {sourceUrl.trim() ? (
+                          <a
+                            href={sourceUrl.trim()}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-accent underline font-medium hover:opacity-80 inline-flex items-center gap-1"
+                            onClick={(e) => e.preventDefault()}
+                          >
+                            <span>{sourceTitle.trim() || sourceUrl.trim() || "Bronverwijzing"}</span>
+                            <span className="text-[10px]">↗</span>
+                          </a>
+                        ) : (
+                          <span className="font-medium text-foreground">
+                            {sourceTitle.trim() || "Titel van de publicatie"}
+                          </span>
+                        )}
+                        {sourceNote.trim() && (
+                          <span className="block text-[11px] text-muted-foreground italic mt-1 pt-1 border-t border-border/50">
+                            {sourceNote.trim()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div className="pt-3 border-t border-border flex items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowSourceModal(false)}
+                  className="text-xs"
+                >
+                  Annuleren
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleInsertSource}
+                  className="bg-accent text-accent-foreground hover:bg-accent/90 text-xs font-semibold"
+                >
+                  <BookOpen className="w-3.5 h-3.5 mr-1.5" /> Bronvermelding Invoegen (*)
                 </Button>
               </div>
             </div>

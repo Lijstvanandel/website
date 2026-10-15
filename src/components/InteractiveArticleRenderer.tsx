@@ -394,7 +394,88 @@ export const InteractiveArticleRenderer: React.FC<InteractiveArticleRendererProp
     };
   }, [content]);
 
-  if (!content) return null;
+  // Initialize source cards state (ensuring cards start collapsed unless specified)
+  useEffect(() => {
+    if (!articleContainerRef.current) return;
+    const triggers = articleContainerRef.current.querySelectorAll<HTMLElement>(
+      ".token-source__trigger, .sidenote-trigger, .infocard-trigger, [data-source-trigger='true']"
+    );
+
+    triggers.forEach((trigger) => {
+      const controlsId = trigger.getAttribute("aria-controls");
+      let card: HTMLElement | null = null;
+      if (controlsId) {
+        card = articleContainerRef.current?.querySelector(`#${CSS.escape(controlsId)}`) || document.getElementById(controlsId);
+      }
+      if (!card) {
+        const wrapper = trigger.closest(".token-source__wrapper, .token-source, p");
+        card = wrapper?.querySelector(".token-source__card, .sidenote-card, .infocard-card") as HTMLElement | null;
+        if (!card && trigger.nextElementSibling && (
+          trigger.nextElementSibling.classList.contains("token-source__card") ||
+          trigger.nextElementSibling.classList.contains("sidenote-card") ||
+          trigger.nextElementSibling.classList.contains("infocard-card")
+        )) {
+          card = trigger.nextElementSibling as HTMLElement;
+        }
+      }
+
+      if (card) {
+        const isExpanded = trigger.getAttribute("aria-expanded") === "true";
+        if (!isExpanded) {
+          card.setAttribute("hidden", "");
+          card.classList.remove("is-open");
+        } else {
+          card.removeAttribute("hidden");
+          card.classList.add("is-open");
+        }
+
+        // Add close button inside card if not present
+        if (!card.querySelector(".source-card__close")) {
+          const closeBtn = document.createElement("button");
+          closeBtn.type = "button";
+          closeBtn.className = "source-card__close";
+          closeBtn.title = "Bronkaart sluiten";
+          closeBtn.setAttribute("aria-label", "Sluit bronkaart");
+          closeBtn.innerHTML = "✕";
+          card.appendChild(closeBtn);
+        }
+      }
+    });
+  }, [content]);
+
+  // Extract all sources cited in the article for a clean summary at the bottom if any exist
+  const citedSources = useMemo(() => {
+    if (!content) return [];
+    const list: { id: string; text: string; title: string; url?: string; note?: string }[] = [];
+
+    // Match both De Correspondent style and our token-source cards
+    const sourceRegex =
+      /<(?:a|button)[^>]*class=["'][^"']*token-source__trigger[^"']*["'][^>]*>([\s\S]*?)<\/(?:a|button)>[\s\S]*?<(?:div|span)[^>]*class=["'][^"']*token-source__card[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|span)>/gi;
+    let m;
+    while ((m = sourceRegex.exec(content)) !== null) {
+      const triggerContent = m[1].replace(/<[^>]+>/g, "").replace(/\*$/, "").trim();
+      const cardHtml = m[2];
+      const linkMatch = cardHtml.match(/<a[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
+      const url = linkMatch ? linkMatch[1] : undefined;
+      const title = linkMatch
+        ? linkMatch[2].replace(/<[^>]+>/g, "").trim()
+        : cardHtml.replace(/<[^>]+>/g, "").replace(/^Bron:\s*/i, "").replace(/✕/g, "").trim();
+
+      const noteMatch = cardHtml.match(/class=["'][^"']*(?:source--note|token-source__note)[^"']*["'][^>]*>([\s\S]*?)<\/(?:span|div)>/i);
+      const note = noteMatch ? noteMatch[1].replace(/<[^>]+>/g, "").trim() : undefined;
+
+      if (title && !list.some((item) => item.title === title && item.url === url)) {
+        list.push({
+          id: `ref-${list.length + 1}`,
+          text: triggerContent,
+          title,
+          url,
+          note,
+        });
+      }
+    }
+    return list;
+  }, [content]);
 
   // Split content into regular HTML segments and <div data-dataproduct="true" ...> or <div class="data-product-container" ...>
   // Regex to match data-product blocks
@@ -466,12 +547,89 @@ export const InteractiveArticleRenderer: React.FC<InteractiveArticleRendererProp
     });
   }
 
-  // Handle image clicks for lightbox
+  // Handle clicks for images (lightbox), source cards toggle, and external citations
   const handleContentClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
+
+    // 1. Let external source links navigate naturally
+    const link = target.closest("a");
+    if (
+      link &&
+      link.href &&
+      !link.classList.contains("token-source__trigger") &&
+      !link.classList.contains("sidenote-trigger") &&
+      !link.classList.contains("infocard-trigger")
+    ) {
+      // Allow browser to open link (target="_blank" or same tab)
+      return;
+    }
+
+    // 2. Handle close button inside source cards
+    const closeBtn = target.closest(".source-card__close, .token-source__close");
+    if (closeBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const card = closeBtn.closest(".token-source__card, .sidenote-card, .infocard-card") as HTMLElement | null;
+      if (card) {
+        card.setAttribute("hidden", "");
+        card.classList.remove("is-open");
+        const id = card.id;
+        if (id) {
+          const trigger = articleContainerRef.current?.querySelector(`[aria-controls="${id}"]`);
+          if (trigger) trigger.setAttribute("aria-expanded", "false");
+        }
+      }
+      return;
+    }
+
+    // 3. Handle source trigger clicks (asterisk / word / info dropdown)
+    const trigger = target.closest(
+      ".token-source__trigger, .sidenote-trigger, .infocard-trigger, [data-source-trigger='true']"
+    ) as HTMLElement | null;
+
+    if (trigger) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const controlsId = trigger.getAttribute("aria-controls");
+      let card: HTMLElement | null = null;
+      if (controlsId) {
+        card = articleContainerRef.current?.querySelector(`#${CSS.escape(controlsId)}`) || document.getElementById(controlsId);
+      }
+      if (!card) {
+        const wrapper = trigger.closest(".token-source__wrapper, .token-source, p");
+        card = wrapper?.querySelector(".token-source__card, .sidenote-card, .infocard-card") as HTMLElement | null;
+        if (!card && trigger.nextElementSibling && (
+          trigger.nextElementSibling.classList.contains("token-source__card") ||
+          trigger.nextElementSibling.classList.contains("sidenote-card") ||
+          trigger.nextElementSibling.classList.contains("infocard-card")
+        )) {
+          card = trigger.nextElementSibling as HTMLElement;
+        }
+      }
+
+      if (card) {
+        const isCurrentlyExpanded =
+          trigger.getAttribute("aria-expanded") === "true" ||
+          card.classList.contains("is-open") ||
+          !card.hasAttribute("hidden");
+
+        if (isCurrentlyExpanded) {
+          trigger.setAttribute("aria-expanded", "false");
+          card.setAttribute("hidden", "");
+          card.classList.remove("is-open");
+        } else {
+          trigger.setAttribute("aria-expanded", "true");
+          card.removeAttribute("hidden");
+          card.classList.add("is-open");
+        }
+      }
+      return;
+    }
+
+    // 4. Handle image lightbox
     if (target.tagName.toLowerCase() === "img") {
       const img = target as HTMLImageElement;
-      // Find parent figure caption if any
       const figure = img.closest("figure");
       const figcaption = figure ? figure.querySelector("figcaption")?.textContent || "" : "";
       setLightboxImage({
@@ -481,6 +639,8 @@ export const InteractiveArticleRenderer: React.FC<InteractiveArticleRendererProp
       });
     }
   };
+
+  if (!content) return null;
 
   return (
     <div ref={articleContainerRef} className={`interactive-article-renderer ${className}`}>
@@ -503,6 +663,42 @@ export const InteractiveArticleRenderer: React.FC<InteractiveArticleRendererProp
           />
         );
       })}
+
+      {/* Optional reference overview when sources are cited */}
+      {citedSources.length > 0 && (
+        <details className="mt-8 pt-6 border-t border-border/80 text-sm group bg-muted/15 p-4 rounded-xl border border-border/60">
+          <summary className="font-semibold text-foreground cursor-pointer select-none flex items-center justify-between hover:text-accent transition-colors">
+            <span className="flex items-center gap-2">
+              <span>📚 Geraadpleegde bronnen & documentatie</span>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-accent/20 text-accent font-bold border border-accent/30">
+                {citedSources.length}
+              </span>
+            </span>
+            <span className="text-xs text-muted-foreground group-open:rotate-180 transition-transform">▼</span>
+          </summary>
+          <ol className="mt-4 space-y-2.5 pl-5 list-decimal text-xs text-muted-foreground leading-relaxed">
+            {citedSources.map((s, i) => (
+              <li key={i} className="pl-1">
+                {s.text && <span className="text-foreground font-semibold">"{s.text}" — </span>}
+                {s.url ? (
+                  <a
+                    href={s.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent underline font-medium hover:opacity-80 inline-flex items-center gap-1"
+                  >
+                    <span>{s.title}</span>
+                    <span className="text-[10px]">↗</span>
+                  </a>
+                ) : (
+                  <span className="text-foreground/90">{s.title}</span>
+                )}
+                {s.note && <span className="block text-[11px] text-muted-foreground italic mt-0.5">{s.note}</span>}
+              </li>
+            ))}
+          </ol>
+        </details>
+      )}
 
       {/* Lightbox for zooming in on high-resolution charts & images */}
       {lightboxImage && (

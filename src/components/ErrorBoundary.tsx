@@ -23,9 +23,31 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("[ErrorBoundary] Onverwerkte fout in component:", error, errorInfo);
+
+    // Auto-recover from chunk mismatches, HMR desyncs, or duplicate React instance errors
+    const msg = error?.message || "";
+    if (
+      msg.includes("Invalid hook call") ||
+      msg.includes("reading 'useState'") ||
+      msg.includes("reading 'useEffect'") ||
+      msg.includes("dynamically imported module") ||
+      msg.includes("Loading chunk")
+    ) {
+      if (typeof window !== "undefined" && typeof sessionStorage !== "undefined") {
+        const reloadKey = "error_boundary_reload_" + window.location.pathname;
+        if (!sessionStorage.getItem(reloadKey)) {
+          sessionStorage.setItem(reloadKey, "1");
+          window.location.reload();
+          return;
+        }
+      }
+    }
   }
 
   private handleReload = () => {
+    if (typeof sessionStorage !== "undefined") {
+      sessionStorage.removeItem("error_boundary_reload_" + window.location.pathname);
+    }
     window.location.reload();
   };
 
