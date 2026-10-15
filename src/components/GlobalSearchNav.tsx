@@ -16,8 +16,8 @@ import {
   Sparkles,
 } from "lucide-react";
 import { hoofdstukken } from "@/data/partijprogramma";
-import { NewsItem, news as fallbackNews } from "@/data/news";
-import { EventItem, events as fallbackEvents } from "@/data/events";
+import { NewsItem } from "@/data/news";
+import { EventItem } from "@/data/events";
 import { logNavbarSearch } from "@/lib/councilAuditLogger";
 
 export type SearchResultType = "nieuws" | "standpunt" | "agenda";
@@ -97,8 +97,8 @@ export const GlobalSearchNav: React.FC<GlobalSearchNavProps> = ({
   const [activeTab, setActiveTab] = useState<"all" | SearchResultType>("all");
   const [currentPage, setCurrentPage] = useState(1);
 
-  const [newsList, setNewsList] = useState<NewsItem[]>(fallbackNews);
-  const [eventsList, setEventsList] = useState<EventItem[]>(fallbackEvents);
+  const [newsList, setNewsList] = useState<NewsItem[]>([]);
+  const [eventsList, setEventsList] = useState<EventItem[]>([]);
   const [dataLoaded, setDataLoaded] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -113,18 +113,18 @@ export const GlobalSearchNav: React.FC<GlobalSearchNavProps> = ({
 
     let isMounted = true;
     Promise.all([
-      fetch("/api/news").then((r) => (r.ok ? r.json().catch(() => fallbackNews) : fallbackNews)),
-      fetch("/api/events").then((r) => (r.ok ? r.json().catch(() => fallbackEvents) : fallbackEvents)),
+      fetch("/api/news").then((r) => (r.ok ? r.json().catch(() => []) : [])),
+      fetch("/api/events").then((r) => (r.ok ? r.json().catch(() => []) : [])),
     ])
       .then(([newsData, eventsData]) => {
         if (isMounted) {
-          if (Array.isArray(newsData) && newsData.length > 0) setNewsList(newsData);
-          if (Array.isArray(eventsData) && eventsData.length > 0) setEventsList(eventsData);
+          if (Array.isArray(newsData)) setNewsList(newsData);
+          if (Array.isArray(eventsData)) setEventsList(eventsData);
           setDataLoaded(true);
         }
       })
       .catch((err) => {
-        console.warn("[GLOBAL SEARCH] Kon realtime data niet ophalen, gebruik fallback data:", err);
+        console.warn("[GLOBAL SEARCH] Kon realtime data niet ophalen:", err);
       });
 
     return () => {

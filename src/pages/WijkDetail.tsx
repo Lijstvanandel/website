@@ -651,12 +651,21 @@ const WijkDetail = () => {
                 >
                   <div className="aspect-[16/10] overflow-hidden bg-muted">
                     <img
-                      src={n.thumbnailUrl || n.headerUrl || n.image || "/assets/steenwijk-aerial.webp"}
+                      src={
+                        (n.thumbnailUrl || n.headerUrl || n.image || "").startsWith("/uploads/") || (n.thumbnailUrl || n.headerUrl || n.image || "").startsWith("uploads/")
+                          ? `/api/image/view?file=${encodeURIComponent(n.thumbnailUrl || n.headerUrl || n.image || "")}`
+                          : n.thumbnailUrl || n.headerUrl || n.image || "/assets/steenwijk-aerial.webp"
+                      }
                       alt={n.title}
                       loading="lazy"
                       className="w-full h-full object-cover transition-transform duration-700 hover:scale-105"
                       onError={(e) => {
-                        (e.target as HTMLImageElement).src = "/assets/steenwijk-aerial.webp";
+                        const rawSrc = n.thumbnailUrl || n.headerUrl || n.image;
+                        if (rawSrc && (rawSrc.startsWith("/uploads/") || rawSrc.startsWith("uploads/")) && !(e.target as HTMLImageElement).src.includes("/api/image/view")) {
+                          (e.target as HTMLImageElement).src = `/api/image/view?file=${encodeURIComponent(rawSrc)}`;
+                        } else {
+                          (e.target as HTMLImageElement).src = "/assets/steenwijk-aerial.webp";
+                        }
                       }}
                     />
                   </div>

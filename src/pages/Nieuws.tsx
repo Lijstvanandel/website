@@ -88,7 +88,17 @@ export default function Nieuws() {
     fetch("/api/news")
       .then((res) => (res.ok ? res.json().catch(() => []) : []))
       .then((data: NewsItem[]) => {
-        if (Array.isArray(data)) setNews(data);
+        if (Array.isArray(data)) {
+          const sorted = [...data].sort((a: any, b: any) => {
+            const timeA = new Date(a.createdAt || a.date || 0).getTime();
+            const timeB = new Date(b.createdAt || b.date || 0).getTime();
+            if (isNaN(timeA) || isNaN(timeB) || timeA === timeB) {
+              return (Number(b.id) || 0) - (Number(a.id) || 0);
+            }
+            return timeB - timeA;
+          });
+          setNews(sorted);
+        }
       })
       .catch(console.error);
 
@@ -202,11 +212,20 @@ export default function Nieuws() {
             >
               <div className="aspect-[16/10] bg-muted relative overflow-hidden">
                 <img
-                  src={item.thumbnailUrl || item.headerUrl || item.image || "/assets/steenwijk-aerial.webp"}
+                  src={
+                    (item.thumbnailUrl || item.headerUrl || item.image || "").startsWith("/uploads/") || (item.thumbnailUrl || item.headerUrl || item.image || "").startsWith("uploads/")
+                      ? `/api/image/view?file=${encodeURIComponent(item.thumbnailUrl || item.headerUrl || item.image || "")}`
+                      : item.thumbnailUrl || item.headerUrl || item.image || "/assets/steenwijk-aerial.webp"
+                  }
                   alt={item.title}
                   className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                   onError={(e) => {
-                    (e.target as HTMLImageElement).src = "/assets/steenwijk-aerial.webp";
+                    const rawSrc = item.thumbnailUrl || item.headerUrl || item.image;
+                    if (rawSrc && (rawSrc.startsWith("/uploads/") || rawSrc.startsWith("uploads/")) && !(e.target as HTMLImageElement).src.includes("/api/image/view")) {
+                      (e.target as HTMLImageElement).src = `/api/image/view?file=${encodeURIComponent(rawSrc)}`;
+                    } else {
+                      (e.target as HTMLImageElement).src = "/assets/steenwijk-aerial.webp";
+                    }
                   }}
                 />
                 <div className="absolute top-3 left-3 flex flex-wrap gap-1.5 max-w-[90%]">

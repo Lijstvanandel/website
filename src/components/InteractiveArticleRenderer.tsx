@@ -97,7 +97,9 @@ export const InteractiveDataProductEmbed: React.FC<DataProductMeta> = ({
         typeof e.data.height === "number" &&
         e.data.height > 100
       ) {
-        setContentHeight(e.data.height);
+        // Strict upper limit (850px) to prevent recursive height growth
+        const safeHeight = Math.min(e.data.height, 850);
+        setContentHeight(safeHeight);
       }
     };
     window.addEventListener("message", handleMessage);
@@ -117,7 +119,9 @@ export const InteractiveDataProductEmbed: React.FC<DataProductMeta> = ({
             doc.body.offsetHeight
           );
           if (h && h > 150) {
-            setContentHeight(h);
+            // Strictly cap at max 850px to prevent infinite stretching feedback loops
+            const safeH = Math.min(h, 850);
+            setContentHeight(safeH);
           }
         }
       }
@@ -137,8 +141,9 @@ export const InteractiveDataProductEmbed: React.FC<DataProductMeta> = ({
     return () => window.removeEventListener("keydown", onKey);
   }, [isFullscreen]);
 
-  const effectiveHeight = height.endsWith("px") || height.endsWith("%") || height.endsWith("vh") ? height : `${height}px`;
-  const containerStyleHeight = autoResize && contentHeight ? `${contentHeight + 20}px` : effectiveHeight;
+  const parsedDefaultHeight = parseInt(height, 10) || 520;
+  const effectiveHeight = height.endsWith("px") || height.endsWith("%") || height.endsWith("vh") ? height : `${parsedDefaultHeight}px`;
+  const containerStyleHeight = autoResize && contentHeight ? `${Math.min(contentHeight, 850)}px` : effectiveHeight;
 
   return (
     <>
@@ -215,7 +220,7 @@ export const InteractiveDataProductEmbed: React.FC<DataProductMeta> = ({
 
         {/* Interactive Viewer Area */}
         <div
-          className="relative w-full bg-[#0d1412] overflow-hidden transition-all duration-300"
+          className="relative w-full bg-[#0d1412] overflow-hidden transition-all duration-300 max-h-[850px]"
           style={{ height: containerStyleHeight, minHeight: "360px" }}
         >
           {isActivated ? (
@@ -233,8 +238,8 @@ export const InteractiveDataProductEmbed: React.FC<DataProductMeta> = ({
                 src={effectiveSrc}
                 title={title || "Interactief Dataproduct"}
                 onLoad={handleIframeLoad}
-                scrolling={autoResize ? "no" : "auto"}
-                className="w-full h-full border-0"
+                scrolling="auto"
+                className="w-full h-full border-0 overflow-auto"
                 sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
                 loading="lazy"
               />
@@ -492,7 +497,7 @@ export const InteractiveArticleRenderer: React.FC<InteractiveArticleRendererProp
           <div
             key={`html-${index}`}
             onClick={handleContentClick}
-            className="prose prose-lg dark:prose-invert max-w-none text-foreground/90 leading-relaxed [&_h2]:font-display [&_h2]:text-2xl [&_h2]:mb-3 [&_h2]:mt-8 [&_h2]:text-foreground [&_h3]:font-display [&_h3]:text-xl [&_h3]:text-accent [&_h3]:mt-6 [&_h3]:mb-2 [&_a]:text-accent [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-accent [&_blockquote]:pl-4 [&_blockquote]:italic [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mb-4 [&_figure]:my-6 [&_figure_img]:cursor-zoom-in [&_figure_img]:rounded-xl [&_figure_img]:shadow-sm [&_figure_img]:border [&_figure_img]:border-border/80 [&_figure_figcaption]:text-xs [&_figure_figcaption]:text-muted-foreground [&_figure_figcaption]:mt-2 [&_figure_figcaption]:italic"
+            className="prose prose-lg dark:prose-invert max-w-none text-foreground/90 leading-relaxed [&_h2]:font-display [&_h2]:text-2xl [&_h2]:mb-3 [&_h2]:mt-8 [&_h2]:text-foreground [&_h3]:font-display [&_h3]:text-xl [&_h3]:text-accent [&_h3]:mt-6 [&_h3]:mb-2 [&_a]:text-accent [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-accent [&_blockquote]:pl-4 [&_blockquote]:italic [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mb-4 [&_figure]:my-6 [&_figure_img]:cursor-zoom-in [&_figure_img]:rounded-xl [&_figure_img]:shadow-sm [&_figure_img]:border [&_figure_img]:border-border/80 [&_figure_figcaption]:text-xs [&_figure_figcaption]:text-muted-foreground [&_figure_figcaption]:mt-2 [&_figure_figcaption]:italic [&_iframe]:max-w-full [&_iframe]:max-h-[850px] [&_img]:max-w-full [&_img]:h-auto"
             dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(part.html) }}
           />
         );

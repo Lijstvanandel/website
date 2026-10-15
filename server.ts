@@ -8101,6 +8101,17 @@ async function startServer() {
     if (category) {
       newsList = newsList.filter((n: any) => n.category?.toLowerCase() === String(category).toLowerCase());
     }
+
+    // Sort news newest first (by date/createdAt descending, then numeric ID descending)
+    newsList = [...newsList].sort((a: any, b: any) => {
+      const timeA = new Date(a.createdAt || a.date || 0).getTime();
+      const timeB = new Date(b.createdAt || b.date || 0).getTime();
+      if (isNaN(timeA) || isNaN(timeB) || timeA === timeB) {
+        return (Number(b.id) || 0) - (Number(a.id) || 0);
+      }
+      return timeB - timeA;
+    });
+
     res.json(newsList);
   });
   

@@ -7,7 +7,6 @@ const sammyImg = "/assets/sammy.webp";
 const lisaImg = "/assets/lisa.webp";
 import { BelafspraakDialog } from "@/components/BelafspraakDialog";
 import { HeroBuurtkaart } from "@/components/HeroBuurtkaart";
-import { news } from "@/data/news";
 import { WijkItem } from "@/types/wijk";
 import { BUURTKAART_WIJKEN, LEGACY_SLUG_MAP } from "@/data/defaultWijken";
 import { format, parseISO } from "date-fns";
@@ -41,7 +40,7 @@ const DEFAULT_FRACTIELEDEN = [
 
 const Home = () => {
   const [belOpen, setBelOpen] = useState(false);
-  const [homeNews, setHomeNews] = useState<any[]>(() => news.filter((n: any) => !n.wijkSlug));
+  const [homeNews, setHomeNews] = useState<any[]>([]);
   const [wijken, setWijken] = useState<WijkItem[]>([]);
   const [fractieleden, setFractieleden] = useState<any[]>(DEFAULT_FRACTIELEDEN);
   const [hoveredWijkSlug, setHoveredWijkSlug] = useState<string | null>(null);
@@ -57,8 +56,16 @@ const Home = () => {
     fetch("/api/news")
       .then((res) => (res.ok ? res.json().catch(() => []) : []))
       .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setHomeNews(data);
+        if (Array.isArray(data)) {
+          const sorted = [...data].sort((a: any, b: any) => {
+            const timeA = new Date(a.createdAt || a.date || 0).getTime();
+            const timeB = new Date(b.createdAt || b.date || 0).getTime();
+            if (isNaN(timeA) || isNaN(timeB) || timeA === timeB) {
+              return (Number(b.id) || 0) - (Number(a.id) || 0);
+            }
+            return timeB - timeA;
+          });
+          setHomeNews(sorted);
         }
       })
       .catch(() => {});
@@ -440,37 +447,55 @@ const Home = () => {
             Alle nieuws <ArrowRight className="w-3 h-3" />
           </Link>
         </div>
-        <div className="grid md:grid-cols-2 gap-6">
-          {homeNews.slice(0, 2).map((n) => (
-            <Link
-              key={n.id}
-              to={`/nieuws/${n.id}`}
-              className="group bg-card border border-border hover-lift overflow-hidden flex flex-col"
-            >
-              <div className="aspect-[16/9] overflow-hidden bg-muted">
-                <img
-                  src={n.image || n.thumbnailUrl || n.headerUrl || heroBanner}
-                  alt={n.title || "Nieuwsbericht"}
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                  loading="lazy"
-                />
-              </div>
-              <div className="p-6 flex flex-col flex-1">
-                <div className="flex items-center gap-3 text-[10px] uppercase tracking-widest text-accent mb-3">
-                  <span>{n.category || "Nieuws"}</span>
-                  <span className="text-muted-foreground flex items-center gap-1">
-                    <CalIcon className="w-3 h-3" /> {formatDateSafe(n.date || n.createdAt)}
-                  </span>
+        {homeNews.length === 0 ? (
+          <div className="bg-card border border-border/60 p-8 text-center text-muted-foreground rounded-xs">
+            Er zijn op dit moment geen nieuwsberichten beschikbaar.
+          </div>
+        ) : (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {homeNews.slice(0, 4).map((n) => (
+              <Link
+                key={n.id}
+                to={`/nieuws/${n.id}`}
+                className="group bg-card border border-border hover-lift overflow-hidden flex flex-col"
+              >
+                <div className="aspect-[16/9] overflow-hidden bg-muted">
+                  <img
+                    src={
+                      (n.image || n.thumbnailUrl || n.headerUrl || "").startsWith("/uploads/") || (n.image || n.thumbnailUrl || n.headerUrl || "").startsWith("uploads/")
+                        ? `/api/image/view?file=${encodeURIComponent(n.image || n.thumbnailUrl || n.headerUrl || "")}`
+                        : n.image || n.thumbnailUrl || n.headerUrl || heroBanner
+                    }
+                    alt={n.title || "Nieuwsbericht"}
+                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                    loading="lazy"
+                    onError={(e) => {
+                      const rawSrc = n.image || n.thumbnailUrl || n.headerUrl;
+                      if (rawSrc && (rawSrc.startsWith("/uploads/") || rawSrc.startsWith("uploads/")) && !(e.target as HTMLImageElement).src.includes("/api/image/view")) {
+                        (e.target as HTMLImageElement).src = `/api/image/view?file=${encodeURIComponent(rawSrc)}`;
+                      } else {
+                        (e.target as HTMLImageElement).src = heroBanner;
+                      }
+                    }}
+                  />
                 </div>
-                <h3 className="font-display text-2xl mb-2 leading-tight">{n.title}</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed mb-5">{n.excerpt}</p>
-                <div className="mt-auto text-xs uppercase tracking-widest text-accent flex items-center gap-2 group-hover:gap-3 transition-all">
-                  Lees verder <ArrowRight className="w-3 h-3" />
+                <div className="p-5 flex flex-col flex-1">
+                  <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-accent mb-2">
+                    <span>{n.category || "Nieuws"}</span>
+                    <span className="text-muted-foreground flex items-center gap-1 ml-auto">
+                      <CalIcon className="w-3 h-3" /> {formatDateSafe(n.date || n.createdAt)}
+                    </span>
+                  </div>
+                  <h3 className="font-display text-xl mb-2 leading-tight line-clamp-2">{n.title}</h3>
+                  <p className="text-xs text-muted-foreground leading-relaxed mb-4 line-clamp-3">{n.excerpt || n.description}</p>
+                  <div className="mt-auto text-[11px] uppercase tracking-widest text-accent flex items-center gap-1.5 group-hover:gap-2.5 transition-all">
+                    Lees verder <ArrowRight className="w-3 h-3" />
+                  </div>
                 </div>
-              </div>
-            </Link>
-          ))}
-        </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </section>
       </div>
 

@@ -9,7 +9,7 @@ import { ShareDialog } from "@/components/ShareDialog";
 import { VerticalNewsCarousel } from "@/components/VerticalNewsCarousel";
 import { getVideoThumbnail } from "@/lib/videoUtils";
 import { DEFAULT_FRACTIELEDEN } from "@/data/fractieleden";
-import { NewsItem, news as fallbackNews } from "@/data/news";
+import { NewsItem } from "@/data/news";
 
 interface VideoItem {
   id: string;
@@ -100,7 +100,7 @@ export default function FractielidVideos() {
         } else {
           // Fallback matching against all news / static fallback
           fetch("/api/news?includeAll=true")
-            .then((res) => (res.ok ? res.json() : fallbackNews))
+            .then((res) => (res.ok ? res.json() : []))
             .then((allNews: NewsItem[]) => {
               if (Array.isArray(allNews)) {
                 const targetMember = defaultMember;
