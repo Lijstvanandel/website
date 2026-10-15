@@ -27,6 +27,7 @@ interface DataProductMeta {
   caption?: string;
   height: string;
   activateOnHover: boolean;
+  autoResize?: boolean;
   type?: "map" | "chart" | "data";
 }
 
@@ -37,12 +38,15 @@ export const InteractiveDataProductEmbed: React.FC<DataProductMeta> = ({
   caption,
   height = "520px",
   activateOnHover = true,
+  autoResize = true,
   type = "map",
 }) => {
   const [isActivated, setIsActivated] = useState<boolean>(!activateOnHover);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [contentHeight, setContentHeight] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Guarantee that data products route through /api/dataproduct/view so Nginx proxy will never 404
   const effectiveSrc = useMemo(() => {
@@ -84,6 +88,44 @@ export const InteractiveDataProductEmbed: React.FC<DataProductMeta> = ({
     setIsLoading(false);
   };
 
+  // Auto-resize listener for dynamic height adjustment
+  useEffect(() => {
+    const handleMessage = (e: MessageEvent) => {
+      if (
+        e.data &&
+        (e.data.type === "dataproduct-resize" || e.data.type === "resize") &&
+        typeof e.data.height === "number" &&
+        e.data.height > 100
+      ) {
+        setContentHeight(e.data.height);
+      }
+    };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
+  const handleIframeLoad = () => {
+    setIsLoading(false);
+    if (!autoResize) return;
+    try {
+      if (iframeRef.current) {
+        const doc = iframeRef.current.contentDocument || iframeRef.current.contentWindow?.document;
+        if (doc && doc.body) {
+          const h = Math.max(
+            doc.body.scrollHeight,
+            doc.documentElement.scrollHeight,
+            doc.body.offsetHeight
+          );
+          if (h && h > 150) {
+            setContentHeight(h);
+          }
+        }
+      }
+    } catch (e) {
+      // Cross-origin fallback via postMessage
+    }
+  };
+
   // Close fullscreen on ESC key
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -96,6 +138,7 @@ export const InteractiveDataProductEmbed: React.FC<DataProductMeta> = ({
   }, [isFullscreen]);
 
   const effectiveHeight = height.endsWith("px") || height.endsWith("%") || height.endsWith("vh") ? height : `${height}px`;
+  const containerStyleHeight = autoResize && contentHeight ? `${contentHeight + 20}px` : effectiveHeight;
 
   return (
     <>
@@ -172,8 +215,8 @@ export const InteractiveDataProductEmbed: React.FC<DataProductMeta> = ({
 
         {/* Interactive Viewer Area */}
         <div
-          className="relative w-full bg-[#0d1412] overflow-hidden"
-          style={{ height: effectiveHeight, minHeight: "360px" }}
+          className="relative w-full bg-[#0d1412] overflow-hidden transition-all duration-300"
+          style={{ height: containerStyleHeight, minHeight: "360px" }}
         >
           {isActivated ? (
             <>
@@ -186,9 +229,11 @@ export const InteractiveDataProductEmbed: React.FC<DataProductMeta> = ({
                 </div>
               )}
               <iframe
+                ref={iframeRef}
                 src={effectiveSrc}
                 title={title || "Interactief Dataproduct"}
-                onLoad={() => setIsLoading(false)}
+                onLoad={handleIframeLoad}
+                scrolling={autoResize ? "no" : "auto"}
                 className="w-full h-full border-0"
                 sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
                 loading="lazy"
@@ -374,6 +419,7 @@ export const InteractiveArticleRenderer: React.FC<InteractiveArticleRendererProp
     const captionMatch = fullMatch.match(/data-caption=["']([^"']+)["']/i);
     const heightMatch = fullMatch.match(/data-height=["']([^"']+)["']/i);
     const hoverMatch = fullMatch.match(/data-hover=["']([^"']+)["']/i);
+    const autoResizeMatch = fullMatch.match(/data-autoresize=["']([^"']+)["']/i);
     const typeMatch = fullMatch.match(/data-type=["']([^"']+)["']/i);
 
     const src = srcMatch ? srcMatch[1] : "";
@@ -381,6 +427,7 @@ export const InteractiveArticleRenderer: React.FC<InteractiveArticleRendererProp
     const caption = captionMatch ? captionMatch[1] : "";
     const height = heightMatch ? heightMatch[1] : "520px";
     const activateOnHover = hoverMatch ? hoverMatch[1] !== "false" : true;
+    const autoResize = autoResizeMatch ? autoResizeMatch[1] !== "false" : true;
     const itemType = (typeMatch ? typeMatch[1] : "map") as "map" | "chart" | "data";
 
     if (src) {
@@ -392,6 +439,7 @@ export const InteractiveArticleRenderer: React.FC<InteractiveArticleRendererProp
           caption,
           height,
           activateOnHover,
+          autoResize,
           type: itemType,
         },
       });

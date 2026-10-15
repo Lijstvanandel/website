@@ -68,6 +68,8 @@ import {
   Headphones,
   Mic,
   Radio,
+  Globe,
+  ShieldAlert,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VideoPlayer } from "@/components/VideoPlayer";
@@ -295,6 +297,17 @@ export default function AdminDashboard() {
     totalMb: string;
     speedMb: string;
   } | null>(null);
+
+  // -- State for External News ("In de Media") --
+  const [externalNews, setExternalNews] = useState<any[]>([]);
+  const [extTitle, setExtTitle] = useState("");
+  const [extSourceName, setExtSourceName] = useState("");
+  const [extSourceLogo, setExtSourceLogo] = useState("newspaper");
+  const [extUrl, setExtUrl] = useState("");
+  const [extPublishedAt, setExtPublishedAt] = useState(() => new Date().toISOString().slice(0, 10));
+  const [extSummary, setExtSummary] = useState("");
+  const [editingExtId, setEditingExtId] = useState<string | null>(null);
+  const [isSubmittingExt, setIsSubmittingExt] = useState(false);
 
   // -- Video search, raadslid filter & paginering (5 per pagina) --
   const VIDEOS_PER_PAGE = 5;
@@ -659,6 +672,105 @@ export default function AdminDashboard() {
       .catch(console.error);
   }, []);
 
+  const fetchExternalNews = useCallback(() => {
+    fetch("/api/external-news")
+      .then((r) => (r.ok ? r.json().catch(() => []) : []))
+      .then((data) => {
+        if (Array.isArray(data)) setExternalNews(data);
+      })
+      .catch(console.error);
+  }, []);
+
+  const submitExternalNews = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!extTitle.trim() || !extSourceName.trim() || !extUrl.trim()) {
+      toast.error("Titel, bronnaam en link zijn verplicht.");
+      return;
+    }
+    setIsSubmittingExt(true);
+    try {
+      const payload = {
+        title: extTitle,
+        sourceName: extSourceName,
+        sourceLogo: extSourceLogo,
+        url: extUrl,
+        publishedAt: extPublishedAt,
+        summary: extSummary,
+      };
+
+      const endpoint = editingExtId
+        ? `/api/admin/external-news/${editingExtId}`
+        : "/api/admin/external-news";
+      const method = editingExtId ? "PUT" : "POST";
+
+      const res = await fetch(endpoint, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Fout bij opslaan extern nieuws");
+      }
+
+      setExtTitle("");
+      setExtSourceName("");
+      setExtSourceLogo("newspaper");
+      setExtUrl("");
+      setExtPublishedAt(new Date().toISOString().slice(0, 10));
+      setExtSummary("");
+      setEditingExtId(null);
+      fetchExternalNews();
+      toast.success(editingExtId ? "Extern nieuws bijgewerkt!" : "Extern nieuws aangemaakt!");
+    } catch (err: any) {
+      toast.error("Er is een fout opgetreden: " + err.message);
+    } finally {
+      setIsSubmittingExt(false);
+    }
+  };
+
+  const startEditExternalNews = (item: any) => {
+    setEditingExtId(item.id);
+    setExtTitle(item.title || "");
+    setExtSourceName(item.sourceName || "");
+    setExtSourceLogo(item.sourceLogo || "newspaper");
+    setExtUrl(item.url || "");
+    setExtPublishedAt(item.publishedAt || new Date().toISOString().slice(0, 10));
+    setExtSummary(item.summary || "");
+  };
+
+  const cancelEditExternalNews = () => {
+    setEditingExtId(null);
+    setExtTitle("");
+    setExtSourceName("");
+    setExtSourceLogo("newspaper");
+    setExtUrl("");
+    setExtPublishedAt(new Date().toISOString().slice(0, 10));
+    setExtSummary("");
+  };
+
+  const deleteExternalNews = async (id: string) => {
+    if (!confirm("Weet u zeker dat u dit externe nieuwsbericht wilt verwijderen?")) return;
+    try {
+      const res = await fetch(`/api/admin/external-news/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        toast.success("Extern nieuwsbericht verwijderd.");
+        fetchExternalNews();
+      } else {
+        toast.error("Fout bij verwijderen extern nieuwsbericht.");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const fetchEvents = useCallback(() => {
     fetch("/api/admin/events", { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => (r.ok ? r.json().catch(() => []) : []))
@@ -719,12 +831,13 @@ export default function AdminDashboard() {
       fetchFractieleden();
       fetchVideos();
       fetchNews();
+      fetchExternalNews();
       fetchEvents();
       fetchCancellationAnalytics();
       fetchCategories();
       fetchMessages();
     }
-  }, [user?.role, fetchUsers, fetchMembershipSettings, fetchFractieleden, fetchVideos, fetchNews, fetchEvents, fetchCancellationAnalytics, fetchCategories, fetchMessages]);
+  }, [user?.role, fetchUsers, fetchMembershipSettings, fetchFractieleden, fetchVideos, fetchNews, fetchExternalNews, fetchEvents, fetchCancellationAnalytics, fetchCategories, fetchMessages]);
 
   useEffect(() => {
     if (selectedMessageId) {
@@ -1984,6 +2097,9 @@ export default function AdminDashboard() {
           </TabsTrigger>
           <TabsTrigger value="news" className="gap-2 text-xs">
             <Newspaper className="w-4 h-4" /> Nieuws
+          </TabsTrigger>
+          <TabsTrigger value="external-news" className="gap-2 text-xs font-semibold text-accent">
+            <Globe className="w-4 h-4 text-accent" /> Nieuws Extern (In de Media)
           </TabsTrigger>
           <TabsTrigger value="categories" className="gap-2 text-xs">
             <Tag className="w-4 h-4 text-accent" /> Categoriebeheer
@@ -4347,6 +4463,229 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* NIEUWS EXTERN (IN DE MEDIA) */}
+        <TabsContent value="external-news">
+          <div className="grid lg:grid-cols-12 gap-8">
+            {/* Formulier */}
+            <div className="lg:col-span-6 bg-card rounded-xl border border-border p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-2xl font-display flex items-center gap-2">
+                    <Globe className="w-5 h-5 text-accent" />
+                    {editingExtId ? "Extern Nieuws Bewerken" : "Nieuws Extern Toevoegen"}
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Beheer artikelen en publicaties van kranten & media over Lijst van Andel.
+                  </p>
+                </div>
+                {editingExtId && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={cancelEditExternalNews}
+                    className="text-xs h-8"
+                  >
+                    Bewerken annuleren
+                  </Button>
+                )}
+              </div>
+
+              {/* Auteursrecht Waarschuwing */}
+              <div className="p-3.5 mb-5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3 text-xs text-amber-800 dark:text-amber-300">
+                <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold mb-0.5">Auteursrecht & Copyright Regel</p>
+                  <p className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-400">
+                    In verband met auteursrecht van kranten en tijdschriften worden bij externe mediaberichten <strong>geen thumbnails</strong> geüpload of getoond. Geef puur de titel, bronnaam (en optioneel logo/icoon type) en de directe URL naar het artikel op.
+                  </p>
+                </div>
+              </div>
+
+              <form onSubmit={submitExternalNews} className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Titel van het artikel *</label>
+                  <Input
+                    required
+                    value={extTitle}
+                    onChange={(e) => setExtTitle(e.target.value)}
+                    placeholder="bijv. Lijst van Andel pleit voor meer starterswoningen..."
+                  />
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Krant / Media Naam *</label>
+                    <Input
+                      required
+                      value={extSourceName}
+                      onChange={(e) => setExtSourceName(e.target.value)}
+                      placeholder="bijv. Steenwijker Courant, De Stentor, RTV Oost"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Publicatiedatum</label>
+                    <Input
+                      type="date"
+                      value={extPublishedAt}
+                      onChange={(e) => setExtPublishedAt(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Logo / Icoon Type</label>
+                  <select
+                    value={extSourceLogo}
+                    onChange={(e) => setExtSourceLogo(e.target.value)}
+                    className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm font-medium focus:outline-hidden focus:ring-2 focus:ring-ring"
+                  >
+                    <option value="newspaper">📰 Krant / Dagblad (Newspaper)</option>
+                    <option value="tv">📺 RTV / Omroep / Video (TV/Radio)</option>
+                    <option value="building">🏛️ Overheid / Gemeente / Provincie</option>
+                  </select>
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Kies het icoon dat bij de bron past, of geef een directe afbeelding-URL van het krantenlogo.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Directe link naar origineel artikel *</label>
+                  <Input
+                    required
+                    type="url"
+                    value={extUrl}
+                    onChange={(e) => setExtUrl(e.target.value)}
+                    placeholder="https://www.steenwijkercourant.nl/nieuws/..."
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Korte toelichting / kernquote (optioneel)</label>
+                  <Textarea
+                    value={extSummary}
+                    onChange={(e) => setExtSummary(e.target.value)}
+                    rows={3}
+                    placeholder="Korte samenvatting van wat in de krant geschreven werd..."
+                  />
+                </div>
+
+                <div className="flex items-center gap-3 pt-2">
+                  <Button
+                    type="submit"
+                    disabled={isSubmittingExt}
+                    className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold uppercase tracking-wider text-xs h-11"
+                  >
+                    {isSubmittingExt ? (
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    ) : editingExtId ? (
+                      <Check className="w-4 h-4 mr-2" />
+                    ) : (
+                      <Globe className="w-4 h-4 mr-2" />
+                    )}
+                    {editingExtId ? "Wijzigingen Opslaan" : "Extern Nieuws Opslaan"}
+                  </Button>
+                  {editingExtId && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={cancelEditExternalNews}
+                      className="h-11 px-5 text-xs font-semibold uppercase tracking-wider"
+                    >
+                      Annuleren
+                    </Button>
+                  )}
+                </div>
+              </form>
+            </div>
+
+            {/* Overzicht Lijst */}
+            <div className="lg:col-span-6 bg-card rounded-xl border border-border p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-2xl font-display mb-1">In de Media Artikelen ({externalNews.length})</h2>
+                  <p className="text-xs text-muted-foreground">
+                    Overzicht van alle externe persberichten op /nieuws.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3 max-h-[700px] overflow-y-auto pr-1">
+                {externalNews.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground border border-dashed border-border rounded-xl text-xs">
+                    Nog geen externe media-artikelen toegevoegd.
+                  </div>
+                ) : (
+                  externalNews.map((item) => (
+                    <div
+                      key={item.id}
+                      className="p-4 rounded-xl border border-border bg-background/50 hover:bg-background transition-all flex flex-col justify-between gap-3"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-1.5">
+                          <span className="px-2.5 py-0.5 rounded-full bg-accent/15 text-accent text-[11px] font-semibold flex items-center gap-1">
+                            {item.sourceName}
+                          </span>
+                          {item.publishedAt && (
+                            <span className="text-[11px] text-muted-foreground font-mono">
+                              {item.publishedAt}
+                            </span>
+                          )}
+                        </div>
+
+                        <h3 className="text-sm font-semibold text-foreground leading-snug mb-1">
+                          {item.title}
+                        </h3>
+
+                        {item.summary && (
+                          <p className="text-xs text-muted-foreground line-clamp-2">
+                            {item.summary}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-border/50 text-xs">
+                        <a
+                          href={item.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-primary hover:underline text-[11px] font-medium truncate max-w-[220px]"
+                        >
+                          {item.url} <ExternalLink className="w-3 h-3 shrink-0" />
+                        </a>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => startEditExternalNews(item)}
+                            className="h-8 w-8 p-0"
+                            title="Bewerken"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => deleteExternalNews(item.id)}
+                            className="h-8 w-8 p-0"
+                            title="Verwijderen"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>

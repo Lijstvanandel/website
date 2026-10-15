@@ -2759,7 +2759,44 @@ async function startServer() {
         res.setHeader("X-Content-Type-Options", "nosniff");
         res.setHeader("X-Frame-Options", "SAMEORIGIN");
         res.setHeader("Access-Control-Allow-Origin", "*");
-        return res.sendFile(resolved);
+
+        try {
+          let htmlContent = fs.readFileSync(resolved, "utf-8");
+          const resizeScript = `<script>
+            (function() {
+              function sendHeight() {
+                try {
+                  var body = document.body, html = document.documentElement;
+                  var h = Math.max(
+                    body ? body.scrollHeight : 0,
+                    body ? body.offsetHeight : 0,
+                    html ? html.clientHeight : 0,
+                    html ? html.scrollHeight : 0,
+                    html ? html.offsetHeight : 0
+                  );
+                  if (h > 100) {
+                    window.parent.postMessage({ type: 'dataproduct-resize', height: h }, '*');
+                  }
+                } catch(e) {}
+              }
+              window.addEventListener('load', sendHeight);
+              window.addEventListener('resize', sendHeight);
+              if (window.ResizeObserver && document.body) {
+                try { new ResizeObserver(sendHeight).observe(document.body); } catch(e) {}
+              }
+              setInterval(sendHeight, 800);
+              sendHeight();
+            })();
+          </script>`;
+          if (htmlContent.includes("</body>")) {
+            htmlContent = htmlContent.replace("</body>", `${resizeScript}</body>`);
+          } else {
+            htmlContent += resizeScript;
+          }
+          return res.send(htmlContent);
+        } catch (e) {
+          return res.sendFile(resolved);
+        }
       }
     }
 
@@ -8059,12 +8096,6 @@ async function startServer() {
           (n.wijkSlug && n.wijkSlug.toLowerCase() === ws) ||
           (n.wijkNaam && n.wijkNaam.toLowerCase() === ws)
       );
-    } else if (includeAll !== "true") {
-      // If no specific wijk is requested and not admin includeAll: only show general news
-      // News articles coupled to a specific wijk/kern are shown exclusively at that wijk/kern
-      newsList = newsList.filter(
-        (n: any) => !n.wijkSlug || n.wijkSlug === "" || n.wijkSlug === "algemeen" || n.wijkSlug === "geen"
-      );
     }
 
     if (category) {
@@ -8366,6 +8397,115 @@ async function startServer() {
       filename: req.file.originalname,
       size: req.file.size
     });
+  });
+
+  // External News ("In de media") Routes
+  app.get("/api/external-news", (req: any, res: any) => {
+    const db = getDb();
+    if (!db.externalNews || db.externalNews.length === 0) {
+      db.externalNews = [
+        {
+          id: "ext-1",
+          title: "Lijst van Andel pleit voor meer betaalbare starterswoningen in Steenwijk",
+          sourceName: "Steenwijker Courant",
+          sourceLogo: "newspaper",
+          url: "https://www.steenwijkercourant.nl",
+          publishedAt: "2026-10-12",
+          summary: "In de raadsvergadering vroeg de fractie aandacht voor de krapte op de woningmarkt voor jongeren."
+        },
+        {
+          id: "ext-2",
+          title: "Debat over verduurzaming gemeentelijke gebouwen verhit gemoederen",
+          sourceName: "De Stentor",
+          sourceLogo: "newspaper",
+          url: "https://www.destentor.nl",
+          publishedAt: "2026-10-08",
+          summary: "Raadslid Sammy van Andel diende een amendement in voor energiebesparing bij sportaccommodaties."
+        },
+        {
+          id: "ext-3",
+          title: "Verkeersveiligheid rondom scholen Giethoorn hoog op de agenda",
+          sourceName: "RTV Oost",
+          sourceLogo: "tv",
+          url: "https://www.rtvoost.nl",
+          publishedAt: "2026-09-28",
+          summary: "Nieuwe verkeersmaatregelen voorgesteld na petitie van verontruste ouders."
+        }
+      ];
+      saveDb(db);
+    }
+    const sorted = [...db.externalNews].sort((a: any, b: any) => {
+      const dA = new Date(a.publishedAt || 0).getTime();
+      const dB = new Date(b.publishedAt || 0).getTime();
+      return dB - dA;
+    });
+    res.json(sorted);
+  });
+
+  app.post("/api/admin/external-news", requireAuth, requireAdmin, (req: any, res: any) => {
+    try {
+      const db = getDb();
+      if (!db.externalNews) db.externalNews = [];
+      const { title, sourceName, sourceLogo, url, publishedAt, summary } = req.body;
+      if (!title || !sourceName || !url) {
+        return res.status(400).json({ error: "Titel, bronnaam en link zijn verplicht." });
+      }
+      const newItem = {
+        id: "ext-" + Date.now() + "-" + Math.random().toString(36).substr(2, 4),
+        title: title.trim(),
+        sourceName: sourceName.trim(),
+        sourceLogo: (sourceLogo || "newspaper").trim(),
+        url: url.trim(),
+        publishedAt: publishedAt || new Date().toISOString().split("T")[0],
+        summary: (summary || "").trim(),
+        createdAt: new Date().toISOString()
+      };
+      db.externalNews.unshift(newItem);
+      saveDb(db);
+      res.json(newItem);
+    } catch (err: any) {
+      console.error("[POST /api/admin/external-news ERROR]", err);
+      res.status(500).json({ error: "Fout bij aanmaken extern nieuws: " + (err?.message || "Serverfout") });
+    }
+  });
+
+  app.put("/api/admin/external-news/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    try {
+      const db = getDb();
+      if (!db.externalNews) db.externalNews = [];
+      const idx = db.externalNews.findIndex((item: any) => item.id === req.params.id);
+      if (idx === -1) return res.status(404).json({ error: "Extern nieuws niet gevonden" });
+
+      const { title, sourceName, sourceLogo, url, publishedAt, summary } = req.body;
+      db.externalNews[idx] = {
+        ...db.externalNews[idx],
+        title: title !== undefined ? title.trim() : db.externalNews[idx].title,
+        sourceName: sourceName !== undefined ? sourceName.trim() : db.externalNews[idx].sourceName,
+        sourceLogo: sourceLogo !== undefined ? sourceLogo.trim() : db.externalNews[idx].sourceLogo,
+        url: url !== undefined ? url.trim() : db.externalNews[idx].url,
+        publishedAt: publishedAt !== undefined ? publishedAt : db.externalNews[idx].publishedAt,
+        summary: summary !== undefined ? summary.trim() : db.externalNews[idx].summary,
+        updatedAt: new Date().toISOString()
+      };
+      saveDb(db);
+      res.json(db.externalNews[idx]);
+    } catch (err: any) {
+      console.error("[PUT /api/admin/external-news ERROR]", err);
+      res.status(500).json({ error: "Fout bij bewerken extern nieuws: " + (err?.message || "Serverfout") });
+    }
+  });
+
+  app.delete("/api/admin/external-news/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    try {
+      const db = getDb();
+      if (!db.externalNews) db.externalNews = [];
+      db.externalNews = db.externalNews.filter((item: any) => item.id !== req.params.id);
+      saveDb(db);
+      res.json({ message: "Extern nieuwsbericht verwijderd" });
+    } catch (err: any) {
+      console.error("[DELETE /api/admin/external-news ERROR]", err);
+      res.status(500).json({ error: "Fout bij verwijderen extern nieuws: " + (err?.message || "Serverfout") });
+    }
   });
 
   // Admin: Upload news article video (.mp4, .webm, .mov)

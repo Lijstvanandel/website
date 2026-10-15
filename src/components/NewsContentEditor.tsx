@@ -76,6 +76,7 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
   const [dpHeight, setDpHeight] = useState<string>("520");
   const [dpType, setDpType] = useState<"map" | "chart" | "data">("map");
   const [dpHoverActivate, setDpHoverActivate] = useState<boolean>(true);
+  const [dpAutoResize, setDpAutoResize] = useState<boolean>(true);
 
   // Video insertion form state
   const [showVideoModal, setShowVideoModal] = useState<boolean>(false);
@@ -318,9 +319,10 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
     const caption = dpCaption.trim() || "Gegenereerd met Python (Pandas/Folium) o.b.v. gemeentelijke data";
     const height = dpHeight.trim() || "520";
     const hoverAttr = dpHoverActivate ? "true" : "false";
+    const autoResizeAttr = dpAutoResize ? "true" : "false";
 
     // Build the structured HTML container with paragraph before and after
-    const dpSnippet = `\n<p class="mb-4 leading-relaxed"></p>\n<div class="data-product-container my-8" data-dataproduct="true" data-src="${finalSrc}" data-title="${title}" data-caption="${caption}" data-height="${height}px" data-hover="${hoverAttr}" data-type="${dpType}">\n  <!-- Interactief dataproduct placeholder (geoptimaliseerd voor Core Web Vitals en SEO) -->\n  <div class="p-5 border border-border/80 rounded-xl bg-card text-center my-4">\n    <h4 class="font-display font-semibold text-foreground text-base">${title}</h4>\n    <p class="text-xs text-muted-foreground mt-1">${caption}</p>\n    <p class="text-xs text-accent mt-2 font-medium">Beweeg muis over dit vlak om interactieve weergave direct te laden</p>\n  </div>\n</div>\n<p class="mb-4 leading-relaxed"></p>\n`;
+    const dpSnippet = `\n<p class="mb-4 leading-relaxed"></p>\n<div class="data-product-container my-8" data-dataproduct="true" data-src="${finalSrc}" data-title="${title}" data-caption="${caption}" data-height="${height}px" data-hover="${hoverAttr}" data-autoresize="${autoResizeAttr}" data-type="${dpType}">\n  <!-- Interactief dataproduct placeholder (geoptimaliseerd voor Core Web Vitals en SEO) -->\n  <div class="p-5 border border-border/80 rounded-xl bg-card text-center my-4">\n    <h4 class="font-display font-semibold text-foreground text-base">${title}</h4>\n    <p class="text-xs text-muted-foreground mt-1">${caption}</p>\n    <p class="text-xs text-accent mt-2 font-medium">Beweeg muis over dit vlak om interactieve weergave direct te laden</p>\n  </div>\n</div>\n<p class="mb-4 leading-relaxed"></p>\n`;
 
     insertAtCursor(dpSnippet);
 
@@ -1134,6 +1136,24 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Verticaal meeschalen optie */}
+              <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 space-y-1">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={dpAutoResize}
+                    onChange={(e) => setDpAutoResize(e.target.checked)}
+                    className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4"
+                  />
+                  <span className="text-xs font-semibold text-foreground">
+                    Verticaal meeschalen met inhoud (voorkom interne scrollbalk)
+                  </span>
+                </label>
+                <p className="text-[11px] text-muted-foreground pl-6">
+                  Schakel in om de hoogte van het nieuwsbericht en iframe automatisch te laten meeschalen met de inhoud van de kaart of grafiek, zodat er geen scrollbalk ontstaat inside het venster.
+                </p>
               </div>
 
               {/* Lazy-load on hover checkbox for SEO & Speed */}

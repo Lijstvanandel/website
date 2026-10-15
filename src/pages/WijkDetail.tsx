@@ -651,10 +651,13 @@ const WijkDetail = () => {
                 >
                   <div className="aspect-[16/10] overflow-hidden bg-muted">
                     <img
-                      src={n.image}
+                      src={n.thumbnailUrl || n.headerUrl || n.image || "/assets/steenwijk-aerial.webp"}
                       alt={n.title}
                       loading="lazy"
                       className="w-full h-full object-cover transition-transform duration-700 hover:scale-105"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = "/assets/steenwijk-aerial.webp";
+                      }}
                     />
                   </div>
                   <div className="p-5 flex flex-col flex-1">
