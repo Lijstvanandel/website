@@ -8082,10 +8082,32 @@ async function startServer() {
       const targetName = targetMember ? targetMember.name.toLowerCase().trim() : "";
 
       newsList = newsList.filter((n: any) => {
-        if (n.authorId && String(n.authorId) === targetId) return true;
-        if (targetName) {
+        // Directe koppeling via authorId aan dit specifieke raadslid
+        if (n.authorId && String(n.authorId).trim() === targetId) {
+          return true;
+        }
+
+        // Ongekoppelde berichten (zonder authorId, of met algemene/partij auteur zoals 'Lijst van Andel' of 'Redactie')
+        // mogen NOOIT bij raadsleden op hun pagina getoond worden.
+        // Alleen een strikte en volledige naamovereenkomst indien authorId historisch ontbrak:
+        if (!n.authorId && targetName) {
           const aName = (n.authorName || n.author || "").toLowerCase().trim();
-          if (aName === targetName || aName.includes(targetName) || targetName.includes(aName)) return true;
+          const genericUnlinkedAuthors = [
+            "",
+            "lijst van andel",
+            "fractie lijst van andel",
+            "fractie",
+            "redactie",
+            "redactie lijst van andel",
+            "algemeen",
+            "beheerder",
+            "admin",
+            "onbekend",
+            "gemeente steenwijkerland",
+          ];
+          if (!genericUnlinkedAuthors.includes(aName) && aName === targetName) {
+            return true;
+          }
         }
         return false;
       });

@@ -86,11 +86,11 @@ export default function FractielidVideos() {
         setVideosLoading(false);
       });
 
-    // 2. Fetch targeted fractielid gekoppelde nieuwsberichten
+    // 2. Fetch targeted fractielid gekoppelde nieuwsberichten (geen fallback of voorbeelddata)
     fetch(`/api/news?memberId=${encodeURIComponent(id || "")}&includeAll=true`)
       .then((res) => (res.ok ? res.json() : []))
       .then((data: NewsItem[]) => {
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           const sorted = [...data].sort(
             (a, b) =>
               new Date(b.date || b.createdAt || 0).getTime() -
@@ -98,34 +98,12 @@ export default function FractielidVideos() {
           );
           setNewsItems(sorted);
         } else {
-          // Fallback matching against all news / static fallback
-          fetch("/api/news?includeAll=true")
-            .then((res) => (res.ok ? res.json() : []))
-            .then((allNews: NewsItem[]) => {
-              if (Array.isArray(allNews)) {
-                const targetMember = defaultMember;
-                const targetName = targetMember ? targetMember.name.toLowerCase().trim() : "";
-                const matched = allNews.filter((n) => {
-                  if (n.authorId && String(n.authorId) === String(id)) return true;
-                  if (targetName) {
-                    const aName = (n.authorName || n.author || "").toLowerCase().trim();
-                    if (aName === targetName || aName.includes(targetName) || targetName.includes(aName)) return true;
-                  }
-                  return false;
-                });
-                const sorted = matched.sort(
-                  (a, b) =>
-                    new Date(b.date || b.createdAt || 0).getTime() -
-                    new Date(a.date || a.createdAt || 0).getTime()
-                );
-                setNewsItems(sorted);
-              }
-            })
-            .catch(() => setNewsItems([]));
+          setNewsItems([]);
         }
       })
       .catch((err) => {
         console.warn("Fout bij ophalen gekoppelde nieuwsberichten:", err);
+        setNewsItems([]);
       })
       .finally(() => {
         setNewsLoading(false);
