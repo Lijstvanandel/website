@@ -21,6 +21,7 @@ import {
 import { NewsItem } from "@/data/news";
 import { NewsCategory } from "@/components/CategoryManager";
 import { ShareDialog } from "@/components/ShareDialog";
+import { PodcastSection } from "@/components/PodcastSection";
 import { useAuth } from "@/context/AuthContext";
 import { FormattedMathText } from "@/utils/mathRenderer";
 
@@ -467,6 +468,9 @@ export default function Nieuws() {
             </div>
           )}
         </div>
+
+        {/* Sectie: Podcasts (Nieuw vak onder 'Lijst van Andel in het nieuws') */}
+        <PodcastSection />
       </div>
 
       <ShareDialog

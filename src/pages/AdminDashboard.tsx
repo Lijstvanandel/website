@@ -92,9 +92,11 @@ import { TreasurerManager } from "@/components/admin/TreasurerManager";
 import { SecretaryManager } from "@/components/admin/SecretaryManager";
 import { ChairmanManager } from "@/components/admin/ChairmanManager";
 import { BestuurManager } from "@/components/admin/BestuurManager";
+import { PodcastManager } from "@/components/admin/PodcastManager";
 import { safeJson } from "@/lib/api";
 import { WIJKEN_EN_KERNEN } from "@/data/wijken";
 import { NewsItem } from "@/data/news";
+import { PodcastItem } from "@/types/podcast";
 import { hoofdstukken } from "@/data/partijprogramma";
 import { DEFAULT_FRACTIELEDEN } from "@/data/fractieleden";
 
@@ -446,23 +448,13 @@ export default function AdminDashboard() {
   const [nIsHidden, setNIsHidden] = useState(false);
   const [editingNewsId, setEditingNewsId] = useState<string | null>(null);
 
-  // Podcast fields
-  const [nIsPodcast, setNIsPodcast] = useState(false);
-  const [nPodcastAudio, setNPodcastAudio] = useState<File | null>(null);
-  const [nPodcastAudioUrl, setNPodcastAudioUrl] = useState("");
-  const [nPodcastTitle, setNPodcastTitle] = useState("");
-  const [nPodcastDuration, setNPodcastDuration] = useState("");
-  const [nPodcastSpotifyUrl, setNPodcastSpotifyUrl] = useState("");
-  const [nPodcastAppleUrl, setNPodcastAppleUrl] = useState("");
-  const [nPodcastViews, setNPodcastViews] = useState(0);
-
   // Video fields
   const [nVideo, setNVideo] = useState<File | null>(null);
   const [nVideoUrl, setNVideoUrl] = useState("");
   const [nVideoTitle, setNVideoTitle] = useState("");
   const [isUploadingVideoToContent, setIsUploadingVideoToContent] = useState(false);
 
-  const [newsMediaTypeFilter, setNewsMediaTypeFilter] = useState<"all" | "podcasts" | "videos" | "articles">("all");
+  const [newsMediaTypeFilter, setNewsMediaTypeFilter] = useState<"all" | "videos">("all");
 
   // -- State for Event --
   const [eTitle, setETitle] = useState("");
@@ -1524,16 +1516,6 @@ export default function AdminDashboard() {
     setNThumb(null);
     setNHeader(null);
 
-    // Podcast fields
-    setNIsPodcast(Boolean(item.isPodcast || item.podcastAudioUrl || item.category?.toLowerCase() === "podcast"));
-    setNPodcastAudio(null);
-    setNPodcastAudioUrl(item.podcastAudioUrl || "");
-    setNPodcastTitle(item.podcastTitle || "");
-    setNPodcastDuration(item.podcastDuration || "");
-    setNPodcastSpotifyUrl(item.podcastSpotifyUrl || "");
-    setNPodcastAppleUrl(item.podcastAppleUrl || "");
-    setNPodcastViews(item.podcastViews || 0);
-
     // Video fields
     setNVideo(null);
     setNVideoUrl(item.videoUrl || "");
@@ -1553,16 +1535,6 @@ export default function AdminDashboard() {
     setNIsHidden(false);
     setNThumb(null);
     setNHeader(null);
-
-    // Podcast fields
-    setNIsPodcast(false);
-    setNPodcastAudio(null);
-    setNPodcastAudioUrl("");
-    setNPodcastTitle("");
-    setNPodcastDuration("");
-    setNPodcastSpotifyUrl("");
-    setNPodcastAppleUrl("");
-    setNPodcastViews(0);
 
     // Video fields
     setNVideo(null);
@@ -1586,7 +1558,7 @@ export default function AdminDashboard() {
 
     const formData = new FormData();
     formData.append("title", nTitle);
-    formData.append("category", nCategory || (nIsPodcast ? "Podcast" : "Algemeen"));
+    formData.append("category", nCategory || "Algemeen");
     formData.append("wijkSlug", nWijkSlug);
     formData.append("wijkNaam", selectedWijkObj ? selectedWijkObj.naam : "");
     formData.append("authorId", nAuthorId);
@@ -1598,16 +1570,6 @@ export default function AdminDashboard() {
     formData.append("isHidden", String(nIsHidden));
     if (nThumb) formData.append("thumbnail", nThumb);
     if (nHeader) formData.append("header", nHeader);
-
-    // Podcast fields
-    formData.append("isPodcast", String(nIsPodcast));
-    if (nPodcastAudio) formData.append("podcastAudio", nPodcastAudio);
-    formData.append("podcastAudioUrl", nPodcastAudioUrl);
-    formData.append("podcastTitle", nPodcastTitle);
-    formData.append("podcastDuration", nPodcastDuration);
-    formData.append("podcastSpotifyUrl", nPodcastSpotifyUrl);
-    formData.append("podcastAppleUrl", nPodcastAppleUrl);
-    formData.append("podcastViews", String(nPodcastViews || 0));
 
     // Video fields
     if (nVideo) formData.append("video", nVideo);
@@ -2094,6 +2056,9 @@ export default function AdminDashboard() {
           </TabsTrigger>
           <TabsTrigger value="videos" className="gap-2 text-xs">
             <Video className="w-4 h-4" /> Video's
+          </TabsTrigger>
+          <TabsTrigger value="podcasts" className="gap-2 text-xs font-semibold text-purple-600 dark:text-purple-400">
+            <Headphones className="w-4 h-4 text-purple-600 dark:text-purple-400" /> Podcasts
           </TabsTrigger>
           <TabsTrigger value="news" className="gap-2 text-xs">
             <Newspaper className="w-4 h-4" /> Nieuws
@@ -3769,6 +3734,11 @@ export default function AdminDashboard() {
           </div>
         </TabsContent>
 
+        {/* PODCASTS (Zelfstandige beheerpagina) */}
+        <TabsContent value="podcasts">
+          <PodcastManager />
+        </TabsContent>
+
         {/* NIEUWS */}
         <TabsContent value="news">
           <div className="grid lg:grid-cols-12 gap-8">
@@ -3995,147 +3965,7 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                {/* 1. Podcast Toevoegen aan Nieuwsbericht */}
-                <div className="p-4 rounded-xl border border-purple-500/30 bg-purple-500/5 dark:bg-purple-950/20 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <label className="text-sm font-semibold flex items-center gap-2 text-foreground">
-                      <Headphones className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                      Podcast aflevering toevoegen
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const next = !nIsPodcast;
-                        setNIsPodcast(next);
-                        if (next && (!nCategory || nCategory === "Algemeen")) {
-                          setNCategory("Podcast");
-                        }
-                      }}
-                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
-                        nIsPodcast ? "bg-purple-600" : "bg-muted"
-                      }`}
-                    >
-                      <span
-                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                          nIsPodcast ? "translate-x-5" : "translate-x-0"
-                        }`}
-                      />
-                    </button>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    Koppel een audiobestand (.mp3, .m4a, .wav) of stream-URL aan dit nieuwsbericht. Bezoekers krijgen een interactieve audiospeler en u kunt als beheerder live het aantal weergaven volgen.
-                  </p>
-
-                  {nIsPodcast && (
-                    <div className="space-y-3 pt-2 border-t border-purple-500/20 animate-in fade-in duration-150">
-                      <div>
-                        <label className="text-xs font-semibold block mb-1 text-foreground">
-                          Podcast aflevering titel (optioneel)
-                        </label>
-                        <Input
-                          type="text"
-                          value={nPodcastTitle}
-                          onChange={(e) => setNPodcastTitle(e.target.value)}
-                          placeholder="bijv. Sammy van Andel over woningbouw en binnenstad (Aflevering 4)"
-                          className="text-xs"
-                        />
-                      </div>
-
-                      <div className="grid sm:grid-cols-2 gap-3">
-                        <div>
-                          <label className="text-xs font-semibold block mb-1 text-foreground">
-                            Upload audiobestand (.mp3, .m4a, .wav)
-                          </label>
-                          <Input
-                            type="file"
-                            accept="audio/*,.mp3,.m4a,.wav,.aac,.ogg"
-                            onChange={(e) => setNPodcastAudio(e.target.files?.[0] || null)}
-                            className="text-xs"
-                          />
-                          {nPodcastAudio && (
-                            <span className="text-[11px] text-purple-600 dark:text-purple-400 font-medium block mt-1">
-                              ✓ Bestand geselecteerd: {nPodcastAudio.name}
-                            </span>
-                          )}
-                        </div>
-
-                        <div>
-                          <label className="text-xs font-semibold block mb-1 text-foreground">
-                            Of directe audio-stream URL
-                          </label>
-                          <Input
-                            type="url"
-                            value={nPodcastAudioUrl}
-                            onChange={(e) => setNPodcastAudioUrl(e.target.value)}
-                            placeholder="https://.../podcast.mp3 of /uploads/podcasts/..."
-                            className="text-xs"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid sm:grid-cols-3 gap-3">
-                        <div>
-                          <label className="text-xs font-semibold block mb-1 text-foreground">
-                            Speelduur (optioneel)
-                          </label>
-                          <Input
-                            type="text"
-                            value={nPodcastDuration}
-                            onChange={(e) => setNPodcastDuration(e.target.value)}
-                            placeholder="bijv. 24:15 of 35 min"
-                            className="text-xs"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-xs font-semibold block mb-1 text-foreground">
-                            Spotify link (optioneel)
-                          </label>
-                          <Input
-                            type="url"
-                            value={nPodcastSpotifyUrl}
-                            onChange={(e) => setNPodcastSpotifyUrl(e.target.value)}
-                            placeholder="https://open.spotify.com/episode/..."
-                            className="text-xs"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-xs font-semibold block mb-1 text-foreground">
-                            Apple Podcasts link (optioneel)
-                          </label>
-                          <Input
-                            type="url"
-                            value={nPodcastAppleUrl}
-                            onChange={(e) => setNPodcastAppleUrl(e.target.value)}
-                            placeholder="https://podcasts.apple.com/..."
-                            className="text-xs"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Weergaventeller voor Beheerder */}
-                      {editingNewsId && (
-                        <div className="p-3 rounded-lg bg-background/80 border border-purple-500/30 flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-2">
-                            <Headphones className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                            <span className="font-semibold text-foreground">
-                              Geregistreerde podcast weergaven:
-                            </span>
-                            <span className="font-mono font-bold text-sm text-purple-700 dark:text-purple-300">
-                              {nPodcastViews}
-                            </span>
-                          </div>
-                          <span className="text-[11px] text-muted-foreground">
-                            Wordt automatisch verhoogd bij elke luisterbeurt
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* 2. Hoofdvideo (.mp4) Bijlage */}
+                {/* Hoofdvideo (.mp4) Bijlage (optioneel) */}
                 <div className="p-4 rounded-xl border border-blue-500/30 bg-blue-500/5 dark:bg-blue-950/20 space-y-3">
                   <div className="flex items-center justify-between">
                     <label className="text-sm font-semibold flex items-center gap-2 text-foreground">
@@ -4320,17 +4150,6 @@ export default function AdminDashboard() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setNewsMediaTypeFilter("podcasts")}
-                  className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
-                    newsMediaTypeFilter === "podcasts"
-                      ? "bg-purple-600 text-white shadow-xs"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <Headphones className="w-3 h-3" /> Podcasts ({news.filter((n) => n.isPodcast || n.podcastAudioUrl).length})
-                </button>
-                <button
-                  type="button"
                   onClick={() => setNewsMediaTypeFilter("videos")}
                   className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
                     newsMediaTypeFilter === "videos"
@@ -4338,13 +4157,20 @@ export default function AdminDashboard() {
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  <Video className="w-3 h-3" /> Video's ({news.filter((n) => Boolean(n.videoUrl)).length})
+                  <Video className="w-3 h-3" /> Met Video ({news.filter((n) => Boolean(n.videoUrl)).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("podcasts")}
+                  className="px-3 py-1.5 rounded-lg transition-all flex items-center gap-1 cursor-pointer text-purple-600 dark:text-purple-400 hover:bg-purple-500/10 border border-purple-500/20"
+                  title="Ga naar het losse Podcast Beheer"
+                >
+                  <Headphones className="w-3 h-3" /> Naar Podcasts Beheer →
                 </button>
               </div>
 
               <div className="space-y-3">
                 {news.filter((n) => {
-                  if (newsMediaTypeFilter === "podcasts") return n.isPodcast || n.podcastAudioUrl || n.category?.toLowerCase() === "podcast";
                   if (newsMediaTypeFilter === "videos") return Boolean(n.videoUrl);
                   return true;
                 }).length === 0 && (
@@ -4354,7 +4180,6 @@ export default function AdminDashboard() {
                 )}
                 {news
                   .filter((n) => {
-                    if (newsMediaTypeFilter === "podcasts") return n.isPodcast || n.podcastAudioUrl || n.category?.toLowerCase() === "podcast";
                     if (newsMediaTypeFilter === "videos") return Boolean(n.videoUrl);
                     return true;
                   })

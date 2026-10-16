@@ -386,6 +386,7 @@ function getDb() {
     }
   }
   if (!db.videos) db.videos = [];
+  if (!db.podcasts) db.podcasts = [];
   if (!db.belafspraken) db.belafspraken = [];
   if (!db.newsletterSubscribers) db.newsletterSubscribers = [];
   if (!db.newsletters) db.newsletters = [];
@@ -512,6 +513,49 @@ function getDb() {
         category: "Politiek",
         wijkSlug: "steenwijk-centrum",
         wijkNaam: "Steenwijk Centrum / Binnenstad"
+      }
+    ];
+    saveDb(db);
+  }
+  if (!db.podcasts || !Array.isArray(db.podcasts) || db.podcasts.length === 0) {
+    db.podcasts = [
+      {
+        id: "pod-1",
+        title: "Stem van Steenwijkerland: Wonen, Buitengebied en Voorrang voor Lokale Starters",
+        description: "In deze aflevering spreekt fractievoorzitter Sammy van Andel over de wooncrisis in Steenwijkerland, het behoud van dorpsvoorzieningen en waarom lokale starters voorrang verdienen op nieuwbouwwoningen.",
+        thumbnailUrl: "/assets/news-kopwijzer.jpg",
+        audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+        category: "Woningbouw & Samenleving",
+        wijkSlug: "steenwijk-centrum",
+        wijkNaam: "Steenwijk Centrum / Binnenstad",
+        duration: "24 min",
+        date: "2026-05-01",
+        author: "Sammy van Andel",
+        authorId: "1",
+        spotifyUrl: "https://open.spotify.com",
+        appleUrl: "https://podcasts.apple.com",
+        views: 184,
+        mediaStats: { starts: 184, p25: 142, p50: 118, p75: 95, p100: 76 },
+        createdAt: "2026-05-01T10:00:00.000Z"
+      },
+      {
+        id: "pod-2",
+        title: "Ondernemen & Dorpskernen: Minder Regels, Meer Ruimte voor de Lokale Markt",
+        description: "Een inspirerend gesprek over het versterken van ondernemerschap in Oldemarkt, Vollenhove en Steenwijk. Waarom dorpshuizen en lokale familiebedrijven de ruggengraat van onze gemeente vormen.",
+        thumbnailUrl: "/assets/markt-steenwijk.jpg",
+        audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+        category: "Lokale Economie",
+        wijkSlug: "oldemarkt",
+        wijkNaam: "Oldemarkt & Omgeving",
+        duration: "19 min",
+        date: "2026-04-20",
+        author: "Lijst van Andel",
+        authorId: "",
+        spotifyUrl: "https://open.spotify.com",
+        appleUrl: "https://podcasts.apple.com",
+        views: 129,
+        mediaStats: { starts: 129, p25: 98, p50: 82, p75: 64, p100: 49 },
+        createdAt: "2026-04-20T14:30:00.000Z"
       }
     ];
     saveDb(db);
@@ -2017,10 +2061,10 @@ const storage = multer.diskStorage({
       subfolder = 'public/uploads/fractieleden';
     } else if (file.fieldname === 'video' || url.includes('/upload-video') || file.originalname.match(/\.(mp4|webm|mov)$/i)) {
       subfolder = 'public/uploads/videos';
-    } else if (file.fieldname === 'audio' || file.fieldname === 'podcastAudio' || url.includes('/upload-audio') || file.originalname.match(/\.(mp3|m4a|wav|aac|ogg)$/i)) {
+    } else if (file.fieldname === 'audio' || file.fieldname === 'podcastAudio' || url.includes('/podcasts') || url.includes('/upload-audio') || file.originalname.match(/\.(mp3|m4a|wav|aac|ogg)$/i)) {
       subfolder = 'public/uploads/podcasts';
-    } else if (file.fieldname === 'thumbnail' && url.includes('/videos')) {
-      subfolder = 'public/uploads/videos';
+    } else if (file.fieldname === 'thumbnail' && (url.includes('/videos') || url.includes('/podcasts'))) {
+      subfolder = url.includes('/podcasts') ? 'public/uploads/podcasts' : 'public/uploads/videos';
     } else if (url.includes('/dataproduct') || file.fieldname === 'dataproduct' || file.originalname.toLowerCase().endsWith('.html') || file.originalname.toLowerCase().endsWith('.htm')) {
       subfolder = 'public/uploads/dataproducts';
     } else if (url.includes('/news') || url.includes('/upload-image') || file.fieldname === 'image') {
@@ -8430,6 +8474,231 @@ async function startServer() {
       filename: req.file.originalname,
       size: req.file.size
     });
+  });
+
+  // --- PODCASTS API (Losgekoppeld van nieuws) ---
+  app.get("/api/podcasts", (req: any, res: any) => {
+    const db = getDb();
+    if (!db.podcasts) db.podcasts = [];
+    const { wijkSlug, category, search } = req.query;
+    let list = [...db.podcasts];
+
+    if (wijkSlug && typeof wijkSlug === "string" && wijkSlug.trim()) {
+      const slugLower = wijkSlug.trim().toLowerCase();
+      list = list.filter((p: any) => (p.wijkSlug || "").toLowerCase() === slugLower);
+    }
+
+    if (category && typeof category === "string" && category.trim() && category !== "all") {
+      const catLower = category.trim().toLowerCase();
+      list = list.filter((p: any) => (p.category || "").toLowerCase() === catLower);
+    }
+
+    if (search && typeof search === "string" && search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter((p: any) =>
+        (p.title || "").toLowerCase().includes(q) ||
+        (p.description || "").toLowerCase().includes(q) ||
+        (p.category || "").toLowerCase().includes(q) ||
+        (p.wijkNaam || "").toLowerCase().includes(q)
+      );
+    }
+
+    list.sort((a: any, b: any) => {
+      const dA = new Date(a.date || a.createdAt || 0).getTime();
+      const dB = new Date(b.date || b.createdAt || 0).getTime();
+      return dB - dA;
+    });
+
+    res.json(list);
+  });
+
+  app.get("/api/podcasts/:id", (req: any, res: any) => {
+    const db = getDb();
+    if (!db.podcasts) db.podcasts = [];
+    const item = db.podcasts.find((p: any) => p.id === req.params.id);
+    if (!item) return res.status(404).json({ error: "Podcast aflevering niet gevonden" });
+    res.json(item);
+  });
+
+  app.post("/api/admin/podcasts", requireAuth, requireAdmin, upload.fields([
+    { name: "thumbnail", maxCount: 1 },
+    { name: "audio", maxCount: 1 }
+  ]), (req: any, res: any) => {
+    try {
+      const db = getDb();
+      if (!db.podcasts) db.podcasts = [];
+      const {
+        title,
+        description,
+        category,
+        wijkSlug,
+        wijkNaam,
+        duration,
+        date,
+        author,
+        authorId,
+        spotifyUrl,
+        appleUrl,
+        thumbnailUrl: bodyThumbnailUrl,
+        audioUrl: bodyAudioUrl
+      } = req.body;
+
+      if (!title || !title.trim()) {
+        return res.status(400).json({ error: "Titel is verplicht" });
+      }
+
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+      const thumbFile = files?.["thumbnail"]?.[0];
+      const audioFile = files?.["audio"]?.[0];
+
+      if (thumbFile) mirrorUploadToDist(path.join("uploads", "podcasts", thumbFile.filename));
+      if (audioFile) mirrorUploadToDist(path.join("uploads", "podcasts", audioFile.filename));
+
+      const finalThumb = thumbFile ? `/uploads/podcasts/${thumbFile.filename}` : (bodyThumbnailUrl || "");
+      const finalAudio = audioFile ? `/uploads/podcasts/${audioFile.filename}` : (bodyAudioUrl || "");
+
+      const newPodcast = {
+        id: "pod-" + Date.now() + "-" + Math.random().toString(36).substr(2, 4),
+        title: title.trim(),
+        description: (description || "").trim(),
+        category: (category || "Algemeen").trim(),
+        wijkSlug: (wijkSlug || "").trim(),
+        wijkNaam: (wijkNaam || "").trim(),
+        thumbnailUrl: finalThumb,
+        audioUrl: finalAudio,
+        duration: (duration || "").trim(),
+        date: date || new Date().toISOString().split("T")[0],
+        author: (author || "Lijst van Andel").trim(),
+        authorId: (authorId || "").trim(),
+        spotifyUrl: (spotifyUrl || "").trim(),
+        appleUrl: (appleUrl || "").trim(),
+        views: 0,
+        mediaStats: { starts: 0, p25: 0, p50: 0, p75: 0, p100: 0 },
+        createdAt: new Date().toISOString()
+      };
+
+      db.podcasts.unshift(newPodcast);
+      saveDb(db);
+      res.json(newPodcast);
+    } catch (err: any) {
+      console.error("[POST /api/admin/podcasts ERROR]", err);
+      res.status(500).json({ error: "Fout bij aanmaken podcast: " + (err?.message || "Serverfout") });
+    }
+  });
+
+  app.put("/api/admin/podcasts/:id", requireAuth, requireAdmin, upload.fields([
+    { name: "thumbnail", maxCount: 1 },
+    { name: "audio", maxCount: 1 }
+  ]), (req: any, res: any) => {
+    try {
+      const db = getDb();
+      if (!db.podcasts) db.podcasts = [];
+      const idx = db.podcasts.findIndex((p: any) => p.id === req.params.id);
+      if (idx === -1) return res.status(404).json({ error: "Podcast aflevering niet gevonden" });
+
+      const current = db.podcasts[idx];
+      const {
+        title,
+        description,
+        category,
+        wijkSlug,
+        wijkNaam,
+        duration,
+        date,
+        author,
+        authorId,
+        spotifyUrl,
+        appleUrl,
+        thumbnailUrl: bodyThumbnailUrl,
+        audioUrl: bodyAudioUrl
+      } = req.body;
+
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+      const thumbFile = files?.["thumbnail"]?.[0];
+      const audioFile = files?.["audio"]?.[0];
+
+      if (thumbFile) mirrorUploadToDist(path.join("uploads", "podcasts", thumbFile.filename));
+      if (audioFile) mirrorUploadToDist(path.join("uploads", "podcasts", audioFile.filename));
+
+      const finalThumb = thumbFile
+        ? `/uploads/podcasts/${thumbFile.filename}`
+        : (bodyThumbnailUrl !== undefined ? bodyThumbnailUrl : current.thumbnailUrl);
+
+      const finalAudio = audioFile
+        ? `/uploads/podcasts/${audioFile.filename}`
+        : (bodyAudioUrl !== undefined ? bodyAudioUrl : current.audioUrl);
+
+      const updated = {
+        ...current,
+        title: title !== undefined ? title.trim() : current.title,
+        description: description !== undefined ? description.trim() : current.description,
+        category: category !== undefined ? category.trim() : current.category,
+        wijkSlug: wijkSlug !== undefined ? wijkSlug.trim() : current.wijkSlug,
+        wijkNaam: wijkNaam !== undefined ? wijkNaam.trim() : current.wijkNaam,
+        thumbnailUrl: finalThumb,
+        audioUrl: finalAudio,
+        duration: duration !== undefined ? duration.trim() : current.duration,
+        date: date !== undefined ? date : current.date,
+        author: author !== undefined ? author.trim() : current.author,
+        authorId: authorId !== undefined ? authorId.trim() : current.authorId,
+        spotifyUrl: spotifyUrl !== undefined ? spotifyUrl.trim() : current.spotifyUrl,
+        appleUrl: appleUrl !== undefined ? appleUrl.trim() : current.appleUrl,
+        updatedAt: new Date().toISOString()
+      };
+
+      db.podcasts[idx] = updated;
+      saveDb(db);
+      res.json(updated);
+    } catch (err: any) {
+      console.error("[PUT /api/admin/podcasts/:id ERROR]", err);
+      res.status(500).json({ error: "Fout bij bijwerken podcast: " + (err?.message || "Serverfout") });
+    }
+  });
+
+  app.delete("/api/admin/podcasts/:id", requireAuth, requireAdmin, (req: any, res: any) => {
+    try {
+      const db = getDb();
+      if (!db.podcasts) db.podcasts = [];
+      const countBefore = db.podcasts.length;
+      db.podcasts = db.podcasts.filter((p: any) => p.id !== req.params.id);
+      if (db.podcasts.length === countBefore) {
+        return res.status(404).json({ error: "Podcast niet gevonden" });
+      }
+      saveDb(db);
+      res.json({ success: true, message: "Podcast aflevering succesvol verwijderd" });
+    } catch (err: any) {
+      console.error("[DELETE /api/admin/podcasts/:id ERROR]", err);
+      res.status(500).json({ error: "Fout bij verwijderen podcast" });
+    }
+  });
+
+  app.post("/api/podcasts/:id/view", (req: any, res: any) => {
+    const db = getDb();
+    if (!db.podcasts) db.podcasts = [];
+    const idx = db.podcasts.findIndex((p: any) => p.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: "Podcast niet gevonden" });
+
+    const current = db.podcasts[idx];
+    const { milestone = "start" } = req.body || {};
+    const stats = current.mediaStats || { starts: 0, p25: 0, p50: 0, p75: 0, p100: 0 };
+
+    if (milestone === "start") {
+      stats.starts = (Number(stats.starts) || 0) + 1;
+      current.views = stats.starts;
+    } else if (milestone === "p25") {
+      stats.p25 = (Number(stats.p25) || 0) + 1;
+    } else if (milestone === "p50") {
+      stats.p50 = (Number(stats.p50) || 0) + 1;
+    } else if (milestone === "p75") {
+      stats.p75 = (Number(stats.p75) || 0) + 1;
+    } else if (milestone === "p100") {
+      stats.p100 = (Number(stats.p100) || 0) + 1;
+    }
+
+    current.mediaStats = stats;
+    db.podcasts[idx] = current;
+    saveDb(db);
+    res.json({ success: true, views: current.views || stats.starts, mediaStats: stats });
   });
 
   // External News ("In de media") Routes
