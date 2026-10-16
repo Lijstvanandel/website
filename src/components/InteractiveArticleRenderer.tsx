@@ -17,26 +17,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export const isInteractiveOrFullHtml = (text: string): boolean => {
-  if (!text || typeof text !== "string") return false;
-  const lower = text.toLowerCase();
-  return (
-    lower.includes("<!doctype") ||
-    lower.includes("<html") ||
-    lower.includes("<head") ||
-    lower.includes("<body") ||
-    lower.includes("<script") ||
-    lower.includes("<canvas") ||
-    lower.includes("<style") ||
-    lower.includes("leaflet") ||
-    lower.includes("chart.js") ||
-    lower.includes('id="map"') ||
-    lower.includes("id='map'") ||
-    lower.includes("sidenote-trigger") ||
-    lower.includes("infocard-trigger")
-  );
-};
-
 interface InteractiveArticleRendererProps {
   content: string;
   className?: string;
@@ -380,7 +360,7 @@ export const InteractiveDataProductEmbed: React.FC<DataProductMeta> = ({
   );
 };
 
-// Unified interactive article renderer matching the structure of 'Windturbine op het Groot verlaat'
+// Main renderer component that parses HTML, handles custom dataproduct blocks and image sizing
 export const InteractiveArticleRenderer: React.FC<InteractiveArticleRendererProps> = ({
   content,
   className = "",
@@ -411,123 +391,6 @@ export const InteractiveArticleRenderer: React.FC<InteractiveArticleRendererProp
 
     return () => {
       cleanupFns.forEach((fn) => fn());
-    };
-  }, [content]);
-
-  // Dynamically load dependencies (Leaflet CSS/JS, Chart.js) and execute article scripts
-  useEffect(() => {
-    if (!articleContainerRef.current) return;
-    const container = articleContainerRef.current;
-
-    const rawLower = (content || "").toLowerCase();
-    const needsLeaflet =
-      rawLower.includes("leaflet") ||
-      Boolean(container.querySelector("#map, .leaflet-map-container, [data-leaflet]"));
-    const needsChart =
-      rawLower.includes("chart.js") ||
-      rawLower.includes("new chart") ||
-      Boolean(container.querySelector("canvas"));
-
-    // Ensure Leaflet core CSS
-    if (needsLeaflet && !document.getElementById("leaflet-core-cdn-css")) {
-      const link = document.createElement("link");
-      link.id = "leaflet-core-cdn-css";
-      link.rel = "stylesheet";
-      link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-      document.head.appendChild(link);
-    }
-
-    const loadScript = (src: string, globalName?: string): Promise<void> => {
-      if (globalName && (window as any)[globalName]) {
-        return Promise.resolve();
-      }
-      return new Promise<void>((resolve) => {
-        const existing = document.querySelector(`script[src="${src}"]`) as HTMLScriptElement;
-        if (existing) {
-          if (globalName && (window as any)[globalName]) {
-            resolve();
-          } else {
-            existing.addEventListener("load", () => resolve(), { once: true });
-            setTimeout(resolve, 300);
-          }
-          return;
-        }
-        const s = document.createElement("script");
-        s.src = src;
-        s.async = false;
-        s.onload = () => resolve();
-        s.onerror = () => resolve();
-        document.head.appendChild(s);
-      });
-    };
-
-    let cancelled = false;
-
-    const runScripts = async () => {
-      if (needsLeaflet) {
-        await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js", "L");
-      }
-      if (needsChart) {
-        await loadScript("https://cdn.jsdelivr.net/npm/chart.js", "Chart");
-      }
-
-      if (cancelled) return;
-
-      // Ensure any #map element has height so Leaflet does not initialize with 0px height
-      const mapEl = container.querySelector("#map") as HTMLElement;
-      if (mapEl) {
-        if (!mapEl.style.height || mapEl.offsetHeight === 0) {
-          mapEl.style.height = "440px";
-        }
-        if (!mapEl.style.width) {
-          mapEl.style.width = "100%";
-        }
-      }
-
-      // Find all script tags in the rendered article container
-      const scripts = Array.from(container.querySelectorAll("script"));
-      for (const oldScript of scripts) {
-        if (cancelled) return;
-        if (oldScript.getAttribute("data-executed") === "true") continue;
-        oldScript.setAttribute("data-executed", "true");
-
-        if (oldScript.src) {
-          await loadScript(oldScript.src);
-        } else if (oldScript.textContent && oldScript.textContent.trim()) {
-          try {
-            const fn = new Function(oldScript.textContent);
-            fn();
-            // Dispatch synthetic events so scripts with DOMContentLoaded or load event listeners execute immediately
-            document.dispatchEvent(new Event("DOMContentLoaded"));
-            window.dispatchEvent(new Event("load"));
-          } catch (err) {
-            console.warn("Fout bij uitvoeren van artikel-script:", err);
-          }
-        }
-      }
-
-      // Refresh any Leaflet maps after initialization
-      setTimeout(() => {
-        if (cancelled) return;
-        if ((window as any).L) {
-          try {
-            const mapNodes = container.querySelectorAll(".leaflet-container");
-            mapNodes.forEach((node) => {
-              const m = (node as any)._leaflet_map;
-              if (m && typeof m.invalidateSize === "function") {
-                m.invalidateSize();
-              }
-            });
-          } catch (e) {}
-        }
-        window.dispatchEvent(new Event("resize"));
-      }, 350);
-    };
-
-    runScripts();
-
-    return () => {
-      cancelled = true;
     };
   }, [content]);
 
@@ -702,7 +565,7 @@ export const InteractiveArticleRenderer: React.FC<InteractiveArticleRendererProp
     }
 
     // 2. Handle close button inside source cards
-    const closeBtn = target.closest(".source-card__close, .token-source__close, .source-close-btn");
+    const closeBtn = target.closest(".source-card__close, .token-source__close");
     if (closeBtn) {
       e.preventDefault();
       e.stopPropagation();
@@ -795,7 +658,7 @@ export const InteractiveArticleRenderer: React.FC<InteractiveArticleRendererProp
           <div
             key={`html-${index}`}
             onClick={handleContentClick}
-            className="prose prose-lg dark:prose-invert max-w-none text-foreground/90 leading-relaxed [&_h2]:font-display [&_h2]:text-2xl [&_h2]:mb-3 [&_h2]:mt-8 [&_h2]:text-foreground [&_h3]:font-display [&_h3]:text-xl [&_h3]:text-accent [&_h3]:mt-6 [&_h3]:mb-2 [&_a]:text-accent [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-accent [&_blockquote]:pl-4 [&_blockquote]:italic [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mb-4 [&_figure]:my-6 [&_figure_img]:cursor-zoom-in [&_figure_img]:rounded-xl [&_figure_img]:shadow-sm [&_figure_img]:border [&_figure_img]:border-border/80 [&_figure_figcaption]:text-xs [&_figure_figcaption]:text-muted-foreground [&_figure_figcaption]:mt-2 [&_figure_figcaption]:italic [&_iframe]:max-w-full [&_iframe]:max-h-[850px] [&_img]:max-w-full [&_img]:h-auto [&_.katex-display]:my-4 [&_.katex]:text-foreground [&_.wide-container]:max-w-4xl [&_.wide-container]:mx-auto [&_.wide-container]:my-8 [&_.wide-container]:p-6 [&_.wide-container]:bg-card [&_.wide-container]:rounded-xl [&_.wide-container]:border [&_.wide-container]:border-border/80 [&_.wide-container]:shadow-xs [&_#map]:min-h-[440px] [&_#map]:w-full [&_#map]:rounded-xl [&_#map]:border [&_#map]:border-border/80 [&_#map]:my-4 [&_.leaflet-container]:z-[1] [&_canvas]:max-w-full [&_.chart-container]:relative [&_.chart-container]:w-full [&_.chart-container]:h-[380px] [&_.key-metrics]:grid [&_.key-metrics]:grid-cols-2 md:[&_.key-metrics]:grid-cols-4 [&_.key-metrics]:gap-4 [&_.key-metrics]:my-6 [&_.metric-card]:p-4 [&_.metric-card]:rounded-xl [&_.metric-card]:border [&_.metric-card]:border-border/80 [&_.metric-card]:bg-card [&_table]:w-full [&_table]:border-collapse [&_table]:my-6 [&_table]:text-sm [&_th]:border [&_th]:border-border [&_th]:p-2.5 [&_th]:bg-muted/50 [&_th]:text-left [&_th]:font-semibold [&_td]:border [&_td]:border-border [&_td]:p-2.5 [&_.token-source__card]:bg-card [&_.token-source__card]:border [&_.token-source__card]:border-border/80 [&_.token-source__card]:border-l-4 [&_.token-source__card]:border-l-accent [&_.token-source__card]:rounded-lg [&_.token-source__card]:p-4 [&_.token-source__card]:my-3 [&_.token-source__card]:shadow-md [&_.token-source__card]:text-sm [&_.sidenote-card]:bg-card [&_.sidenote-card]:border [&_.sidenote-card]:border-border/80 [&_.sidenote-card]:border-l-4 [&_.sidenote-card]:border-l-accent [&_.sidenote-card]:rounded-lg [&_.sidenote-card]:p-4 [&_.sidenote-card]:my-3 [&_.sidenote-card]:shadow-md [&_.sidenote-card]:text-sm [&_.infocard-card]:bg-card [&_.infocard-card]:border [&_.infocard-card]:border-border/80 [&_.infocard-card]:border-l-4 [&_.infocard-card]:border-l-accent [&_.infocard-card]:rounded-lg [&_.infocard-card]:p-4 [&_.infocard-card]:my-3 [&_.infocard-card]:shadow-md [&_.infocard-card]:text-sm"
+            className="prose prose-lg dark:prose-invert max-w-none text-foreground/90 leading-relaxed [&_h2]:font-display [&_h2]:text-2xl [&_h2]:mb-3 [&_h2]:mt-8 [&_h2]:text-foreground [&_h3]:font-display [&_h3]:text-xl [&_h3]:text-accent [&_h3]:mt-6 [&_h3]:mb-2 [&_a]:text-accent [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-accent [&_blockquote]:pl-4 [&_blockquote]:italic [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mb-4 [&_figure]:my-6 [&_figure_img]:cursor-zoom-in [&_figure_img]:rounded-xl [&_figure_img]:shadow-sm [&_figure_img]:border [&_figure_img]:border-border/80 [&_figure_figcaption]:text-xs [&_figure_figcaption]:text-muted-foreground [&_figure_figcaption]:mt-2 [&_figure_figcaption]:italic [&_iframe]:max-w-full [&_iframe]:max-h-[850px] [&_img]:max-w-full [&_img]:h-auto [&_.katex-display]:my-4 [&_.katex]:text-foreground"
             dangerouslySetInnerHTML={{ __html: renderMathInHtml(part.html) }}
           />
         );
