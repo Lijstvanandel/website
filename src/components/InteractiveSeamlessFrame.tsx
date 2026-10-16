@@ -1,30 +1,17 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import {
-  Maximize2,
-  Minimize2,
-  RotateCcw,
-  ExternalLink,
-  Sparkles,
-  ChevronsUpDown,
-  ChevronDown,
-  ChevronUp,
-} from "lucide-react";
+import { Maximize2, Minimize2, RotateCcw, ExternalLink, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface InteractiveSeamlessFrameProps {
   content: string;
   className?: string;
-  defaultExpanded?: boolean;
 }
 
 export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> = ({
   content,
   className = "",
-  defaultExpanded = false,
 }) => {
-  // By default false, so the main page never stretches out indefinitely
-  const [isExpanded, setIsExpanded] = useState<boolean>(defaultExpanded);
-  const [frameHeight, setFrameHeight] = useState<number>(640);
+  const [frameHeight, setFrameHeight] = useState<number>(750);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [reloadKey, setReloadKey] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -36,45 +23,6 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
     if (!content) return "";
 
     const isFullDoc = /<!doctype/i.test(content) || /<html/i.test(content);
-
-    // Global containment styles to prevent both horizontal and vertical stretching
-    const containmentCss = `
-<style id="containment-style">
-  html, body {
-    max-width: 100% !important;
-    overflow-x: hidden !important;
-    box-sizing: border-box !important;
-  }
-  .article-header,
-  .article-content {
-    max-width: 100% !important;
-    padding-left: 8px !important;
-    padding-right: 8px !important;
-    box-sizing: border-box !important;
-  }
-  .wide-container {
-    max-width: 100% !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-    box-sizing: border-box !important;
-  }
-  /* Elegant scrollbar for internal iframe scrolling */
-  ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-  }
-  ::-webkit-scrollbar-track {
-    background: #f1f1eb;
-  }
-  ::-webkit-scrollbar-thumb {
-    background: #c8c8bd;
-    border-radius: 4px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: #a2a295;
-  }
-</style>
-`;
 
     // Injection script that calculates dynamic height and handles triggers
     const helperScript = `
@@ -183,7 +131,7 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
       return;
     }
 
-    var closeBtn = e.target.closest(".source-card__close, .token-source__close, .source-close-btn");
+    var closeBtn = e.target.closest(".source-card__close, .token-source__close");
     if (closeBtn) {
       e.preventDefault();
       var c = closeBtn.closest(".sidenote-card, .infocard-card, .token-source__card");
@@ -216,15 +164,6 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
 
     if (isFullDoc) {
       let doc = content;
-
-      // Inject containment CSS into head
-      if (doc.includes("</head>")) {
-        doc = doc.replace("</head>", `${containmentCss}</head>`);
-      } else if (doc.includes("<head>")) {
-        doc = doc.replace("<head>", `<head>${containmentCss}`);
-      } else {
-        doc = containmentCss + doc;
-      }
 
       // Ensure Leaflet CSS & JS exist if not in document
       if (!doc.includes("leaflet.css")) {
@@ -285,20 +224,14 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
     *, *::before, *::after {
       box-sizing: border-box;
     }
-    html, body {
+    body {
       margin: 0;
       padding: 0;
-      max-width: 100% !important;
-      overflow-x: hidden !important;
       font-family: Georgia, Cambria, "Times New Roman", Times, serif;
       color: #1a1a1a;
       background-color: transparent;
       line-height: 1.75;
       -webkit-font-smoothing: antialiased;
-    }
-    .article-header, .article-content, .wide-container {
-      max-width: 100% !important;
-      box-sizing: border-box !important;
     }
     img {
       max-width: 100%;
@@ -309,7 +242,7 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
       max-width: 100%;
     }
     #map, .leaflet-map-container {
-      min-height: 380px;
+      min-height: 420px;
       width: 100%;
       border-radius: 10px;
       margin: 1.5rem 0;
@@ -379,7 +312,7 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
       color: #555550;
       font-size: 0.8125rem;
     }
-    .source-card__close, .source-close-btn {
+    .source-card__close {
       float: right;
       background: transparent;
       border: none;
@@ -388,23 +321,8 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
       color: #888;
       padding: 0 4px;
     }
-    .source-card__close:hover, .source-close-btn:hover {
+    .source-card__close:hover {
       color: #111;
-    }
-    /* Internal scrollbar */
-    ::-webkit-scrollbar {
-      width: 8px;
-      height: 8px;
-    }
-    ::-webkit-scrollbar-track {
-      background: #f1f1eb;
-    }
-    ::-webkit-scrollbar-thumb {
-      background: #c8c8bd;
-      border-radius: 4px;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-      background: #a2a295;
     }
   </style>
 </head>
@@ -445,49 +363,24 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
     window.open(url, "_blank");
   };
 
-  // Contained height when compact (default, does NOT stretch the page)
-  const compactHeight = 640;
-
   return (
     <>
       <div
         className={`interactive-article-frame-container relative w-full my-6 rounded-2xl border border-border/80 bg-[#f9f9f2] dark:bg-[#121614] shadow-xs overflow-hidden transition-all duration-200 group ${className}`}
       >
         {/* Subtle Interactive Header Ribbon */}
-        <div className="flex items-center justify-between px-4 py-2.5 bg-muted/40 border-b border-border/60 text-xs text-muted-foreground select-none flex-wrap gap-2">
+        <div className="flex items-center justify-between px-4 py-2.5 bg-muted/40 border-b border-border/60 text-xs text-muted-foreground select-none">
           <div className="flex items-center gap-2">
             <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-accent/15 text-accent font-semibold text-[11px] border border-accent/25">
               <Sparkles className="w-3 h-3" />
               Interactief artikel
             </span>
             <span className="hidden sm:inline text-muted-foreground text-[11px]">
-              {isExpanded ? "Volledig uitgeklapt" : "Compact leesvenster (pagina rekt niet uit)"}
+              Met interactieve datavisualisaties, bronkaarten & kaart
             </span>
           </div>
 
-          <div className="flex items-center gap-1 ml-auto">
-            {/* Toggle: Compact (Niet uitrekken) vs Volledig uitklappen */}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setIsExpanded(!isExpanded)}
-              className="h-7 px-2.5 text-[11px] font-semibold border-border hover:bg-secondary text-foreground"
-              title={isExpanded ? "Compact venster tonen (pagina niet uitrekken)" : "Volledige lengte uitklappen"}
-            >
-              {isExpanded ? (
-                <>
-                  <ChevronUp className="w-3.5 h-3.5 mr-1 text-accent" />
-                  <span>Inklappen (Compact)</span>
-                </>
-              ) : (
-                <>
-                  <ChevronDown className="w-3.5 h-3.5 mr-1 text-accent" />
-                  <span>Volledig uitklappen</span>
-                </>
-              )}
-            </Button>
-
+          <div className="flex items-center gap-1">
             <Button
               type="button"
               variant="ghost"
@@ -526,14 +419,8 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
           </div>
         </div>
 
-        {/* Bounded or Expanded Iframe Container */}
-        <div
-          className="relative w-full overflow-hidden transition-all duration-300"
-          style={{
-            height: isExpanded ? `${frameHeight}px` : `${compactHeight}px`,
-            maxHeight: isExpanded ? "none" : `${compactHeight}px`,
-          }}
-        >
+        {/* Seamless Iframe */}
+        <div className="relative w-full overflow-hidden">
           {isLoading && (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/50 backdrop-blur-xs py-16 text-xs text-muted-foreground animate-pulse">
               <span>Interactieve visualisaties en kaart laden...</span>
@@ -545,42 +432,18 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
             ref={frameRef}
             srcDoc={compiledHtml}
             title="Interactief artikel"
-            scrolling={isExpanded ? "no" : "auto"}
+            scrolling="no"
             sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-downloads"
-            className="w-full h-full border-0 block bg-transparent"
+            className="w-full border-0 block bg-transparent"
+            style={{
+              height: `${frameHeight}px`,
+              minHeight: "450px",
+            }}
             onLoad={() => {
               setTimeout(() => setIsLoading(false), 300);
             }}
           />
         </div>
-
-        {/* Bottom Helper Bar when in Compact mode */}
-        {!isExpanded && (
-          <div className="flex items-center justify-between px-4 py-2 bg-muted/60 border-t border-border/70 text-[11px] text-muted-foreground select-none">
-            <span className="flex items-center gap-1.5">
-              <span>↕ Scroll binnen dit venster om de volledige longread en kaarten te lezen</span>
-            </span>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setIsExpanded(true)}
-                className="font-semibold text-accent hover:underline flex items-center gap-1"
-              >
-                <span>Volledig uitklappen</span>
-                <ChevronDown className="w-3 h-3" />
-              </button>
-              <span>•</span>
-              <button
-                type="button"
-                onClick={() => setIsFullscreen(true)}
-                className="hover:text-foreground font-medium flex items-center gap-1"
-              >
-                <Maximize2 className="w-3 h-3" />
-                <span>Volledig scherm</span>
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Fullscreen Overlay Modal */}

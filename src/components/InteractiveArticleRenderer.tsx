@@ -16,6 +16,27 @@ import {
   Database,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { InteractiveSeamlessFrame } from "@/components/InteractiveSeamlessFrame";
+
+export const isInteractiveOrFullHtml = (text: string): boolean => {
+  if (!text || typeof text !== "string") return false;
+  const lower = text.toLowerCase();
+  return (
+    lower.includes("<!doctype") ||
+    lower.includes("<html") ||
+    lower.includes("<head") ||
+    lower.includes("<body") ||
+    lower.includes("<script") ||
+    lower.includes("<canvas") ||
+    lower.includes("<style") ||
+    lower.includes("leaflet") ||
+    lower.includes("chart.js") ||
+    lower.includes('id="map"') ||
+    lower.includes("id='map'") ||
+    lower.includes("sidenote-trigger") ||
+    lower.includes("infocard-trigger")
+  );
+};
 
 interface InteractiveArticleRendererProps {
   content: string;
@@ -360,8 +381,8 @@ export const InteractiveDataProductEmbed: React.FC<DataProductMeta> = ({
   );
 };
 
-// Main renderer component that parses HTML, handles custom dataproduct blocks and image sizing
-export const InteractiveArticleRenderer: React.FC<InteractiveArticleRendererProps> = ({
+// Subcomponent for standard text/markdown/KaTeX articles without interactive scripts or custom canvas/maps
+const StandardArticleRenderer: React.FC<InteractiveArticleRendererProps> = ({
   content,
   className = "",
 }) => {
@@ -732,6 +753,21 @@ export const InteractiveArticleRenderer: React.FC<InteractiveArticleRendererProp
       )}
     </div>
   );
+};
+
+// Main renderer router: automatically detects rich interactive scripts, Leaflet maps, Chart.js graphs,
+// full HTML documents, or custom styles and seamlessly mounts the InteractiveSeamlessFrame.
+export const InteractiveArticleRenderer: React.FC<InteractiveArticleRendererProps> = ({
+  content,
+  className = "",
+}) => {
+  if (!content || !content.trim()) return null;
+
+  if (isInteractiveOrFullHtml(content)) {
+    return <InteractiveSeamlessFrame content={content} className={className} />;
+  }
+
+  return <StandardArticleRenderer content={content} className={className} />;
 };
 
 export default InteractiveArticleRenderer;

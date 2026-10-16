@@ -96,52 +96,6 @@ export function renderMathInHtml(rawContent: string): string {
     }
   });
 
-  // If the user pasted a full HTML document (e.g. from an exported file or De Correspondent longread)
-  if (/<html/i.test(text) || /<!doctype/i.test(text)) {
-    const headStyles: string[] = [];
-    const headScripts: string[] = [];
-    const styleMatches = text.match(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi);
-    if (styleMatches) headStyles.push(...styleMatches);
-    const scriptMatches = text.match(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi);
-    if (scriptMatches) headScripts.push(...scriptMatches);
-
-    const bodyMatch = text.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-    if (bodyMatch && bodyMatch[1]) {
-      text = `${headStyles.join("\n")}\n${bodyMatch[1]}`;
-    } else {
-      text = text
-        .replace(/<!doctype[^>]*>/gi, "")
-        .replace(/<\/?html[^>]*>/gi, "")
-        .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, (head) => {
-          const styles = head.match(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi) || [];
-          const scripts = head.match(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi) || [];
-          return [...styles, ...scripts].join("\n");
-        })
-        .replace(/<\/?body[^>]*>/gi, "");
-    }
-  }
-
-  // Protect <script>...</script> tags so DOMPurify doesn't strip them
-  text = text.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, (match) => {
-    const id = `___SCRIPT_TOKEN_${tokenCounter++}___`;
-    tokens.push({ id, html: match });
-    return id;
-  });
-
-  // Protect <style>...</style> tags
-  text = text.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, (match) => {
-    const id = `___STYLE_TOKEN_${tokenCounter++}___`;
-    tokens.push({ id, html: match });
-    return id;
-  });
-
-  // Protect <link ...> tags
-  text = text.replace(/<link\b[^>]*>/gi, (match) => {
-    const id = `___LINK_TOKEN_${tokenCounter++}___`;
-    tokens.push({ id, html: match });
-    return id;
-  });
-
   // 3. Sanitize HTML via DOMPurify
   const sanitized = DOMPurify.sanitize(text, {
     ADD_TAGS: [
@@ -150,17 +104,6 @@ export function renderMathInHtml(rawContent: string): string {
       "figcaption",
       "video",
       "source",
-      "canvas",
-      "table",
-      "thead",
-      "tbody",
-      "tfoot",
-      "tr",
-      "th",
-      "td",
-      "caption",
-      "colgroup",
-      "col",
       "math",
       "mrow",
       "mi",
@@ -188,11 +131,6 @@ export function renderMathInHtml(rawContent: string): string {
       "use",
     ],
     ADD_ATTR: [
-      "id",
-      "class",
-      "style",
-      "width",
-      "height",
       "target",
       "rel",
       "data-dataproduct",

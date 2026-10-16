@@ -590,32 +590,15 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
       const fullHtml = event.target?.result as string;
       if (!fullHtml) return;
 
-      // Detect if this is an interactive Python Folium map or Plotly chart / HTML dataproduct
-      const isInteractive =
-        fullHtml.includes("leaflet") ||
-        fullHtml.includes("folium") ||
-        fullHtml.includes("plotly") ||
-        fullHtml.includes("bokeh") ||
-        fullHtml.includes("d3") ||
-        fullHtml.includes("<script");
+      // Directly support complete interactive HTML files (including Leaflet, Chart.js, scripts, and styles)
+      let contentToInsert = fullHtml;
 
-      if (isInteractive) {
-        // Automatically open the Data Product Modal pre-filled!
-        setDpFile(file);
-        setDpTitle(file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " "));
-        setDpCaption("Gegenereerd onderzoek o.b.v. Python/Pandas data");
-        setShowDataProductModal(true);
-        toast.info(
-          `'${file.name}' is herkend als een interactief dataproduct / kaart. Configureer de weergave in het venster.`
-        );
-        return;
-      }
-
-      // If it's regular HTML document text:
-      let extractedContent = fullHtml;
-      const bodyMatch = fullHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-      if (bodyMatch && bodyMatch[1]) {
-        extractedContent = bodyMatch[1];
+      // Only strip body wrapper if there is no <head>, <style>, <script>, or interactive elements
+      if (!/<style|<script|<link|<!doctype|<html|<canvas|leaflet|chart/i.test(fullHtml)) {
+        const bodyMatch = fullHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+        if (bodyMatch && bodyMatch[1]) {
+          contentToInsert = bodyMatch[1];
+        }
       }
 
       if (value && value.trim().length > 0) {
