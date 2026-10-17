@@ -32,6 +32,7 @@ import { ShareDialog } from "@/components/ShareDialog";
 import { InteractiveArticleRenderer } from "@/components/InteractiveArticleRenderer";
 import { ChromecastButton } from "@/components/ChromecastButton";
 import { mathToSpeechText, FormattedMathText } from "@/utils/mathRenderer";
+import { GooglePreferredSourceCard } from "@/components/GooglePreferredSourceCard";
 
 export default function NieuwsDetail() {
   const { id } = useParams<{ id: string }>();
@@ -40,6 +41,13 @@ export default function NieuwsDetail() {
   const [loading, setLoading] = useState<boolean>(true);
   const [notFound, setNotFound] = useState<boolean>(false);
   const [shareDialogOpen, setShareDialogOpen] = useState<boolean>(false);
+  const [isGooglePrefVisible, setIsGooglePrefVisible] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("lvandel_google_preferred_source_selected") !== "true";
+    } catch {
+      return true;
+    }
+  });
 
   // Podcast views state & tracking
   const [podcastViews, setPodcastViews] = useState<number>(0);
@@ -979,24 +987,34 @@ export default function NieuwsDetail() {
             <InteractiveArticleRenderer content={article.content || ""} />
           </div>
 
-          {/* Social Share Section - Alleen 'Deel via sociale media' */}
-          <div className="pt-8 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div>
-              <div className="font-display text-lg flex items-center">
-                <Share2 className="w-5 h-5 mr-2.5 text-accent" /> Deel dit bericht
+          {/* Social Share & Voorkeursbron Sectie */}
+          <div className="pt-8 border-t border-border">
+            <div className={`grid grid-cols-1 ${isGooglePrefVisible ? "lg:grid-cols-2" : "grid-cols-1"} gap-5 items-stretch`}>
+              {/* Deel dit bericht kaart */}
+              <div className={`rounded-2xl border border-border bg-card/70 p-5 sm:p-6 shadow-sm flex ${!isGooglePrefVisible ? "flex-col sm:flex-row items-center justify-between" : "flex-col justify-between"} gap-4`}>
+                <div>
+                  <div className="font-display font-bold text-base sm:text-lg flex items-center text-foreground">
+                    <Share2 className="w-5 h-5 mr-2.5 text-accent flex-shrink-0" /> Deel dit bericht
+                  </div>
+                  <p className="text-xs sm:text-sm text-muted-foreground mt-2 leading-relaxed">
+                    Deel dit artikel met dorps- en stadsgenoten via sociale media of directe link.
+                  </p>
+                </div>
+                <div className={!isGooglePrefVisible ? "flex-shrink-0" : "pt-4 mt-2 flex items-center justify-end border-t border-border/50"}>
+                  <button
+                    type="button"
+                    onClick={() => setShareDialogOpen(true)}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-accent text-accent-foreground font-semibold rounded-xl text-xs hover:bg-accent/90 transition-all shadow-xs active:scale-98"
+                  >
+                    <Share2 className="w-3.5 h-3.5" /> Deel via sociale media
+                  </button>
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Deel dit artikel met dorps- en stadsgenoten via sociale media of directe link.
-              </p>
-            </div>
-            <div>
-              <button
-                type="button"
-                onClick={() => setShareDialogOpen(true)}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-accent text-accent-foreground font-semibold rounded-full text-xs hover:bg-accent/90 transition-all shadow-xs"
-              >
-                <Share2 className="w-3.5 h-3.5" /> Deel via sociale media
-              </button>
+
+              {/* Google Voorkeursbron Component (naast 'Deel dit bericht', verdwijnt na aanklikken via LocalStorage) */}
+              {isGooglePrefVisible && (
+                <GooglePreferredSourceCard onStateChange={setIsGooglePrefVisible} />
+              )}
             </div>
           </div>
         </div>
