@@ -83,7 +83,7 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
   const [dpTitle, setDpTitle] = useState<string>("");
   const [dpCaption, setDpCaption] = useState<string>("");
   const [dpHeight, setDpHeight] = useState<string>("520");
-  const [dpType, setDpType] = useState<"map" | "chart" | "data">("map");
+  const [dpType, setDpType] = useState<"map" | "chart" | "article" | "data">("map");
   const [dpHoverActivate, setDpHoverActivate] = useState<boolean>(true);
   const [dpAutoResize, setDpAutoResize] = useState<boolean>(true);
 
@@ -490,9 +490,19 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
       return;
     }
 
-    const title = dpTitle.trim() || (dpType === "map" ? "Interactieve Kaart Steenwijkerland" : "Interactief Dataproduct");
-    const caption = dpCaption.trim() || "Gegenereerd met Python (Pandas/Folium) o.b.v. gemeentelijke data";
-    const height = dpHeight.trim() || "520";
+    const title =
+      dpTitle.trim() ||
+      (dpType === "map"
+        ? "Interactieve Kaart Steenwijkerland"
+        : dpType === "article"
+        ? "Interactief artikel"
+        : "Interactief Dataproduct");
+    const caption =
+      dpCaption.trim() ||
+      (dpType === "article"
+        ? "Met interactieve datavisualisaties, bronkaarten & kaart"
+        : "Gegenereerd met Python (Pandas/Folium) o.b.v. gemeentelijke data");
+    const height = dpHeight.trim() || (dpType === "article" ? "850" : "520");
     const hoverAttr = dpHoverActivate ? "true" : "false";
     const autoResizeAttr = dpAutoResize ? "true" : "false";
 
@@ -590,6 +600,26 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
       const fullHtml = event.target?.result as string;
       if (!fullHtml) return;
 
+      const isFullDocArticle =
+        fullHtml.includes("<html") ||
+        fullHtml.includes("<!DOCTYPE") ||
+        fullHtml.includes("pub-topbar") ||
+        fullHtml.includes("reading-column") ||
+        (fullHtml.includes("<style") && fullHtml.includes("body {"));
+
+      if (isFullDocArticle) {
+        setDpType("article");
+        setDpFile(file);
+        setDpTitle(file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " "));
+        setDpCaption("Met interactieve datavisualisaties, bronkaarten & kaart");
+        setDpHeight("850");
+        setShowDataProductModal(true);
+        toast.info(
+          `'${file.name}' is herkend als een interactief HTML artikel/dossier. Configureer de weergave en klik op Invoegen.`
+        );
+        return;
+      }
+
       // Detect if this is an interactive Python Folium map or Plotly chart / HTML dataproduct
       const isInteractive =
         fullHtml.includes("leaflet") ||
@@ -601,6 +631,7 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
 
       if (isInteractive) {
         // Automatically open the Data Product Modal pre-filled!
+        setDpType("map");
         setDpFile(file);
         setDpTitle(file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " "));
         setDpCaption("Gegenereerd onderzoek o.b.v. Python/Pandas data");
@@ -1311,28 +1342,42 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
                 <label className="text-xs font-semibold block mb-1.5 text-foreground">
                   Soort Dataproduct
                 </label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <button
                     type="button"
                     onClick={() => setDpType("map")}
-                    className={`flex items-center justify-center gap-2 px-3 py-2 text-xs rounded-md border font-medium ${
+                    className={`flex items-center justify-center gap-1.5 px-3 py-2 text-xs rounded-md border font-medium ${
                       dpType === "map"
                         ? "bg-accent text-accent-foreground border-accent font-semibold"
                         : "bg-secondary/40 text-muted-foreground border-border hover:bg-secondary"
                     }`}
                   >
-                    <Map className="w-4 h-4" /> Interactieve Kaart (Folium/Leaflet)
+                    <Map className="w-4 h-4" /> Kaart (Leaflet)
                   </button>
                   <button
                     type="button"
                     onClick={() => setDpType("chart")}
-                    className={`flex items-center justify-center gap-2 px-3 py-2 text-xs rounded-md border font-medium ${
+                    className={`flex items-center justify-center gap-1.5 px-3 py-2 text-xs rounded-md border font-medium ${
                       dpType === "chart"
                         ? "bg-accent text-accent-foreground border-accent font-semibold"
                         : "bg-secondary/40 text-muted-foreground border-border hover:bg-secondary"
                     }`}
                   >
-                    <BarChart3 className="w-4 h-4" /> Grafiek / Analyse (Plotly/Pandas)
+                    <BarChart3 className="w-4 h-4" /> Grafiek (Plotly)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDpType("article");
+                      if (!dpHeight || dpHeight === "520") setDpHeight("850");
+                    }}
+                    className={`flex items-center justify-center gap-1.5 px-3 py-2 text-xs rounded-md border font-medium ${
+                      dpType === "article"
+                        ? "bg-accent text-accent-foreground border-accent font-semibold"
+                        : "bg-secondary/40 text-muted-foreground border-border hover:bg-secondary"
+                    }`}
+                  >
+                    <Sparkles className="w-4 h-4" /> Interactief Artikel (.html)
                   </button>
                 </div>
               </div>

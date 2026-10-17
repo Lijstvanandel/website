@@ -16,6 +16,7 @@ import {
   Database,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { InteractiveSeamlessFrame } from "@/components/InteractiveSeamlessFrame";
 
 interface InteractiveArticleRendererProps {
   content: string;
@@ -29,7 +30,7 @@ interface DataProductMeta {
   height: string;
   activateOnHover: boolean;
   autoResize?: boolean;
-  type?: "map" | "chart" | "data";
+  type?: "map" | "chart" | "data" | "article" | "interactive_article";
 }
 
 // Subcomponent: Individual interactive Folium map / Plotly chart / Pandas dataproduct card
@@ -365,6 +366,21 @@ export const InteractiveArticleRenderer: React.FC<InteractiveArticleRendererProp
   content,
   className = "",
 }) => {
+  // If the article content is a full standalone HTML document (e.g. <!DOCTYPE, <html>, or has its own body styles)
+  const isFullDocument = useMemo(() => {
+    if (!content) return false;
+    return (
+      /<!doctype/i.test(content) ||
+      /<html/i.test(content) ||
+      /<nav class=["'][^"']*pub-topbar/i.test(content) ||
+      (content.includes("<style>") && content.includes("<script") && (content.includes("body {") || content.includes(":root {")))
+    );
+  }, [content]);
+
+  if (isFullDocument) {
+    return <InteractiveSeamlessFrame content={content} className={className} />;
+  }
+
   const [lightboxImage, setLightboxImage] = useState<{ src: string; alt: string; caption?: string } | null>(null);
   const articleContainerRef = useRef<HTMLDivElement>(null);
 
@@ -515,7 +531,31 @@ export const InteractiveArticleRenderer: React.FC<InteractiveArticleRendererProp
     const height = heightMatch ? heightMatch[1] : "520px";
     const activateOnHover = hoverMatch ? hoverMatch[1] !== "false" : true;
     const autoResize = autoResizeMatch ? autoResizeMatch[1] !== "false" : true;
-    const itemType = (typeMatch ? typeMatch[1] : "map") as "map" | "chart" | "data";
+    let itemType = (typeMatch ? typeMatch[1].toLowerCase() : "") as
+      | "map"
+      | "chart"
+      | "data"
+      | "article"
+      | "interactive_article";
+
+    if (!itemType) {
+      if (
+        src.toLowerCase().includes("artikel") ||
+        src.toLowerCase().includes("dossier") ||
+        title.toLowerCase().includes("artikel") ||
+        title.toLowerCase().includes("dossier")
+      ) {
+        itemType = "article";
+      } else if (
+        src.toLowerCase().includes("kaart") ||
+        src.toLowerCase().includes("map") ||
+        src.toLowerCase().includes("folium")
+      ) {
+        itemType = "map";
+      } else {
+        itemType = "chart";
+      }
+    }
 
     if (src) {
       parts.push({
@@ -646,6 +686,17 @@ export const InteractiveArticleRenderer: React.FC<InteractiveArticleRendererProp
     <div ref={articleContainerRef} className={`interactive-article-renderer ${className}`}>
       {parts.map((part, index) => {
         if (part.type === "dataproduct") {
+          if (part.meta.type === "article" || part.meta.type === "interactive_article") {
+            return (
+              <InteractiveSeamlessFrame
+                key={`article-frame-${index}`}
+                src={part.meta.src}
+                title={part.meta.title}
+                caption={part.meta.caption}
+                className={className}
+              />
+            );
+          }
           return (
             <InteractiveDataProductEmbed
               key={`dataproduct-${index}`}

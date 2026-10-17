@@ -3471,6 +3471,7 @@ async function startServer() {
       portalMode,
       municipality: reqMuni
     } = req.body;
+    const isPortalReg = Boolean(portalMode);
     const db = getDb();
     if (db.users.find((u: any) => u.username === username)) {
       return res.status(400).json({ error: "Gebruikersnaam is al in gebruik." });

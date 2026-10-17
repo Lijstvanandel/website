@@ -9,6 +9,24 @@ import {
   sendPerformanceReport,
   ClientPerformancePayload,
 } from "@/utils/performanceMonitor";
+function resolvePageTitle(path: string, currentDocTitle?: string): string {
+  const p = path.split("?")[0].toLowerCase();
+  if (p === "/" || p === "") return "Home | Lijst van Andel";
+  if (p === "/admin") return "Beheer & Administratie | Lijst van Andel";
+  if (p === "/dashboard") return "Mijn Dashboard | Lijst van Andel";
+  if (p === "/fractie" || p === "/raadsleden") return "Fractieleden | Lijst van Andel";
+  if (p.startsWith("/fractie/") && p.includes("video")) return "Fractielid Video's | Lijst van Andel";
+  if (p === "/standpunten") return "Standpunten | Lijst van Andel";
+  if (p === "/agenda") return "Agenda & Activiteiten | Lijst van Andel";
+  if (p === "/nieuws") return "Nieuws & Actualiteiten | Lijst van Andel";
+  if (p === "/wijken-en-kernen" || p === "/wijken") return "Wijken en Kernen | Lijst van Andel";
+  if (p.startsWith("/wijken-en-kernen/")) {
+    const slug = p.replace("/wijken-en-kernen/", "").replace(/-/g, " ");
+    return `${slug.charAt(0).toUpperCase() + slug.slice(1)} (Wijk/Kern) | Lijst van Andel`;
+  }
+  if (p === "/contact") return "Contact | Lijst van Andel";
+  return currentDocTitle || "Lijst van Andel";
+}
 
 export const VisitorPerformanceTracker: React.FC = () => {
   const location = useLocation();
@@ -84,7 +102,7 @@ export const VisitorPerformanceTracker: React.FC = () => {
             sessionId,
             navigationType: "initial_load",
             path: currentPath,
-            pageTitle: document.title || "Lijst van Andel",
+            pageTitle: resolvePageTitle(currentPath, document.title),
             pageLoadDurationMs: Math.max(totalPageLoadMs, maxFetchDuration),
             fetchDurationMs: maxFetchDuration,
             renderDurationMs: Math.max(10, renderDurationMs),
@@ -181,8 +199,12 @@ export const VisitorPerformanceTracker: React.FC = () => {
           if (f.durationMs > maxFetchDuration) maxFetchDuration = f.durationMs;
         }
 
-        const totalElapsedMs = Math.round((performance.now() - navStartTime) * 10) / 10;
-        const finalPageLoadDuration = Math.max(componentRenderDuration, maxFetchDuration, totalElapsedMs);
+        // True user perception duration: time until both component layout and API fetches are completed
+        const effectiveRenderTime = Math.max(5, componentRenderDuration);
+        const finalPageLoadDuration = Math.max(effectiveRenderTime, maxFetchDuration);
+
+        // Accurate page title resolver for SPA transitions
+        const resolvedTitle = resolvePageTitle(toPath, document.title);
 
         const payload: ClientPerformancePayload = {
           visitorId,
@@ -190,13 +212,13 @@ export const VisitorPerformanceTracker: React.FC = () => {
           navigationType: "route_change",
           path: toPath,
           fromPath,
-          pageTitle: document.title || "Lijst van Andel",
-          pageLoadDurationMs: finalPageLoadDuration,
-          fetchDurationMs: maxFetchDuration,
-          renderDurationMs: Math.max(5, componentRenderDuration),
+          pageTitle: resolvedTitle,
+          pageLoadDurationMs: Math.round(finalPageLoadDuration * 10) / 10,
+          fetchDurationMs: Math.round(maxFetchDuration * 10) / 10,
+          renderDurationMs: Math.round(effectiveRenderTime * 10) / 10,
           componentsBuilt: [
-            { name: "Route Resolver", durationMs: Math.min(10, Math.round(componentRenderDuration * 0.2)) },
-            { name: "Doelpagina Opbouw", durationMs: Math.max(8, componentRenderDuration) },
+            { name: "Route Resolver", durationMs: Math.min(10, Math.round(effectiveRenderTime * 0.3)) },
+            { name: "Doelpagina Opbouw", durationMs: Math.max(5, effectiveRenderTime) },
           ],
           fetchCallsCount: fetchEvents.length,
           failedFetchCount: failedFetches.length,

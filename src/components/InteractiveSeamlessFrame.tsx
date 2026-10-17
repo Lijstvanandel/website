@@ -3,14 +3,21 @@ import { Maximize2, Minimize2, RotateCcw, ExternalLink, Sparkles } from "lucide-
 import { Button } from "@/components/ui/button";
 
 interface InteractiveSeamlessFrameProps {
-  content: string;
+  content?: string;
+  src?: string;
+  title?: string;
+  caption?: string;
   className?: string;
 }
 
 export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> = ({
   content,
+  src,
+  title,
+  caption,
   className = "",
 }) => {
+  const [fetchedContent, setFetchedContent] = useState<string>("");
   const [frameHeight, setFrameHeight] = useState<number>(750);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [reloadKey, setReloadKey] = useState<number>(0);
@@ -18,11 +25,51 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
   const frameRef = useRef<HTMLIFrameElement>(null);
   const frameId = useRef<string>(`article-frame-${Math.random().toString(36).substring(2, 9)}`).current;
 
+  // Load content from src if provided
+  useEffect(() => {
+    if (content) {
+      setFetchedContent(content);
+      setIsLoading(false);
+      return;
+    }
+    if (src) {
+      let isMounted = true;
+      setIsLoading(true);
+      const cleanSrc = src.trim();
+      const targetUrl =
+        cleanSrc.startsWith("/uploads/") && (cleanSrc.endsWith(".html") || cleanSrc.endsWith(".htm"))
+          ? `/api/dataproduct/view?file=${encodeURIComponent(cleanSrc)}`
+          : cleanSrc;
+
+      fetch(targetUrl)
+        .then((res) => {
+          if (!res.ok) throw new Error("Fout bij ophalen");
+          return res.text();
+        })
+        .then((html) => {
+          if (isMounted) {
+            setFetchedContent(html);
+            setIsLoading(false);
+          }
+        })
+        .catch((err) => {
+          console.error("Fout bij laden interactief HTML-artikel:", err);
+          if (isMounted) setIsLoading(false);
+        });
+
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [content, src, reloadKey]);
+
+  const activeContent = content || fetchedContent;
+
   // Build the complete HTML document with Leaflet, Chart.js, KaTeX and resize reporter
   const compiledHtml = useMemo(() => {
-    if (!content) return "";
+    if (!activeContent) return "";
 
-    const isFullDoc = /<!doctype/i.test(content) || /<html/i.test(content);
+    const isFullDoc = /<!doctype/i.test(activeContent) || /<html/i.test(activeContent);
 
     // Injection script that calculates dynamic content height safely without feedback loops
     const helperScript = `
@@ -198,7 +245,7 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
 `;
 
     if (isFullDoc) {
-      let doc = content;
+      let doc = activeContent;
 
       // Reset html/body height to auto inside iframe to prevent viewport feedback loops
       doc = doc.replace(
@@ -370,12 +417,12 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
   </style>
 </head>
 <body>
-  ${content}
+  ${activeContent}
   <div id="__frame_sentinel" style="clear:both;display:block;height:1px;width:100%;margin:0;padding:0;border:none;visibility:hidden;pointer-events:none;"></div>
   ${helperScript}
 </body>
 </html>`;
-  }, [content, frameId]);
+  }, [activeContent, frameId]);
 
   const lastSetHeightRef = useRef<number>(0);
 
@@ -424,10 +471,10 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
           <div className="flex items-center gap-2">
             <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-accent/15 text-accent font-semibold text-[11px] border border-accent/25">
               <Sparkles className="w-3 h-3" />
-              Interactief artikel
+              {title || "Interactief artikel"}
             </span>
             <span className="hidden sm:inline text-muted-foreground text-[11px]">
-              Met interactieve datavisualisaties, bronkaarten & kaart
+              {caption || "Met interactieve datavisualisaties, bronkaarten & kaart"}
             </span>
           </div>
 
