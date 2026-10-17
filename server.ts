@@ -83,6 +83,11 @@ import {
   bulkAnonymizeOldBelafsprakenInVault,
   getVaultFilePath,
   saveVaultItem,
+  recordPerformanceLog,
+  getPerformanceLogs,
+  getPerformanceStats,
+  clearPerformanceLogs,
+  exportPerformanceLogs,
 } from "./src/server/sqliteDatabase.js";
 import { executeCouncilSearch } from "./src/server/councilSearchService.js";
 import {
@@ -16340,6 +16345,103 @@ Sitemap: ${baseUrl}/sitemap.xml
       });
     } catch (err: any) {
       res.status(500).json({ error: "Fout bij berekenen audit statistieken: " + err.message });
+    }
+  });
+
+  // ---------------------------------------------------------
+  // 16. Visitor Performance & Page Transition Diagnostics APIs
+  // ---------------------------------------------------------
+
+  // Public endpoint for browser telemetry & client-side transition monitoring
+  app.post("/api/telemetry/performance-logs", (req: any, res: any) => {
+    try {
+      const rawIp = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "—";
+      const ip = String(rawIp).split(",")[0].trim();
+      const userAgent = String(req.headers["user-agent"] || "");
+      const body = req.body;
+
+      if (!body) {
+        return res.status(400).json({ error: "Geen logdata ontvangen" });
+      }
+
+      const items = Array.isArray(body) ? body : [body];
+      let recordedCount = 0;
+
+      for (const item of items) {
+        if (item && typeof item === "object") {
+          recordPerformanceLog({
+            ...item,
+            ip,
+            userAgent,
+          });
+          recordedCount++;
+        }
+      }
+
+      res.status(200).json({ success: true, recordedCount });
+    } catch (err: any) {
+      console.error("[TELEMETRY] Fout bij verwerken prestatielogs:", err);
+      res.status(500).json({ error: "Fout bij opslaan prestatielog" });
+    }
+  });
+
+  // Admin endpoint: retrieve filtered logs & aggregate performance metrics
+  app.get("/api/admin/performance-logs", requireAuth, requireAdmin, (req: any, res: any) => {
+    try {
+      const limit = Math.min(2000, Math.max(1, parseInt(req.query.limit || "500", 10)));
+      const visitorId = req.query.visitorId ? String(req.query.visitorId).trim() : undefined;
+      const status = req.query.status ? String(req.query.status).trim() : undefined;
+      const path = req.query.path ? String(req.query.path).trim() : undefined;
+      const hasErrorsOnly = req.query.hasErrorsOnly === "true" || req.query.hasErrorsOnly === "1";
+
+      const logs = getPerformanceLogs({
+        limit,
+        visitorId,
+        status,
+        path,
+        hasErrorsOnly,
+      });
+
+      const stats = getPerformanceStats();
+
+      res.json({
+        logs,
+        stats,
+        total: logs.length,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "Fout bij ophalen prestatielogs: " + err.message });
+    }
+  });
+
+  // Admin endpoint: Export logs as CSV or JSON file download
+  app.get("/api/admin/performance-logs/export", requireAuth, requireAdmin, (req: any, res: any) => {
+    try {
+      const format = req.query.format === "json" ? "json" : "csv";
+      const dateStr = new Date().toISOString().split("T")[0];
+      const exportedData = exportPerformanceLogs(format);
+
+      if (format === "json") {
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="bezoekers_laadtijden_logs_${dateStr}.json"`);
+      } else {
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="bezoekers_laadtijden_logs_${dateStr}.csv"`);
+      }
+
+      return res.send(exportedData);
+    } catch (err: any) {
+      res.status(500).json({ error: "Fout bij exporteren prestatielogs: " + err.message });
+    }
+  });
+
+  // Admin endpoint: Clear all stored performance logs
+  app.delete("/api/admin/performance-logs", requireAuth, requireAdmin, (req: any, res: any) => {
+    try {
+      const success = clearPerformanceLogs();
+      res.json({ success, message: "Alle bezoeker prestatielogs zijn succesvol gewist." });
+    } catch (err: any) {
+      res.status(500).json({ error: "Fout bij wissen prestatielogs: " + err.message });
     }
   });
 

@@ -76,6 +76,7 @@ const TABLE_DEFINITIONS: { [table: string]: string } = {
   treasurerBudget: "CREATE TABLE IF NOT EXISTS treasurerBudget (id TEXT PRIMARY KEY, data TEXT)",
   treasurerKascommissie: "CREATE TABLE IF NOT EXISTS treasurerKascommissie (id TEXT PRIMARY KEY, data TEXT)",
   treasurerSettings: "CREATE TABLE IF NOT EXISTS treasurerSettings (id TEXT PRIMARY KEY, data TEXT)",
+  performanceLogs: "CREATE TABLE IF NOT EXISTS performanceLogs (id TEXT PRIMARY KEY, visitorId TEXT, path TEXT, status TEXT, data TEXT, timestamp TEXT)",
   kv_store: "CREATE TABLE IF NOT EXISTS kv_store (key TEXT PRIMARY KEY, value TEXT)",
 };
 
@@ -960,6 +961,327 @@ export function clearNavbarSearchLogs(): boolean {
     console.error("[SQLITE] Error clearing navbar search logs:", err);
     return false;
   }
+}
+
+// ---------------------------------------------------------
+// Visitor Performance & Page Load Diagnostics Audit Logging
+// ---------------------------------------------------------
+
+export interface PerformanceLogEntry {
+  id: string;
+  timestamp: string;
+  visitorId: string;
+  sessionId?: string;
+  navigationType: "initial_load" | "route_change" | "reload";
+  path: string;
+  fromPath?: string;
+  pageTitle?: string;
+  pageLoadDurationMs: number;
+  fetchDurationMs: number;
+  renderDurationMs: number;
+  ttfbMs?: number;
+  domInteractiveMs?: number;
+  domContentLoadedMs?: number;
+  componentsBuilt?: { name: string; durationMs: number }[];
+  fetchCallsCount: number;
+  failedFetchCount: number;
+  hasBadGateway: boolean;
+  hasServerError: boolean;
+  hasFetchError: boolean;
+  status: "success" | "warning" | "error" | "bad_gateway";
+  httpStatusCode?: number;
+  errorDetails?: {
+    url: string;
+    status?: number;
+    statusText?: string;
+    durationMs?: number;
+    errorMessage?: string;
+  }[];
+  deviceType?: "desktop" | "mobile" | "tablet";
+  browser?: string;
+  viewportWidth?: number;
+  viewportHeight?: number;
+  ip?: string;
+  userAgent?: string;
+}
+
+/**
+ * Record a visitor performance & page transition log entry
+ */
+export function recordPerformanceLog(
+  entry: Omit<PerformanceLogEntry, "id" | "timestamp"> & { id?: string; timestamp?: string }
+): PerformanceLogEntry | null {
+  if (!sqliteDb) return null;
+  try {
+    const id = entry.id || `perf_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const timestamp = entry.timestamp || new Date().toISOString();
+    const logItem: PerformanceLogEntry = {
+      ...entry,
+      id,
+      timestamp,
+      visitorId: entry.visitorId || "anoniem",
+      path: entry.path || "/",
+      pageLoadDurationMs: Number(entry.pageLoadDurationMs) || 0,
+      fetchDurationMs: Number(entry.fetchDurationMs) || 0,
+      renderDurationMs: Number(entry.renderDurationMs) || 0,
+      fetchCallsCount: Number(entry.fetchCallsCount) || 0,
+      failedFetchCount: Number(entry.failedFetchCount) || 0,
+      hasBadGateway: Boolean(entry.hasBadGateway),
+      hasServerError: Boolean(entry.hasServerError),
+      hasFetchError: Boolean(entry.hasFetchError),
+      status: entry.status || (entry.hasBadGateway ? "bad_gateway" : entry.hasServerError || entry.hasFetchError ? "error" : "success"),
+    };
+
+    sqliteDb.run(
+      "INSERT OR REPLACE INTO performanceLogs (id, visitorId, path, status, data, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
+      [id, logItem.visitorId, logItem.path, logItem.status, JSON.stringify(logItem), timestamp]
+    );
+
+    // Keep table bounded to last 5000 entries to prevent infinite growth
+    sqliteDb.run("DELETE FROM performanceLogs WHERE rowid IN (SELECT rowid FROM performanceLogs ORDER BY rowid DESC LIMIT -1 OFFSET 5000)");
+
+    schedulePersist();
+    return logItem;
+  } catch (err) {
+    console.error("[SQLITE] Error recording performance log:", err);
+    return null;
+  }
+}
+
+/**
+ * Retrieve performance logs with filtering
+ */
+export function getPerformanceLogs(options: {
+  limit?: number;
+  visitorId?: string;
+  status?: string;
+  path?: string;
+  hasErrorsOnly?: boolean;
+} = {}): PerformanceLogEntry[] {
+  if (!sqliteDb) return [];
+  const limit = Math.max(1, Math.min(2000, Number.isInteger(Number(options.limit)) ? Math.floor(Number(options.limit)) : 500));
+
+  try {
+    let query = "SELECT data FROM performanceLogs WHERE 1=1";
+    const params: any[] = [];
+
+    if (options.visitorId) {
+      query += " AND visitorId = ?";
+      params.push(options.visitorId);
+    }
+
+    if (options.status) {
+      query += " AND status = ?";
+      params.push(options.status);
+    }
+
+    if (options.path) {
+      query += " AND path LIKE ?";
+      params.push(`%${options.path}%`);
+    }
+
+    query += " ORDER BY rowid DESC LIMIT " + limit;
+
+    const rows = sqliteDb.exec(query, params);
+    if (rows.length > 0 && rows[0].values) {
+      const logs: PerformanceLogEntry[] = rows[0].values
+        .map((v: any) => {
+          try {
+            return JSON.parse(v[0]);
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean);
+
+      if (options.hasErrorsOnly) {
+        return logs.filter((l) => l.hasBadGateway || l.hasServerError || l.hasFetchError || l.status === "bad_gateway" || l.status === "error");
+      }
+      return logs;
+    }
+  } catch (err) {
+    console.error("[SQLITE] Error retrieving performance logs:", err);
+  }
+  return [];
+}
+
+/**
+ * Get aggregated performance statistics
+ */
+export function getPerformanceStats(): {
+  totalLogs: number;
+  uniqueVisitors: number;
+  avgLoadTimeMs: number;
+  avgFetchDurationMs: number;
+  avgRenderDurationMs: number;
+  badGatewayCount: number;
+  serverErrorCount: number;
+  fetchErrorCount: number;
+  recentSlowestRoutes: { path: string; avgLoadTimeMs: number; count: number }[];
+} {
+  const defaultStats = {
+    totalLogs: 0,
+    uniqueVisitors: 0,
+    avgLoadTimeMs: 0,
+    avgFetchDurationMs: 0,
+    avgRenderDurationMs: 0,
+    badGatewayCount: 0,
+    serverErrorCount: 0,
+    fetchErrorCount: 0,
+    recentSlowestRoutes: [],
+  };
+
+  if (!sqliteDb) return defaultStats;
+
+  try {
+    const allLogs = getPerformanceLogs({ limit: 1500 });
+    if (allLogs.length === 0) return defaultStats;
+
+    const visitorsSet = new Set<string>();
+    let totalLoadTime = 0;
+    let totalFetchTime = 0;
+    let totalRenderTime = 0;
+    let badGateways = 0;
+    let serverErrors = 0;
+    let fetchErrors = 0;
+
+    const routeStatsMap = new Map<string, { totalTime: number; count: number }>();
+
+    for (const log of allLogs) {
+      if (log.visitorId) visitorsSet.add(log.visitorId);
+      totalLoadTime += log.pageLoadDurationMs || 0;
+      totalFetchTime += log.fetchDurationMs || 0;
+      totalRenderTime += log.renderDurationMs || 0;
+      if (log.hasBadGateway || log.status === "bad_gateway") badGateways++;
+      if (log.hasServerError) serverErrors++;
+      if (log.hasFetchError) fetchErrors++;
+
+      const p = log.path || "/";
+      const existing = routeStatsMap.get(p) || { totalTime: 0, count: 0 };
+      existing.totalTime += log.pageLoadDurationMs || 0;
+      existing.count += 1;
+      routeStatsMap.set(p, existing);
+    }
+
+    const slowestRoutes = Array.from(routeStatsMap.entries())
+      .map(([path, data]) => ({
+        path,
+        avgLoadTimeMs: Math.round((data.totalTime / data.count) * 10) / 10,
+        count: data.count,
+      }))
+      .sort((a, b) => b.avgLoadTimeMs - a.avgLoadTimeMs)
+      .slice(0, 5);
+
+    return {
+      totalLogs: allLogs.length,
+      uniqueVisitors: visitorsSet.size,
+      avgLoadTimeMs: Math.round((totalLoadTime / allLogs.length) * 10) / 10,
+      avgFetchDurationMs: Math.round((totalFetchTime / allLogs.length) * 10) / 10,
+      avgRenderDurationMs: Math.round((totalRenderTime / allLogs.length) * 10) / 10,
+      badGatewayCount: badGateways,
+      serverErrorCount: serverErrors,
+      fetchErrorCount: fetchErrors,
+      recentSlowestRoutes: slowestRoutes,
+    };
+  } catch (err) {
+    console.error("[SQLITE] Error calculating performance stats:", err);
+    return defaultStats;
+  }
+}
+
+/**
+ * Clear all performance logs
+ */
+export function clearPerformanceLogs(): boolean {
+  if (!sqliteDb) return false;
+  try {
+    sqliteDb.run("DELETE FROM performanceLogs");
+    schedulePersist();
+    return true;
+  } catch (err) {
+    console.error("[SQLITE] Error clearing performance logs:", err);
+    return false;
+  }
+}
+
+/**
+ * Export performance logs formatted as CSV or JSON
+ */
+export function exportPerformanceLogs(format: "csv" | "json" = "csv"): string {
+  const logs = getPerformanceLogs({ limit: 2000 });
+
+  if (format === "json") {
+    return JSON.stringify(logs, null, 2);
+  }
+
+  // Generate CSV with BOM for full Excel UTF-8 support
+  const headers = [
+    "Tijdstip",
+    "Bezoeker ID",
+    "Sessie ID",
+    "Navigatie Type",
+    "Van Pagina",
+    "Naar Pagina",
+    "Pagina Titel",
+    "Totale Laadtijd (ms)",
+    "Fetch Duur (ms)",
+    "Render Duur (ms)",
+    "TTFB (ms)",
+    "DOM Interactive (ms)",
+    "Status",
+    "HTTP Code",
+    "Bad Gateway (502)",
+    "Server Fout (500)",
+    "Fetch Mislukt",
+    "Aantal Fetches",
+    "Mislukte Fetches",
+    "Foutdetails",
+    "Apparaat",
+    "Browser",
+    "Resolutie",
+  ];
+
+  const escapeCsv = (val: any) => {
+    if (val === undefined || val === null) return '""';
+    const str = String(val).replace(/"/g, '""');
+    return `"${str}"`;
+  };
+
+  const rows = logs.map((log) => {
+    const errorSummary = (log.errorDetails || [])
+      .map((e) => `${e.status ? e.status + " " : ""}${e.url}${e.errorMessage ? " (" + e.errorMessage + ")" : ""}`)
+      .join(" | ");
+
+    const resolution = log.viewportWidth && log.viewportHeight ? `${log.viewportWidth}x${log.viewportHeight}` : "";
+
+    return [
+      escapeCsv(log.timestamp),
+      escapeCsv(log.visitorId),
+      escapeCsv(log.sessionId || ""),
+      escapeCsv(log.navigationType === "initial_load" ? "Eerste laadbeurt" : "Routewissel"),
+      escapeCsv(log.fromPath || "-"),
+      escapeCsv(log.path),
+      escapeCsv(log.pageTitle || ""),
+      escapeCsv(log.pageLoadDurationMs),
+      escapeCsv(log.fetchDurationMs),
+      escapeCsv(log.renderDurationMs),
+      escapeCsv(log.ttfbMs ?? ""),
+      escapeCsv(log.domInteractiveMs ?? ""),
+      escapeCsv(log.status),
+      escapeCsv(log.httpStatusCode ?? (log.hasBadGateway ? 502 : log.hasServerError ? 500 : 200)),
+      escapeCsv(log.hasBadGateway ? "JA (502)" : "Nee"),
+      escapeCsv(log.hasServerError ? "JA (500)" : "Nee"),
+      escapeCsv(log.hasFetchError ? "JA" : "Nee"),
+      escapeCsv(log.fetchCallsCount),
+      escapeCsv(log.failedFetchCount),
+      escapeCsv(errorSummary),
+      escapeCsv(log.deviceType || "desktop"),
+      escapeCsv(log.browser || "Onbekend"),
+      escapeCsv(resolution),
+    ].join(";");
+  });
+
+  return "\uFEFF" + [headers.join(";"), ...rows].join("\r\n");
 }
 
 export function getRawSqliteDb(): any {

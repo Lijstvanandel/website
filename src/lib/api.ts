@@ -43,30 +43,78 @@ export async function fetchWithAuth(
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const response = await fetch(input, {
-    ...init,
-    headers,
-  });
+  const startTime = performance.now();
+  const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input?.url || "";
 
-  if (response.status === 401) {
-    console.warn("[API] 401 Unauthorized ontvangen voor:", typeof input === "string" ? input : "request");
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("auth_token");
-      localStorage.removeItem("auth_user");
-      
-      const currentPath = window.location.pathname;
-      if (currentPath.startsWith("/admin") || currentPath.startsWith("/dashboard")) {
-        toast.error("Uw inlogsessie is verlopen of vernieuwd. Log alstublieft even opnieuw in.");
-        setTimeout(() => {
-          if (window.location.pathname !== "/login") {
-            window.location.href = `/login?redirect=${encodeURIComponent(currentPath)}`;
-          }
-        }, 1200);
+  try {
+    const response = await fetch(input, {
+      ...init,
+      headers,
+    });
+
+    const durationMs = Math.round((performance.now() - startTime) * 10) / 10;
+    const status = response.status;
+    const isBadGateway = status === 502 || status === 503 || status === 504;
+    const isServerError = status >= 500;
+
+    // Dynamically record fetch event without hard dependency cycle
+    try {
+      import("@/utils/performanceMonitor").then((m) => {
+        m.recordFetchEvent({
+          url,
+          method: init?.method || "GET",
+          status,
+          statusText: response.statusText,
+          durationMs,
+          timestamp: Date.now(),
+          ok: response.ok,
+          isBadGateway,
+          isServerError,
+          isFetchError: false,
+        });
+      }).catch(() => {});
+    } catch {}
+
+    if (response.status === 401) {
+      console.warn("[API] 401 Unauthorized ontvangen voor:", typeof input === "string" ? input : "request");
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("auth_token");
+        localStorage.removeItem("auth_user");
+        
+        const currentPath = window.location.pathname;
+        if (currentPath.startsWith("/admin") || currentPath.startsWith("/dashboard")) {
+          toast.error("Uw inlogsessie is verlopen of vernieuwd. Log alstublieft even opnieuw in.");
+          setTimeout(() => {
+            if (window.location.pathname !== "/login") {
+              window.location.href = `/login?redirect=${encodeURIComponent(currentPath)}`;
+            }
+          }, 1200);
+        }
       }
     }
-  }
 
-  return response;
+    return response;
+  } catch (err: unknown) {
+    const durationMs = Math.round((performance.now() - startTime) * 10) / 10;
+    try {
+      import("@/utils/performanceMonitor").then((m) => {
+        m.recordFetchEvent({
+          url,
+          method: init?.method || "GET",
+          status: 0,
+          statusText: "Fetch Failed (Netwerkfout / Bad Gateway)",
+          durationMs,
+          timestamp: Date.now(),
+          ok: false,
+          isBadGateway: true,
+          isServerError: true,
+          isFetchError: true,
+          errorMessage: err instanceof Error ? err.message : "Fetch mislukt",
+        });
+      }).catch(() => {});
+    } catch {}
+    throw err;
+  }
 }
 
 export async function fetchWithRetry(

@@ -24,41 +24,86 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
 
     const isFullDoc = /<!doctype/i.test(content) || /<html/i.test(content);
 
-    // Injection script that calculates dynamic height and handles triggers
+    // Injection script that calculates dynamic content height safely without feedback loops
     const helperScript = `
 <script>
 (function() {
   var frameId = "${frameId}";
-  function sendHeight() {
+  var lastSentHeight = 0;
+  var debounceTimer = null;
+
+  function ensureSentinel() {
+    var sentinel = document.getElementById("__frame_sentinel");
+    if (!sentinel && document.body) {
+      sentinel = document.createElement("div");
+      sentinel.id = "__frame_sentinel";
+      sentinel.style.cssText = "clear:both;display:block;height:1px;width:100%;margin:0;padding:0;border:none;visibility:hidden;pointer-events:none;";
+      document.body.appendChild(sentinel);
+    }
+    return sentinel;
+  }
+
+  function getContentHeight() {
     try {
-      var body = document.body;
-      var html = document.documentElement;
-      var h = Math.max(
-        body ? body.scrollHeight : 0,
-        body ? body.offsetHeight : 0,
-        html ? html.clientHeight : 0,
-        html ? html.scrollHeight : 0,
-        html ? html.offsetHeight : 0
-      );
-      if (h > 60) {
-        window.parent.postMessage({
-          type: "interactive-article-resize",
-          frameId: frameId,
-          height: h
-        }, "*");
+      var sentinel = ensureSentinel();
+      var sentinelHeight = 0;
+      if (sentinel) {
+        sentinelHeight = Math.ceil(sentinel.offsetTop);
       }
+
+      var body = document.body;
+      var maxBottom = 0;
+      if (body) {
+        var children = body.children;
+        for (var i = 0; i < children.length; i++) {
+          var child = children[i];
+          if (child.id === "__frame_sentinel" || child.tagName === "SCRIPT" || child.tagName === "STYLE") continue;
+          var bottom = child.offsetTop + child.offsetHeight;
+          if (bottom > maxBottom) maxBottom = bottom;
+        }
+      }
+
+      var calculated = Math.max(sentinelHeight, maxBottom);
+      if (calculated < 100 && body) {
+        calculated = Math.max(calculated, body.scrollHeight);
+      }
+      return Math.max(calculated, 150);
     } catch(err) {
-      // ignore
+      return document.body ? document.body.scrollHeight : 0;
     }
   }
 
-  window.addEventListener("DOMContentLoaded", sendHeight);
+  function sendHeight() {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(function() {
+      try {
+        var h = getContentHeight();
+        // Only send if height changed by at least 8px to strictly prevent feedback loops
+        if (h > 60 && Math.abs(h - lastSentHeight) >= 8) {
+          lastSentHeight = h;
+          window.parent.postMessage({
+            type: "interactive-article-resize",
+            frameId: frameId,
+            height: h
+          }, "*");
+        }
+      } catch(err) {
+        // ignore
+      }
+    }, 40);
+  }
+
+  window.addEventListener("DOMContentLoaded", function() {
+    ensureSentinel();
+    sendHeight();
+  });
+
   window.addEventListener("load", function() {
+    ensureSentinel();
     sendHeight();
     setTimeout(sendHeight, 200);
     setTimeout(sendHeight, 600);
     setTimeout(sendHeight, 1500);
-    setTimeout(sendHeight, 3000);
 
     // Invalidate Leaflet maps so tiles render with full dimensions
     try {
@@ -74,17 +119,7 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
     window.dispatchEvent(new Event('resize'));
   });
 
-  window.addEventListener("resize", sendHeight);
-
-  if (window.ResizeObserver && document.body) {
-    try {
-      var ro = new ResizeObserver(function() {
-        sendHeight();
-      });
-      ro.observe(document.body);
-    } catch(e) {}
-  }
-
+  // Track DOM mutations (e.g. accordions/cards expanding) without listening to window viewport resize
   if (window.MutationObserver && document.body) {
     try {
       var mo = new MutationObserver(function() {
@@ -165,6 +200,12 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
     if (isFullDoc) {
       let doc = content;
 
+      // Reset html/body height to auto inside iframe to prevent viewport feedback loops
+      doc = doc.replace(
+        /<head[^>]*>/i,
+        `$&<style>html, body { height: auto !important; min-height: 0 !important; }</style>`
+      );
+
       // Ensure Leaflet CSS & JS exist if not in document
       if (!doc.includes("leaflet.css")) {
         doc = doc.replace(
@@ -192,11 +233,13 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
         doc = doc.replace(/<head[^>]*>/i, `$&<base target="_blank">`);
       }
 
-      // Inject helper script before </body> or at end
+      const sentinelHtml = `<div id="__frame_sentinel" style="clear:both;display:block;height:1px;width:100%;margin:0;padding:0;border:none;visibility:hidden;pointer-events:none;"></div>`;
+
+      // Inject sentinel and helper script before </body> or at end
       if (doc.includes("</body>")) {
-        doc = doc.replace("</body>", `${helperScript}</body>`);
+        doc = doc.replace("</body>", `${sentinelHtml}${helperScript}</body>`);
       } else {
-        doc += helperScript;
+        doc += `${sentinelHtml}${helperScript}`;
       }
 
       return doc;
@@ -328,12 +371,15 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
 </head>
 <body>
   ${content}
+  <div id="__frame_sentinel" style="clear:both;display:block;height:1px;width:100%;margin:0;padding:0;border:none;visibility:hidden;pointer-events:none;"></div>
   ${helperScript}
 </body>
 </html>`;
   }, [content, frameId]);
 
-  // Height sync listener
+  const lastSetHeightRef = useRef<number>(0);
+
+  // Height sync listener with strict loop prevention
   useEffect(() => {
     const handleMessage = (e: MessageEvent) => {
       if (
@@ -343,8 +389,13 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
         typeof e.data.height === "number" &&
         e.data.height > 60
       ) {
-        setFrameHeight(e.data.height + 25);
-        setIsLoading(false);
+        const rawH = Math.round(e.data.height);
+        // Only trigger update if change is at least 8px to guarantee zero infinite resize loop
+        if (Math.abs(rawH - lastSetHeightRef.current) >= 8) {
+          lastSetHeightRef.current = rawH;
+          setFrameHeight(rawH + 8);
+          setIsLoading(false);
+        }
       }
     };
 

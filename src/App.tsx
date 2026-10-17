@@ -12,6 +12,7 @@ import { PWARedirectHandler } from "./components/PWARedirectHandler";
 import { PwaUpdatePrompt } from "./components/PwaUpdatePrompt";
 import { ScrollToTop } from "./components/ScrollToTop";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { VisitorPerformanceTracker } from "./components/telemetry/VisitorPerformanceTracker";
 
 // Self-healing lazy loading helper to prevent blank pages or chunk loading failures
 function safeLazy<T extends React.ComponentType<any>>(
@@ -162,6 +163,7 @@ const App = () => {
               <ErrorBoundary>
                 <BrowserRouter>
                   <ScrollToTop />
+                  <VisitorPerformanceTracker />
                   <PWARedirectHandler />
                   <PwaUpdatePrompt />
                   <AppRoutes />

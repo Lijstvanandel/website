@@ -11,6 +11,7 @@ import { getVideoThumbnail } from "@/lib/videoUtils";
 import {
   Users,
   Video,
+  Activity,
   ShieldCheck,
   Check,
   X,
@@ -93,6 +94,7 @@ import { SecretaryManager } from "@/components/admin/SecretaryManager";
 import { ChairmanManager } from "@/components/admin/ChairmanManager";
 import { BestuurManager } from "@/components/admin/BestuurManager";
 import { PodcastManager } from "@/components/admin/PodcastManager";
+import { PerformanceLogsManager } from "@/components/admin/PerformanceLogsManager";
 import { safeJson } from "@/lib/api";
 import { WIJKEN_EN_KERNEN } from "@/data/wijken";
 import { NewsItem } from "@/data/news";
@@ -2098,6 +2100,9 @@ export default function AdminDashboard() {
           </TabsTrigger>
           <TabsTrigger value="waterschap" className="gap-2 text-xs text-blue-600 dark:text-blue-400">
             <Waves className="w-4 h-4" /> Waterschap Sync
+          </TabsTrigger>
+          <TabsTrigger value="performance" className="gap-2 text-xs font-semibold text-rose-600 dark:text-rose-400">
+            <Activity className="w-4 h-4 text-rose-500" /> Laadtijden &amp; Diagnostiek
           </TabsTrigger>
           <TabsTrigger value="system" className="gap-2 text-xs text-accent">
             <Server className="w-4 h-4" /> Systeem & Updates
@@ -5695,6 +5700,11 @@ export default function AdminDashboard() {
         {/* WATERSCHAP DRENTS OVERIJSSELSE DELTA SCRAPER */}
         <TabsContent value="waterschap">
           <WaterschapManager token={token || effectiveToken} />
+        </TabsContent>
+
+        {/* BEZOEKERS LAADTIJDEN & DIAGNOSTIEK */}
+        <TabsContent value="performance">
+          <PerformanceLogsManager />
         </TabsContent>
 
         {/* SYSTEEM, CACHE & GITHUB UPDATES */}
