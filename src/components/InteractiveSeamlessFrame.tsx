@@ -10,6 +10,30 @@ interface InteractiveSeamlessFrameProps {
   className?: string;
 }
 
+/**
+ * Cleans raw LaTeX tokens and accidental duplicate sections in standalone HTML dossiers
+ */
+function sanitizeDossierHtml(rawHtml: string): string {
+  let cleaned = rawHtml;
+
+  // 1. Remove accidental duplicate Section 1 block if present (e.g. in Eesveen dossier where Section 1 was pasted twice with raw LaTeX)
+  const duplicateBlockPattern =
+    /<p>\s*Het grote misverstand in het maatschappelijke debat over gaswinning[\s\S]*?\$\\text\{M\}_\\text\{L\}\s*=\s*3,0\$[\s\S]*?157 miljoen \$\\text\{Nm\}\^3\$ aardgas herbergt\s*<a[^>]*>\[6\]<\/a>\.\s*<\/p>/i;
+  if (duplicateBlockPattern.test(cleaned)) {
+    cleaned = cleaned.replace(duplicateBlockPattern, "");
+  }
+
+  // 2. Replace raw inline LaTeX tokens with clean HTML formatting
+  cleaned = cleaned
+    .replace(/\$\\text\{M\}_\\text\{L\}\s*=\s*([0-9,.]+)\$/g, '<span class="math-var">M</span><sub>L</sub> = $1')
+    .replace(/\$\\text\{M\}_\\text\{L\}\$/g, '<span class="math-var">M</span><sub>L</sub>')
+    .replace(/\$\\text\{Nm\}\^3\$/g, '<span class="math-unit">Nm<sup>3</sup></span>')
+    .replace(/\$\\text\{CO\}_2\$/g, '<span class="math-unit">CO<sub>2</sub></span>')
+    .replace(/\$\\text\{NO\}_\\text\{x\}\$/g, '<span class="math-unit">NO<sub>x</sub></span>');
+
+  return cleaned;
+}
+
 export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> = ({
   content,
   src,
@@ -18,7 +42,7 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
   className = "",
 }) => {
   const [fetchedContent, setFetchedContent] = useState<string>("");
-  const [frameHeight, setFrameHeight] = useState<number>(750);
+  const [frameHeight, setFrameHeight] = useState<number>(850);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [reloadKey, setReloadKey] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -65,17 +89,18 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
 
   const activeContent = content || fetchedContent;
 
-  // Build the complete HTML document with Leaflet, Chart.js, KaTeX and resize reporter
-  const compiledHtml = useMemo(() => {
+  // Build the complete HTML document with Leaflet, Chart.js, KaTeX, anchor navigation and resize reporter
+  const buildDocumentHtml = (standaloneMode: boolean) => {
     if (!activeContent) return "";
 
-    const isFullDoc = /<!doctype/i.test(activeContent) || /<html/i.test(activeContent);
+    const sanitizedContent = sanitizeDossierHtml(activeContent);
+    const isFullDoc = /<!doctype/i.test(sanitizedContent) || /<html/i.test(sanitizedContent);
 
-    // Injection script that calculates dynamic content height safely without feedback loops
     const helperScript = `
 <script>
 (function() {
   var frameId = "${frameId}";
+  var isStandalone = ${standaloneMode ? "true" : "false"};
   var lastSentHeight = 0;
   var debounceTimer = null;
 
@@ -114,7 +139,8 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
       if (calculated < 100 && body) {
         calculated = Math.max(calculated, body.scrollHeight);
       }
-      return Math.max(calculated, 150);
+      // Add 32px bottom breathing room
+      return Math.max(calculated + 32, 150);
     } catch(err) {
       return document.body ? document.body.scrollHeight : 0;
     }
@@ -125,8 +151,7 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
     debounceTimer = setTimeout(function() {
       try {
         var h = getContentHeight();
-        // Only send if height changed by at least 8px to strictly prevent feedback loops
-        if (h > 60 && Math.abs(h - lastSentHeight) >= 8) {
+        if (h > 60 && Math.abs(h - lastSentHeight) >= 6) {
           lastSentHeight = h;
           window.parent.postMessage({
             type: "interactive-article-resize",
@@ -134,25 +159,44 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
             height: h
           }, "*");
         }
-      } catch(err) {
-        // ignore
+      } catch(err) {}
+    }, 35);
+  }
+
+  // Hook into custom dossier notifyParentResize if defined
+  window.notifyParentResize = sendHeight;
+
+  function fixLinks() {
+    var links = document.querySelectorAll("a[href]");
+    for (var i = 0; i < links.length; i++) {
+      var a = links[i];
+      var rawHref = a.getAttribute("href") || "";
+      if (rawHref.charAt(0) === "#") {
+        // Internal anchor link: never open in new tab
+        a.removeAttribute("target");
+      } else if (/^https?:\\/\\//i.test(rawHref)) {
+        a.setAttribute("target", "_blank");
+        a.setAttribute("rel", "noopener noreferrer");
       }
-    }, 40);
+    }
   }
 
   window.addEventListener("DOMContentLoaded", function() {
     ensureSentinel();
+    fixLinks();
+    window.notifyParentResize = sendHeight;
     sendHeight();
   });
 
   window.addEventListener("load", function() {
     ensureSentinel();
+    fixLinks();
+    window.notifyParentResize = sendHeight;
     sendHeight();
-    setTimeout(sendHeight, 200);
-    setTimeout(sendHeight, 600);
-    setTimeout(sendHeight, 1500);
+    setTimeout(sendHeight, 150);
+    setTimeout(sendHeight, 500);
+    setTimeout(sendHeight, 1200);
 
-    // Invalidate Leaflet maps so tiles render with full dimensions
     try {
       if (window.L) {
         var mapElements = document.querySelectorAll('.leaflet-container');
@@ -166,18 +210,57 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
     window.dispatchEvent(new Event('resize'));
   });
 
-  // Track DOM mutations (e.g. accordions/cards expanding) without listening to window viewport resize
   if (window.MutationObserver && document.body) {
     try {
       var mo = new MutationObserver(function() {
+        fixLinks();
         sendHeight();
       });
-      mo.observe(document.body, { childList: true, subtree: true, attributes: true });
+      mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "hidden", "style", "aria-expanded"] });
     } catch(e) {}
   }
 
-  // Universal click & keyboard handler for De Correspondent source cards & sidenotes
+  // Handle clicks on internal #anchor links and source cards
   document.addEventListener("click", function(e) {
+    // 1. Handle internal #hash navigation links (e.g. .nav-link, .pub-brand, etc.)
+    var anchor = e.target.closest("a[href^='#']");
+    if (anchor) {
+      var hash = anchor.getAttribute("href");
+      var isRefTrigger =
+        anchor.classList.contains("ref-tag") ||
+        anchor.classList.contains("sidenote-trigger") ||
+        anchor.classList.contains("infocard-trigger") ||
+        anchor.classList.contains("token-source__trigger") ||
+        anchor.hasAttribute("aria-controls") ||
+        anchor.getAttribute("data-source-trigger") === "true";
+
+      if (isRefTrigger) {
+        // Inline reference tag is handled either by the dossier's own setupInlineRefCards() or by the universal handler below
+        setTimeout(sendHeight, 50);
+        return;
+      }
+
+      if (hash && hash.length > 1) {
+        e.preventDefault();
+        var targetId = hash.substring(1);
+        var targetEl = targetId === "top" ? document.body : (document.getElementById(targetId) || document.querySelector(hash));
+        if (targetEl) {
+          if (isStandalone) {
+            targetEl.scrollIntoView({ behavior: "smooth", block: "start" });
+          } else {
+            var rect = targetEl.getBoundingClientRect();
+            window.parent.postMessage({
+              type: "interactive-article-scroll-to",
+              frameId: frameId,
+              targetTop: rect.top
+            }, "*");
+          }
+        }
+        return;
+      }
+    }
+
+    // 2. Universal click handler for De Correspondent source cards & sidenotes (when not managed by custom script)
     var trigger = e.target.closest(".sidenote-trigger, .infocard-trigger, .token-source__trigger, [data-source-trigger='true']");
     if (trigger) {
       e.preventDefault();
@@ -228,7 +311,11 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
         }
         sendHeight();
       }
+      return;
     }
+
+    // Any other interactive click (tabs, geo-layers, factchecks, accordions)
+    setTimeout(sendHeight, 60);
   });
 
   document.addEventListener("keydown", function(e) {
@@ -244,14 +331,45 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
 </script>
 `;
 
-    if (isFullDoc) {
-      let doc = activeContent;
+    // Styles injected into embedded mode to prevent duplicate H1 title and ensure clean responsive fit
+    const embeddedOverrideStyle = `
+<style>
+  html, body {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow-x: hidden;
+  }
+  .sidenote-card[hidden] {
+    display: none !important;
+  }
+  ${
+    !standaloneMode
+      ? `
+  /* Hide duplicate H1 title when already displayed by parent NieuwsDetail page */
+  header.article-header {
+    padding-top: 1.5rem !important;
+  }
+  header.article-header h1.article-title {
+    display: none !important;
+  }
+  /* Allow sticky topbar inside non-scrolling iframe to move smoothly with parent scroll */
+  .pub-topbar {
+    position: relative !important;
+    top: 0 !important;
+    z-index: 1000 !important;
+    will-change: transform;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+  }
+  `
+      : ""
+  }
+</style>`;
 
-      // Reset html/body height to auto inside iframe to prevent viewport feedback loops
-      doc = doc.replace(
-        /<head[^>]*>/i,
-        `$&<style>html, body { height: auto !important; min-height: 0 !important; }</style>`
-      );
+    if (isFullDoc) {
+      let doc = sanitizedContent;
+
+      // Inject override styles into <head>
+      doc = doc.replace(/<head[^>]*>/i, `$&${embeddedOverrideStyle}`);
 
       // Ensure Leaflet CSS & JS exist if not in document
       if (!doc.includes("leaflet.css")) {
@@ -275,11 +393,6 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
         );
       }
 
-      // Ensure links open in new tab
-      if (!doc.includes("<base ")) {
-        doc = doc.replace(/<head[^>]*>/i, `$&<base target="_blank">`);
-      }
-
       const sentinelHtml = `<div id="__frame_sentinel" style="clear:both;display:block;height:1px;width:100%;margin:0;padding:0;border:none;visibility:hidden;pointer-events:none;"></div>`;
 
       // Inject sentinel and helper script before </body> or at end
@@ -298,12 +411,12 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <base target="_blank">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  ${embeddedOverrideStyle}
   <style>
     :root {
       --bg-color: #f9f9f2;
@@ -417,32 +530,45 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
   </style>
 </head>
 <body>
-  ${activeContent}
+  ${sanitizedContent}
   <div id="__frame_sentinel" style="clear:both;display:block;height:1px;width:100%;margin:0;padding:0;border:none;visibility:hidden;pointer-events:none;"></div>
   ${helperScript}
 </body>
 </html>`;
-  }, [activeContent, frameId]);
+  };
+
+  const compiledHtml = useMemo(() => buildDocumentHtml(false), [activeContent, frameId]);
+  const standaloneHtml = useMemo(() => buildDocumentHtml(true), [activeContent, frameId]);
 
   const lastSetHeightRef = useRef<number>(0);
 
-  // Height sync listener with strict loop prevention
+  // Height sync & smooth anchor scroll listener
   useEffect(() => {
     const handleMessage = (e: MessageEvent) => {
+      if (!e.data || e.data.frameId !== frameId) return;
+
       if (
-        e.data &&
         e.data.type === "interactive-article-resize" &&
-        e.data.frameId === frameId &&
         typeof e.data.height === "number" &&
         e.data.height > 60
       ) {
         const rawH = Math.round(e.data.height);
-        // Only trigger update if change is at least 8px to guarantee zero infinite resize loop
-        if (Math.abs(rawH - lastSetHeightRef.current) >= 8) {
+        if (Math.abs(rawH - lastSetHeightRef.current) >= 6) {
           lastSetHeightRef.current = rawH;
-          setFrameHeight(rawH + 8);
+          setFrameHeight(rawH);
           setIsLoading(false);
         }
+      } else if (
+        e.data.type === "interactive-article-scroll-to" &&
+        typeof e.data.targetTop === "number" &&
+        frameRef.current
+      ) {
+        const frameRect = frameRef.current.getBoundingClientRect();
+        const absoluteTargetY = window.scrollY + frameRect.top + e.data.targetTop - 135;
+        window.scrollTo({
+          top: Math.max(0, absoluteTargetY),
+          behavior: "smooth",
+        });
       }
     };
 
@@ -450,16 +576,90 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
     return () => window.removeEventListener("message", handleMessage);
   }, [frameId]);
 
+  // Synchronize parent window scroll with iframe's sticky .pub-topbar and #scrollProgress bar
+  useEffect(() => {
+    const syncParentScrollToIframe = () => {
+      const iframe = frameRef.current;
+      if (!iframe) return;
+      try {
+        const doc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (!doc) return;
+
+        const rect = iframe.getBoundingClientRect();
+        const viewportH = window.innerHeight;
+        const siteHeaderOffset = 72; // Height of main sticky site header
+
+        // 1. Update #scrollProgress bar inside the dossier
+        const progressEl = doc.getElementById("scrollProgress");
+        if (progressEl) {
+          const totalScrollable = Math.max(1, rect.height - viewportH * 0.6);
+          const scrolledAmount = siteHeaderOffset - rect.top;
+          const pct = Math.min(100, Math.max(0, (scrolledAmount / totalScrollable) * 100));
+          progressEl.style.width = `${pct}%`;
+        }
+
+        // 2. Keep .pub-topbar sticky at the top of the viewport while scrolling through the dossier
+        const topbar = doc.querySelector(".pub-topbar") as HTMLElement | null;
+        if (topbar) {
+          const topbarH = topbar.offsetHeight || 56;
+          if (rect.top < siteHeaderOffset && rect.bottom > siteHeaderOffset + topbarH + 120) {
+            const translateY = Math.min(rect.height - topbarH - 40, siteHeaderOffset - rect.top);
+            topbar.style.transform = `translateY(${Math.max(0, translateY)}px)`;
+          } else {
+            topbar.style.transform = "translateY(0px)";
+          }
+        }
+
+        // 3. Highlight active chapter link in .pub-topbar
+        const navLinks = doc.querySelectorAll(".nav-links .nav-link[href^='#']");
+        if (navLinks.length > 0) {
+          let activeHash = "";
+          navLinks.forEach((link) => {
+            const hash = link.getAttribute("href");
+            if (hash && hash.length > 1) {
+              const sec = doc.querySelector(hash);
+              if (sec) {
+                const secRect = sec.getBoundingClientRect();
+                // secRect.top is relative to the iframe top; actual viewport Y is rect.top + secRect.top
+                if (rect.top + secRect.top <= siteHeaderOffset + 180) {
+                  activeHash = hash;
+                }
+              }
+            }
+          });
+          navLinks.forEach((link) => {
+            const isMatch = activeHash && link.getAttribute("href") === activeHash;
+            link.classList.toggle("active", Boolean(isMatch));
+          });
+        }
+      } catch {
+        // Ignore cross-origin if any
+      }
+    };
+
+    window.addEventListener("scroll", syncParentScrollToIframe, { passive: true });
+    window.addEventListener("resize", syncParentScrollToIframe, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", syncParentScrollToIframe);
+      window.removeEventListener("resize", syncParentScrollToIframe);
+    };
+  }, []);
+
   const handleReload = () => {
+    lastSetHeightRef.current = 0;
     setReloadKey((k) => k + 1);
     setIsLoading(true);
   };
 
   const handleOpenInNewTab = () => {
-    const blob = new Blob([compiledHtml], { type: "text/html" });
+    const blob = new Blob([standaloneHtml], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     window.open(url, "_blank");
   };
+
+  // Keep badge concise so long article titles don't wrap across 3 lines in the toolbar
+  const badgeLabel =
+    title && title.length <= 42 ? title : "Interactief Onderzoeksdossier";
 
   return (
     <>
@@ -467,18 +667,18 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
         className={`interactive-article-frame-container relative w-full my-6 rounded-2xl border border-border/80 bg-[#f9f9f2] dark:bg-[#121614] shadow-xs overflow-hidden transition-all duration-200 group ${className}`}
       >
         {/* Subtle Interactive Header Ribbon */}
-        <div className="flex items-center justify-between px-4 py-2.5 bg-muted/40 border-b border-border/60 text-xs text-muted-foreground select-none">
-          <div className="flex items-center gap-2">
-            <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-accent/15 text-accent font-semibold text-[11px] border border-accent/25">
-              <Sparkles className="w-3 h-3" />
-              {title || "Interactief artikel"}
+        <div className="flex items-center justify-between px-4 py-2.5 bg-muted/40 border-b border-border/60 text-xs text-muted-foreground select-none gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-accent/15 text-accent font-semibold text-[11px] border border-accent/25 shrink-0">
+              <Sparkles className="w-3 h-3 shrink-0" />
+              <span className="truncate max-w-[220px] sm:max-w-[320px]">{badgeLabel}</span>
             </span>
-            <span className="hidden sm:inline text-muted-foreground text-[11px]">
-              {caption || "Met interactieve datavisualisaties, bronkaarten & kaart"}
+            <span className="hidden md:inline text-muted-foreground text-[11px] truncate">
+              {caption || "Met interactieve datavisualisaties, bronkaarten & verdieping"}
             </span>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
             <Button
               type="button"
               variant="ghost"
@@ -488,7 +688,7 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
               title="Herlaad visualisaties en animaties"
             >
               <RotateCcw className="w-3 h-3 mr-1" />
-              <span className="hidden md:inline">Herladen</span>
+              <span className="hidden sm:inline">Herladen</span>
             </Button>
 
             <Button
@@ -500,7 +700,7 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
               title="Open volledig artikel in nieuw venster"
             >
               <ExternalLink className="w-3 h-3 mr-1" />
-              <span className="hidden md:inline">Nieuw tabblad</span>
+              <span className="hidden sm:inline">Nieuw tabblad</span>
             </Button>
 
             <Button
@@ -521,7 +721,7 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
         <div className="relative w-full overflow-hidden">
           {isLoading && (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/50 backdrop-blur-xs py-16 text-xs text-muted-foreground animate-pulse">
-              <span>Interactieve visualisaties en kaart laden...</span>
+              <span>Interactieve visualisaties en dossier laden...</span>
             </div>
           )}
 
@@ -529,7 +729,7 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
             key={reloadKey}
             ref={frameRef}
             srcDoc={compiledHtml}
-            title="Interactief artikel"
+            title={title || "Interactief artikel"}
             scrolling="no"
             sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-downloads"
             className="w-full border-0 block bg-transparent"
@@ -538,7 +738,7 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
               minHeight: "450px",
             }}
             onLoad={() => {
-              setTimeout(() => setIsLoading(false), 300);
+              setTimeout(() => setIsLoading(false), 250);
             }}
           />
         </div>
@@ -548,11 +748,13 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
       {isFullscreen && (
         <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex flex-col p-2 sm:p-6 animate-in fade-in duration-150">
           <div className="flex items-center justify-between px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-t-xl text-white">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-accent" />
-              <span className="font-semibold text-sm">Interactieve Longread — Volledig Scherm</span>
+            <div className="flex items-center gap-2 min-w-0">
+              <Sparkles className="w-4 h-4 text-accent shrink-0" />
+              <span className="font-semibold text-sm truncate">
+                {title || "Interactieve Longread"} — Volledig Scherm
+              </span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <Button
                 type="button"
                 variant="outline"
@@ -576,7 +778,7 @@ export const InteractiveSeamlessFrame: React.FC<InteractiveSeamlessFrameProps> =
 
           <div className="flex-1 w-full bg-[#f9f9f2] rounded-b-xl overflow-hidden shadow-2xl">
             <iframe
-              srcDoc={compiledHtml}
+              srcDoc={standaloneHtml}
               title="Interactief artikel volledig scherm"
               sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-downloads"
               className="w-full h-full border-0"

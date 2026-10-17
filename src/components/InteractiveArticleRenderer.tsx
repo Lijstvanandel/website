@@ -494,8 +494,9 @@ export const InteractiveArticleRenderer: React.FC<InteractiveArticleRendererProp
   }, [content]);
 
   // Split content into regular HTML segments and <div data-dataproduct="true" ...> or <div class="data-product-container" ...>
-  // Regex to match data-product blocks
-  const dataProductRegex = /<div[^>]*data-dataproduct=["']true["'][^>]*>([\s\S]*?)<\/div>/gi;
+  // Regex to match data-product blocks (including nested placeholder div if present)
+  const dataProductRegex =
+    /<div[^>]*data-dataproduct=["']true["'][^>]*>(?:[\s\S]*?<div[^>]*>[\s\S]*?<\/div>\s*)?[\s\S]*?<\/div>/gi;
 
   const parts: (
     | { type: "html"; html: string }
@@ -705,12 +706,22 @@ export const InteractiveArticleRenderer: React.FC<InteractiveArticleRendererProp
           );
         }
 
+        const cleanedHtml = part.html.replace(/^\s*<\/div>\s*/i, "");
+        const plainCheck = cleanedHtml
+          .replace(/<[^>]*>/g, "")
+          .replace(/&nbsp;/gi, "")
+          .trim();
+        const hasMedia = /<(?:img|iframe|video|svg|table|figure)/i.test(cleanedHtml);
+        if (!plainCheck && !hasMedia) {
+          return null;
+        }
+
         return (
           <div
             key={`html-${index}`}
             onClick={handleContentClick}
             className="prose prose-lg dark:prose-invert max-w-none text-foreground/90 leading-relaxed [&_h2]:font-display [&_h2]:text-2xl [&_h2]:mb-3 [&_h2]:mt-8 [&_h2]:text-foreground [&_h3]:font-display [&_h3]:text-xl [&_h3]:text-accent [&_h3]:mt-6 [&_h3]:mb-2 [&_a]:text-accent [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-accent [&_blockquote]:pl-4 [&_blockquote]:italic [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mb-4 [&_figure]:my-6 [&_figure_img]:cursor-zoom-in [&_figure_img]:rounded-xl [&_figure_img]:shadow-sm [&_figure_img]:border [&_figure_img]:border-border/80 [&_figure_figcaption]:text-xs [&_figure_figcaption]:text-muted-foreground [&_figure_figcaption]:mt-2 [&_figure_figcaption]:italic [&_iframe]:max-w-full [&_iframe]:max-h-[850px] [&_img]:max-w-full [&_img]:h-auto [&_.katex-display]:my-4 [&_.katex]:text-foreground"
-            dangerouslySetInnerHTML={{ __html: renderMathInHtml(part.html) }}
+            dangerouslySetInnerHTML={{ __html: renderMathInHtml(cleanedHtml) }}
           />
         );
       })}
