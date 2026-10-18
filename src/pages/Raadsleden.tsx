@@ -5,6 +5,7 @@ import { BelafspraakDialog } from "@/components/BelafspraakDialog";
 import { FractielidWidget, FractielidItem } from "@/components/FractielidWidget";
 import { StemgedragSection } from "@/components/StemgedragSection";
 import { DEFAULT_FRACTIELEDEN } from "@/data/fractieleden";
+import { getInitialPublicSnapshot } from "@/lib/publicSnapshotClient";
 
 interface VideoItem {
   id: string;
@@ -12,10 +13,15 @@ interface VideoItem {
 }
 
 const Raadsleden = () => {
+  const initialSnap = getInitialPublicSnapshot();
   const [belOpen, setBelOpen] = useState(false);
   const [voorgeselecteerd, setVoorgeselecteerd] = useState<string | undefined>(undefined);
-  const [leden, setLeden] = useState<FractielidItem[]>(DEFAULT_FRACTIELEDEN);
-  const [videos, setVideos] = useState<VideoItem[]>([]);
+  const [leden, setLeden] = useState<FractielidItem[]>(
+    initialSnap?.fractieleden?.length ? initialSnap.fractieleden : DEFAULT_FRACTIELEDEN
+  );
+  const [videos, setVideos] = useState<VideoItem[]>(
+    initialSnap?.videos?.length ? initialSnap.videos : []
+  );
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {

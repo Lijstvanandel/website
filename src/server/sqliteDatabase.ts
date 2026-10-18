@@ -251,6 +251,12 @@ export function persistSqlite() {
 }
 
 const publicTableSignatures = new Map<string, string>();
+const vaultTableSignatures = new Map<string, string>();
+let cachedFullDb: any = null;
+
+export function invalidateSqliteMemoryCache(): void {
+  cachedFullDb = null;
+}
 
 function computePublicSignature(data: any): string {
   if (!data) return "null";
@@ -273,12 +279,16 @@ export function schedulePersist() {
 }
 
 /**
- * Extract full domain state object seamlessly from SQLite
+ * Extract full domain state object seamlessly from SQLite (with fast in-memory snapshot caching)
  */
-export function getDbFromSqlite(): any {
+export function getDbFromSqlite(forceReload = false): any {
   if (!sqliteDb) {
     // If not yet initialized synchronously (unlikely), fallback
     return {};
+  }
+
+  if (!forceReload && cachedFullDb) {
+    return cachedFullDb;
   }
 
   const result: any = {
@@ -360,7 +370,7 @@ export function getDbFromSqlite(): any {
     publicTableSignatures.set(table, computePublicSignature(result[table]));
   }
 
-  // Immuntity layer: Guarantee all user-written contributions & parked topics are preserved
+  // Immunity layer: Guarantee all user-written contributions & parked topics are preserved
   if (Array.isArray(result.councilAgendaTopics)) {
     result.councilAgendaTopics = hydrateTopicsWithContributions(result.councilAgendaTopics);
   }
@@ -385,6 +395,10 @@ export function getDbFromSqlite(): any {
     result.treasurerKascommissie = loadVaultSingle("treasurerKascommissie");
     result.treasurerSettings = loadVaultSingle("treasurerSettings");
     result.internalCouncilStrategy = loadVaultTable("internalCouncilStrategy");
+
+    for (const vKey of SENSITIVE_TABLE_NAMES) {
+      vaultTableSignatures.set(vKey, computePublicSignature(result[vKey]));
+    }
   } catch (vaultErr) {
     console.error("[CRM-VAULT LOAD ERROR]:", vaultErr);
   }
@@ -394,6 +408,7 @@ export function getDbFromSqlite(): any {
     const memRows = sqliteDb.exec("SELECT data FROM membershipSettings WHERE id = 'default' LIMIT 1");
     if (memRows.length > 0 && memRows[0].values && memRows[0].values.length > 0) {
       result.membershipSettings = JSON.parse(memRows[0].values[0][0]);
+      publicTableSignatures.set("membershipSettings", computePublicSignature(result.membershipSettings));
     }
   } catch (_e) {
     result.membershipSettings = null;
@@ -410,12 +425,14 @@ export function getDbFromSqlite(): any {
         } catch (_e) {
           result[k] = v;
         }
+        publicTableSignatures.set(k, computePublicSignature(result[k]));
       }
     }
   } catch (_e) {
     // Keep defaults
   }
 
+  cachedFullDb = result;
   return result;
 }
 
@@ -426,15 +443,22 @@ export function getDbFromSqlite(): any {
 export function saveDbToSqlite(data: any) {
   if (!sqliteDb || !data) return;
 
+  cachedFullDb = data;
+
   try {
-    // 1. Route sensitive data to isolated encrypted CRM Vault
+    // 1. Route sensitive data to isolated encrypted CRM Vault ONLY when changed
     for (const [key, val] of Object.entries(data)) {
       if (SENSITIVE_TABLE_SET.has(key)) {
+        const currentVaultSig = computePublicSignature(val);
+        if (vaultTableSignatures.get(key) === currentVaultSig) {
+          continue; // Unchanged sensitive table: skip expensive AES-256-GCM re-encryption & disk write
+        }
         if (key === "treasurerKascommissie" || key === "treasurerSettings") {
           saveVaultSingle(key as SensitiveTable, val);
         } else if (Array.isArray(val)) {
           saveVaultTable(key as SensitiveTable, val);
         }
+        vaultTableSignatures.set(key, currentVaultSig);
       }
     }
 
@@ -564,10 +588,17 @@ export function savePublicItem(tableName: string, item: any) {
     const itemId = String(item.id || item.email || item.slug || item.key || crypto.randomUUID());
     sqliteDb.run(`INSERT OR REPLACE INTO ${tableName} (id, data) VALUES (?, ?)`, [itemId, JSON.stringify(item)]);
     publicTableSignatures.delete(tableName);
+    cachedFullDb = null;
     schedulePersist();
   } catch (err) {
     console.error(`[SQLITE SAVE ITEM FOUT] voor tabel '${tableName}':`, err);
   }
+}
+
+export function saveVaultItemAndInvalidate(tableName: SensitiveTable, item: any) {
+  saveVaultItem(tableName, item);
+  vaultTableSignatures.delete(tableName);
+  cachedFullDb = null;
 }
 
 export { saveVaultItem, deleteVaultItem };
@@ -602,6 +633,10 @@ export function setKv(key: string, value: any): void {
       key,
       JSON.stringify(value),
     ]);
+    publicTableSignatures.delete(key);
+    if (cachedFullDb) {
+      cachedFullDb[key] = value;
+    }
     schedulePersist();
   } catch (err) {
     console.error(`[SQLITE setKv FOUT] voor key ${key}:`, err);

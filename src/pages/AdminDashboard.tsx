@@ -255,6 +255,31 @@ export default function AdminDashboard() {
   const [categories, setCategories] = useState<NewsCategory[]>([]);
   const [attendeesMap, setAttendeesMap] = useState<Record<string, EventAttendee[]>>({});
   const [isTicketScannerOpen, setIsTicketScannerOpen] = useState(false);
+  const [isPurgingServerCache, setIsPurgingServerCache] = useState(false);
+
+  const handlePurgeServerCache = async () => {
+    if (isPurgingServerCache) return;
+    try {
+      setIsPurgingServerCache(true);
+      const res = await fetchWithAuth("/api/admin/cache/purge", {
+        method: "POST",
+        body: JSON.stringify({ rebuildThumbnails: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        toast.success(
+          data.message ||
+            `Server-Side Snapshot (${data.snapshotVersion}) & ${data.thumbnailsRebuilt ?? 0} statische thumbnails succesvol ververst!`
+        );
+      } else {
+        toast.error(data.error || "Kon server-side cache niet verversen.");
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Verbindingsfout bij verversen van server-side cache.");
+    } finally {
+      setIsPurgingServerCache(false);
+    }
+  };
 
   // -- State for Contact Messages --
   const [messages, setMessages] = useState<ContactMessage[]>([]);
@@ -2007,6 +2032,17 @@ export default function AdminDashboard() {
           >
             <QrCode className="w-4 h-4 text-accent" />
             <span>Ticket Scanner</span>
+          </Button>
+          <Button
+            type="button"
+            onClick={handlePurgeServerCache}
+            disabled={isPurgingServerCache}
+            variant="outline"
+            title="Leeg direct de Server-Side Snapshot Cache, herbouw alle statische videothumbnails (.webp + .jpg) en ververs Cloudflare CDN"
+            className="shrink-0 text-xs font-semibold uppercase tracking-wider gap-2 h-10 px-4 cursor-pointer border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20"
+          >
+            <RotateCcw className={`w-4 h-4 text-emerald-500 ${isPurgingServerCache ? "animate-spin" : ""}`} />
+            <span>{isPurgingServerCache ? "Cache verversen..." : "Cache Legen"}</span>
           </Button>
           <Button
             type="button"

@@ -584,6 +584,18 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
   };
 
   // Handle importing a .html file directly into the content (either as text or dataproduct prompt)
+  // Helper to check if an uploaded .html file is accidentally a saved Lijst van Andel webpage dump
+  const isSavedWebsitePageDump = (html: string, filename: string): boolean => {
+    if (
+      (html.includes('id="root"') && (html.includes("stadium-bg") || html.includes("lva-svg-colorblind-filters"))) ||
+      /saved from url=.*(?:scientiarum\.nl|lijstvanandel\.nl)/i.test(html) ||
+      /Lijst van Andel\.html$/i.test(filename.trim())
+    ) {
+      return true;
+    }
+    return false;
+  };
+
   const handleHtmlFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -600,22 +612,41 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
       const fullHtml = event.target?.result as string;
       if (!fullHtml) return;
 
+      if (isSavedWebsitePageDump(fullHtml, file.name)) {
+        toast.error(
+          `Let op: '${file.name}' is een opgeslagen webpagina van de Lijst van Andel-website zelf (inclusief website-menu en footer). Kies het originele losse bronbestand (bijv. onder_de_graszoden_van_eesveen_forensisch_dossier.html).`,
+          { duration: 9000 }
+        );
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
+
       const isFullDocArticle =
-        fullHtml.includes("<html") ||
-        fullHtml.includes("<!DOCTYPE") ||
         fullHtml.includes("pub-topbar") ||
         fullHtml.includes("reading-column") ||
-        (fullHtml.includes("<style") && fullHtml.includes("body {"));
+        fullHtml.includes("chapter-title") ||
+        fullHtml.includes("sidenote-card") ||
+        fullHtml.includes("<article") ||
+        (fullHtml.includes("<style") && fullHtml.includes("body {") && !fullHtml.includes("folium"));
 
-      if (isFullDocArticle) {
-        setDpType("article");
+      if (isFullDocArticle || fullHtml.includes("<html") || fullHtml.includes("<!DOCTYPE")) {
+        const isMapOrPlotOnly =
+          !isFullDocArticle &&
+          (fullHtml.includes("folium") || fullHtml.includes("plotly") || fullHtml.includes("bokeh"));
+
+        setDpType(isMapOrPlotOnly ? "map" : "article");
         setDpFile(file);
-        setDpTitle(file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " "));
-        setDpCaption("Met interactieve datavisualisaties, bronkaarten & kaart");
+        setDpTitle(isMapOrPlotOnly ? file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ") : "Interactief Onderzoeksdossier");
+        setDpCaption(
+          isMapOrPlotOnly
+            ? "Gegenereerd onderzoek o.b.v. Python/Pandas data"
+            : "Met interactieve datavisualisaties, bronkaarten & verdieping"
+        );
         setDpHeight("850");
+        if (!isMapOrPlotOnly) setDpHoverActivate(false);
         setShowDataProductModal(true);
         toast.info(
-          `'${file.name}' is herkend als een interactief HTML artikel/dossier. Configureer de weergave en klik op Invoegen.`
+          `'${file.name}' is herkend als een interactief HTML ${isMapOrPlotOnly ? "dataproduct" : "onderzoeksdossier"}. Klik op 'Dataproduct invoegen'.`
         );
         return;
       }
@@ -630,7 +661,6 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
         fullHtml.includes("<script");
 
       if (isInteractive) {
-        // Automatically open the Data Product Modal pre-filled!
         setDpType("map");
         setDpFile(file);
         setDpTitle(file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " "));
@@ -1314,10 +1344,46 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
                   accept=".html,.htm"
                   onChange={(e) => {
                     const f = e.target.files?.[0] || null;
-                    setDpFile(f);
-                    if (f && !dpTitle) {
-                      setDpTitle(f.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " "));
+                    if (!f) {
+                      setDpFile(null);
+                      return;
                     }
+                    const r = new FileReader();
+                    r.onload = (ev) => {
+                      const txt = (ev.target?.result as string) || "";
+                      if (isSavedWebsitePageDump(txt, f.name)) {
+                        toast.error(
+                          `Let op: '${f.name}' is een opgeslagen webpagina van de Lijst van Andel-website zelf (inclusief website-menu en footer). Kies het originele losse bronbestand (bijv. onder_de_graszoden_van_eesveen_forensisch_dossier.html).`,
+                          { duration: 9000 }
+                        );
+                        e.target.value = "";
+                        setDpFile(null);
+                        return;
+                      }
+                      const isArticleDossier =
+                        txt.includes("pub-topbar") ||
+                        txt.includes("reading-column") ||
+                        txt.includes("chapter-title") ||
+                        txt.includes("sidenote-card") ||
+                        txt.includes("<article") ||
+                        (txt.includes("<style") && txt.includes("body {") && !txt.includes("folium"));
+
+                      setDpFile(f);
+                      if (isArticleDossier) {
+                        setDpType("article");
+                        setDpHoverActivate(false);
+                        setDpHeight("850");
+                        if (!dpTitle || dpTitle.includes("Lijst van Andel")) {
+                          setDpTitle("Interactief Onderzoeksdossier");
+                        }
+                        if (!dpCaption) {
+                          setDpCaption("Met interactieve datavisualisaties, bronkaarten & verdieping");
+                        }
+                      } else if (!dpTitle) {
+                        setDpTitle(f.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " "));
+                      }
+                    };
+                    r.readAsText(f);
                   }}
                   className="text-xs cursor-pointer"
                 />

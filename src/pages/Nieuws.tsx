@@ -24,6 +24,7 @@ import { ShareDialog } from "@/components/ShareDialog";
 import { PodcastSection } from "@/components/PodcastSection";
 import { useAuth } from "@/context/AuthContext";
 import { FormattedMathText } from "@/utils/mathRenderer";
+import { getInitialPublicSnapshot } from "@/lib/publicSnapshotClient";
 
 export interface ExternalNewsItem {
   id: string;
@@ -67,9 +68,14 @@ function renderSourceLogo(sourceLogo?: string, sourceName?: string) {
 
 export default function Nieuws() {
   const { user, isAuthenticated } = useAuth();
-  const [news, setNews] = useState<NewsItem[]>([]);
+  const initialSnap = getInitialPublicSnapshot();
+  const [news, setNews] = useState<NewsItem[]>(
+    initialSnap?.newsSummaries?.length ? initialSnap.newsSummaries : []
+  );
   const [externalNews, setExternalNews] = useState<ExternalNewsItem[]>([]);
-  const [categories, setCategories] = useState<NewsCategory[]>([]);
+  const [categories, setCategories] = useState<NewsCategory[]>(
+    initialSnap?.categories?.length ? initialSnap.categories : []
+  );
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState<number>(1);
   const itemsPerPage = 6;
@@ -87,7 +93,7 @@ export default function Nieuws() {
   );
 
   useEffect(() => {
-    fetch("/api/news")
+    fetch("/api/news?summary=1")
       .then((res) => (res.ok ? res.json().catch(() => []) : []))
       .then((data: NewsItem[]) => {
         if (Array.isArray(data)) {

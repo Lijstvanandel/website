@@ -28,27 +28,39 @@ function resolvePageTitle(path: string, currentDocTitle?: string): string {
   return currentDocTitle || "Lijst van Andel";
 }
 
+function isTelemetryEnabled(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    if (window.location.search.includes("debug_perf=1")) return true;
+    return window.localStorage.getItem("ENABLE_PERF_TELEMETRY") === "1";
+  } catch {
+    return false;
+  }
+}
+
 export const VisitorPerformanceTracker: React.FC = () => {
   const location = useLocation();
   const currentPath = location.pathname + location.search;
+  const enabled = isTelemetryEnabled();
 
   const previousPathRef = useRef<string | null>(null);
   const isInitialLoadReportedRef = useRef<boolean>(false);
   const navStartTimeRef = useRef<number>(performance.now());
   const pendingReportTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Initialize network interception on first mount
+  // Initialize network interception on first mount ONLY if telemetry is explicitly enabled
   useEffect(() => {
+    if (!enabled) return;
     try {
       initGlobalNetworkMonitoring();
     } catch (e) {
       console.debug("[PerformanceTracker] Network monitoring init error:", e);
     }
-  }, []);
+  }, [enabled]);
 
   // 1. Initial Page Load Performance Measurement
   useEffect(() => {
-    if (isInitialLoadReportedRef.current) return;
+    if (!enabled || isInitialLoadReportedRef.current) return;
 
     const reportInitialLoad = () => {
       if (isInitialLoadReportedRef.current) return;
@@ -153,6 +165,7 @@ export const VisitorPerformanceTracker: React.FC = () => {
   // 2. Client-side SPA Route Transition Performance Measurement
   // Triggers precisely when an external visitor switches pages in the app
   useEffect(() => {
+    if (!enabled) return;
     // Skip if this is the very first render (handled by initial load reporter)
     if (!previousPathRef.current) {
       previousPathRef.current = currentPath;

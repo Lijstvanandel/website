@@ -41,7 +41,23 @@ import Stripe from "stripe";
 import { createServer as createViteServer } from "vite";
 import { BUURTKAART_43_WIJKEN, syncWijkenWithBuurtkaart, LEGACY_SLUG_MAP } from "./src/data/defaultWijken.js";
 import { DEFAULT_FRACTIELEDEN } from "./src/data/fractieleden.js";
-import { generateVideoThumbnailBuffer, invalidateVideoThumbnailCache } from "./src/server/videoThumbnailService.js";
+import {
+  generateVideoThumbnailBuffer,
+  invalidateVideoThumbnailCache,
+  prebakeVideoThumbnailToDisk,
+  prebakeAllVideoThumbnails,
+  getPrebakedThumbnailStats,
+} from "./src/server/videoThumbnailService.js";
+import {
+  getPublicSiteSnapshot,
+  buildPublicSiteSnapshot,
+  invalidatePublicSiteSnapshot,
+  getCachedNewsArticleById,
+  getCachedHtmlPage,
+  setCachedHtmlPage,
+  getServerCacheDiagnostics,
+  forcePurgeAllCaches,
+} from "./src/server/siteSnapshotCache.js";
 import { LEGAL_DOCUMENTS } from "./src/data/legalDocuments.js";
 import { getPageMetadata, injectMetadataIntoHtml } from "./src/server/metaGenerator.js";
 import { generateNewsletterHtml, generateNewsletterText, prepareNewsletterForDispatch } from "./src/server/newsletterTemplate.js";
@@ -66,6 +82,7 @@ import {
   initDatabase,
   getDbFromSqlite,
   saveDbToSqlite,
+  invalidateSqliteMemoryCache,
   persistSqlite,
   getSqliteFilePath,
   getUserDocumentFavorites,
@@ -361,6 +378,7 @@ function resolveRequestOrigin(req: any): string {
 // Ensure upload directories exist
 const UPLOAD_DIRS = [
   "public/uploads",
+  "public/uploads/thumbnails",
   "public/uploads/fractieleden",
   "public/uploads/videos",
   "public/uploads/news",
@@ -378,8 +396,14 @@ UPLOAD_DIRS.forEach((dir) => {
   }
 });
 
+let isInitialDbSeeded = false;
+
 function getDb() {
   const db = getDbFromSqlite();
+  if (isInitialDbSeeded && db && Array.isArray(db.fractieleden) && db.fractieleden.length > 0 && Array.isArray(db.wijken) && db.wijken.length > 0) {
+    return db;
+  }
+
   if (!db.users) db.users = [];
   if (!db.fractieleden || db.fractieleden.length === 0) {
     db.fractieleden = JSON.parse(JSON.stringify(DEFAULT_FRACTIELEDEN));
@@ -2041,11 +2065,15 @@ function getDb() {
     saveDb(db);
   }
 
+  isInitialDbSeeded = true;
   return db;
 }
 
 function saveDb(data: any) {
   saveDbToSqlite(data);
+  if (isInitialDbSeeded) {
+    invalidatePublicSiteSnapshot(data);
+  }
 }
 
 const DANGEROUS_FILE_EXTENSIONS = /\.(exe|bat|cmd|sh|bash|php|phtml|phar|pl|py|cgi|jar|war|ear|jsp|asp|aspx|cer|csr|vbs|vbe|wsf|wsh|hta|msi|msp|scr|pif|reg|ps1|ps2|psc1|psc2|inf|scf|lnk|com)$/i;
@@ -3101,11 +3129,11 @@ async function startServer() {
   });
 
   // Fallback handler for /uploads when direct static match didn't find the file
-  app.use("/uploads", (req: any, res: any) => {
+  app.use("/uploads", async (req: any, res: any) => {
     const rawPath = req.path || "";
     const cleanPath = rawPath.replace(/^\/+/, "").replace(/\.\./g, "");
     const baseName = path.basename(cleanPath);
-    const subdirs = ["news", "dataproducts", "fractieleden", "stemgedrag", "documents", "videos", "events", "wijken"];
+    const subdirs = ["thumbnails", "news", "dataproducts", "fractieleden", "stemgedrag", "documents", "videos", "events", "wijken"];
 
     const candidatePaths = [
       path.join(uploadsPath, cleanPath),
@@ -3130,7 +3158,7 @@ async function startServer() {
           res.setHeader("X-Content-Type-Options", "nosniff");
           res.setHeader("X-Frame-Options", "SAMEORIGIN");
         } else if (/\.(jpg|jpeg|png|webp|svg|gif)$/i.test(p)) {
-          res.setHeader("Cache-Control", "public, max-age=604800, stale-while-revalidate=86400");
+          res.setHeader("Cache-Control", "public, max-age=31536000, s-maxage=31536000, stale-while-revalidate=86400, immutable");
           const ext = path.extname(p).toLowerCase();
           if (ext === ".png") res.setHeader("Content-Type", "image/png");
           else if (ext === ".jpg" || ext === ".jpeg") res.setHeader("Content-Type", "image/jpeg");
@@ -3138,6 +3166,29 @@ async function startServer() {
           else if (ext === ".svg") res.setHeader("Content-Type", "image/svg+xml");
         }
         return res.sendFile(p);
+      }
+    }
+
+    // Dynamic on-demand pre-bake if a static video thumbnail (/uploads/thumbnails/video-{id}.webp or .jpg) was requested before boot warm-up finished
+    const thumbMatch = baseName.match(/^video-([a-zA-Z0-9_-]+)\.(webp|jpg|jpeg)$/i);
+    if (thumbMatch) {
+      try {
+        const requestedVidId = thumbMatch[1];
+        const requestedExt = thumbMatch[2].toLowerCase();
+        const db = getDb();
+        const video = (db.videos || []).find((v: any) => String(v.id) === String(requestedVidId)) || {
+          id: requestedVidId,
+          title: "het raadsvoorstel",
+          category: "Raadsdebat",
+        };
+        const format = requestedExt === "webp" ? "webp" : "jpeg";
+        const buf = await generateVideoThumbnailBuffer(video, db, format);
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.setHeader("Content-Type", format === "webp" ? "image/webp" : "image/jpeg");
+        res.setHeader("Cache-Control", "public, max-age=31536000, s-maxage=31536000, stale-while-revalidate=86400, immutable");
+        return res.send(buf);
+      } catch (thumbErr) {
+        console.warn("[UPLOADS THUMBNAIL FALLBACK ERROR]:", thumbErr);
       }
     }
 
@@ -6748,18 +6799,24 @@ async function startServer() {
     return { ...m, imgUrl: img, img: img, cutoutImageUrl: cutout };
   };
 
-  // Public & Admin Routes - Fractieleden
+  // Public & Admin Routes - Fractieleden (Served from In-Memory Snapshot with CDN ETag & Cache-Control)
   app.get("/api/fractieleden", (req, res) => {
-    const db = getDb();
-    const leden = (db.fractieleden || []).map(sanitizeFractielidPhoto);
-    res.json(leden);
+    const snap = getPublicSiteSnapshot(getDb);
+    res.setHeader("ETag", snap.etag);
+    res.setHeader("Cache-Control", "public, max-age=30, s-maxage=300, stale-while-revalidate=3600");
+    if (req.headers["if-none-match"] === snap.etag) {
+      return res.status(304).end();
+    }
+    res.json(snap.fractieleden);
   });
 
   app.get("/api/fractieleden/:id", (req, res) => {
-    const db = getDb();
-    const lid = (db.fractieleden || []).find((f: any) => String(f.id) === String(req.params.id));
+    const snap = getPublicSiteSnapshot(getDb);
+    const lid = (snap.fractieleden || []).find((f: any) => String(f.id) === String(req.params.id));
     if (!lid) return res.status(404).json({ error: "Fractielid niet gevonden" });
-    res.json(sanitizeFractielidPhoto(lid));
+    res.setHeader("ETag", snap.etag);
+    res.setHeader("Cache-Control", "public, max-age=30, s-maxage=300, stale-while-revalidate=3600");
+    res.json(lid);
   });
 
   app.post(
@@ -6791,8 +6848,9 @@ async function startServer() {
       };
       if (!db.fractieleden) db.fractieleden = [];
       db.fractieleden.push(newLid);
-      saveDb(db);
       invalidateVideoThumbnailCache();
+      saveDb(db);
+      prebakeAllVideoThumbnails(db, true).catch(() => {});
       res.status(201).json(sanitizeFractielidPhoto(newLid));
     }
   );
@@ -6834,8 +6892,9 @@ async function startServer() {
         cutoutImageUrl,
       };
       db.fractieleden[idx] = updatedLid;
-      saveDb(db);
       invalidateVideoThumbnailCache();
+      saveDb(db);
+      prebakeAllVideoThumbnails(db, true).catch(() => {});
       res.json(sanitizeFractielidPhoto(updatedLid));
     }
   );
@@ -6843,7 +6902,9 @@ async function startServer() {
   app.delete("/api/admin/fractieleden/:id", requireAuth, requireAdmin, (req: any, res: any) => {
     const db = getDb();
     db.fractieleden = db.fractieleden.filter((f: any) => f.id !== req.params.id);
+    invalidateVideoThumbnailCache();
     saveDb(db);
+    prebakeAllVideoThumbnails(db, true).catch(() => {});
     res.json({ message: "Verwijderd" });
   });
 
@@ -7661,21 +7722,11 @@ async function startServer() {
     "1010": { hoofdstukNr: 8, standpuntNr: 5, standpuntTitel: "Regie terug in de jeugdzorg" },
   };
 
-  // Admin Routes - Videos
+  // Public & Admin Routes - Videos (Served from In-Memory Snapshot with Static Pre-Baked Thumbnails)
   app.get("/api/videos", (req, res) => {
-    const db = getDb();
-    let videos = (db.videos || []).map((v: any) => {
-      const defSp = DEFAULT_VIDEO_STANDPUNTEN[String(v.id)];
-      if (defSp && v.hoofdstukNr === undefined && v.standpuntNr === undefined) {
-        return {
-          ...v,
-          hoofdstukNr: defSp.hoofdstukNr,
-          standpuntNr: defSp.standpuntNr,
-          standpuntTitel: v.standpuntTitel || defSp.standpuntTitel,
-        };
-      }
-      return v;
-    });
+    const snap = getPublicSiteSnapshot(getDb);
+    let videos = snap.videos || [];
+
     if (req.query.memberId) {
       const mId = String(req.query.memberId).toLowerCase();
       videos = videos.filter((v: any) =>
@@ -7686,46 +7737,13 @@ async function startServer() {
     if (req.query.wijkSlug) videos = videos.filter((v: any) => v.wijkSlug === req.query.wijkSlug);
     if (req.query.hoofdstukNr) videos = videos.filter((v: any) => Number(v.hoofdstukNr) === Number(req.query.hoofdstukNr));
     if (req.query.standpuntNr) videos = videos.filter((v: any) => Number(v.standpuntNr) === Number(req.query.standpuntNr));
-    
-    // Zorg dat elke video standaard de automatisch samengestelde thumbnail heeft (met lid + wijk/hero), tenzij een eigen custom upload is gedaan
-    const allMembers = (db.fractieleden && db.fractieleden.length > 0) ? db.fractieleden : DEFAULT_FRACTIELEDEN;
-    const sanitized = videos.map((v: any) => {
-      const memberId = (v.fractieledenIds && v.fractieledenIds.length > 0) ? v.fractieledenIds[0] : (v.personId || "");
-      let linkedMember = memberId ? allMembers.find((m: any) => String(m.id) === String(memberId)) : null;
-      if (!linkedMember && v.title) {
-        for (const m of allMembers) {
-          if (m.name && v.title.toLowerCase().includes(m.name.toLowerCase())) {
-            linkedMember = m;
-            break;
-          }
-        }
-      }
-      const memberCutout = linkedMember?.cutoutImageUrl || linkedMember?.photoNoBgUrl;
-      const memberVer = memberCutout ? path.basename(memberCutout) : (linkedMember?.imgUrl ? path.basename(linkedMember.imgUrl) : "");
 
-      const params = new URLSearchParams();
-      if (linkedMember?.id || memberId) params.set("personId", String(linkedMember?.id || memberId));
-      if (memberVer) params.set("v", memberVer);
-      const queryStr = params.toString() ? `?${params.toString()}` : "";
-
-      const needsAutoThumb =
-        !v.thumbnailUrl ||
-        v.thumbnailUrl.includes("ytimg") ||
-        v.thumbnailUrl.includes("hqdefault") ||
-        v.thumbnailUrl.includes("/api/videos/") ||
-        v.thumbnailUrl.includes("/api/thumbnail/");
-
-      return {
-        ...v,
-        thumbnailUrl: needsAutoThumb
-          ? `/api/videos/${v.id}/thumbnail.jpg${queryStr}`
-          : v.thumbnailUrl
-      };
-    });
-    res.json(sanitized);
+    res.setHeader("ETag", snap.etag);
+    res.setHeader("Cache-Control", "public, max-age=30, s-maxage=300, stale-while-revalidate=3600");
+    res.json(videos);
   });
 
-  // Dynamisch samengestelde thumbnail voor een opgeslagen video (voor videoplayer poster en OpenGraph)
+  // Pre-baked & cached thumbnail endpoint for saved videos (supports WebP & JPEG with Cloudflare Edge caching)
   app.get([
     "/api/videos/:id/thumbnail.jpg",
     "/api/videos/:id/thumbnail.webp",
@@ -7740,6 +7758,8 @@ async function startServer() {
       const queryPersonId = (req.query.personId || req.query.memberId) as string;
       const queryTitle = req.query.title as string;
       const queryWijk = req.query.wijk as string;
+      const wantsWebp = req.path.endsWith(".webp") || (req.headers.accept && req.headers.accept.includes("image/webp") && !req.path.endsWith(".jpg"));
+      const format: "webp" | "jpeg" = wantsWebp ? "webp" : "jpeg";
 
       if (!video) {
         const fallbackBuf = await generateVideoThumbnailBuffer(
@@ -7749,12 +7769,11 @@ async function startServer() {
             personId: queryPersonId,
             wijkSlug: queryWijk,
           },
-          db
+          db,
+          format
         );
-        res.setHeader("Content-Type", "image/jpeg");
-        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-        res.setHeader("Pragma", "no-cache");
-        res.setHeader("Expires", "0");
+        res.setHeader("Content-Type", format === "webp" ? "image/webp" : "image/jpeg");
+        res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400");
         return res.send(fallbackBuf);
       }
 
@@ -7765,12 +7784,14 @@ async function startServer() {
         wijkSlug: queryWijk || video.wijkSlug,
       };
 
-      const buffer = await generateVideoThumbnailBuffer(targetVideo, db);
-      res.setHeader("Content-Type", "image/jpeg");
-      // Direct cache validation so newly uploaded cutout photos take effect immediately
-      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      res.setHeader("Pragma", "no-cache");
-      res.setHeader("Expires", "0");
+      const buffer = await generateVideoThumbnailBuffer(targetVideo, db, format);
+      res.setHeader("Content-Type", format === "webp" ? "image/webp" : "image/jpeg");
+      res.setHeader(
+        "Cache-Control",
+        req.query.v
+          ? "public, max-age=31536000, s-maxage=31536000, stale-while-revalidate=86400, immutable"
+          : "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400"
+      );
       return res.send(buffer);
     } catch (err: any) {
       console.error("[VIDEO THUMBNAIL GET ERROR]:", err);
@@ -8005,8 +8026,9 @@ async function startServer() {
           standpuntTitel: standpuntTitel ? String(standpuntTitel).trim() : null
         };
         db.videos.push(newVideo);
-        saveDb(db);
         invalidateVideoThumbnailCache(videoId);
+        saveDb(db);
+        prebakeVideoThumbnailToDisk(newVideo, db, true).catch(() => {});
         return res.status(201).json(newVideo);
       } catch (err: any) {
         console.error("[POST /api/admin/videos ERROR]", err);
@@ -8063,8 +8085,8 @@ async function startServer() {
         const videoUrl = videoFile ? `/uploads/videos/${videoFile.filename}` : (req.body.videoUrl !== undefined ? String(req.body.videoUrl).trim() : existingVideo.videoUrl);
         let thumbnailUrl = thumbFile ? `/uploads/videos/${thumbFile.filename}` : (req.body.thumbnailUrl !== undefined ? String(req.body.thumbnailUrl).trim() : existingVideo.thumbnailUrl);
 
-        if (!thumbnailUrl || thumbnailUrl.includes("/thumbnail.jpg") || thumbnailUrl.includes("ytimg")) {
-          thumbnailUrl = `/api/videos/${req.params.id}/thumbnail.jpg`;
+        if (!thumbnailUrl || thumbnailUrl.includes("/thumbnail.jpg") || thumbnailUrl.includes("/uploads/thumbnails/video-") || thumbnailUrl.includes("ytimg")) {
+          thumbnailUrl = `/uploads/thumbnails/video-${req.params.id}.webp`;
         }
 
         const updatedVideo = {
@@ -8084,8 +8106,9 @@ async function startServer() {
         };
 
         db.videos[index] = updatedVideo;
-        saveDb(db);
         invalidateVideoThumbnailCache(req.params.id);
+        saveDb(db);
+        prebakeVideoThumbnailToDisk(updatedVideo, db, true).catch(() => {});
         return res.json(updatedVideo);
       } catch (err: any) {
         console.error("[PUT /api/admin/videos ERROR]", err);
@@ -8099,8 +8122,8 @@ async function startServer() {
       const db = getDb();
       if (!db.videos) db.videos = [];
       db.videos = db.videos.filter((v: any) => String(v.id) !== String(req.params.id));
-      saveDb(db);
       invalidateVideoThumbnailCache(req.params.id);
+      saveDb(db);
       res.json({ message: "Verwijderd" });
     } catch (err: any) {
       console.error("[DELETE /api/admin/videos ERROR]", err);
@@ -8108,38 +8131,29 @@ async function startServer() {
     }
   });
 
-  // News Routes
+  // News Routes (Served from In-Memory Snapshot for Public Lists & O(1) Article Cache)
   app.get("/api/news", (req, res) => {
-    const db = getDb();
-    let newsList = db.news || [];
-    const { wijkSlug, category, includeAll, includeHidden, memberId, authorId } = req.query;
+    const { wijkSlug, category, includeAll, includeHidden, memberId, authorId, summary } = req.query;
+    const snap = getPublicSiteSnapshot(getDb);
+    const wantsHiddenOrFullAdmin = includeHidden === "true" || includeAll === "true";
 
-    // By default, hide onzichtbaar/hidden news unless requested with includeHidden=true or includeAll=true
-    if (includeHidden !== "true" && includeAll !== "true") {
+    let newsList: any[] = wantsHiddenOrFullAdmin
+      ? [...(getDb().news || [])]
+      : [...(snap.newsSummaries || [])];
+
+    if (!wantsHiddenOrFullAdmin) {
       newsList = newsList.filter((n: any) => !n.isHidden && n.isHidden !== "true");
     }
 
     if (memberId || authorId) {
       const targetId = String(memberId || authorId).trim();
-      const defaultMembers = [
-        { id: "1", name: "Sammy van Andel" },
-        { id: "2", name: "Lisa Mars" },
-        { id: "3", name: "Nathan ten Wolde" },
-        { id: "4", name: "Chris van Andel" }
-      ];
-      const targetMember = (db.fractieleden || []).find((f: any) => String(f.id) === targetId) ||
-        defaultMembers.find((f: any) => String(f.id) === targetId);
+      const targetMember = (snap.fractieleden || []).find((f: any) => String(f.id) === targetId);
       const targetName = targetMember ? targetMember.name.toLowerCase().trim() : "";
 
       newsList = newsList.filter((n: any) => {
-        // Directe koppeling via authorId aan dit specifieke raadslid
         if (n.authorId && String(n.authorId).trim() === targetId) {
           return true;
         }
-
-        // Ongekoppelde berichten (zonder authorId, of met algemene/partij auteur zoals 'Lijst van Andel' of 'Redactie')
-        // mogen NOOIT bij raadsleden op hun pagina getoond worden.
-        // Alleen een strikte en volledige naamovereenkomst indien authorId historisch ontbrak:
         if (!n.authorId && targetName) {
           const aName = (n.authorName || n.author || "").toLowerCase().trim();
           const genericUnlinkedAuthors = [
@@ -8174,7 +8188,14 @@ async function startServer() {
       newsList = newsList.filter((n: any) => n.category?.toLowerCase() === String(category).toLowerCase());
     }
 
-    // Sort news newest first (by date/createdAt descending, then numeric ID descending)
+    // If summary=true is passed even with includeAll, strip heavy content HTML for fast list rendering
+    if (summary === "true") {
+      newsList = newsList.map((n: any) => {
+        const { content: _c, ...rest } = n;
+        return rest;
+      });
+    }
+
     newsList = [...newsList].sort((a: any, b: any) => {
       const timeA = new Date(a.createdAt || a.date || 0).getTime();
       const timeB = new Date(b.createdAt || b.date || 0).getTime();
@@ -8184,16 +8205,22 @@ async function startServer() {
       return timeB - timeA;
     });
 
+    if (!wantsHiddenOrFullAdmin) {
+      res.setHeader("ETag", snap.etag);
+      res.setHeader("Cache-Control", "public, max-age=30, s-maxage=300, stale-while-revalidate=3600");
+    }
     res.json(newsList);
   });
-  
+
   app.get("/api/news/:id", (req, res) => {
-    const db = getDb();
-    const article = db.news.find((n: any) => n.id === req.params.id);
+    const snap = getPublicSiteSnapshot(getDb);
+    const article = getCachedNewsArticleById(req.params.id, getDb) || (getDb().news || []).find((n: any) => n.id === req.params.id);
     if (!article) return res.status(404).json({ error: "Nieuws niet gevonden" });
     if ((article.isHidden || article.isHidden === "true") && req.query.includeHidden !== "true") {
       return res.status(404).json({ error: "Nieuwsbericht is onzichtbaar of niet gevonden" });
     }
+    res.setHeader("ETag", snap.etag);
+    res.setHeader("Cache-Control", "public, max-age=30, s-maxage=300, stale-while-revalidate=3600");
     res.json(article);
   });
 
@@ -10904,21 +10931,25 @@ async function startServer() {
   // WIJKEN EN KERNEN API
   // ==========================================
 
-  // Public: Get all wijken en kernen (Steenwijkerland)
+  // Public: Get all wijken en kernen (Steenwijkerland) from In-Memory Snapshot
   app.get("/api/wijken", (req, res) => {
-    const db = getDb();
-    res.json(db.wijken || []);
+    const snap = getPublicSiteSnapshot(getDb);
+    res.setHeader("ETag", snap.etag);
+    res.setHeader("Cache-Control", "public, max-age=60, s-maxage=600, stale-while-revalidate=3600");
+    res.json(snap.wijken || []);
   });
 
   // Public: Get single wijk by slug
   app.get("/api/wijken/:slug", (req, res) => {
-    const db = getDb();
+    const snap = getPublicSiteSnapshot(getDb);
     const rawSlug = req.params.slug.toLowerCase();
     const slug = LEGACY_SLUG_MAP[rawSlug] || rawSlug;
-    const wijk = (db.wijken || []).find((w: any) => w.slug.toLowerCase() === slug || w.slug.toLowerCase() === rawSlug);
+    const wijk = (snap.wijken || []).find((w: any) => w.slug.toLowerCase() === slug || w.slug.toLowerCase() === rawSlug);
     if (!wijk) {
       return res.status(404).json({ error: "Wijk of kern niet gevonden" });
     }
+    res.setHeader("ETag", snap.etag);
+    res.setHeader("Cache-Control", "public, max-age=60, s-maxage=600, stale-while-revalidate=3600");
     res.json(wijk);
   });
 
@@ -11850,6 +11881,7 @@ async function startServer() {
     }
 
     const mem = process.memoryUsage();
+    const cacheDiagnostics = getServerCacheDiagnostics(getDb);
     res.json({
       isGitRepo,
       branch,
@@ -11865,19 +11897,81 @@ async function startServer() {
         heapTotal: `${Math.round(mem.heapTotal / 1024 / 1024)} MB`
       },
       lastCacheCleared: lastCacheClearedTime,
-      lastSystemSync: lastSystemSyncTime
+      lastSystemSync: lastSystemSyncTime,
+      cacheDiagnostics,
     });
   });
 
-  // 2. Clear cache
-  app.post("/api/admin/system/clear-cache", requireAuth, requireAdmin, (req: any, res: any) => {
-    const cleared = clearLocalTempCaches();
+  // Public endpoint to fetch complete pre-assembled Public Site Snapshot in a single request
+  app.get("/api/public/snapshot", (req, res) => {
+    const snap = getPublicSiteSnapshot(getDb);
+    res.setHeader("ETag", snap.etag);
+    res.setHeader("Cache-Control", "public, max-age=30, s-maxage=300, stale-while-revalidate=3600");
+    if (req.headers["if-none-match"] === snap.etag) {
+      return res.status(304).end();
+    }
     res.json({
-      success: true,
-      message: "Server- en bouwcache succesvol gewist.",
-      cleared,
-      timestamp: lastCacheClearedTime
+      version: snap.version,
+      generatedAt: snap.generatedAt,
+      fractieleden: snap.fractieleden,
+      videos: snap.videos,
+      newsSummaries: snap.newsSummaries,
+      events: snap.events,
+      categories: snap.categories,
+      faqs: snap.faqs,
     });
+  });
+
+  // Admin: Get Server-Side Snapshot Cache & Thumbnail Diagnostics
+  app.get("/api/admin/cache/status", requireAuth, requireBoardOrAdmin, (req: any, res: any) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.json(getServerCacheDiagnostics(getDb));
+  });
+
+  // Admin: Force Complete Cache Purge, Snapshot Rebuild, Static Video Thumbnail Pre-bake & Cloudflare Purge
+  app.post("/api/admin/cache/purge", requireAuth, requireBoardOrAdmin, async (req: any, res: any) => {
+    try {
+      const rebuildThumbnails = req.body?.rebuildThumbnails !== false;
+      const clearedTemp = clearLocalTempCaches();
+      invalidateSqliteMemoryCache();
+      const freshDb = getDb();
+      const purgeResult = await forcePurgeAllCaches(freshDb, { rebuildThumbnails });
+      lastCacheClearedTime = purgeResult.generatedAt;
+      res.json({
+        ...purgeResult,
+        clearedTemp,
+        message: `Server-Side Snapshot (${purgeResult.snapshotVersion}), HTML-cache en ${purgeResult.thumbnailsRebuilt} statische videothumbnails succesvol vernieuwd!`,
+      });
+    } catch (err: any) {
+      console.error("[CACHE PURGE ERROR]:", err);
+      res.status(500).json({
+        success: false,
+        error: "Fout bij legen van server-cache: " + (err?.message || String(err)),
+      });
+    }
+  });
+
+  // 2. Clear cache (legacy & system button: now also purges Server-Side Snapshot, HTML cache, Thumbnails & Cloudflare)
+  app.post("/api/admin/system/clear-cache", requireAuth, requireAdmin, async (req: any, res: any) => {
+    try {
+      const cleared = clearLocalTempCaches();
+      invalidateSqliteMemoryCache();
+      const freshDb = getDb();
+      const purgeResult = await forcePurgeAllCaches(freshDb, { rebuildThumbnails: true });
+      lastCacheClearedTime = purgeResult.generatedAt;
+      res.json({
+        success: true,
+        message: `Server-Side Snapshot (${purgeResult.snapshotVersion}), HTML-cache en ${purgeResult.thumbnailsRebuilt} statische videothumbnails succesvol vernieuwd!`,
+        cleared,
+        purgeResult,
+        timestamp: lastCacheClearedTime
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        error: err?.message || "Fout bij wissen van cache",
+      });
+    }
   });
 
   // 3. Check for updates from GitHub
@@ -16460,16 +16554,42 @@ Sitemap: ${baseUrl}/sitemap.xml
     next(err);
   });
 
-  // Helper function to serve HTML with server-side injected OpenGraph & SEO tags
+  // Helper function to serve HTML with server-side injected OpenGraph, SEO tags & In-Memory Public Snapshot
   const renderHtmlWithSeo = (req: express.Request, res: express.Response, rawHtml: string) => {
     try {
       const forwardedHost = req.get("x-forwarded-host");
       const reqHost = req.get("host");
       const host = forwardedHost || reqHost || "lijstvanandel.nl";
+      const snap = getPublicSiteSnapshot(getDb);
+      const urlKey = `${host}::${req.originalUrl || req.url}::${snap.version}`;
+
+      // Serve directly from Server-Side HTML Snapshot Cache if already rendered for this URL & snapshot version
+      const cachedPage = getCachedHtmlPage(urlKey);
+      if (cachedPage) {
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.setHeader("ETag", cachedPage.etag);
+        res.setHeader("Cache-Control", "public, max-age=0, s-maxage=60, stale-while-revalidate=600");
+        if (req.headers["if-none-match"] === cachedPage.etag) {
+          return res.status(304).end();
+        }
+        return res.send(cachedPage.html);
+      }
+
       const db = getDb();
       const meta = getPageMetadata(req.originalUrl || req.url, host, db);
-      const enhancedHtml = injectMetadataIntoHtml(rawHtml, meta);
+      let enhancedHtml = injectMetadataIntoHtml(rawHtml, meta);
+
+      // Inject Public Site Snapshot into <head> so the first page render has 0ms data without API waterfalls
+      if (snap.inlineBootstrapScript && !enhancedHtml.includes("__INITIAL_PUBLIC_SNAPSHOT__")) {
+        enhancedHtml = enhancedHtml.replace("</head>", `${snap.inlineBootstrapScript}\n  </head>`);
+      }
+
+      const pageEtag = `"html-${snap.version}-${Buffer.from(req.originalUrl || "/").toString("base64").slice(0, 12)}"`;
+      setCachedHtmlPage(urlKey, enhancedHtml, pageEtag);
+
       res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("ETag", pageEtag);
+      res.setHeader("Cache-Control", "public, max-age=0, s-maxage=60, stale-while-revalidate=600");
       return res.send(enhancedHtml);
     } catch (err) {
       console.error("Fout bij renderen van SEO metadata:", err);
@@ -16531,32 +16651,34 @@ Sitemap: ${baseUrl}/sitemap.xml
     const distPath = possibleDistDirs.find((dir) => fs.existsSync(path.join(dir, "index.html"))) || path.join(process.cwd(), "dist");
     const indexHtmlPath = path.join(distPath, "index.html");
     let cachedIndexHtml = "";
+    let cachedIndexMtime = 0;
     if (fs.existsSync(indexHtmlPath)) {
       cachedIndexHtml = fs.readFileSync(indexHtmlPath, "utf-8");
+      cachedIndexMtime = fs.statSync(indexHtmlPath).mtimeMs;
       console.log(`[PRODUCTION STATIC] Statische bestanden worden geserveerd vanuit: ${distPath}`);
     } else {
       console.warn(`[PRODUCTION STATIC WAARSCHUWING] Geen index.html gevonden in ${distPath}! Voer 'npm run build' uit.`);
     }
 
-    // Serve static assets first (js, css, images) with aggressive caching for fast Core Web Vitals
+    // Serve static assets first (js, css, images) with aggressive caching for fast Core Web Vitals & Cloudflare CDN
     app.use(express.static(distPath, {
       index: false,
-      maxAge: '30d',
+      maxAge: '365d',
       setHeaders: (res, filePath) => {
         const lower = filePath.toLowerCase();
         if (lower.endsWith('sw.js') || lower.endsWith('registersw.js') || lower.endsWith('manifest.webmanifest') || lower.endsWith('manifest.json')) {
           res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
           res.setHeader('Pragma', 'no-cache');
           res.setHeader('Expires', '0');
-        } else if (filePath.includes('/assets/')) {
-          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        } else if (filePath.includes('/assets/') || filePath.includes('/thumbnails/')) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, s-maxage=31536000, immutable');
         } else if (/\.(jpg|jpeg|png|webp|svg|ico|woff2?)$/i.test(filePath)) {
-          res.setHeader('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400');
+          res.setHeader('Cache-Control', 'public, max-age=2592000, s-maxage=31536000, stale-while-revalidate=86400');
         }
       }
     }));
 
-    // All page routes get dynamic server-side OpenGraph / SEO injection
+    // All page routes get dynamic server-side OpenGraph / SEO + Public Snapshot injection from memory
     app.get('*all', (req, res) => {
       const pathname = (req.path || req.originalUrl.split("?")[0] || "").toLowerCase();
       const isStaticAsset = /\.(js|mjs|cjs|css|png|jpg|jpeg|gif|svg|ico|webp|woff2?|map|json|txt|pdf|mp4)$/i.test(pathname);
@@ -16564,8 +16686,23 @@ Sitemap: ${baseUrl}/sitemap.xml
         return res.status(404).send("Bestand niet gevonden");
       }
 
-      // Always read fresh template from disk if it exists
-      const html = fs.existsSync(indexHtmlPath) ? fs.readFileSync(indexHtmlPath, "utf-8") : cachedIndexHtml;
+      // Refresh cachedIndexHtml only if index.html on disk was rebuilt
+      if (!cachedIndexHtml && fs.existsSync(indexHtmlPath)) {
+        cachedIndexHtml = fs.readFileSync(indexHtmlPath, "utf-8");
+        cachedIndexMtime = fs.statSync(indexHtmlPath).mtimeMs;
+      } else if (cachedIndexHtml && fs.existsSync(indexHtmlPath)) {
+        try {
+          const stat = fs.statSync(indexHtmlPath);
+          if (stat.mtimeMs !== cachedIndexMtime) {
+            cachedIndexHtml = fs.readFileSync(indexHtmlPath, "utf-8");
+            cachedIndexMtime = stat.mtimeMs;
+          }
+        } catch (_e) {
+          // keep cachedIndexHtml
+        }
+      }
+
+      const html = cachedIndexHtml;
       if (!html) {
         console.error(`[SERVER FOUT] dist/index.html niet gevonden op ${indexHtmlPath}. Heb je 'npm run build' uitgevoerd?`);
         return res.status(500).send(`
@@ -16595,16 +16732,26 @@ Sitemap: ${baseUrl}/sitemap.xml
           </html>
         `);
       }
-      // Force NO CACHE for index.html
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
       return renderHtmlWithSeo(req, res, html);
     });
   }
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on port ${PORT}`);
+
+    // Warm up In-Memory Public Site Snapshot & pre-bake all static video thumbnails (.webp + .jpg) on disk
+    (async () => {
+      try {
+        const bootDb = getDb();
+        const snap = buildPublicSiteSnapshot(bootDb, false);
+        console.log(`[SNAPSHOT CACHE] ✅ In-memory PublicSiteSnapshot (${snap.version}) gereed met ${snap.fractieleden.length} fractieleden, ${snap.videos.length} video's en ${snap.newsSummaries.length} nieuwsberichten.`);
+        const bakeRes = await prebakeAllVideoThumbnails(bootDb, false);
+        console.log(`[THUMBNAIL PREBAKE] ✅ ${bakeRes.count} statische videothumbnails (.webp + .jpg) gecontroleerd/vooraf gegenereerd op schijf in ${bakeRes.durationMs}ms.`);
+      } catch (warmErr) {
+        console.warn("[SNAPSHOT WARMUP WARNING]:", warmErr);
+      }
+    })();
+
     // Start automated 24-hour council agenda scraper for Steenwijkerland
     startDailyCouncilScraper();
 

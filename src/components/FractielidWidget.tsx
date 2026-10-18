@@ -39,40 +39,43 @@ export const FractielidWidget: React.FC<FractielidWidgetProps> = ({
   onPlanBelafspraak,
   showVideoButton = true,
   className = "",
-  eagerPhoto = false,
+  eagerPhoto = true,
 }) => {
+  const isStaticAssetWithWebp = Boolean(lid.imgUrl && lid.imgUrl.startsWith("/assets/"));
+  const primaryPhotoSrc = isStaticAssetWithWebp
+    ? lid.imgUrl!.replace(/\.(jpg|jpeg|png)$/i, ".webp")
+    : lid.imgUrl || "/assets/silhouette.webp";
+
   return (
     <article
       id={`fractielid-${lid.id}`}
       className={`group relative bg-card border border-border overflow-hidden hover-lift flex flex-col rounded-sm shadow-sm ${className}`}
     >
-      <div className="absolute top-3 left-3 z-10 px-3 py-1 bg-twente-black/80 backdrop-blur border border-accent text-[10px] uppercase tracking-widest text-accent font-semibold rounded-sm">
+      <div className="absolute top-3 left-3 z-10 px-3 py-1 bg-twente-black/90 border border-accent text-[10px] uppercase tracking-widest text-accent font-semibold rounded-sm">
         {lid.role}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-[200px_1fr] md:grid-cols-[180px_1fr] lg:grid-cols-[220px_1fr]">
         <div className="aspect-[4/5] overflow-hidden bg-muted flex items-center justify-center">
           {lid.imgUrl ? (
-            <picture className="w-full h-full">
-              <source
-                srcSet={lid.imgUrl.replace(/\.(jpg|jpeg|png)$/i, ".webp")}
-                type="image/webp"
-              />
-              <img
-                src={lid.imgUrl.replace(/\.(jpg|jpeg|png)$/i, ".webp")}
-                alt={lid.name}
-                loading={eagerPhoto ? "eager" : "lazy"}
-                // @ts-expect-error fetchpriority standard attribute
-                fetchpriority={eagerPhoto ? "high" : "auto"}
-                decoding="async"
-                width="220"
-                height="275"
-                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = lid.imgUrl || "/assets/silhouette.webp";
-                }}
-              />
-            </picture>
+            <img
+              src={primaryPhotoSrc}
+              alt={lid.name}
+              loading={eagerPhoto ? "eager" : "lazy"}
+              fetchPriority={eagerPhoto ? "high" : "auto"}
+              decoding="async"
+              width={220}
+              height={275}
+              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                if (lid.imgUrl && target.src !== window.location.origin + lid.imgUrl) {
+                  target.src = lid.imgUrl;
+                } else {
+                  target.src = "/assets/silhouette.webp";
+                }
+              }}
+            />
           ) : (
             <div className="text-muted-foreground text-xs uppercase tracking-wider">Geen foto</div>
           )}

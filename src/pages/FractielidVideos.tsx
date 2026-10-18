@@ -7,7 +7,8 @@ import { BelafspraakDialog } from "@/components/BelafspraakDialog";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { ShareDialog } from "@/components/ShareDialog";
 import { VerticalNewsCarousel } from "@/components/VerticalNewsCarousel";
-import { getVideoThumbnail } from "@/lib/videoUtils";
+import { getVideoThumbnail, getVideoThumbnailFallbackUrl } from "@/lib/videoUtils";
+import { getInitialPublicSnapshot } from "@/lib/publicSnapshotClient";
 import { DEFAULT_FRACTIELEDEN } from "@/data/fractieleden";
 import { NewsItem } from "@/data/news";
 
@@ -20,24 +21,76 @@ interface VideoItem {
   date: string;
   videoUrl?: string;
   thumbnailUrl?: string;
+  posterJpgUrl?: string;
   wijkSlug?: string;
+  personId?: string;
   fractieledenIds?: string[];
+}
+
+function filterMemberVideos(allVideos: VideoItem[], memberId?: string, memberName?: string): VideoItem[] {
+  if (!Array.isArray(allVideos) || !memberId) return [];
+  const lowerName = memberName?.toLowerCase() || "";
+  return allVideos
+    .filter(
+      (v) =>
+        (Array.isArray(v.fractieledenIds) && v.fractieledenIds.some((fid) => String(fid) === String(memberId))) ||
+        String(v.personId || "") === String(memberId) ||
+        (lowerName && v.title && v.title.toLowerCase().includes(lowerName))
+    )
+    .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+}
+
+function filterMemberNews(allNews: NewsItem[], memberId?: string, memberName?: string): NewsItem[] {
+  if (!Array.isArray(allNews) || !memberId) return [];
+  const lowerName = memberName?.toLowerCase() || "";
+  return allNews
+    .filter(
+      (n: any) =>
+        !n.isHidden &&
+        ((Array.isArray(n.fractieledenIds) && n.fractieledenIds.some((fid: any) => String(fid) === String(memberId))) ||
+          (lowerName && n.author && String(n.author).toLowerCase().includes(lowerName)))
+    )
+    .sort(
+      (a, b) =>
+        new Date(b.date || b.createdAt || 0).getTime() -
+        new Date(a.date || a.createdAt || 0).getTime()
+    );
 }
 
 export default function FractielidVideos() {
   const { id } = useParams<{ id: string }>();
 
-  // Synchronous initial fallback resolution for 0ms First Contentful Paint & 0 CLS
+  // Synchronous 0ms hydration from Server-Side Public Snapshot or DEFAULT_FRACTIELEDEN
+  const initialSnapshot = React.useMemo(() => getInitialPublicSnapshot(), []);
+
   const defaultMember = React.useMemo(() => {
+    if (initialSnapshot?.fractieleden?.length) {
+      const snapFound = initialSnapshot.fractieleden.find((m: any) => String(m.id) === String(id));
+      if (snapFound) return snapFound as FractielidItem;
+    }
     return DEFAULT_FRACTIELEDEN.find((m) => String(m.id) === String(id)) || null;
-  }, [id]);
+  }, [id, initialSnapshot]);
+
+  const initialVideos = React.useMemo(() => {
+    if (initialSnapshot?.videos?.length && id) {
+      return filterMemberVideos(initialSnapshot.videos, id, defaultMember?.name);
+    }
+    return [];
+  }, [id, initialSnapshot, defaultMember?.name]);
+
+  const initialNews = React.useMemo(() => {
+    if (initialSnapshot?.newsSummaries?.length && id) {
+      return filterMemberNews(initialSnapshot.newsSummaries, id, defaultMember?.name);
+    }
+    return [];
+  }, [id, initialSnapshot, defaultMember?.name]);
 
   const [member, setMember] = useState<FractielidItem | null>(defaultMember);
-  const [videos, setVideos] = useState<VideoItem[]>([]);
-  const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
+  const [videos, setVideos] = useState<VideoItem[]>(initialVideos);
+  const [newsItems, setNewsItems] = useState<NewsItem[]>(initialNews);
   const [loading, setLoading] = useState(!defaultMember);
-  const [videosLoading, setVideosLoading] = useState(true);
-  const [newsLoading, setNewsLoading] = useState(true);
+  const [videosLoading, setVideosLoading] = useState(!initialSnapshot?.videos);
+  const [newsLoading, setNewsLoading] = useState(!initialSnapshot?.newsSummaries);
   const [belOpen, setBelOpen] = useState(false);
   const [voorgeselecteerd, setVoorgeselecteerd] = useState<string | undefined>(undefined);
 
@@ -61,20 +114,32 @@ export default function FractielidVideos() {
 
   useEffect(() => {
     if (defaultMember) {
-      setMember((prev) => prev || defaultMember);
+      setMember(defaultMember);
       setLoading(false);
     } else {
       setLoading(true);
     }
-    setVideosLoading(true);
-    setNewsLoading(true);
 
-    // 1. Fetch targeted fractielid videos with fast fallback
+    // Hydrate immediately if snapshot already contains data for this member
+    if (initialSnapshot?.videos) {
+      setVideos(filterMemberVideos(initialSnapshot.videos, id, defaultMember?.name));
+      setVideosLoading(false);
+    } else {
+      setVideosLoading(true);
+    }
+
+    if (initialSnapshot?.newsSummaries) {
+      setNewsItems(filterMemberNews(initialSnapshot.newsSummaries, id, defaultMember?.name));
+      setNewsLoading(false);
+    } else {
+      setNewsLoading(true);
+    }
+
+    // 1. Revalidate targeted fractielid videos from cached server snapshot
     fetch(`/api/videos?memberId=${encodeURIComponent(id || "")}`)
       .then((res) => (res.ok ? res.json() : []))
       .then((videosData: VideoItem[]) => {
         if (Array.isArray(videosData)) {
-          // Sort by date descending
           const sorted = [...videosData].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
           setVideos(sorted);
         }
@@ -86,8 +151,8 @@ export default function FractielidVideos() {
         setVideosLoading(false);
       });
 
-    // 2. Fetch targeted fractielid gekoppelde nieuwsberichten (geen fallback of voorbeelddata)
-    fetch(`/api/news?memberId=${encodeURIComponent(id || "")}&includeAll=true`)
+    // 2. Fetch lightweight news summaries (never includeAll=true with multi-MB HTML bodies)
+    fetch(`/api/news?memberId=${encodeURIComponent(id || "")}&summary=1`)
       .then((res) => (res.ok ? res.json() : []))
       .then((data: NewsItem[]) => {
         if (Array.isArray(data)) {
@@ -97,31 +162,31 @@ export default function FractielidVideos() {
               new Date(a.date || a.createdAt || 0).getTime()
           );
           setNewsItems(sorted);
-        } else {
-          setNewsItems([]);
         }
       })
       .catch((err) => {
         console.warn("Fout bij ophalen gekoppelde nieuwsberichten:", err);
-        setNewsItems([]);
       })
       .finally(() => {
         setNewsLoading(false);
       });
 
-    // 3. Optionally refresh member info in background if customized
-    fetch("/api/fractieleden")
-      .then((res) => (res.ok ? res.json() : []))
-      .then((ledenData: FractielidItem[]) => {
-        if (Array.isArray(ledenData)) {
-          const found = ledenData.find((l) => String(l.id) === String(id));
-          if (found) {
-            setMember(found);
+    // 3. Only fetch fractieleden if not already in initialSnapshot
+    if (!initialSnapshot?.fractieleden?.length) {
+      fetch("/api/fractieleden")
+        .then((res) => (res.ok ? res.json() : []))
+        .then((ledenData: FractielidItem[]) => {
+          if (Array.isArray(ledenData)) {
+            const found = ledenData.find((l) => String(l.id) === String(id));
+            if (found) {
+              setMember(found);
+            }
           }
-        }
-      })
-      .catch(() => {});
-  }, [id, defaultMember]);
+        })
+        .catch(() => {})
+        .finally(() => setLoading(false));
+    }
+  }, [id, defaultMember, initialSnapshot]);
 
   // Reset paginering als het fractielid verandert
   useEffect(() => {
@@ -376,7 +441,7 @@ export default function FractielidVideos() {
           ) : (
             <div className="flex-1 flex flex-col justify-between">
               <div className={`grid grid-cols-1 ${paginatedVideos.length > 1 ? "sm:grid-cols-2" : "sm:grid-cols-1"} gap-5 pt-2`}>
-                {paginatedVideos.map((v) => {
+                {paginatedVideos.map((v, idx) => {
                   let cleanVideoTitle = (v.burgerraadslidTitle || v.title || "").trim();
                   const nameOverRegex = new RegExp(`^${member?.name || "Lijst van Andel"}\\s+over\\s+`, "i");
                   cleanVideoTitle = cleanVideoTitle.replace(nameOverRegex, "");
@@ -385,7 +450,7 @@ export default function FractielidVideos() {
                   const displayTitle = `${member?.name || "Lijst van Andel"} over ‘${cleanVideoTitle}’`;
                   const effectivePoster =
                     getVideoThumbnail(v.videoUrl, v.thumbnailUrl, v.id, member?.id) ||
-                    `/api/videos/${v.id}/thumbnail.jpg?personId=${encodeURIComponent(member?.id || "")}`;
+                    `/uploads/thumbnails/video-${v.id}.webp`;
 
                   return (
                     <article
@@ -403,9 +468,18 @@ export default function FractielidVideos() {
                           <img
                             src={effectivePoster}
                             alt={displayTitle}
-                            className="w-full h-full object-cover transition-transform duration-500 group-hover/thumb:scale-105"
+                            loading="eager"
+                            fetchPriority={idx < 4 ? "high" : "auto"}
+                            decoding="async"
+                            width={640}
+                            height={360}
+                            className="w-full h-full object-cover transition-transform duration-300 group-hover/thumb:scale-105"
                             onError={(e) => {
-                              (e.target as HTMLImageElement).src = `/api/thumbnail/video/compose?title=${encodeURIComponent(cleanVideoTitle)}&personId=${encodeURIComponent(member?.id || "")}&wijk=${encodeURIComponent(v.wijkSlug || "")}`;
+                              const img = e.target as HTMLImageElement;
+                              const nextSrc = getVideoThumbnailFallbackUrl(v.id, member?.id, img.src);
+                              if (img.src !== window.location.origin + nextSrc) {
+                                img.src = nextSrc;
+                              }
                             }}
                           />
                         ) : (

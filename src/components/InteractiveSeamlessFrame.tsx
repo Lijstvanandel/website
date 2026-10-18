@@ -16,6 +16,33 @@ interface InteractiveSeamlessFrameProps {
 function sanitizeDossierHtml(rawHtml: string): string {
   let cleaned = rawHtml;
 
+  // 0. Detect if the uploaded file is accidentally a Ctrl+S "Save Page As" dump of the Lijst van Andel website itself
+  const isSavedSiteDump =
+    (cleaned.includes('id="root"') &&
+      (cleaned.includes("stadium-bg") || cleaned.includes("lva-svg-colorblind-filters"))) ||
+    /saved from url=.*(?:scientiarum\.nl|lijstvanandel\.nl)/i.test(cleaned);
+
+  if (isSavedSiteDump) {
+    // Strip the outer Lijst van Andel website shell (header, hero, nav, footer, scripts) so it doesn't render the site inside itself
+    cleaned = cleaned
+      .replace(/<script\b[^>]*src=["'][^"']*\/assets\/index-[^"']*["'][^>]*><\/script>/gi, "")
+      .replace(/<header\b[^>]*class=["'][^"']*sticky top-0[^"']*["'][^>]*>[\s\S]*?<\/header>/gi, "")
+      .replace(/<footer\b[^>]*class=["'][^"']*bg-twente-black[^"']*["'][^>]*>[\s\S]*?<\/footer>/gi, "");
+
+    const warningBanner = `
+      <div style="font-family: system-ui, -apple-system, sans-serif; background: #fffbeb; border: 2px solid #f59e0b; border-radius: 10px; padding: 16px 20px; margin: 16px auto; max-width: 920px; color: #78350f; line-height: 1.55;">
+        <strong style="display:block; font-size: 15px; color: #b45309; margin-bottom: 4px;">
+          ⚠️ Verkeerd .html-bestand gekoppeld (opgeslagen webpagina i.p.v. bronbestand)
+        </strong>
+        <span style="font-size: 13.5px;">
+          In dit artikel is per ongeluk de <strong>opgeslagen webpagina van Lijst van Andel zelf</strong> (<code>... _ Lijst van Andel.html</code>, gemaakt met <em>Pagina opslaan als</em>) geüpload in plaats van het originele losse bronbestand (bijv. <code>onder_de_graszoden_van_eesveen_forensisch_dossier (1).html</code>). In die opgeslagen webpagina waren de interactieve <code>&lt;script&gt;</code>-grafieken en tabellen al verwijderd.<br/>
+          <strong>Oplossing:</strong> Open dit bericht in <code>/admin</code>, verwijder dit blok en kies bij <em>📊 Dataproduct / Kaart (.html) &rarr; Interactief Artikel (.html)</em> het originele bestand <code>onder_de_graszoden_van_eesveen_forensisch_dossier (1).html</code>.
+        </span>
+      </div>
+    `;
+    cleaned = cleaned.replace(/<body[^>]*>/i, `$&${warningBanner}`);
+  }
+
   // 1. Remove accidental duplicate Section 1 block if present (e.g. in Eesveen dossier where Section 1 was pasted twice with raw LaTeX)
   const duplicateBlockPattern =
     /<p>\s*Het grote misverstand in het maatschappelijke debat over gaswinning[\s\S]*?\$\\text\{M\}_\\text\{L\}\s*=\s*3,0\$[\s\S]*?157 miljoen \$\\text\{Nm\}\^3\$ aardgas herbergt\s*<a[^>]*>\[6\]<\/a>\.\s*<\/p>/i;

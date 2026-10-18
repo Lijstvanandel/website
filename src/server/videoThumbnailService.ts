@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import sharp from "sharp";
 import { BUURTKAART_43_WIJKEN } from "../data/defaultWijken.js";
 import { DEFAULT_FRACTIELEDEN } from "../data/fractieleden.js";
@@ -9,9 +10,29 @@ import { DEFAULT_FRACTIELEDEN } from "../data/fractieleden.js";
 import opentypeModule from "./opentype-bundled.cjs";
 const opentype: any = opentypeModule?.default || opentypeModule;
 
-// In-memory cache for ultra-fast serving
-const thumbnailCache = new Map<string, { buffer: Buffer; expiresAt: number }>();
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+// Persistent disk directories for pre-baked static thumbnails & cutouts
+const THUMBNAIL_PUBLIC_DIR = path.join(process.cwd(), "public", "uploads", "thumbnails");
+const THUMBNAIL_DIST_DIR = path.join(process.cwd(), "dist", "uploads", "thumbnails");
+
+function ensureThumbnailDirs() {
+  try {
+    if (!fs.existsSync(THUMBNAIL_PUBLIC_DIR)) {
+      fs.mkdirSync(THUMBNAIL_PUBLIC_DIR, { recursive: true });
+    }
+    if (fs.existsSync(path.join(process.cwd(), "dist")) && !fs.existsSync(THUMBNAIL_DIST_DIR)) {
+      fs.mkdirSync(THUMBNAIL_DIST_DIR, { recursive: true });
+    }
+  } catch (_e) {
+    // ignore mkdir errors
+  }
+}
+ensureThumbnailDirs();
+
+// In-memory caches for ultra-fast serving (<1ms)
+const thumbnailCache = new Map<string, { jpgBuffer: Buffer; webpBuffer: Buffer; expiresAt: number }>();
+const personCutoutMemoryCache = new Map<string, { buffer: Buffer; width: number; height: number }>();
+const bgResizeMemoryCache = new Map<string, Buffer>();
+const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days in-memory TTL
 
 let cachedBoldFont: any = null;
 let cachedRegFont: any = null;
@@ -107,16 +128,79 @@ function measureTextWidth(font: any, text: string, fontSize: number): number {
 }
 
 export function invalidateVideoThumbnailCache(videoId?: string): void {
+  ensureThumbnailDirs();
   if (videoId) {
-    const prefix = String(videoId);
+    const cleanId = String(videoId).replace(/[^a-zA-Z0-9_-]/g, "");
     for (const key of thumbnailCache.keys()) {
-      if (key === prefix || key.startsWith(`${prefix}_`)) {
+      if (key === cleanId || key.startsWith(`${cleanId}_`)) {
         thumbnailCache.delete(key);
+      }
+    }
+    const filesToDelete = [
+      path.join(THUMBNAIL_PUBLIC_DIR, `video-${cleanId}.webp`),
+      path.join(THUMBNAIL_PUBLIC_DIR, `video-${cleanId}.jpg`),
+      path.join(THUMBNAIL_DIST_DIR, `video-${cleanId}.webp`),
+      path.join(THUMBNAIL_DIST_DIR, `video-${cleanId}.jpg`),
+    ];
+    for (const f of filesToDelete) {
+      try {
+        if (fs.existsSync(f)) fs.unlinkSync(f);
+      } catch (_e) {
+        // ignore
       }
     }
   } else {
     thumbnailCache.clear();
+    personCutoutMemoryCache.clear();
+    bgResizeMemoryCache.clear();
+    for (const dir of [THUMBNAIL_PUBLIC_DIR, THUMBNAIL_DIST_DIR]) {
+      if (fs.existsSync(dir)) {
+        try {
+          for (const entry of fs.readdirSync(dir)) {
+            if (entry.startsWith("video-") || entry.startsWith("cutout-")) {
+              try {
+                fs.unlinkSync(path.join(dir, entry));
+              } catch (_e) {
+                // ignore
+              }
+            }
+          }
+        } catch (_e) {
+          // ignore
+        }
+      }
+    }
   }
+}
+
+export function getPrebakedThumbnailStats(): {
+  diskWebpCount: number;
+  diskJpgCount: number;
+  diskCutoutCount: number;
+  memoryCacheCount: number;
+} {
+  ensureThumbnailDirs();
+  let diskWebpCount = 0;
+  let diskJpgCount = 0;
+  let diskCutoutCount = 0;
+  try {
+    if (fs.existsSync(THUMBNAIL_PUBLIC_DIR)) {
+      const files = fs.readdirSync(THUMBNAIL_PUBLIC_DIR);
+      for (const f of files) {
+        if (f.startsWith("video-") && f.endsWith(".webp")) diskWebpCount++;
+        else if (f.startsWith("video-") && f.endsWith(".jpg")) diskJpgCount++;
+        else if (f.startsWith("cutout-") && f.endsWith(".png")) diskCutoutCount++;
+      }
+    }
+  } catch (_e) {
+    // ignore
+  }
+  return {
+    diskWebpCount,
+    diskJpgCount,
+    diskCutoutCount,
+    memoryCacheCount: thumbnailCache.size,
+  };
 }
 
 export function escapeXml(unsafe: string): string {
@@ -147,10 +231,8 @@ function wrapThumbnailHeadline(text: string, maxCharsPerLine = 24, maxLines = 4)
   return lines.length > 0 ? lines : [text || "Lijst van Andel"];
 }
 
-// Converts multi-line headline into exact SVG vector paths using OpenType.js.
-// Highlights the member's name in amber (#f59e0b) and the remainder of the title in white (#ffffff).
 function renderHeadlineByOffset(
-  font: opentype.Font | null,
+  font: any,
   lines: string[],
   memberName: string,
   startX: number,
@@ -171,7 +253,6 @@ function renderHeadlineByOffset(
 
     for (let wIdx = 0; wIdx < words.length; wIdx++) {
       const word = words[wIdx];
-      // If within memberName length boundary, render in amber; otherwise in white
       const isName = charOffset < nameLen;
       const fill = isName ? "#f59e0b" : "#ffffff";
       const p = font.getPath(word, curX, y, fontSize);
@@ -184,7 +265,7 @@ function renderHeadlineByOffset(
         charOffset += 1;
       }
     }
-    charOffset += 1; // accounting for line break
+    charOffset += 1;
   }
   return paths.join("\n");
 }
@@ -193,10 +274,15 @@ function renderHeadlineByOffset(
 async function autoCutoutIfNeeded(buf: Buffer): Promise<Buffer> {
   try {
     const meta = await sharp(buf).metadata();
-    const { data, info } = await sharp(buf).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    // Downscale huge portraits BEFORE running flood-fill so we never loop over 6+ million pixels on the main thread
+    const workingBuf =
+      (meta.width && meta.width > 700) || (meta.height && meta.height > 700)
+        ? await sharp(buf).resize({ width: 560, height: 640, fit: "inside", withoutEnlargement: true }).toBuffer()
+        : buf;
+
+    const { data, info } = await sharp(workingBuf).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     const { width, height } = info;
 
-    // If the image already has transparency (PNG/WebP with alpha channel), check if there are transparent areas
     if (meta.hasAlpha) {
       let transparentSampleCount = 0;
       const step = Math.max(1, Math.floor(data.length / 4000));
@@ -204,21 +290,18 @@ async function autoCutoutIfNeeded(buf: Buffer): Promise<Buffer> {
         if (data[i] < 60) {
           transparentSampleCount++;
           if (transparentSampleCount > 10) {
-            // Pre-cut transparent image: preserve without alteration
-            return buf;
+            return workingBuf;
           }
         }
       }
     }
 
-    // Near-white or light grey studio background detector
     const isBg = (r: number, g: number, b: number, a: number) =>
       a > 0 && r > 190 && g > 190 && b > 190 && Math.abs(r - g) < 32 && Math.abs(r - b) < 32;
 
     const visited = new Uint8Array(width * height);
     const queue: number[] = [];
 
-    // Seed outer borders
     for (let x = 0; x < width; x++) {
       queue.push(x, 0);
       queue.push(x, height - 1);
@@ -256,7 +339,7 @@ async function autoCutoutIfNeeded(buf: Buffer): Promise<Buffer> {
     if (clearedCount > 50) {
       return await sharp(data, { raw: { width, height, channels: 4 } }).png().toBuffer();
     }
-    return buf;
+    return workingBuf;
   } catch (err) {
     console.warn("[VIDEO THUMBNAIL] autoCutout error:", err);
     return buf;
@@ -325,7 +408,6 @@ async function loadSafeImageBuffer(
     }
   }
 
-  // Pure canvas gradient fallback if no images exist on disk
   return await sharp({
     create: {
       width: 1200,
@@ -338,9 +420,48 @@ async function loadSafeImageBuffer(
     .toBuffer();
 }
 
+async function loadResizedBackgroundBuffer(effectiveBgUrl: string): Promise<Buffer> {
+  const cached = bgResizeMemoryCache.get(effectiveBgUrl);
+  if (cached) return cached;
+
+  const rawBgBuffer = await loadSafeImageBuffer(
+    effectiveBgUrl,
+    "public/assets/steenwijk-aerial.webp"
+  );
+  const resized = await sharp(rawBgBuffer)
+    .resize(1200, 630, { fit: "cover", position: "center" })
+    .toBuffer();
+  bgResizeMemoryCache.set(effectiveBgUrl, resized);
+  return resized;
+}
+
 async function loadPersonCutoutBuffer(
   cutoutSource?: string
 ): Promise<{ buffer: Buffer; width: number; height: number } | null> {
+  const cacheKey = (cutoutSource || "__default_silhouette__").trim();
+  const memCached = personCutoutMemoryCache.get(cacheKey);
+  if (memCached) return memCached;
+
+  ensureThumbnailDirs();
+  const cutoutHash = crypto.createHash("sha1").update(cacheKey).digest("hex").slice(0, 14);
+  const diskCutoutPath = path.join(THUMBNAIL_PUBLIC_DIR, `cutout-${cutoutHash}.png`);
+
+  if (fs.existsSync(diskCutoutPath)) {
+    try {
+      const diskBuf = fs.readFileSync(diskCutoutPath);
+      const meta = await sharp(diskBuf).metadata();
+      const resObj = {
+        buffer: diskBuf,
+        width: meta.width || 400,
+        height: meta.height || 580,
+      };
+      personCutoutMemoryCache.set(cacheKey, resObj);
+      return resObj;
+    } catch (_e) {
+      // fall through to regenerate
+    }
+  }
+
   let rawBuf: Buffer | null = null;
 
   if (cutoutSource && typeof cutoutSource === "string") {
@@ -385,7 +506,6 @@ async function loadPersonCutoutBuffer(
     }
   }
 
-  // Fallback to silhouette if no cutout was provided or found
   if (!rawBuf) {
     const silCandidates = [
       path.join(process.cwd(), "public/assets/silhouette.png"),
@@ -415,18 +535,27 @@ async function loadPersonCutoutBuffer(
       .png()
       .toBuffer();
     const meta = await sharp(resized).metadata();
-    return {
+    const resObj = {
       buffer: resized,
       width: meta.width || 400,
       height: meta.height || 580,
     };
+
+    try {
+      fs.writeFileSync(diskCutoutPath, resized);
+    } catch (_e) {
+      // ignore disk write error
+    }
+
+    personCutoutMemoryCache.set(cacheKey, resObj);
+    return resObj;
   } catch (err) {
     console.warn("[VIDEO THUMBNAIL] Error resizing person cutout:", err);
     return null;
   }
 }
 
-export async function generateVideoThumbnailBuffer(
+export async function generateVideoThumbnailBothFormats(
   video: {
     id?: string;
     title?: string;
@@ -439,7 +568,7 @@ export async function generateVideoThumbnailBuffer(
     date?: string;
   },
   db?: any
-): Promise<Buffer> {
+): Promise<{ jpgBuffer: Buffer; webpBuffer: Buffer }> {
   const category = (video.category || "Raadsdebat").trim();
   const rawWijkSlug = (video.wijkSlug || "").trim().toLowerCase();
 
@@ -468,7 +597,6 @@ export async function generateVideoThumbnailBuffer(
       )
     : null;
 
-  // If no member ID was specified, check if the video title mentions a member
   if (!foundMember) {
     const rawT = (video.title || video.burgerraadslidTitle || "").toLowerCase();
     for (const m of allMembers) {
@@ -483,7 +611,6 @@ export async function generateVideoThumbnailBuffer(
     }
   }
 
-  // Default to Sammy van Andel (fractievoorzitter) if none resolved
   if (!foundMember) {
     foundMember = allMembers[0] || DEFAULT_FRACTIELEDEN[0];
   }
@@ -498,7 +625,6 @@ export async function generateVideoThumbnailBuffer(
       : foundMember.role || "Raadslid"
     : "Gemeenteraad Steenwijkerland";
 
-  // Find Cutout Image: prioritize uploaded cutoutImageUrl / photoNoBgUrl, then uploaded imgUrl, then default match
   let cutoutUrl = foundMember?.cutoutImageUrl || foundMember?.photoNoBgUrl || "";
   if (!cutoutUrl && foundMember) {
     const defaultMatch = DEFAULT_FRACTIELEDEN.find(
@@ -531,7 +657,7 @@ export async function generateVideoThumbnailBuffer(
     }
   }
 
-  // 3. Clean raw title and construct headline: '%naam%' over '%titel van de video%'
+  // 3. Clean raw title and construct headline
   let rawTitle = (video.burgerraadslidTitle || video.title || "").trim();
   if (rawTitle) {
     const nameOverRegex = new RegExp(`^${memberName}\\s+over\\s+`, "i");
@@ -558,7 +684,6 @@ export async function generateVideoThumbnailBuffer(
   }
   const fullHeadline = `${memberName} over ‘${cleanTitle}’`;
 
-  // Dynamic Cache Key: accounts for cutoutUrl, wijk background, and headline
   const effectiveBgUrl = wijkBackgroundUrl || "/assets/steenwijk-aerial.webp";
   const cacheKey = String(
     `${video.id || "preview"}_${cutoutUrl}_${effectiveBgUrl}_${fullHeadline}`
@@ -566,21 +691,13 @@ export async function generateVideoThumbnailBuffer(
 
   const cached = thumbnailCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
-    return cached.buffer;
+    return { jpgBuffer: cached.jpgBuffer, webpBuffer: cached.webpBuffer };
   }
 
-  // 4. Load Background Image
-  // Background photo of the connected wijk/kern (or default steenwijk-aerial.webp if none connected)
-  const rawBgBuffer = await loadSafeImageBuffer(
-    effectiveBgUrl,
-    "public/assets/steenwijk-aerial.webp"
-  );
+  // 4. Load Resized Background Image (cached in RAM)
+  const bgBuffer = await loadResizedBackgroundBuffer(effectiveBgUrl);
 
-  const bgBuffer = await sharp(rawBgBuffer)
-    .resize(1200, 630, { fit: "cover", position: "center" })
-    .toBuffer();
-
-  // 5. Load Person Cutout Image (vrijstaande foto)
+  // 5. Load Person Cutout Image (cached on disk & RAM)
   const personRes = await loadPersonCutoutBuffer(cutoutUrl);
 
   // 6. Wrap Headline Text
@@ -592,8 +709,7 @@ export async function generateVideoThumbnailBuffer(
   // 7. Get fonts for vector rendering
   const { bold: boldFont, regular: regFont } = getThumbnailFonts();
 
-  // 8. Generate Vector SVG paths (Zero OS font dependencies - immune to tofu □□□□ on Linux VPS)
-  // Party badge
+  // 8. Generate Vector SVG paths
   const lvaTextWidth = measureTextWidth(boldFont, "LvA", 14);
   const lvaX = 60 + (44 - lvaTextWidth) / 2;
   const partyBadgePaths = `
@@ -602,7 +718,6 @@ export async function generateVideoThumbnailBuffer(
     ${textToVectorPath(boldFont, "LIJST VAN ANDEL", 60 + 56, 48 + 20, 16, "#ffffff")}
   `;
 
-  // Badges: Wijk (if linked) & Category
   let badgesContent = "";
   if (wijkNaam) {
     const wTextWidth = measureTextWidth(boldFont, wijkNaam, 13);
@@ -639,7 +754,6 @@ export async function generateVideoThumbnailBuffer(
     `;
   }
 
-  // Headline vector paths (member name highlighted in amber, title in white)
   const headlinePaths = renderHeadlineByOffset(
     boldFont,
     titleLines,
@@ -650,7 +764,6 @@ export async function generateVideoThumbnailBuffer(
     fontSize
   );
 
-  // Speaker badge vector paths
   const partyPrefixWidth = measureTextWidth(boldFont, "LIJST VAN ANDEL", 20);
   const speakerPaths = `
     ${textToVectorPath(boldFont, "LIJST VAN ANDEL", 60, 525, 20, "#f59e0b")}
@@ -658,7 +771,6 @@ export async function generateVideoThumbnailBuffer(
     ${textToVectorPath(regFont, "Gemeenteraad Steenwijkerland", 60, 550, 14, "#94a3b8")}
   `;
 
-  // Background Gradient Overlay (darkens background on left and bottom for perfect legibility, placed BEHIND person)
   const bgGradSvg = Buffer.from(`
     <svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
       <defs>
@@ -678,7 +790,6 @@ export async function generateVideoThumbnailBuffer(
     </svg>
   `);
 
-  // Foreground Vector Overlay (Text, Badges & Play Icon on TOP of person cutout)
   const fgSvg = Buffer.from(`
     <svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
       <defs>
@@ -686,38 +797,23 @@ export async function generateVideoThumbnailBuffer(
           <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000000" flood-opacity="0.8"/>
         </filter>
       </defs>
-
-      <!-- Party Branding Badge (Top Left) -->
       <g filter="url(#textDrop)">
         ${partyBadgePaths}
       </g>
-
-      <!-- Badges: Wijk & Categorie -->
       <g filter="url(#textDrop)">
         ${badgesContent}
       </g>
-
-      <!-- Video Headline: '%naam%' over '%titel van de video%' -->
       <g filter="url(#textDrop)">
         ${headlinePaths}
       </g>
-
-      <!-- Speaker / Fractielid Badge (Bottom Left) -->
       <g filter="url(#textDrop)">
         ${speakerPaths}
       </g>
-
-      <!-- Video Play Icon (Top Right) -->
       <circle cx="1130" cy="65" r="24" fill="rgba(239, 68, 68, 0.95)" filter="url(#textDrop)"/>
       <polygon points="1124,53 1142,65 1124,77" fill="#ffffff"/>
     </svg>
   `);
 
-  // Layer Composition:
-  // 1. Background image
-  // 2. Background darkening gradients (behind person)
-  // 3. Person cutout (freestanding on the right, vibrant and unobstructed)
-  // 4. Foreground text, badges, and icons
   const compositeLayers: sharp.OverlayOptions[] = [
     { input: bgGradSvg, top: 0, left: 0 },
   ];
@@ -734,15 +830,142 @@ export async function generateVideoThumbnailBuffer(
 
   compositeLayers.push({ input: fgSvg, top: 0, left: 0 });
 
-  const resultBuffer = await sharp(bgBuffer)
-    .composite(compositeLayers)
-    .jpeg({ quality: 90 })
-    .toBuffer();
+  const composed = sharp(bgBuffer).composite(compositeLayers);
+  const [jpgBuffer, webpBuffer] = await Promise.all([
+    composed.clone().jpeg({ quality: 88, mozjpeg: true }).toBuffer(),
+    composed.clone().webp({ quality: 84, effort: 3 }).toBuffer(),
+  ]);
 
   thumbnailCache.set(cacheKey, {
-    buffer: resultBuffer,
+    jpgBuffer,
+    webpBuffer,
     expiresAt: Date.now() + CACHE_TTL_MS,
   });
 
-  return resultBuffer;
+  return { jpgBuffer, webpBuffer };
+}
+
+/**
+ * Pre-bakes a video's thumbnail to disk in both .webp and .jpg formats
+ * so browser & Cloudflare CDN serve static files in < 2ms with zero CPU load.
+ */
+export async function prebakeVideoThumbnailToDisk(
+  video: any,
+  db?: any,
+  force = false
+): Promise<{ webpUrl: string; jpgUrl: string }> {
+  ensureThumbnailDirs();
+  const cleanId = String(video?.id || "preview").replace(/[^a-zA-Z0-9_-]/g, "");
+  const pubWebp = path.join(THUMBNAIL_PUBLIC_DIR, `video-${cleanId}.webp`);
+  const pubJpg = path.join(THUMBNAIL_PUBLIC_DIR, `video-${cleanId}.jpg`);
+
+  if (!force && fs.existsSync(pubWebp) && fs.existsSync(pubJpg)) {
+    return {
+      webpUrl: `/uploads/thumbnails/video-${cleanId}.webp`,
+      jpgUrl: `/uploads/thumbnails/video-${cleanId}.jpg`,
+    };
+  }
+
+  const { jpgBuffer, webpBuffer } = await generateVideoThumbnailBothFormats(video, db);
+
+  try {
+    fs.writeFileSync(pubWebp, webpBuffer);
+    fs.writeFileSync(pubJpg, jpgBuffer);
+    if (fs.existsSync(path.join(process.cwd(), "dist"))) {
+      if (!fs.existsSync(THUMBNAIL_DIST_DIR)) {
+        fs.mkdirSync(THUMBNAIL_DIST_DIR, { recursive: true });
+      }
+      fs.writeFileSync(path.join(THUMBNAIL_DIST_DIR, `video-${cleanId}.webp`), webpBuffer);
+      fs.writeFileSync(path.join(THUMBNAIL_DIST_DIR, `video-${cleanId}.jpg`), jpgBuffer);
+    }
+  } catch (err) {
+    console.warn(`[VIDEO THUMBNAIL PREBAKE] Kon bestanden voor video ${cleanId} niet op schijf opslaan:`, err);
+  }
+
+  return {
+    webpUrl: `/uploads/thumbnails/video-${cleanId}.webp`,
+    jpgUrl: `/uploads/thumbnails/video-${cleanId}.jpg`,
+  };
+}
+
+/**
+ * Pre-bakes all videos in the database to static .webp and .jpg files on disk.
+ */
+export async function prebakeAllVideoThumbnails(
+  db: any,
+  force = false
+): Promise<{ count: number; durationMs: number }> {
+  const start = Date.now();
+  const videos = Array.isArray(db?.videos) ? db.videos : [];
+  let count = 0;
+
+  for (const v of videos) {
+    if (!v || !v.id) continue;
+    try {
+      await prebakeVideoThumbnailToDisk(v, db, force);
+      count++;
+    } catch (err) {
+      console.warn(`[VIDEO THUMBNAIL PREBAKE] Fout bij video ${v.id}:`, err);
+    }
+  }
+
+  return {
+    count,
+    durationMs: Date.now() - start,
+  };
+}
+
+export async function generateVideoThumbnailBuffer(
+  video: {
+    id?: string;
+    title?: string;
+    burgerraadslidTitle?: string;
+    category?: string;
+    wijkSlug?: string | null;
+    fractieledenIds?: string[];
+    personId?: string;
+    memberId?: string;
+    date?: string;
+  },
+  db?: any,
+  format: "jpeg" | "webp" = "jpeg"
+): Promise<Buffer> {
+  // Fast-path: if video has an ID and no custom ad-hoc title override, serve directly from pre-baked disk file if present
+  if (video.id && !video.personId) {
+    const cleanId = String(video.id).replace(/[^a-zA-Z0-9_-]/g, "");
+    const diskPath = path.join(
+      THUMBNAIL_PUBLIC_DIR,
+      format === "webp" ? `video-${cleanId}.webp` : `video-${cleanId}.jpg`
+    );
+    if (fs.existsSync(diskPath)) {
+      try {
+        return fs.readFileSync(diskPath);
+      } catch (_e) {
+        // fall through
+      }
+    }
+  }
+
+  const { jpgBuffer, webpBuffer } = await generateVideoThumbnailBothFormats(video, db);
+
+  // Persist to disk if this is a saved video ID
+  if (video.id) {
+    const cleanId = String(video.id).replace(/[^a-zA-Z0-9_-]/g, "");
+    try {
+      ensureThumbnailDirs();
+      fs.writeFileSync(path.join(THUMBNAIL_PUBLIC_DIR, `video-${cleanId}.webp`), webpBuffer);
+      fs.writeFileSync(path.join(THUMBNAIL_PUBLIC_DIR, `video-${cleanId}.jpg`), jpgBuffer);
+      if (fs.existsSync(path.join(process.cwd(), "dist"))) {
+        if (!fs.existsSync(THUMBNAIL_DIST_DIR)) {
+          fs.mkdirSync(THUMBNAIL_DIST_DIR, { recursive: true });
+        }
+        fs.writeFileSync(path.join(THUMBNAIL_DIST_DIR, `video-${cleanId}.webp`), webpBuffer);
+        fs.writeFileSync(path.join(THUMBNAIL_DIST_DIR, `video-${cleanId}.jpg`), jpgBuffer);
+      }
+    } catch (_e) {
+      // ignore disk write error
+    }
+  }
+
+  return format === "webp" ? webpBuffer : jpgBuffer;
 }

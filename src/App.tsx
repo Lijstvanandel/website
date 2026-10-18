@@ -47,28 +47,28 @@ function safeLazy<T extends React.ComponentType<any>>(
   });
 }
 
-// Lazy-load all public pages to minimize critical path entry bundle for Core Web Vitals
-const Home = safeLazy(() => import("./pages/Home"));
+// Core public pages imported directly for 0ms route rendering without JS chunk waterfalls
+import Home from "./pages/Home";
+import Raadsleden from "./pages/Raadsleden";
+import FractielidVideos from "./pages/FractielidVideos";
+import VideoDetail from "./pages/VideoDetail";
+import Nieuws from "./pages/Nieuws";
+import NieuwsDetail from "./pages/NieuwsDetail";
+import Standpunten from "./pages/Standpunten";
+import Contact from "./pages/Contact";
+
+// Lazy-load secondary & heavy interactive/admin/portal sub-routes to keep initial public bundle lean
 const WijkenEnKernen = safeLazy(() => import("./pages/WijkenEnKernen"));
 const WijkDetail = safeLazy(() => import("./pages/WijkDetail"));
-const Nieuws = safeLazy(() => import("./pages/Nieuws"));
-const NieuwsDetail = safeLazy(() => import("./pages/NieuwsDetail"));
-const Standpunten = safeLazy(() => import("./pages/Standpunten"));
 const Agenda = safeLazy(() => import("./pages/Agenda"));
 const AgendaDetail = safeLazy(() => import("./pages/AgendaDetail"));
-const Raadsleden = safeLazy(() => import("./pages/Raadsleden"));
-const Contact = safeLazy(() => import("./pages/Contact"));
 const Bestuur = safeLazy(() => import("./pages/Bestuur"));
 const Steunfractie = safeLazy(() => import("./pages/Steunfractie"));
 const Doneren = safeLazy(() => import("./pages/Doneren"));
 const NotFound = safeLazy(() => import("./pages/NotFound"));
 const Login = safeLazy(() => import("./pages/Login"));
 const Register = safeLazy(() => import("./pages/Register"));
-
-// Lazy-load heavier administrative, dashboard and portal sub-routes
 const Raadspaneel = safeLazy(() => import("./pages/Raadspaneel"));
-const FractielidVideos = safeLazy(() => import("./pages/FractielidVideos"));
-const VideoDetail = safeLazy(() => import("./pages/VideoDetail"));
 const ResetPassword = safeLazy(() => import("./pages/ResetPassword"));
 const Dashboard = safeLazy(() => import("./pages/Dashboard"));
 const AdminDashboard = safeLazy(() => import("./pages/AdminDashboard"));

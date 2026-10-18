@@ -12,6 +12,7 @@ import { BUURTKAART_WIJKEN, LEGACY_SLUG_MAP } from "@/data/defaultWijken";
 import { format, parseISO } from "date-fns";
 import { nl } from "date-fns/locale";
 import { FormattedMathText } from "@/utils/mathRenderer";
+import { getInitialPublicSnapshot } from "@/lib/publicSnapshotClient";
 
 const formatDateSafe = (dateStr?: string) => {
   if (!dateStr) return "";
@@ -40,10 +41,17 @@ const DEFAULT_FRACTIELEDEN = [
 ];
 
 const Home = () => {
+  const initialSnap = getInitialPublicSnapshot();
   const [belOpen, setBelOpen] = useState(false);
-  const [homeNews, setHomeNews] = useState<any[]>([]);
-  const [wijken, setWijken] = useState<WijkItem[]>([]);
-  const [fractieleden, setFractieleden] = useState<any[]>(DEFAULT_FRACTIELEDEN);
+  const [homeNews, setHomeNews] = useState<any[]>(
+    initialSnap?.newsSummaries?.length ? initialSnap.newsSummaries : []
+  );
+  const [wijken, setWijken] = useState<WijkItem[]>(
+    initialSnap?.wijken?.length ? initialSnap.wijken : []
+  );
+  const [fractieleden, setFractieleden] = useState<any[]>(
+    initialSnap?.fractieleden?.length ? initialSnap.fractieleden : DEFAULT_FRACTIELEDEN
+  );
   const [hoveredWijkSlug, setHoveredWijkSlug] = useState<string | null>(null);
   const [bgLayerA, setBgLayerA] = useState<{ url: string; visible: boolean }>({ url: "", visible: false });
   const [bgLayerB, setBgLayerB] = useState<{ url: string; visible: boolean }>({ url: "", visible: false });
@@ -54,7 +62,7 @@ const Home = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetch("/api/news")
+    fetch("/api/news?summary=1")
       .then((res) => (res.ok ? res.json().catch(() => []) : []))
       .then((data) => {
         if (Array.isArray(data)) {

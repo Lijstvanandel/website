@@ -550,17 +550,17 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ token }) => {
               <span>{checkingUpdates ? "GitHub controleren..." : "Controleer op updates"}</span>
             </Button>
 
-            {/* Alleen cache wissen */}
+            {/* Alleen cache wissen & statische momentopname herbouwen */}
             <Button
               type="button"
               variant="outline"
               onClick={handleClearCache}
               disabled={syncing || checkingUpdates || clearingCache}
-              className="h-11 px-3.5 text-xs text-muted-foreground hover:text-foreground gap-1.5 border-border cursor-pointer"
-              title="Leegt alleen tijdelijke bestanden en servercaches"
+              className="h-11 px-3.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300 border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 gap-1.5 cursor-pointer"
+              title="Leegt de Server-Side Snapshot Cache, herbouwt alle statische videothumbnails (.webp/.jpg) op schijf en ververst Cloudflare CDN"
             >
-              <Trash2 className={`w-4 h-4 ${clearingCache ? "animate-spin" : ""}`} />
-              <span>{clearingCache ? "Wissen..." : "Alleen cache legen"}</span>
+              <RefreshCw className={`w-4 h-4 ${clearingCache ? "animate-spin" : ""}`} />
+              <span>{clearingCache ? "Snapshot & Thumbnails herbouwen..." : "Snapshot & Cache Legen"}</span>
             </Button>
           </div>
         </div>
@@ -580,6 +580,63 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ token }) => {
             {feedback.type === "error" && <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-red-600 dark:text-red-400" />}
             {feedback.type === "info" && <Sparkles className="w-5 h-5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />}
             <div className="flex-1 leading-relaxed">{feedback.message}</div>
+          </div>
+        )}
+
+        {/* Server-Side Snapshot Cache, Statische Videothumbnails & Cloudflare CDN Status */}
+        {(status as any)?.cacheDiagnostics && (
+          <div className="mt-5 p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+            <div className="p-2.5 rounded-lg bg-background/80 border border-border/60">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                Server-Side Snapshot
+              </div>
+              <div className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400 mt-0.5">
+                {(status as any).cacheDiagnostics.snapshotVersion}
+              </div>
+              <div className="text-[11px] text-muted-foreground mt-0.5">
+                {(status as any).cacheDiagnostics.counts?.fractieleden || 0} leden •{" "}
+                {(status as any).cacheDiagnostics.counts?.newsSummaries || 0} nieuws •{" "}
+                {(status as any).cacheDiagnostics.cachedHtmlPagesCount || 0} HTML-pagina's in RAM
+              </div>
+            </div>
+            <div className="p-2.5 rounded-lg bg-background/80 border border-border/60">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                Statische Videothumbnails (Op schijf)
+              </div>
+              <div className="font-mono font-bold text-sm text-foreground mt-0.5">
+                {(status as any).cacheDiagnostics.thumbnails?.webpCount || 0} WebP /{" "}
+                {(status as any).cacheDiagnostics.thumbnails?.jpgCount || 0} JPG
+              </div>
+              <div className="text-[11px] text-muted-foreground mt-0.5">
+                {(status as any).cacheDiagnostics.thumbnails?.cutoutCount || 0} vrijstaande portret-cutouts gecached
+              </div>
+            </div>
+            <div className="p-2.5 rounded-lg bg-background/80 border border-border/60">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                Cloudflare CDN & Edge Headers
+              </div>
+              <div className="font-semibold text-sm text-foreground mt-0.5">
+                {(status as any).cacheDiagnostics.cloudflare?.configured
+                  ? `API Gekoppeld (${(status as any).cacheDiagnostics.cloudflare.zoneIdPreview})`
+                  : "Actief via s-maxage & immutable headers"}
+              </div>
+              <div className="text-[11px] text-muted-foreground mt-0.5">
+                ETag: <span className="font-mono">{(status as any).cacheDiagnostics.etag}</span>
+              </div>
+            </div>
+            <div className="p-2.5 rounded-lg bg-background/80 border border-border/60">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                Laatste Snapshot Opbouw
+              </div>
+              <div className="font-semibold text-sm text-foreground mt-0.5">
+                {(status as any).cacheDiagnostics.generatedAt
+                  ? new Date((status as any).cacheDiagnostics.generatedAt).toLocaleTimeString("nl-NL")
+                  : "Direct bij opstarten"}
+              </div>
+              <div className="text-[11px] text-muted-foreground mt-0.5">
+                Automatische invalidatie bij elke wijziging
+              </div>
+            </div>
           </div>
         )}
 
