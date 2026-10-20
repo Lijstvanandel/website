@@ -1155,6 +1155,9 @@ export async function compileSupportDossierForTopic(
     dossierCategory = "Ruimte & Wonen";
   }
 
+  // Municipality scope (defaults to Steenwijkerland)
+  const topicMuni = (topic as any).municipality || "steenwijkerland";
+
   // Create or update in db.customDossiers
   if (!db.customDossiers) db.customDossiers = [];
   const existingDossierIdx = db.customDossiers.findIndex(

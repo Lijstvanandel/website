@@ -8,6 +8,7 @@ export interface ClientPublicSnapshot {
   wijken?: any[];
   categories: any[];
   faqs: any[];
+  podcasts?: any[];
 }
 
 declare global {

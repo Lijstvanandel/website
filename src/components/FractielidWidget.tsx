@@ -62,7 +62,8 @@ export const FractielidWidget: React.FC<FractielidWidgetProps> = ({
               src={primaryPhotoSrc}
               alt={lid.name}
               loading={eagerPhoto ? "eager" : "lazy"}
-              fetchPriority={eagerPhoto ? "high" : "auto"}
+              // @ts-expect-error fetchpriority is standard HTML attribute
+              fetchpriority={eagerPhoto ? "high" : "auto"}
               decoding="async"
               width={220}
               height={275}

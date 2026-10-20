@@ -469,7 +469,8 @@ export default function FractielidVideos() {
                             src={effectivePoster}
                             alt={displayTitle}
                             loading="eager"
-                            fetchPriority={idx < 4 ? "high" : "auto"}
+                            // @ts-expect-error fetchpriority is standard HTML attribute
+                            fetchpriority={idx < 4 ? "high" : "auto"}
                             decoding="async"
                             width={640}
                             height={360}

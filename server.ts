@@ -8509,12 +8509,17 @@ async function startServer() {
     });
   });
 
-  // --- PODCASTS API (Losgekoppeld van nieuws) ---
+  // --- PODCASTS API (Losgekoppeld van nieuws, geserveerd met caching) ---
   app.get("/api/podcasts", (req: any, res: any) => {
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=30, s-maxage=300, stale-while-revalidate=600");
+
+    const snap = getPublicSiteSnapshot(getDb);
     const db = getDb();
-    if (!db.podcasts) db.podcasts = [];
+    const sourcePodcasts = (snap.podcasts && Array.isArray(snap.podcasts)) ? snap.podcasts : (db.podcasts || []);
+    
     const { wijkSlug, category, search } = req.query;
-    let list = [...db.podcasts];
+    let list = [...sourcePodcasts];
 
     if (wijkSlug && typeof wijkSlug === "string" && wijkSlug.trim()) {
       const slugLower = wijkSlug.trim().toLowerCase();

@@ -377,10 +377,6 @@ export const InteractiveArticleRenderer: React.FC<InteractiveArticleRendererProp
     );
   }, [content]);
 
-  if (isFullDocument) {
-    return <InteractiveSeamlessFrame content={content} className={className} />;
-  }
-
   const [lightboxImage, setLightboxImage] = useState<{ src: string; alt: string; caption?: string } | null>(null);
   const articleContainerRef = useRef<HTMLDivElement>(null);
 
@@ -492,6 +488,10 @@ export const InteractiveArticleRenderer: React.FC<InteractiveArticleRendererProp
     }
     return list;
   }, [content]);
+
+  if (isFullDocument) {
+    return <InteractiveSeamlessFrame content={content} className={className} />;
+  }
 
   // Split content into regular HTML segments and <div data-dataproduct="true" ...> or <div class="data-product-container" ...>
   // Regex to match data-product blocks (including nested placeholder div if present)

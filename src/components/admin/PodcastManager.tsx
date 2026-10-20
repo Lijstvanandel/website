@@ -86,14 +86,23 @@ export function PodcastManager() {
   const fetchPodcasts = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/podcasts");
+      const res = await fetch("/api/podcasts", {
+        headers: { Accept: "application/json" }
+      });
       if (res.ok) {
-        const data: PodcastItem[] = await res.json();
-        setPodcasts(data);
+        const contentType = res.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          const text = await res.text();
+          if (text && !text.trim().startsWith("<")) {
+            const data: PodcastItem[] = JSON.parse(text);
+            if (Array.isArray(data)) {
+              setPodcasts(data);
+            }
+          }
+        }
       }
     } catch (err) {
-      console.error("Fout bij laden podcasts:", err);
-      toast.error("Kon podcasts niet ophalen");
+      console.warn("Fout bij laden podcasts:", err);
     } finally {
       setLoading(false);
     }

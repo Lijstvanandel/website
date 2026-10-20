@@ -36,6 +36,7 @@ export interface PublicSiteSnapshot {
   categories: any[];
   faqs: any[];
   stemgedrag: any[];
+  podcasts: any[];
   inlineBootstrapScript: string;
 }
 
@@ -178,7 +179,7 @@ export function buildPublicSiteSnapshot(db: any, forceNewVersion = false): Publi
     });
   }
 
-  // 4. Events, Wijken, Categories, FAQs, Stemgedrag
+  // 4. Events, Wijken, Categories, FAQs, Stemgedrag, Podcasts
   const events = Array.isArray(db?.events)
     ? db.events.filter((e: any) => e && e.isPublished !== false)
     : [];
@@ -189,6 +190,7 @@ export function buildPublicSiteSnapshot(db: any, forceNewVersion = false): Publi
     ? db.faqs.filter((f: any) => f && f.published !== false)
     : [];
   const stemgedrag = Array.isArray(db?.stemgedrag) ? db.stemgedrag : [];
+  const podcasts = Array.isArray(db?.podcasts) ? db.podcasts : [];
 
   // 5. Compact Bootstrap Payload injected directly into index.html for 0ms First Load
   const inlinePayload = {
@@ -206,6 +208,7 @@ export function buildPublicSiteSnapshot(db: any, forceNewVersion = false): Publi
     }),
     categories,
     faqs,
+    podcasts,
   };
 
   // Safe JSON serialization for inline <script> tag (escapes </script> and unicode separators)
@@ -220,7 +223,7 @@ export function buildPublicSiteSnapshot(db: any, forceNewVersion = false): Publi
 
   const etagHash = crypto
     .createHash("sha1")
-    .update(`${version}_${fractieleden.length}_${videos.length}_${newsSummaries.length}`)
+    .update(`${version}_${fractieleden.length}_${videos.length}_${newsSummaries.length}_${podcasts.length}`)
     .digest("hex")
     .slice(0, 16);
 
@@ -236,6 +239,7 @@ export function buildPublicSiteSnapshot(db: any, forceNewVersion = false): Publi
     categories,
     faqs,
     stemgedrag,
+    podcasts,
     inlineBootstrapScript,
   };
 

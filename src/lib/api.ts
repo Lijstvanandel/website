@@ -72,8 +72,12 @@ export async function fetchWithAuth(
           isServerError,
           isFetchError: false,
         });
-      }).catch(() => {});
-    } catch {}
+      }).catch(() => {
+        /* ignore metric dispatch failure */
+      });
+    } catch {
+      // ignore telemetry errors
+    }
 
     if (response.status === 401) {
       console.warn("[API] 401 Unauthorized ontvangen voor:", typeof input === "string" ? input : "request");
@@ -111,8 +115,12 @@ export async function fetchWithAuth(
           isFetchError: true,
           errorMessage: err instanceof Error ? err.message : "Fetch mislukt",
         });
-      }).catch(() => {});
-    } catch {}
+      }).catch(() => {
+        /* ignore metric dispatch failure */
+      });
+    } catch {
+      // ignore telemetry errors
+    }
     throw err;
   }
 }

@@ -18,11 +18,19 @@ import {
 import { ChromecastButton } from "./ChromecastButton";
 import { PodcastItem } from "@/types/podcast";
 import { useAuth } from "@/context/AuthContext";
+import { getInitialPublicSnapshot } from "@/lib/publicSnapshotClient";
 
 export function PodcastSection() {
   const { user, isAuthenticated } = useAuth();
-  const [podcasts, setPodcasts] = useState<PodcastItem[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  
+  // Hydrate immediately from initial public snapshot for 0ms initial render
+  const initialSnapshot = getInitialPublicSnapshot();
+  const initialPodcasts = (initialSnapshot?.podcasts && Array.isArray(initialSnapshot.podcasts) && initialSnapshot.podcasts.length > 0)
+    ? (initialSnapshot.podcasts as PodcastItem[])
+    : [];
+
+  const [podcasts, setPodcasts] = useState<PodcastItem[]>(initialPodcasts);
+  const [loading, setLoading] = useState<boolean>(initialPodcasts.length === 0);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [activePodcastId, setActivePodcastId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -30,7 +38,13 @@ export function PodcastSection() {
   const [duration, setDuration] = useState<number>(0);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
-  const [activeViews, setActiveViews] = useState<{ [id: string]: number }>({});
+  const [activeViews, setActiveViews] = useState<{ [id: string]: number }>(() => {
+    const viewsMap: { [id: string]: number } = {};
+    initialPodcasts.forEach((p) => {
+      viewsMap[p.id] = p.views || 0;
+    });
+    return viewsMap;
+  });
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const reportedMilestones = useRef<{ [podcastId: string]: Set<string> }>({});
@@ -50,19 +64,32 @@ export function PodcastSection() {
 
   const fetchPodcasts = async () => {
     try {
-      setLoading(true);
-      const res = await fetch("/api/podcasts");
+      const res = await fetch("/api/podcasts", {
+        headers: { Accept: "application/json" }
+      });
       if (res.ok) {
-        const data: PodcastItem[] = await res.json();
-        setPodcasts(data);
-        const viewsMap: { [id: string]: number } = {};
-        data.forEach((p) => {
-          viewsMap[p.id] = p.views || 0;
-        });
-        setActiveViews(viewsMap);
+        const contentType = res.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) {
+          // Response is not JSON (e.g. HTML proxy page or service worker fallback)
+          return;
+        }
+        const text = await res.text();
+        if (!text || text.trim().startsWith("<")) {
+          // HTML content received instead of JSON array
+          return;
+        }
+        const data: PodcastItem[] = JSON.parse(text);
+        if (Array.isArray(data)) {
+          setPodcasts(data);
+          const viewsMap: { [id: string]: number } = {};
+          data.forEach((p) => {
+            viewsMap[p.id] = p.views || 0;
+          });
+          setActiveViews(viewsMap);
+        }
       }
     } catch (err) {
-      console.error("Failed to load podcasts:", err);
+      console.warn("Kon podcasts niet vernieuwen via API (snapshot blijft behouden):", err);
     } finally {
       setLoading(false);
     }
