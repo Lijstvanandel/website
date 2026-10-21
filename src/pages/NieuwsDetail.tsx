@@ -23,6 +23,7 @@ import {
   CheckCircle2,
   Sparkles,
   RefreshCw,
+  BookOpen,
 } from "lucide-react";
 import { toast } from "sonner";
 import { NewsItem, NewsMediaStats } from "@/data/news";
@@ -31,6 +32,8 @@ import { useAuth } from "@/context/AuthContext";
 import { ShareDialog } from "@/components/ShareDialog";
 import { InteractiveArticleRenderer } from "@/components/InteractiveArticleRenderer";
 import { ChromecastButton } from "@/components/ChromecastButton";
+import { Button } from "@/components/ui/button";
+import { hoofdstukken, Hoofdstuk, Standpunt } from "@/data/partijprogramma";
 import { mathToSpeechText, FormattedMathText } from "@/utils/mathRenderer";
 import { GooglePreferredSourceCard } from "@/components/GooglePreferredSourceCard";
 
@@ -121,6 +124,27 @@ export default function NieuwsDetail() {
     }
     return "/raadsleden";
   }, [authorMember, article]);
+
+  // Gekoppelde standpunten met hoofdstuk- en standpunt-details
+  const linkedStandpuntenDetails = useMemo(() => {
+    if (!article?.linkedStandpunten || !Array.isArray(article.linkedStandpunten)) return [];
+    return article.linkedStandpunten
+      .map((ls) => {
+        const h = hoofdstukken.find((ch) => Number(ch.nr) === Number(ls.hoofdstukNr));
+        const s = h?.standpunten.find((st) => Number(st.nr) === Number(ls.standpuntNr));
+        if (!h || !s) return null;
+        return {
+          hoofdstuk: h,
+          standpunt: s,
+          type: (ls.type || "verdieping") as "verdieping" | "bron",
+        };
+      })
+      .filter(Boolean) as {
+        hoofdstuk: Hoofdstuk;
+        standpunt: Standpunt;
+        type: "verdieping" | "bron";
+      }[];
+  }, [article?.linkedStandpunten]);
 
   useEffect(() => {
     setLoading(true);
@@ -1080,6 +1104,85 @@ export default function NieuwsDetail() {
             {/* Render formatted content with interactive dataproducts, maps and mathematical formulas */}
             <InteractiveArticleRenderer content={article.content || ""} />
           </div>
+
+          {/* Gekoppeld(e) Standpunt(en) (in identieke kaartstijl als /video/1008) */}
+          {linkedStandpuntenDetails.length > 0 && (
+            <div className="pt-8 border-t border-border space-y-4 mb-8">
+              <div className="flex items-center justify-between gap-2 border-b border-border pb-3">
+                <div className="min-w-0">
+                  <h2 className="font-display text-xl sm:text-2xl font-bold flex items-center gap-2">
+                    <BookOpen className="w-5 h-5 text-accent shrink-0" />
+                    <span>Gekoppeld{linkedStandpuntenDetails.length > 1 ? "e Standpunten" : " Standpunt"}</span>
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Dit artikel sluit direct aan bij ons partijprogramma
+                  </p>
+                </div>
+                <span className="px-2.5 py-0.5 rounded-sm bg-accent/15 border border-accent/30 text-xs font-bold text-accent shrink-0">
+                  {linkedStandpuntenDetails.length} {linkedStandpuntenDetails.length === 1 ? "standpunt" : "standpunten"}
+                </span>
+              </div>
+
+              <div className={`grid grid-cols-1 ${linkedStandpuntenDetails.length > 1 ? "md:grid-cols-2" : "grid-cols-1"} gap-4`}>
+                {linkedStandpuntenDetails.map((item, idx) => (
+                  <div
+                    key={`${item.hoofdstuk.nr}-${item.standpunt.nr}-${idx}`}
+                    className="bg-card border border-accent/30 rounded-xl p-4 sm:p-5 shadow-sm space-y-3.5 flex flex-col justify-between"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-start gap-3">
+                        <div className="font-display text-2xl sm:text-3xl text-accent leading-none shrink-0 pt-0.5">
+                          {item.standpunt.nr.toString().padStart(2, "0")}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-[10px] uppercase tracking-widest text-accent font-semibold mb-0.5 flex items-center gap-1.5 flex-wrap">
+                            <span>Ons standpunt</span>
+                            <span>•</span>
+                            <span className="text-muted-foreground">
+                              H{item.hoofdstuk.nr}.{item.standpunt.nr}
+                            </span>
+                            <span>•</span>
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] uppercase font-bold tracking-wider ${
+                              item.type === "bron"
+                                ? "bg-blue-500/15 text-blue-400 border border-blue-500/30"
+                                : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                            }`}>
+                              {item.type === "bron" ? "Gekoppeld als bron" : "Gekoppeld als verdieping"}
+                            </span>
+                          </div>
+                          <h3 className="font-display text-lg sm:text-xl font-bold text-foreground leading-snug">
+                            {item.standpunt.titel}
+                          </h3>
+                          <p className="text-[11px] text-muted-foreground truncate">
+                            Hoofdstuk {item.hoofdstuk.nr}: {item.hoofdstuk.titel}
+                          </p>
+                        </div>
+                      </div>
+
+                      <p className="text-xs sm:text-sm text-foreground/85 leading-relaxed">
+                        {item.standpunt.standpunt}
+                      </p>
+                    </div>
+
+                    <div className="pt-1">
+                      <Button
+                        asChild
+                        size="sm"
+                        className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-semibold text-xs uppercase tracking-wider flex items-center justify-center gap-2"
+                      >
+                        <Link
+                          to={`/standpunten?hoofdstuk=${item.hoofdstuk.nr}&standpunt=${item.standpunt.nr}`}
+                        >
+                          <span>Bekijk meer over dit standpunt</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </Link>
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Social Share & Voorkeursbron Sectie */}
           <div className="pt-8 border-t border-border">

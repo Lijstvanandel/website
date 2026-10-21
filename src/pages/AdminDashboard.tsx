@@ -97,7 +97,7 @@ import { PodcastManager } from "@/components/admin/PodcastManager";
 import { PerformanceLogsManager } from "@/components/admin/PerformanceLogsManager";
 import { safeJson } from "@/lib/api";
 import { WIJKEN_EN_KERNEN } from "@/data/wijken";
-import { NewsItem } from "@/data/news";
+import { NewsItem, LinkedStandpuntItem } from "@/data/news";
 import { PodcastItem } from "@/types/podcast";
 import { hoofdstukken } from "@/data/partijprogramma";
 import { DEFAULT_FRACTIELEDEN } from "@/data/fractieleden";
@@ -482,6 +482,53 @@ export default function AdminDashboard() {
   const [isUploadingVideoToContent, setIsUploadingVideoToContent] = useState(false);
 
   const [newsMediaTypeFilter, setNewsMediaTypeFilter] = useState<"all" | "videos">("all");
+
+  // Linked standpunten fields
+  const [nLinkedStandpunten, setNLinkedStandpunten] = useState<LinkedStandpuntItem[]>([]);
+  const [nSelChapter, setNSelChapter] = useState<number>(1);
+  const [nSelStandpunt, setNSelStandpunt] = useState<number>(1);
+  const [nSelType, setNSelType] = useState<"verdieping" | "bron">("verdieping");
+
+  const addLinkedStandpuntToNews = () => {
+    const ch = hoofdstukken.find((c) => c.nr === Number(nSelChapter));
+    const sp = ch?.standpunten.find((s) => s.nr === Number(nSelStandpunt));
+    if (!ch || !sp) {
+      toast.error("Geselecteerd standpunt niet gevonden");
+      return;
+    }
+
+    const existsIndex = nLinkedStandpunten.findIndex(
+      (item) => item.hoofdstukNr === Number(nSelChapter) && item.standpuntNr === Number(nSelStandpunt)
+    );
+
+    if (existsIndex >= 0) {
+      const next = [...nLinkedStandpunten];
+      next[existsIndex] = {
+        ...next[existsIndex],
+        type: nSelType,
+        standpuntTitel: sp.titel,
+      };
+      setNLinkedStandpunten(next);
+      toast.info(`Koppeling met H${nSelChapter}.${nSelStandpunt} bijgewerkt tot ${nSelType === "bron" ? "Bron" : "Verdieping"}`);
+    } else {
+      setNLinkedStandpunten([
+        ...nLinkedStandpunten,
+        {
+          hoofdstukNr: Number(nSelChapter),
+          standpuntNr: Number(nSelStandpunt),
+          standpuntTitel: sp.titel,
+          type: nSelType,
+        },
+      ]);
+      toast.success(`Standpunt H${nSelChapter}.${nSelStandpunt} gekoppeld als ${nSelType === "bron" ? "Bron" : "Verdieping"}`);
+    }
+  };
+
+  const removeLinkedStandpuntFromNews = (hoofdstukNr: number, standpuntNr: number) => {
+    setNLinkedStandpunten(
+      nLinkedStandpunten.filter((item) => !(item.hoofdstukNr === hoofdstukNr && item.standpuntNr === standpuntNr))
+    );
+  };
 
   // -- State for Event --
   const [eTitle, setETitle] = useState("");
@@ -1548,6 +1595,13 @@ export default function AdminDashboard() {
     setNVideoUrl(item.videoUrl || "");
     setNVideoTitle(item.videoTitle || "");
 
+    // Linked standpunten fields
+    if (item.linkedStandpunten && Array.isArray(item.linkedStandpunten)) {
+      setNLinkedStandpunten(item.linkedStandpunten);
+    } else {
+      setNLinkedStandpunten([]);
+    }
+
     toast.info(`Bericht '${item.title}' geladen in editor`);
   };
 
@@ -1567,6 +1621,9 @@ export default function AdminDashboard() {
     setNVideo(null);
     setNVideoUrl("");
     setNVideoTitle("");
+
+    // Linked standpunten fields
+    setNLinkedStandpunten([]);
   };
 
   const submitNews = async (e: React.FormEvent) => {
@@ -1595,6 +1652,7 @@ export default function AdminDashboard() {
     formData.append("description", nDesc);
     formData.append("content", nContent);
     formData.append("isHidden", String(nIsHidden));
+    formData.append("linkedStandpunten", JSON.stringify(nLinkedStandpunten));
     if (nThumb) formData.append("thumbnail", nThumb);
     if (nHeader) formData.append("header", nHeader);
 
@@ -3951,6 +4009,139 @@ export default function AdminDashboard() {
                   <p className="text-[11px] text-muted-foreground mt-1">
                     Kies welk (burger)raadslid als auteur gekoppeld wordt. Deze verschijnt met profielfoto bij het nieuwsbericht.
                   </p>
+                </div>
+
+                {/* Standpunten Koppelen (/standpunten als Verdieping of als Bron) */}
+                <div className="p-4 rounded-xl border border-accent/30 bg-accent/5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-semibold flex items-center gap-2 text-foreground">
+                      <BookOpen className="w-4 h-4 text-accent" />
+                      Gekoppelde Standpunten uit ons Partijprogramma
+                    </label>
+                    <span className="text-[11px] font-medium text-accent">
+                      {nLinkedStandpunten.length} {nLinkedStandpunten.length === 1 ? "gekoppeld" : "gekoppeld"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Koppel dit nieuwsbericht aan een of meerdere standpunten uit ons partijprogramma. Bepaal per standpunt of het artikel op <code className="text-accent font-mono">/standpunten</code> als <strong>Verdieping</strong> of als <strong>Bron</strong> wordt getoond.
+                  </p>
+
+                  {/* Selector rij */}
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end pt-1">
+                    {/* Hoofdstuk */}
+                    <div className="sm:col-span-5">
+                      <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Hoofdstuk</label>
+                      <select
+                        className="w-full h-9 px-2.5 py-1 text-xs rounded-md border border-input bg-background text-foreground"
+                        value={nSelChapter}
+                        onChange={(e) => {
+                          const newCh = Number(e.target.value);
+                          setNSelChapter(newCh);
+                          setNSelStandpunt(1);
+                        }}
+                      >
+                        {hoofdstukken.map((h) => (
+                          <option key={h.nr} value={h.nr}>
+                            H{h.nr}. {h.titel}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Standpunt */}
+                    <div className="sm:col-span-4">
+                      <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Standpunt</label>
+                      <select
+                        className="w-full h-9 px-2.5 py-1 text-xs rounded-md border border-input bg-background text-foreground"
+                        value={nSelStandpunt}
+                        onChange={(e) => setNSelStandpunt(Number(e.target.value))}
+                      >
+                        {(() => {
+                          const activeCh = hoofdstukken.find((h) => h.nr === Number(nSelChapter));
+                          return (activeCh?.standpunten || []).map((sp) => (
+                            <option key={sp.nr} value={sp.nr}>
+                              {sp.nr}. {sp.titel}
+                            </option>
+                          ));
+                        })()}
+                      </select>
+                    </div>
+
+                    {/* Type: Verdieping vs Bron */}
+                    <div className="sm:col-span-3">
+                      <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Weergave rol</label>
+                      <select
+                        className="w-full h-9 px-2 py-1 text-xs rounded-md border border-input bg-background text-foreground font-semibold"
+                        value={nSelType}
+                        onChange={(e) => setNSelType(e.target.value as "verdieping" | "bron")}
+                      >
+                        <option value="verdieping">🟢 Verdieping</option>
+                        <option value="bron">🔵 Officiële Bron</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={addLinkedStandpuntToNews}
+                    className="w-full sm:w-auto bg-accent text-accent-foreground hover:bg-accent/90 text-xs font-semibold"
+                  >
+                    + Standpunt Koppelen
+                  </Button>
+
+                  {/* Lijst met reeds gekoppelde standpunten */}
+                  {nLinkedStandpunten.length > 0 && (
+                    <div className="pt-2 border-t border-border/60 space-y-2">
+                      <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                        Actuele koppelingen ({nLinkedStandpunten.length}):
+                      </div>
+                      <div className="space-y-1.5">
+                        {nLinkedStandpunten.map((item, idx) => {
+                          const ch = hoofdstukken.find((c) => c.nr === item.hoofdstukNr);
+                          const sp = ch?.standpunten.find((s) => s.nr === item.standpuntNr);
+                          const isBron = item.type === "bron";
+                          return (
+                            <div
+                              key={`${item.hoofdstukNr}-${item.standpuntNr}-${idx}`}
+                              className="p-2.5 rounded-lg bg-background border border-border/80 flex items-center justify-between gap-3 text-xs"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 mb-0.5">
+                                  <span className="font-bold text-accent">
+                                    H{item.hoofdstukNr}.{item.standpuntNr}
+                                  </span>
+                                  <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold uppercase ${
+                                    isBron
+                                      ? "bg-blue-500/15 text-blue-400 border border-blue-500/30"
+                                      : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                                  }`}>
+                                    {isBron ? "Officiële Bron" : "Verdieping"}
+                                  </span>
+                                </div>
+                                <div className="font-semibold text-foreground truncate">
+                                  {sp?.titel || item.standpuntTitel || `Standpunt ${item.standpuntNr}`}
+                                </div>
+                                <div className="text-[10px] text-muted-foreground truncate">
+                                  Hoofdstuk {item.hoofdstukNr}: {ch?.titel || ""}
+                                </div>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeLinkedStandpuntFromNews(item.hoofdstukNr, item.standpuntNr)}
+                                className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
+                                title="Koppeling verwijderen"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div>

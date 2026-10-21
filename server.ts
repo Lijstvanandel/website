@@ -8266,6 +8266,21 @@ async function startServer() {
     const finalPodcastAudioUrl = podcastAudioFile ? `/uploads/podcasts/${podcastAudioFile.filename}` : (bodyPodcastAudioUrl || '');
     const finalIsPodcast = isPodcast === "true" || isPodcast === true || Boolean(finalPodcastAudioUrl);
 
+    // Gekoppelde standpunten (/standpunten als verdieping of als bron)
+    const rawLinkedStandpunten = req.body.linkedStandpunten;
+    let linkedStandpunten: any[] = [];
+    if (rawLinkedStandpunten) {
+      if (typeof rawLinkedStandpunten === "string") {
+        try {
+          linkedStandpunten = JSON.parse(rawLinkedStandpunten);
+        } catch (_e) {
+          linkedStandpunten = [];
+        }
+      } else if (Array.isArray(rawLinkedStandpunten)) {
+        linkedStandpunten = rawLinkedStandpunten;
+      }
+    }
+
     const newArticle = {
       id: Date.now().toString(),
       title,
@@ -8293,6 +8308,7 @@ async function startServer() {
       podcastAppleUrl: podcastAppleUrl || "",
       podcastViews: Number(podcastViews) || 0,
       isHidden: isHidden === "true" || isHidden === true,
+      linkedStandpunten,
       createdAt: new Date().toISOString()
     };
     db.news.push(newArticle);
@@ -8362,6 +8378,21 @@ async function startServer() {
 
     const parsedIsHidden = isHidden !== undefined ? (isHidden === "true" || isHidden === true) : Boolean(current.isHidden);
 
+    // Gekoppelde standpunten (/standpunten als verdieping of als bron)
+    const rawLinkedStandpunten = req.body.linkedStandpunten;
+    let parsedLinkedStandpunten = current.linkedStandpunten || [];
+    if (rawLinkedStandpunten !== undefined) {
+      if (typeof rawLinkedStandpunten === "string") {
+        try {
+          parsedLinkedStandpunten = JSON.parse(rawLinkedStandpunten);
+        } catch (_e) {
+          parsedLinkedStandpunten = [];
+        }
+      } else if (Array.isArray(rawLinkedStandpunten)) {
+        parsedLinkedStandpunten = rawLinkedStandpunten;
+      }
+    }
+
     db.news[index] = {
       ...current,
       title: title !== undefined ? title : current.title,
@@ -8389,6 +8420,7 @@ async function startServer() {
       podcastAppleUrl: podcastAppleUrl !== undefined ? podcastAppleUrl : (current.podcastAppleUrl || ''),
       podcastViews: podcastViews !== undefined ? Number(podcastViews) : (current.podcastViews || 0),
       isHidden: parsedIsHidden,
+      linkedStandpunten: parsedLinkedStandpunten,
       updatedAt: new Date().toISOString()
     };
     saveDb(db);

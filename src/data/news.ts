@@ -47,6 +47,15 @@ export interface NewsItem {
   podcastAppleUrl?: string;
   // Media retention & ThruPlay stats (25%, 50%, 75%, 100%)
   mediaStats?: NewsMediaStats;
+  // Gekoppelde standpunten (/standpunten)
+  linkedStandpunten?: LinkedStandpuntItem[];
+}
+
+export interface LinkedStandpuntItem {
+  hoofdstukNr: number;
+  standpuntNr: number;
+  standpuntTitel?: string;
+  type?: "verdieping" | "bron";
 }
 
 export const news: NewsItem[] = [

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   ChevronDown,
@@ -19,6 +19,7 @@ import {
   Calendar,
   MapPin,
   ExternalLink,
+  ArrowRight,
 } from "lucide-react";
 import { hoofdstukken, type Standpunt } from "@/data/partijprogramma";
 import { VideoPlayer } from "@/components/VideoPlayer";
@@ -26,6 +27,8 @@ import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { DEFAULT_FRACTIELEDEN } from "@/data/fractieleden";
 import { getVideoThumbnail } from "@/lib/videoUtils";
+import { NewsItem } from "@/data/news";
+import { getInitialPublicSnapshot } from "@/lib/publicSnapshotClient";
 
 const iconMap: Record<string, typeof Vote> = {
   vote: Vote,
@@ -78,10 +81,11 @@ interface StandpuntCardProps {
   s: Standpunt;
   dynamicVideos: VideoItem[];
   fractieleden: FractielidItem[];
+  newsItems?: NewsItem[];
   isSelected?: boolean;
 }
 
-const StandpuntCard = ({ hNr, s, dynamicVideos, fractieleden, isSelected }: StandpuntCardProps) => {
+const StandpuntCard = ({ hNr, s, dynamicVideos, fractieleden, newsItems, isSelected }: StandpuntCardProps) => {
   const [tab, setTab] = useState<TabKey>("standpunt");
 
   useEffect(() => {
@@ -89,6 +93,33 @@ const StandpuntCard = ({ hNr, s, dynamicVideos, fractieleden, isSelected }: Stan
       setTab("standpunt");
     }
   }, [isSelected]);
+
+  // Gekoppelde nieuwsartikelen voor dit specifieke standpunt
+  const linkedNews = useMemo(() => {
+    return (newsItems || []).filter((n) =>
+      n.linkedStandpunten?.some(
+        (ls: any) => Number(ls.hoofdstukNr) === hNr && Number(ls.standpuntNr) === s.nr
+      )
+    );
+  }, [newsItems, hNr, s.nr]);
+
+  const verdiepingNews = useMemo(() => {
+    return linkedNews.filter((n) => {
+      const match = n.linkedStandpunten?.find(
+        (ls: any) => Number(ls.hoofdstukNr) === hNr && Number(ls.standpuntNr) === s.nr
+      );
+      return match?.type !== "bron"; // Standaard verdieping
+    });
+  }, [linkedNews, hNr, s.nr]);
+
+  const bronnenNews = useMemo(() => {
+    return linkedNews.filter((n) => {
+      const match = n.linkedStandpunten?.find(
+        (ls: any) => Number(ls.hoofdstukNr) === hNr && Number(ls.standpuntNr) === s.nr
+      );
+      return match?.type === "bron";
+    });
+  }, [linkedNews, hNr, s.nr]);
 
   // Combine static videos from partijprogramma with dynamic database videos
   const combinedVideos = [
@@ -183,6 +214,28 @@ const StandpuntCard = ({ hNr, s, dynamicVideos, fractieleden, isSelected }: Stan
                     {totalBijdragen}
                   </span>
                 )}
+                {t.key === "verdieping" && verdiepingNews.length > 0 && (
+                  <span
+                    className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] transition-colors ${
+                      active
+                        ? "bg-accent text-accent-foreground font-bold"
+                        : "bg-accent/20 text-accent font-bold"
+                    }`}
+                  >
+                    {verdiepingNews.length}
+                  </span>
+                )}
+                {t.key === "bronnen" && bronnenNews.length > 0 && (
+                  <span
+                    className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] transition-colors ${
+                      active
+                        ? "bg-accent text-accent-foreground font-bold"
+                        : "bg-accent/20 text-accent font-bold"
+                    }`}
+                  >
+                    {bronnenNews.length}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -191,7 +244,57 @@ const StandpuntCard = ({ hNr, s, dynamicVideos, fractieleden, isSelected }: Stan
         <div className="text-sm text-foreground/85 leading-relaxed min-h-[80px]">
           {tab === "standpunt" && <p className="leading-relaxed">{s.standpunt}</p>}
 
-          {tab === "verdieping" && <p className="italic text-muted-foreground leading-relaxed">{s.verdieping}</p>}
+          {tab === "verdieping" && (
+            <div className="space-y-4">
+              <p className="italic text-muted-foreground leading-relaxed">{s.verdieping}</p>
+
+              {verdiepingNews.length > 0 && (
+                <div className="pt-3 border-t border-border/60 space-y-3">
+                  <div className="text-[11px] font-semibold text-accent uppercase tracking-wider flex items-center gap-1.5">
+                    <BookOpen className="w-3.5 h-3.5 text-accent" />
+                    <span>Gekoppelde verdieping & achtergrondartikelen ({verdiepingNews.length})</span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2.5">
+                    {verdiepingNews.map((n) => (
+                      <Link
+                        key={n.id}
+                        to={`/nieuws/${n.id}`}
+                        className="group p-3 bg-secondary/40 hover:bg-secondary/70 border border-border/80 hover:border-accent/40 rounded-lg transition-all flex items-start gap-3"
+                      >
+                        {n.thumbnailUrl ? (
+                          <div className="w-16 h-12 rounded overflow-hidden bg-muted shrink-0 border border-border/50">
+                            <img src={n.thumbnailUrl} alt={n.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                          </div>
+                        ) : (
+                          <div className="w-16 h-12 rounded bg-accent/10 border border-accent/20 shrink-0 flex items-center justify-center text-accent">
+                            <BookOpen className="w-5 h-5" />
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground mb-0.5">
+                            <span className="px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 font-semibold border border-emerald-500/30">
+                              Verdieping
+                            </span>
+                            {n.date && <span>• {n.date}</span>}
+                            {n.authorName && <span>• {n.authorName}</span>}
+                          </div>
+                          <h4 className="font-semibold text-sm text-foreground group-hover:text-accent transition-colors line-clamp-1">
+                            {n.title}
+                          </h4>
+                          {(n.description || n.excerpt) && (
+                            <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
+                              {n.description || n.excerpt}
+                            </p>
+                          )}
+                        </div>
+                        <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-accent group-hover:translate-x-0.5 transition-all shrink-0 self-center" />
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {tab === "bijdragen" && (
             totalBijdragen > 0 ? (
@@ -309,11 +412,59 @@ const StandpuntCard = ({ hNr, s, dynamicVideos, fractieleden, isSelected }: Stan
           )}
 
           {tab === "bronnen" && (
-            <ol className="space-y-2 list-decimal list-inside text-muted-foreground">
-              {s.bronnen.map((b, i) => (
-                <li key={i} className="leading-relaxed">{b}</li>
-              ))}
-            </ol>
+            <div className="space-y-4">
+              <ol className="space-y-2 list-decimal list-inside text-muted-foreground">
+                {s.bronnen.map((b, i) => (
+                  <li key={i} className="leading-relaxed">{b}</li>
+                ))}
+              </ol>
+
+              {bronnenNews.length > 0 && (
+                <div className="pt-3 border-t border-border/60 space-y-3">
+                  <div className="text-[11px] font-semibold text-accent uppercase tracking-wider flex items-center gap-1.5">
+                    <Library className="w-3.5 h-3.5 text-accent" />
+                    <span>Gekoppelde bronartikelen & documentatie ({bronnenNews.length})</span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2.5">
+                    {bronnenNews.map((n) => (
+                      <Link
+                        key={n.id}
+                        to={`/nieuws/${n.id}`}
+                        className="group p-3 bg-secondary/40 hover:bg-secondary/70 border border-border/80 hover:border-accent/40 rounded-lg transition-all flex items-start gap-3"
+                      >
+                        {n.thumbnailUrl ? (
+                          <div className="w-16 h-12 rounded overflow-hidden bg-muted shrink-0 border border-border/50">
+                            <img src={n.thumbnailUrl} alt={n.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                          </div>
+                        ) : (
+                          <div className="w-16 h-12 rounded bg-accent/10 border border-accent/20 shrink-0 flex items-center justify-center text-accent">
+                            <Library className="w-5 h-5" />
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground mb-0.5">
+                            <span className="px-1.5 py-0.2 rounded bg-blue-500/15 text-blue-400 font-semibold border border-blue-500/30">
+                              Officiële Bron
+                            </span>
+                            {n.date && <span>• {n.date}</span>}
+                            {n.authorName && <span>• {n.authorName}</span>}
+                          </div>
+                          <h4 className="font-semibold text-sm text-foreground group-hover:text-accent transition-colors line-clamp-1">
+                            {n.title}
+                          </h4>
+                          {(n.description || n.excerpt) && (
+                            <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
+                              {n.description || n.excerpt}
+                            </p>
+                          )}
+                        </div>
+                        <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-accent group-hover:translate-x-0.5 transition-all shrink-0 self-center" />
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -334,8 +485,12 @@ const Standpunten = () => {
     }
     return 0;
   });
+  const initialSnapshot = getInitialPublicSnapshot();
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const [fractieleden, setFractieleden] = useState<FractielidItem[]>(DEFAULT_FRACTIELEDEN);
+  const [newsItems, setNewsItems] = useState<NewsItem[]>(() => {
+    return (initialSnapshot?.newsSummaries as NewsItem[]) || [];
+  });
 
   useEffect(() => {
     if (paramHoofdstuk) {
@@ -366,17 +521,19 @@ const Standpunten = () => {
   }, [paramHoofdstuk, paramStandpunt]);
 
   useEffect(() => {
-    // Ophalen van dynamische video's en fractieleden
+    // Ophalen van dynamische video's, fractieleden en nieuws
     Promise.all([
       fetch("/api/videos").then((r) => (r.ok ? r.json().catch(() => []) : [])),
       fetch("/api/fractieleden").then((r) => (r.ok ? r.json().catch(() => []) : [])),
+      fetch("/api/news?summary=1").then((r) => (r.ok ? r.json().catch(() => []) : [])),
     ])
-      .then(([vData, fData]) => {
+      .then(([vData, fData, nData]) => {
         if (Array.isArray(vData)) setVideos(vData);
         if (Array.isArray(fData)) setFractieleden(fData);
+        if (Array.isArray(nData) && nData.length > 0) setNewsItems(nData);
       })
       .catch((err) => {
-        console.error("Fout bij laden van video's en fractieleden voor standpunten:", err);
+        console.error("Fout bij laden van video's, fractieleden en nieuws voor standpunten:", err);
       });
   }, []);
 
@@ -499,6 +656,7 @@ const Standpunten = () => {
                           s={s}
                           dynamicVideos={standpuntVideos}
                           fractieleden={fractieleden}
+                          newsItems={newsItems}
                           isSelected={Number(paramHoofdstuk) === h.nr && Number(paramStandpunt) === s.nr}
                         />
                       );
