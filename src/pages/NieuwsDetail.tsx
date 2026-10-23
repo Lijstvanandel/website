@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useLocation } from "react-router-dom";
 import {
   ArrowLeft,
   Calendar,
@@ -24,6 +24,9 @@ import {
   Sparkles,
   RefreshCw,
   BookOpen,
+  Lock,
+  UserPlus,
+  LogIn,
 } from "lucide-react";
 import { toast } from "sonner";
 import { NewsItem, NewsMediaStats } from "@/data/news";
@@ -39,6 +42,7 @@ import { GooglePreferredSourceCard } from "@/components/GooglePreferredSourceCar
 
 export default function NieuwsDetail() {
   const { id } = useParams<{ id: string }>();
+  const location = useLocation();
   const { user, isAuthenticated } = useAuth();
   const [article, setArticle] = useState<NewsItem | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -51,6 +55,37 @@ export default function NieuwsDetail() {
       return true;
     }
   });
+
+  const isMembersOnly = Boolean(article?.membersOnly || article?.isMembersOnly);
+
+  const hasMemberAccess = useMemo(() => {
+    if (!isMembersOnly) return true;
+    if (!isAuthenticated || !user) return false;
+
+    // Privileged or staff / board / council roles are always granted access
+    const isPrivilegedOrExempt =
+      user.role === "admin" ||
+      user.role === "superadmin" ||
+      user.role === "raadslid" ||
+      user.role === "burgerraadslid" ||
+      user.role === "bestuur" ||
+      user.role === "voorzitter" ||
+      user.role === "secretaris" ||
+      user.role === "penningmeester" ||
+      user.role === "fractielid" ||
+      user.billingStatus === "exempt";
+
+    if (isPrivilegedOrExempt) return true;
+
+    // Full members who have paid dues
+    return user.billingStatus === "paid" || user.isFullMember === true;
+  }, [isMembersOnly, isAuthenticated, user]);
+
+  const hasUnpaidContribution = useMemo(() => {
+    if (!isMembersOnly) return false;
+    if (!isAuthenticated || !user) return false;
+    return !hasMemberAccess;
+  }, [isMembersOnly, isAuthenticated, user, hasMemberAccess]);
 
   // Podcast views state & tracking
   const [podcastViews, setPodcastViews] = useState<number>(0);
@@ -590,6 +625,13 @@ export default function NieuwsDetail() {
               {article.category || "Algemeen"}
             </span>
 
+            {isMembersOnly && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/15 text-amber-600 dark:text-amber-400 text-xs font-semibold rounded-full border border-amber-500/30">
+                <Lock className="w-3 h-3 text-amber-500" />
+                Alleen voor leden
+              </span>
+            )}
+
             {article.wijkNaam && (
               <Link
                 to={`/wijken-en-kernen/${article.wijkSlug}`}
@@ -962,226 +1004,290 @@ export default function NieuwsDetail() {
             </figure>
           )}
 
-          {/* Optioneel: Auteur / (Burger)raadslid blok met directe link naar het betreffende raadslid */}
-          {(article.authorName || (article.author && article.author !== "Redactie" && article.author !== "Lijst van Andel")) && (
-            <div className="pt-2 border-t border-border/60 flex items-center justify-between gap-3 text-xs mb-6">
-              <Link
-                to={authorMemberUrl}
-                className="flex items-center gap-2 min-w-0 group hover:opacity-90 transition-opacity"
-                title={authorMember ? `Bekijk profiel en bijdragen van ${authorMember.name}` : "Bekijk raadslid"}
-              >
-                <div className="w-7 h-7 rounded-full overflow-hidden bg-muted shrink-0 border border-accent/30 group-hover:border-accent transition-colors">
-                  {article.authorAvatar || authorMember?.imgUrl ? (
-                    <img
-                      src={article.authorAvatar || authorMember?.imgUrl}
-                      alt={article.authorName || article.author || authorMember?.name}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = "/assets/silhouette.png";
-                      }}
-                    />
+          {/* Alleen voor leden afscherming: content vanaf de auteur komt te vervallen voor niet-ingelogden of leden met open contributie */}
+          {isMembersOnly && !hasMemberAccess ? (
+            <div className="my-10 rounded-2xl border-2 border-accent/40 bg-gradient-to-b from-card via-card/95 to-secondary/30 p-6 sm:p-10 text-center shadow-xl space-y-6 animate-fade-up">
+              <div className="mx-auto w-16 h-16 rounded-2xl bg-accent/15 border border-accent/30 flex items-center justify-center text-accent shadow-inner">
+                <Lock className="w-8 h-8" />
+              </div>
+
+              <div className="space-y-3 max-w-xl mx-auto">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-accent/15 border border-accent/30 text-accent text-xs font-bold uppercase tracking-wider">
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Exclusief voor leden</span>
+                </div>
+                <h2 className="font-display text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
+                  Dit artikel is alleen voor leden
+                </h2>
+                <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
+                  {hasUnpaidContribution ? (
+                    <>
+                      U bent momenteel ingelogd als <strong className="text-foreground">{user?.fullName || user?.username}</strong>, maar uw jaarlijkse partijcontributie (€12,00 / jaar) staat momenteel nog open. Voldoe uw contributie om direct volledige toegang te krijgen tot alle ledenartikelen en fractiedossiers.
+                    </>
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-accent/20 text-accent font-semibold text-[10px]">
-                      {(article.authorName || article.author || "A").charAt(0)}
+                    <>
+                      Dit diepgaande artikel en de bijbehorende documentatie zijn uitsluitend toegankelijk voor leden van Lijst van Andel. Word vandaag nog lid om onze lokale beweging te versterken of log in met uw bestaande partijaccount om direct toegang te krijgen.
+                    </>
+                  )}
+                </p>
+              </div>
+
+              {/* Twee knoppen: 'Word lid' en 'Login' */}
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2 max-w-md mx-auto">
+                <Button
+                  asChild
+                  size="lg"
+                  className="w-full sm:w-auto min-w-[170px] bg-accent text-accent-foreground hover:bg-accent/90 font-bold uppercase tracking-wider text-xs shadow-md"
+                >
+                  <Link to={hasUnpaidContribution ? "/dashboard" : "/word-lid"}>
+                    <UserPlus className="w-4 h-4 mr-2" />
+                    Word lid
+                  </Link>
+                </Button>
+                <Button
+                  asChild
+                  variant="outline"
+                  size="lg"
+                  className="w-full sm:w-auto min-w-[170px] border-border hover:bg-muted text-foreground font-semibold text-xs uppercase tracking-wider shadow-sm"
+                >
+                  <Link to={`/login?redirect=${encodeURIComponent(location.pathname)}`}>
+                    <LogIn className="w-4 h-4 mr-2" />
+                    Login
+                  </Link>
+                </Button>
+              </div>
+
+              <div className="pt-4 border-t border-border/50 text-[11px] text-muted-foreground max-w-lg mx-auto">
+                Vragen over uw lidmaatschap of contributiebetaling? Neem contact op met het partijbestuur via{" "}
+                <a href="mailto:penningmeester@lijstvanandel.nl" className="text-accent underline hover:opacity-80">
+                  penningmeester@lijstvanandel.nl
+                </a>.
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Optioneel: Auteur / (Burger)raadslid blok met directe link naar het betreffende raadslid */}
+              {(article.authorName || (article.author && article.author !== "Redactie" && article.author !== "Lijst van Andel")) && (
+                <div className="pt-2 border-t border-border/60 flex items-center justify-between gap-3 text-xs mb-6">
+                  <Link
+                    to={authorMemberUrl}
+                    className="flex items-center gap-2 min-w-0 group hover:opacity-90 transition-opacity"
+                    title={authorMember ? `Bekijk profiel en bijdragen van ${authorMember.name}` : "Bekijk raadslid"}
+                  >
+                    <div className="w-7 h-7 rounded-full overflow-hidden bg-muted shrink-0 border border-accent/30 group-hover:border-accent transition-colors">
+                      {article.authorAvatar || authorMember?.imgUrl ? (
+                        <img
+                          src={article.authorAvatar || authorMember?.imgUrl}
+                          alt={article.authorName || article.author || authorMember?.name}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = "/assets/silhouette.png";
+                          }}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-accent/20 text-accent font-semibold text-[10px]">
+                          {(article.authorName || article.author || "A").charAt(0)}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-                <span className="font-medium text-foreground truncate group-hover:text-accent transition-colors">
-                  {article.authorName || article.author || authorMember?.name}
-                  {(article.authorRole || authorMember?.role) && (
-                    <span className="text-muted-foreground ml-1.5 font-normal">
-                      • {article.authorRole || authorMember?.role}
+                    <span className="font-medium text-foreground truncate group-hover:text-accent transition-colors">
+                      {article.authorName || article.author || authorMember?.name}
+                      {(article.authorRole || authorMember?.role) && (
+                        <span className="text-muted-foreground ml-1.5 font-normal">
+                          • {article.authorRole || authorMember?.role}
+                        </span>
+                      )}
                     </span>
-                  )}
-                </span>
-              </Link>
-              <Link
-                to={authorMemberUrl}
-                id="btn-bekijk-raadslid"
-                className="text-accent flex items-center gap-1 shrink-0 text-xs font-semibold hover:translate-x-1 transition-transform"
-              >
-                Bekijk raadslid <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
-          )}
-
-          {/* Toegankelijkheid: Voorlezen / Audio speler */}
-          {speechSupported && (
-            <div className="mb-8 p-3.5 sm:p-4 rounded-xl bg-secondary/40 border border-border/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div
-                  className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-colors ${
-                    isPlayingSpeech && !isPausedSpeech
-                      ? "bg-accent text-accent-foreground animate-pulse"
-                      : "bg-accent/15 text-accent"
-                  }`}
-                >
-                  <Volume2 className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="text-xs sm:text-sm font-semibold text-foreground flex items-center gap-2">
-                    <span>Voorlezen voor toegankelijkheid</span>
-                    {isPlayingSpeech && !isPausedSpeech && (
-                      <span className="flex items-center gap-1 text-[11px] font-normal text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                        Voorlezen actief
-                      </span>
-                    )}
-                    {isPlayingSpeech && isPausedSpeech && (
-                      <span className="text-[11px] font-normal text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
-                        Gepauzeerd
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11px] sm:text-xs text-muted-foreground">
-                    Beluister dit nieuwsbericht in natuurlijk gesproken Nederlands.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
-                <button
-                  type="button"
-                  onClick={handleToggleSpeech}
-                  className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all shadow-xs ${
-                    isPlayingSpeech && !isPausedSpeech
-                      ? "bg-amber-600 text-white hover:bg-amber-700"
-                      : "bg-primary text-primary-foreground hover:bg-primary/90"
-                  }`}
-                  title={
-                    isPlayingSpeech
-                      ? isPausedSpeech
-                        ? "Hervat voorlezen"
-                        : "Pauzeer voorlezen"
-                      : "Start voorlezen"
-                  }
-                >
-                  {isPlayingSpeech && !isPausedSpeech ? (
-                    <>
-                      <Pause className="w-3.5 h-3.5" /> Pauzeren
-                    </>
-                  ) : isPlayingSpeech && isPausedSpeech ? (
-                    <>
-                      <Play className="w-3.5 h-3.5" /> Hervatten
-                    </>
-                  ) : (
-                    <>
-                      <Play className="w-3.5 h-3.5" /> Beluister bericht
-                    </>
-                  )}
-                </button>
-
-                {isPlayingSpeech && (
-                  <button
-                    type="button"
-                    onClick={handleStopSpeech}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold bg-secondary text-foreground hover:bg-secondary/80 border border-border transition-colors"
-                    title="Voorlezen stoppen"
+                  </Link>
+                  <Link
+                    to={authorMemberUrl}
+                    id="btn-bekijk-raadslid"
+                    className="text-accent flex items-center gap-1 shrink-0 text-xs font-semibold hover:translate-x-1 transition-transform"
                   >
-                    <Square className="w-3 h-3" /> Stop
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleRateChange}
-                  className="px-2.5 py-1.5 rounded-full text-xs font-semibold bg-secondary text-muted-foreground hover:text-foreground border border-border transition-colors"
-                  title={`Spraaksnelheid: ${speechRate}x (klik om te wijzigen)`}
-                >
-                  {speechRate}x
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div className="mb-12" ref={articleContentRef}>
-            {(article.description || article.excerpt) && (
-              <p className="lead font-medium text-lg md:text-xl text-foreground mb-8 border-l-4 border-accent pl-4 py-1 leading-relaxed bg-accent/5 rounded-r">
-                <FormattedMathText text={article.description || article.excerpt || ""} />
-              </p>
-            )}
-
-            {/* Render formatted content with interactive dataproducts, maps and mathematical formulas */}
-            <InteractiveArticleRenderer content={article.content || ""} />
-          </div>
-
-          {/* Gekoppeld(e) Standpunt(en) (in identieke kaartstijl als /video/1008) */}
-          {linkedStandpuntenDetails.length > 0 && (
-            <div className="pt-8 border-t border-border space-y-4 mb-8">
-              <div className="flex items-center justify-between gap-2 border-b border-border pb-3">
-                <div className="min-w-0">
-                  <h2 className="font-display text-xl sm:text-2xl font-bold flex items-center gap-2">
-                    <BookOpen className="w-5 h-5 text-accent shrink-0" />
-                    <span>Gekoppeld{linkedStandpuntenDetails.length > 1 ? "e Standpunten" : " Standpunt"}</span>
-                  </h2>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Dit artikel sluit direct aan bij ons partijprogramma
-                  </p>
+                    Bekijk raadslid <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
                 </div>
-                <span className="px-2.5 py-0.5 rounded-sm bg-accent/15 border border-accent/30 text-xs font-bold text-accent shrink-0">
-                  {linkedStandpuntenDetails.length} {linkedStandpuntenDetails.length === 1 ? "standpunt" : "standpunten"}
-                </span>
-              </div>
+              )}
 
-              <div className={`grid grid-cols-1 ${linkedStandpuntenDetails.length > 1 ? "md:grid-cols-2" : "grid-cols-1"} gap-4`}>
-                {linkedStandpuntenDetails.map((item, idx) => (
-                  <div
-                    key={`${item.hoofdstuk.nr}-${item.standpunt.nr}-${idx}`}
-                    className="bg-card border border-accent/30 rounded-xl p-4 sm:p-5 shadow-sm space-y-3.5 flex flex-col justify-between"
-                  >
-                    <div className="space-y-3">
-                      <div className="flex items-start gap-3">
-                        <div className="font-display text-2xl sm:text-3xl text-accent leading-none shrink-0 pt-0.5">
-                          {item.standpunt.nr.toString().padStart(2, "0")}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-[10px] uppercase tracking-widest text-accent font-semibold mb-0.5 flex items-center gap-1.5 flex-wrap">
-                            <span>Ons standpunt</span>
-                            <span>•</span>
-                            <span className="text-muted-foreground">
-                              H{item.hoofdstuk.nr}.{item.standpunt.nr}
-                            </span>
-                            <span>•</span>
-                            <span className={`px-1.5 py-0.5 rounded text-[9px] uppercase font-bold tracking-wider ${
-                              item.type === "bron"
-                                ? "bg-blue-500/15 text-blue-400 border border-blue-500/30"
-                                : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-                            }`}>
-                              {item.type === "bron" ? "Gekoppeld als bron" : "Gekoppeld als verdieping"}
-                            </span>
-                          </div>
-                          <h3 className="font-display text-lg sm:text-xl font-bold text-foreground leading-snug">
-                            {item.standpunt.titel}
-                          </h3>
-                          <p className="text-[11px] text-muted-foreground truncate">
-                            Hoofdstuk {item.hoofdstuk.nr}: {item.hoofdstuk.titel}
-                          </p>
-                        </div>
+              {/* Toegankelijkheid: Voorlezen / Audio speler */}
+              {speechSupported && (
+                <div className="mb-8 p-3.5 sm:p-4 rounded-xl bg-secondary/40 border border-border/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-colors ${
+                        isPlayingSpeech && !isPausedSpeech
+                          ? "bg-accent text-accent-foreground animate-pulse"
+                          : "bg-accent/15 text-accent"
+                      }`}
+                    >
+                      <Volume2 className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs sm:text-sm font-semibold text-foreground flex items-center gap-2">
+                        <span>Voorlezen voor toegankelijkheid</span>
+                        {isPlayingSpeech && !isPausedSpeech && (
+                          <span className="flex items-center gap-1 text-[11px] font-normal text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                            Voorlezen actief
+                          </span>
+                        )}
+                        {isPlayingSpeech && isPausedSpeech && (
+                          <span className="text-[11px] font-normal text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                            Gepauzeerd
+                          </span>
+                        )}
                       </div>
-
-                      <p className="text-xs sm:text-sm text-foreground/85 leading-relaxed">
-                        {item.standpunt.standpunt}
+                      <p className="text-[11px] sm:text-xs text-muted-foreground">
+                        Beluister dit nieuwsbericht in natuurlijk gesproken Nederlands.
                       </p>
                     </div>
-
-                    <div className="pt-1">
-                      <Button
-                        asChild
-                        size="sm"
-                        className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-semibold text-xs uppercase tracking-wider flex items-center justify-center gap-2"
-                      >
-                        <Link
-                          to={`/standpunten?hoofdstuk=${item.hoofdstuk.nr}&standpunt=${item.standpunt.nr}`}
-                        >
-                          <span>Bekijk meer over dit standpunt</span>
-                          <ArrowRight className="w-3.5 h-3.5" />
-                        </Link>
-                      </Button>
-                    </div>
                   </div>
-                ))}
+
+                  <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={handleToggleSpeech}
+                      className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all shadow-xs ${
+                        isPlayingSpeech && !isPausedSpeech
+                          ? "bg-amber-600 text-white hover:bg-amber-700"
+                          : "bg-primary text-primary-foreground hover:bg-primary/90"
+                      }`}
+                      title={
+                        isPlayingSpeech
+                          ? isPausedSpeech
+                            ? "Hervat voorlezen"
+                            : "Pauzeer voorlezen"
+                          : "Start voorlezen"
+                      }
+                    >
+                      {isPlayingSpeech && !isPausedSpeech ? (
+                        <>
+                          <Pause className="w-3.5 h-3.5" /> Pauzeren
+                        </>
+                      ) : isPlayingSpeech && isPausedSpeech ? (
+                        <>
+                          <Play className="w-3.5 h-3.5" /> Hervatten
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-3.5 h-3.5" /> Beluister bericht
+                        </>
+                      )}
+                    </button>
+
+                    {isPlayingSpeech && (
+                      <button
+                        type="button"
+                        onClick={handleStopSpeech}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold bg-secondary text-foreground hover:bg-secondary/80 border border-border transition-colors"
+                        title="Voorlezen stoppen"
+                      >
+                        <Square className="w-3 h-3" /> Stop
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={handleRateChange}
+                      className="px-2.5 py-1.5 rounded-full text-xs font-semibold bg-secondary text-muted-foreground hover:text-foreground border border-border transition-colors"
+                      title={`Spraaksnelheid: ${speechRate}x (klik om te wijzigen)`}
+                    >
+                      {speechRate}x
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="mb-12" ref={articleContentRef}>
+                {(article.description || article.excerpt) && (
+                  <p className="lead font-medium text-lg md:text-xl text-foreground mb-8 border-l-4 border-accent pl-4 py-1 leading-relaxed bg-accent/5 rounded-r">
+                    <FormattedMathText text={article.description || article.excerpt || ""} />
+                  </p>
+                )}
+
+                {/* Render formatted content with interactive dataproducts, maps and mathematical formulas */}
+                <InteractiveArticleRenderer content={article.content || ""} />
               </div>
-            </div>
+
+              {/* Gekoppeld(e) Standpunt(en) (in identieke kaartstijl als /video/1008) */}
+              {linkedStandpuntenDetails.length > 0 && (
+                <div className="pt-8 border-t border-border space-y-4 mb-8">
+                  <div className="flex items-center justify-between gap-2 border-b border-border pb-3">
+                    <div className="min-w-0">
+                      <h2 className="font-display text-xl sm:text-2xl font-bold flex items-center gap-2">
+                        <BookOpen className="w-5 h-5 text-accent shrink-0" />
+                        <span>Gekoppeld{linkedStandpuntenDetails.length > 1 ? "e Standpunten" : " Standpunt"}</span>
+                      </h2>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Dit artikel sluit direct aan bij ons partijprogramma
+                      </p>
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-sm bg-accent/15 border border-accent/30 text-xs font-bold text-accent shrink-0">
+                      {linkedStandpuntenDetails.length} {linkedStandpuntenDetails.length === 1 ? "standpunt" : "standpunten"}
+                    </span>
+                  </div>
+
+                  <div className={`grid grid-cols-1 ${linkedStandpuntenDetails.length > 1 ? "md:grid-cols-2" : "grid-cols-1"} gap-4`}>
+                    {linkedStandpuntenDetails.map((item, idx) => (
+                      <div
+                        key={`${item.hoofdstuk.nr}-${item.standpunt.nr}-${idx}`}
+                        className="bg-card border border-accent/30 rounded-xl p-4 sm:p-5 shadow-sm space-y-3.5 flex flex-col justify-between"
+                      >
+                        <div className="space-y-3">
+                          <div className="flex items-start gap-3">
+                            <div className="font-display text-2xl sm:text-3xl text-accent leading-none shrink-0 pt-0.5">
+                              {item.standpunt.nr.toString().padStart(2, "0")}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-[10px] uppercase tracking-widest text-accent font-semibold mb-0.5 flex items-center gap-1.5 flex-wrap">
+                                <span>Ons standpunt</span>
+                                <span>•</span>
+                                <span className="text-muted-foreground">
+                                  H{item.hoofdstuk.nr}.{item.standpunt.nr}
+                                </span>
+                                <span>•</span>
+                                <span className={`px-1.5 py-0.5 rounded text-[9px] uppercase font-bold tracking-wider ${
+                                  item.type === "bron"
+                                    ? "bg-blue-500/15 text-blue-400 border border-blue-500/30"
+                                    : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                                }`}>
+                                  {item.type === "bron" ? "Gekoppeld als bron" : "Gekoppeld als verdieping"}
+                                </span>
+                              </div>
+                              <h3 className="font-display text-lg sm:text-xl font-bold text-foreground leading-snug">
+                                {item.standpunt.titel}
+                              </h3>
+                              <p className="text-[11px] text-muted-foreground truncate">
+                                Hoofdstuk {item.hoofdstuk.nr}: {item.hoofdstuk.titel}
+                              </p>
+                            </div>
+                          </div>
+
+                          <p className="text-xs sm:text-sm text-foreground/85 leading-relaxed">
+                            {item.standpunt.standpunt}
+                          </p>
+                        </div>
+
+                        <div className="pt-1">
+                          <Button
+                            asChild
+                            size="sm"
+                            className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-semibold text-xs uppercase tracking-wider flex items-center justify-center gap-2"
+                          >
+                            <Link
+                              to={`/standpunten?hoofdstuk=${item.hoofdstuk.nr}&standpunt=${item.standpunt.nr}`}
+                            >
+                              <span>Bekijk meer over dit standpunt</span>
+                              <ArrowRight className="w-3.5 h-3.5" />
+                            </Link>
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           {/* Social Share & Voorkeursbron Sectie */}

@@ -71,6 +71,7 @@ import {
   Radio,
   Globe,
   ShieldAlert,
+  Lock,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VideoPlayer } from "@/components/VideoPlayer";
@@ -473,6 +474,7 @@ export default function AdminDashboard() {
   const [nThumb, setNThumb] = useState<File | null>(null);
   const [nHeader, setNHeader] = useState<File | null>(null);
   const [nIsHidden, setNIsHidden] = useState(false);
+  const [nMembersOnly, setNMembersOnly] = useState(false);
   const [editingNewsId, setEditingNewsId] = useState<string | null>(null);
 
   // Video fields
@@ -1587,6 +1589,7 @@ export default function AdminDashboard() {
     setNDesc(item.description || item.excerpt || "");
     setNContent(item.content || "");
     setNIsHidden(Boolean(item.isHidden));
+    setNMembersOnly(Boolean(item.membersOnly || item.isMembersOnly));
     setNThumb(null);
     setNHeader(null);
 
@@ -1614,6 +1617,7 @@ export default function AdminDashboard() {
     setNDesc("");
     setNContent("");
     setNIsHidden(false);
+    setNMembersOnly(false);
     setNThumb(null);
     setNHeader(null);
 
@@ -1652,6 +1656,8 @@ export default function AdminDashboard() {
     formData.append("description", nDesc);
     formData.append("content", nContent);
     formData.append("isHidden", String(nIsHidden));
+    formData.append("membersOnly", String(nMembersOnly));
+    formData.append("isMembersOnly", String(nMembersOnly));
     formData.append("linkedStandpunten", JSON.stringify(nLinkedStandpunten));
     if (nThumb) formData.append("thumbnail", nThumb);
     if (nHeader) formData.append("header", nHeader);
@@ -1767,6 +1773,29 @@ export default function AdminDashboard() {
       }
     } catch (_err) {
       toast.error("Fout bij wijzigen van zichtbaarheid");
+    }
+  };
+
+  const toggleNewsMembersOnly = async (id: string, currentMembersOnly?: boolean) => {
+    try {
+      const target = !currentMembersOnly;
+      const res = await fetchWithAuth(`/api/admin/news/${id}/toggle-members-only`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ membersOnly: target }),
+      });
+      if (res.ok) {
+        toast.success(
+          target
+            ? "Nieuwsbericht ingesteld als 'Alleen voor leden'"
+            : "Nieuwsbericht ingesteld als 'Openbaar voor iedereen'"
+        );
+        fetchNews();
+      } else {
+        toast.error("Kon toegangsstatus niet wijzigen");
+      }
+    } catch (_err) {
+      toast.error("Fout bij wijzigen van ledenstatus");
     }
   };
 
@@ -4323,6 +4352,48 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
+                {/* Toegang voor leden (Alleen voor leden) */}
+                <div className="space-y-1.5 p-3 rounded-lg border border-border/60 bg-muted/20">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                      <Lock className="w-3.5 h-3.5 text-accent" />
+                      <span>Toegangsniveau (Alleen voor leden)</span>
+                    </label>
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+                      {nMembersOnly ? "🔒 Exclusief voor leden" : "Openbaar voor iedereen"}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    Wanneer ingeschakeld is de inhoud vanaf de auteur uitsluitend zichtbaar voor ingelogde leden die hun contributie hebben voldaan. Bezoekers en leden met openstaande contributie zien een meldingsscherm met <strong>'Dit artikel is alleen voor leden'</strong> en knoppen <strong>'Word lid'</strong> en <strong>'Login'</strong>.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setNMembersOnly(false)}
+                      className={`flex items-center justify-center gap-2 p-2.5 rounded-lg border text-xs font-semibold transition-all ${
+                        !nMembersOnly
+                          ? "border-emerald-500 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500"
+                          : "border-border/60 bg-background text-muted-foreground hover:bg-muted"
+                      }`}
+                    >
+                      <Globe className="w-3.5 h-3.5 text-emerald-500" />
+                      Openbaar (Iedereen)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNMembersOnly(true)}
+                      className={`flex items-center justify-center gap-2 p-2.5 rounded-lg border text-xs font-semibold transition-all ${
+                        nMembersOnly
+                          ? "border-amber-500 bg-amber-500/15 text-amber-700 dark:text-amber-300 ring-1 ring-amber-500"
+                          : "border-border/60 bg-background text-muted-foreground hover:bg-muted"
+                      }`}
+                    >
+                      <Lock className="w-3.5 h-3.5 text-amber-500" />
+                      🔒 Alleen voor leden
+                    </button>
+                  </div>
+                </div>
+
                 <div className="flex items-center gap-3 mt-4">
                   <Button
                     type="submit"
@@ -4438,6 +4509,11 @@ export default function AdminDashboard() {
                             <Eye className="w-2.5 h-2.5" /> Zichtbaar
                           </span>
                         )}
+                        {(n.membersOnly || n.isMembersOnly) && (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center gap-1 border border-amber-500/30">
+                            <Lock className="w-2.5 h-2.5 text-amber-500" /> Alleen voor leden
+                          </span>
+                        )}
                         <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-accent/15 text-accent font-semibold">
                           {n.category || "Algemeen"}
                         </span>
@@ -4487,6 +4563,20 @@ export default function AdminDashboard() {
                         title={n.isHidden ? "Maak openbaar zichtbaar op /nieuws" : "Zet op 'onzichtbaar' (verberg op /nieuws)"}
                       >
                         {n.isHidden ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => toggleNewsMembersOnly(n.id, Boolean(n.membersOnly || n.isMembersOnly))}
+                        className={`h-8 w-8 p-0 transition-colors ${
+                          n.membersOnly || n.isMembersOnly
+                            ? "text-amber-600 border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 dark:text-amber-400"
+                            : "text-muted-foreground border-border hover:bg-muted"
+                        }`}
+                        title={n.membersOnly || n.isMembersOnly ? "Nu 'Alleen voor leden' (klik om openbaar te maken)" : "Nu 'Openbaar' (klik om alleen voor leden te maken)"}
+                      >
+                        <Lock className="w-3.5 h-3.5" />
                       </Button>
                       <a
                         href={`/nieuws/${n.id}`}

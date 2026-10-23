@@ -1,6 +1,6 @@
 {
-  "summary": "Masterplan voor maximale laadsnelheid, Server-Side Snapshot Caching met handmatige en automatische cache-invalidatie, vooraf gegenereerde statische videothumbnails (WebP/JPG), Cloudflare CDN edge-headers en frontend-stroomlijning.",
-  "updatedAt": "2026-10-18T12:14:09.625383833Z",
-  "requestFeedback": true,
-  "userFacing": true
+  "summary":  "Geïmplementeerd: 'Alleen voor leden' optie voor nieuwsartikelen in /admin en de toegangsbeveiliging op /nieuws/:id. Wanneer een artikel is gemarkeerd als 'Alleen voor leden', vervalt alle content vanaf de auteur voor bezoekers die niet zijn ingelogd of leden met openstaande contributie, en wordt een prominente melding getoond met 'Dit artikel is alleen voor leden' en knoppen 'Word lid' en 'Login'.",
+  "updatedAt":  "2026-10-23T23:46:49.133528668Z",
+  "requestFeedback":  true,
+  "userFacing":  true
 }

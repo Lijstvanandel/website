@@ -34,6 +34,8 @@ export interface NewsItem {
   wijkSlug?: string;
   wijkNaam?: string;
   isHidden?: boolean;
+  membersOnly?: boolean;
+  isMembersOnly?: boolean;
   // Video fields
   videoUrl?: string;
   videoTitle?: string;

@@ -16,7 +16,8 @@ import {
   Globe,
   Radio,
   Building2,
-  ShieldAlert
+  ShieldAlert,
+  Lock,
 } from "lucide-react";
 import { NewsItem } from "@/data/news";
 import { NewsCategory } from "@/components/CategoryManager";
@@ -241,6 +242,11 @@ export default function Nieuws() {
                     <Tag className="w-2.5 h-2.5 text-accent" />
                     {item.category || "Algemeen"}
                   </span>
+                  {(item.membersOnly || item.isMembersOnly) && (
+                    <span className="px-2.5 py-1 bg-amber-500/90 backdrop-blur-sm text-zinc-950 font-bold text-[11px] rounded-full shadow-sm flex items-center gap-1 border border-amber-400/40">
+                      <Lock className="w-2.5 h-2.5" /> Leden
+                    </span>
+                  )}
                   {(item.isPodcast || item.podcastAudioUrl) && (
                     <span className="px-2.5 py-1 bg-purple-600/95 backdrop-blur-sm text-white text-[11px] font-semibold rounded-full shadow-sm flex items-center gap-1 border border-purple-400/40">
                       <Headphones className="w-2.5 h-2.5" /> Podcast

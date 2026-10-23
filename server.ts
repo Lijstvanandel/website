@@ -8252,6 +8252,8 @@ async function startServer() {
       podcastSpotifyUrl,
       podcastAppleUrl,
       podcastViews,
+      membersOnly,
+      isMembersOnly,
     } = req.body;
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     const thumbnailUrl = files?.['thumbnail']?.[0] ? `/uploads/news/${files['thumbnail'][0].filename}` : '';
@@ -8265,6 +8267,7 @@ async function startServer() {
     const finalVideoUrl = videoFile ? `/uploads/videos/${videoFile.filename}` : (bodyVideoUrl || '');
     const finalPodcastAudioUrl = podcastAudioFile ? `/uploads/podcasts/${podcastAudioFile.filename}` : (bodyPodcastAudioUrl || '');
     const finalIsPodcast = isPodcast === "true" || isPodcast === true || Boolean(finalPodcastAudioUrl);
+    const finalMembersOnly = membersOnly === "true" || membersOnly === true || isMembersOnly === "true" || isMembersOnly === true;
 
     // Gekoppelde standpunten (/standpunten als verdieping of als bron)
     const rawLinkedStandpunten = req.body.linkedStandpunten;
@@ -8308,6 +8311,8 @@ async function startServer() {
       podcastAppleUrl: podcastAppleUrl || "",
       podcastViews: Number(podcastViews) || 0,
       isHidden: isHidden === "true" || isHidden === true,
+      membersOnly: finalMembersOnly,
+      isMembersOnly: finalMembersOnly,
       linkedStandpunten,
       createdAt: new Date().toISOString()
     };
@@ -8347,6 +8352,8 @@ async function startServer() {
       podcastSpotifyUrl,
       podcastAppleUrl,
       podcastViews,
+      membersOnly,
+      isMembersOnly,
     } = req.body;
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     const current = db.news[index];
@@ -8377,6 +8384,13 @@ async function startServer() {
         : Boolean(current.isPodcast || finalPodcastAudioUrl);
 
     const parsedIsHidden = isHidden !== undefined ? (isHidden === "true" || isHidden === true) : Boolean(current.isHidden);
+
+    const parsedMembersOnly =
+      membersOnly !== undefined
+        ? (membersOnly === "true" || membersOnly === true)
+        : isMembersOnly !== undefined
+        ? (isMembersOnly === "true" || isMembersOnly === true)
+        : Boolean(current.membersOnly || current.isMembersOnly);
 
     // Gekoppelde standpunten (/standpunten als verdieping of als bron)
     const rawLinkedStandpunten = req.body.linkedStandpunten;
@@ -8420,6 +8434,8 @@ async function startServer() {
       podcastAppleUrl: podcastAppleUrl !== undefined ? podcastAppleUrl : (current.podcastAppleUrl || ''),
       podcastViews: podcastViews !== undefined ? Number(podcastViews) : (current.podcastViews || 0),
       isHidden: parsedIsHidden,
+      membersOnly: parsedMembersOnly,
+      isMembersOnly: parsedMembersOnly,
       linkedStandpunten: parsedLinkedStandpunten,
       updatedAt: new Date().toISOString()
     };
@@ -8513,6 +8529,26 @@ async function startServer() {
     db.news[index] = {
       ...current,
       isHidden: newIsHidden,
+      updatedAt: new Date().toISOString()
+    };
+    saveDb(db);
+    res.json(db.news[index]);
+  });
+
+  app.patch("/api/admin/news/:id/toggle-members-only", requireAuth, requireAdmin, (req: any, res: any) => {
+    const db = getDb();
+    const index = db.news.findIndex((n: any) => n.id === req.params.id);
+    if (index === -1) return res.status(404).json({ error: "Nieuws niet gevonden" });
+
+    const current = db.news[index];
+    const newMembersOnly = req.body.membersOnly !== undefined
+      ? (req.body.membersOnly === "true" || req.body.membersOnly === true)
+      : !(current.membersOnly || current.isMembersOnly);
+
+    db.news[index] = {
+      ...current,
+      membersOnly: newMembersOnly,
+      isMembersOnly: newMembersOnly,
       updatedAt: new Date().toISOString()
     };
     saveDb(db);
