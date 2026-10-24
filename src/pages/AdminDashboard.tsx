@@ -1694,10 +1694,11 @@ export default function AdminDashboard() {
         fetchNews();
         cancelEditNews();
       } else {
-        toast.error("Fout bij opslaan van nieuwsbericht");
+        const errData = await res.json().catch(() => ({}));
+        toast.error(errData.error || errData.message || `Fout bij opslaan van nieuwsbericht (HTTP ${res.status})`);
       }
-    } catch (error) {
-      toast.error("Fout bij opslaan");
+    } catch (error: any) {
+      toast.error(error?.message || "Fout bij opslaan");
     }
   };
 
@@ -1756,11 +1757,27 @@ export default function AdminDashboard() {
   const toggleNewsVisibility = async (id: string, currentIsHidden?: boolean) => {
     try {
       const targetIsHidden = !currentIsHidden;
-      const res = await fetchWithAuth(`/api/admin/news/${id}/toggle-visibility`, {
+      let res = await fetch(`/api/admin/news/${id}/toggle-visibility`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...headers,
+        },
         body: JSON.stringify({ isHidden: targetIsHidden }),
       });
+
+      // Fallback voor proxies / VPS Nginx configuraties die PATCH blokkeren
+      if (res.status === 404 || res.status === 405) {
+        res = await fetch(`/api/admin/news/${id}/toggle-visibility`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...headers,
+          },
+          body: JSON.stringify({ isHidden: targetIsHidden }),
+        });
+      }
+
       if (res.ok) {
         toast.success(
           targetIsHidden
@@ -1769,21 +1786,38 @@ export default function AdminDashboard() {
         );
         fetchNews();
       } else {
-        toast.error("Kon zichtbaarheid niet wijzigen");
+        const errData = await res.json().catch(() => ({}));
+        toast.error(errData.error || errData.message || `Kon zichtbaarheid niet wijzigen (HTTP ${res.status})`);
       }
-    } catch (_err) {
-      toast.error("Fout bij wijzigen van zichtbaarheid");
+    } catch (_err: any) {
+      toast.error(_err?.message || "Fout bij wijzigen van zichtbaarheid");
     }
   };
 
   const toggleNewsMembersOnly = async (id: string, currentMembersOnly?: boolean) => {
     try {
       const target = !currentMembersOnly;
-      const res = await fetchWithAuth(`/api/admin/news/${id}/toggle-members-only`, {
+      let res = await fetch(`/api/admin/news/${id}/toggle-members-only`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...headers,
+        },
         body: JSON.stringify({ membersOnly: target }),
       });
+
+      // Fallback voor proxies / VPS Nginx configuraties die PATCH blokkeren
+      if (res.status === 404 || res.status === 405) {
+        res = await fetch(`/api/admin/news/${id}/toggle-members-only`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...headers,
+          },
+          body: JSON.stringify({ membersOnly: target }),
+        });
+      }
+
       if (res.ok) {
         toast.success(
           target
@@ -1792,10 +1826,11 @@ export default function AdminDashboard() {
         );
         fetchNews();
       } else {
-        toast.error("Kon toegangsstatus niet wijzigen");
+        const errData = await res.json().catch(() => ({}));
+        toast.error(errData.error || errData.message || `Kon toegangsstatus niet wijzigen (HTTP ${res.status})`);
       }
-    } catch (_err) {
-      toast.error("Fout bij wijzigen van ledenstatus");
+    } catch (_err: any) {
+      toast.error(_err?.message || "Fout bij wijzigen van ledenstatus");
     }
   };
 

@@ -3263,7 +3263,8 @@ async function startServer() {
   };
 
   const requireAdmin = (req: any, res: any, next: any) => {
-    if (req.user.role !== 'admin') {
+    const role = String(req.user?.role || "").toLowerCase().trim();
+    if (role !== 'admin' && role !== 'superadmin' && role !== 'voorzitter' && role !== 'secretaris' && role !== 'bestuur' && role !== 'key-user') {
       return res.status(403).json({ error: "Toegang geweigerd: beheerdersrechten vereist" });
     }
     next();
@@ -8328,8 +8329,8 @@ async function startServer() {
     { name: 'podcastAudio', maxCount: 1 },
   ]), (req: any, res: any) => {
     const db = getDb();
-    const index = db.news.findIndex((n: any) => n.id === req.params.id);
-    if (index === -1) return res.status(404).json({ error: "Nieuws niet gevonden" });
+    const index = db.news.findIndex((n: any) => String(n.id) === String(req.params.id));
+    if (index === -1) return res.status(404).json({ error: "Nieuwsbericht niet gevonden" });
 
     const {
       title,
@@ -8516,10 +8517,10 @@ async function startServer() {
     });
   });
 
-  app.patch("/api/admin/news/:id/toggle-visibility", requireAuth, requireAdmin, (req: any, res: any) => {
+  const handleToggleVisibility = (req: any, res: any) => {
     const db = getDb();
-    const index = db.news.findIndex((n: any) => n.id === req.params.id);
-    if (index === -1) return res.status(404).json({ error: "Nieuws niet gevonden" });
+    const index = db.news.findIndex((n: any) => String(n.id) === String(req.params.id));
+    if (index === -1) return res.status(404).json({ error: "Nieuwsbericht niet gevonden" });
 
     const current = db.news[index];
     const newIsHidden = req.body.isHidden !== undefined
@@ -8533,12 +8534,15 @@ async function startServer() {
     };
     saveDb(db);
     res.json(db.news[index]);
-  });
+  };
 
-  app.patch("/api/admin/news/:id/toggle-members-only", requireAuth, requireAdmin, (req: any, res: any) => {
+  app.patch("/api/admin/news/:id/toggle-visibility", requireAuth, requireAdmin, handleToggleVisibility);
+  app.post("/api/admin/news/:id/toggle-visibility", requireAuth, requireAdmin, handleToggleVisibility);
+
+  const handleToggleMembersOnly = (req: any, res: any) => {
     const db = getDb();
-    const index = db.news.findIndex((n: any) => n.id === req.params.id);
-    if (index === -1) return res.status(404).json({ error: "Nieuws niet gevonden" });
+    const index = db.news.findIndex((n: any) => String(n.id) === String(req.params.id));
+    if (index === -1) return res.status(404).json({ error: "Nieuwsbericht niet gevonden" });
 
     const current = db.news[index];
     const newMembersOnly = req.body.membersOnly !== undefined
@@ -8553,11 +8557,14 @@ async function startServer() {
     };
     saveDb(db);
     res.json(db.news[index]);
-  });
+  };
+
+  app.patch("/api/admin/news/:id/toggle-members-only", requireAuth, requireAdmin, handleToggleMembersOnly);
+  app.post("/api/admin/news/:id/toggle-members-only", requireAuth, requireAdmin, handleToggleMembersOnly);
 
   app.delete("/api/admin/news/:id", requireAuth, requireAdmin, (req: any, res: any) => {
     const db = getDb();
-    db.news = db.news.filter((n: any) => n.id !== req.params.id);
+    db.news = db.news.filter((n: any) => String(n.id) !== String(req.params.id));
     saveDb(db);
     res.json({ message: "Nieuws verwijderd" });
   });

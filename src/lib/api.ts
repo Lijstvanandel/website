@@ -2,7 +2,12 @@ import { toast } from "sonner";
 
 export function getAuthToken(): string {
   if (typeof window === "undefined") return "";
-  const token = localStorage.getItem("auth_token") || localStorage.getItem("token") || "";
+  const token =
+    localStorage.getItem("auth_token") ||
+    sessionStorage.getItem("auth_token") ||
+    localStorage.getItem("token") ||
+    sessionStorage.getItem("token") ||
+    "";
   if (!token || token === "null" || token === "undefined") return "";
   return token.trim();
 }
