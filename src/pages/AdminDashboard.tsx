@@ -96,6 +96,7 @@ import { ChairmanManager } from "@/components/admin/ChairmanManager";
 import { BestuurManager } from "@/components/admin/BestuurManager";
 import { PodcastManager } from "@/components/admin/PodcastManager";
 import { PerformanceLogsManager } from "@/components/admin/PerformanceLogsManager";
+import { LoginBenefitsManager } from "@/components/admin/LoginBenefitsManager";
 import { safeJson } from "@/lib/api";
 import { WIJKEN_EN_KERNEN } from "@/data/wijken";
 import { NewsItem, LinkedStandpuntItem } from "@/data/news";
@@ -464,8 +465,25 @@ export default function AdminDashboard() {
     return filteredVideos.slice(startIndex, startIndex + VIDEOS_PER_PAGE);
   }, [filteredVideos, activeVideoPage]);
 
+  // Helper for datetime-local input value (YYYY-MM-DDTHH:mm in local time)
+  const toLocalDateTimeInput = useCallback((rawDate?: string) => {
+    const d = rawDate
+      ? /^\d{4}-\d{2}-\d{2}$/.test(rawDate.trim())
+        ? new Date(`${rawDate.trim()}T12:00:00`)
+        : new Date(rawDate)
+      : new Date();
+    const valid = isNaN(d.getTime()) ? new Date() : d;
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${valid.getFullYear()}-${pad(valid.getMonth() + 1)}-${pad(valid.getDate())}T${pad(valid.getHours())}:${pad(valid.getMinutes())}`;
+  }, []);
+
   // -- State for new News --
   const [nTitle, setNTitle] = useState("");
+  const [nPublishedAt, setNPublishedAt] = useState(() => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  });
   const [nCategory, setNCategory] = useState("");
   const [nWijkSlug, setNWijkSlug] = useState("");
   const [nAuthorId, setNAuthorId] = useState("");
@@ -476,6 +494,8 @@ export default function AdminDashboard() {
   const [nIsHidden, setNIsHidden] = useState(false);
   const [nMembersOnly, setNMembersOnly] = useState(false);
   const [editingNewsId, setEditingNewsId] = useState<string | null>(null);
+  const [inlineDateEditId, setInlineDateEditId] = useState<string | null>(null);
+  const [inlineDateValue, setInlineDateValue] = useState<string>("");
 
   // Video fields
   const [nVideo, setNVideo] = useState<File | null>(null);
@@ -1583,6 +1603,7 @@ export default function AdminDashboard() {
   const startEditNews = (item: NewsItem) => {
     setEditingNewsId(item.id);
     setNTitle(item.title);
+    setNPublishedAt(toLocalDateTimeInput(item.createdAt || item.date));
     setNCategory(item.category || "Algemeen");
     setNWijkSlug(item.wijkSlug || "");
     setNAuthorId(item.authorId || "");
@@ -1611,6 +1632,7 @@ export default function AdminDashboard() {
   const cancelEditNews = () => {
     setEditingNewsId(null);
     setNTitle("");
+    setNPublishedAt(toLocalDateTimeInput());
     setNCategory("");
     setNWijkSlug("");
     setNAuthorId("");
@@ -1644,8 +1666,19 @@ export default function AdminDashboard() {
     const selectedWijkObj = WIJKEN_EN_KERNEN.find((w) => w.slug === nWijkSlug);
     const selectedAuthor = fractieleden.find((f) => String(f.id) === String(nAuthorId));
 
+    const parsedPubDate = nPublishedAt ? new Date(nPublishedAt) : new Date();
+    const validPubIso = isNaN(parsedPubDate.getTime())
+      ? new Date().toISOString()
+      : parsedPubDate.toISOString();
+    const validDateOnly = nPublishedAt && nPublishedAt.length >= 10
+      ? nPublishedAt.slice(0, 10)
+      : validPubIso.slice(0, 10);
+
     const formData = new FormData();
     formData.append("title", nTitle);
+    formData.append("publishedAt", validPubIso);
+    formData.append("createdAt", validPubIso);
+    formData.append("date", validDateOnly);
     formData.append("category", nCategory || "Algemeen");
     formData.append("wijkSlug", nWijkSlug);
     formData.append("wijkNaam", selectedWijkObj ? selectedWijkObj.naam : "");
@@ -1839,6 +1872,56 @@ export default function AdminDashboard() {
       await fetch(`/api/admin/news/${id}`, { method: "DELETE", headers });
       toast.success("Nieuwsbericht verwijderd");
       fetchNews();
+    }
+  };
+
+  const saveInlineNewsDate = async (id: string) => {
+    if (!inlineDateValue) {
+      toast.error("Kies een geldige datum en tijd");
+      return;
+    }
+    const parsed = new Date(inlineDateValue);
+    if (isNaN(parsed.getTime())) {
+      toast.error("Ongeldige datum of tijd");
+      return;
+    }
+    const iso = parsed.toISOString();
+    const dateOnly = inlineDateValue.slice(0, 10);
+
+    try {
+      let res = await fetch(`/api/admin/news/${id}/published-at`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...headers,
+        },
+        body: JSON.stringify({ publishedAt: iso, createdAt: iso, date: dateOnly }),
+      });
+
+      if (res.status === 404 || res.status === 405) {
+        res = await fetch(`/api/admin/news/${id}/published-at`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...headers,
+          },
+          body: JSON.stringify({ publishedAt: iso, createdAt: iso, date: dateOnly }),
+        });
+      }
+
+      if (res.ok) {
+        toast.success("Publicatiedatum & volgorde bijgewerkt!");
+        if (editingNewsId === id) {
+          setNPublishedAt(inlineDateValue);
+        }
+        setInlineDateEditId(null);
+        fetchNews();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        toast.error(errData.error || "Kon publicatiedatum niet wijzigen");
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Fout bij opslaan van publicatiedatum");
     }
   };
 
@@ -2184,6 +2267,9 @@ export default function AdminDashboard() {
         <TabsList className="mb-8 flex flex-wrap gap-2 h-auto bg-muted/40 p-1.5 rounded-xl border border-border">
           <TabsTrigger value="users" className="gap-2 text-xs">
             <Users className="w-4 h-4" /> Ledenbeheer
+          </TabsTrigger>
+          <TabsTrigger value="login-beheer" className="gap-2 text-xs font-semibold text-accent">
+            <Sparkles className="w-4 h-4 text-accent" /> Inlogpagina (/login)
           </TabsTrigger>
           <TabsTrigger value="voorzitter" className="gap-2 text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-500/10 data-[state=active]:bg-amber-600 data-[state=active]:text-white">
             <Gavel className="w-4 h-4 text-amber-600 data-[state=active]:text-white" /> Voorzitterpaneel
@@ -3947,6 +4033,35 @@ export default function AdminDashboard() {
                   />
                 </div>
 
+                {/* Publicatiedatum & Tijdstip (volgorde bepalen) */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-sm font-medium flex items-center gap-1.5">
+                      <CalendarDays className="w-3.5 h-3.5 text-accent" />
+                      <span>Publicatiedatum &amp; Tijdstip (bepaalt volgorde) *</span>
+                    </label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setNPublishedAt(toLocalDateTimeInput())}
+                      className="text-xs text-accent hover:text-accent/80 h-6 px-2"
+                    >
+                      <Clock className="w-3 h-3 mr-1" /> Zet op nu
+                    </Button>
+                  </div>
+                  <Input
+                    type="datetime-local"
+                    required
+                    value={nPublishedAt}
+                    onChange={(e) => setNPublishedAt(e.target.value)}
+                    className="text-sm"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Artikelen op <code className="text-accent font-mono">/nieuws</code> en de voorpagina worden van nieuw naar oud gesorteerd op basis van deze publicatiedatum en tijd. Pas de datum of tijd aan om de volgorde te wijzigen.
+                  </p>
+                </div>
+
                 {/* Categorie met snelle link naar Categoriebeheer */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
@@ -4574,10 +4689,59 @@ export default function AdminDashboard() {
                             <User className="w-2.5 h-2.5" /> {n.authorName}
                           </span>
                         )}
-                        <span className="text-[11px] text-muted-foreground">
-                          {n.createdAt ? new Date(n.createdAt).toLocaleDateString("nl-NL") : ""}
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (inlineDateEditId === n.id) {
+                              setInlineDateEditId(null);
+                            } else {
+                              setInlineDateEditId(n.id);
+                              setInlineDateValue(toLocalDateTimeInput(n.createdAt || n.date));
+                            }
+                          }}
+                          className="text-[11px] text-muted-foreground hover:text-accent inline-flex items-center gap-1 px-2 py-0.5 rounded border border-border/60 hover:border-accent/50 bg-muted/30 transition-colors cursor-pointer"
+                          title="Klik om publicatiedatum en volgorde direct aan te passen"
+                        >
+                          <CalendarDays className="w-3 h-3 text-accent" />
+                          <span>
+                            {n.createdAt || n.date
+                              ? new Date((n.createdAt || n.date) as string).toLocaleDateString("nl-NL", {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  year: "numeric",
+                                })
+                              : "Geen datum"}
+                          </span>
+                          <Pencil className="w-2.5 h-2.5 opacity-70" />
+                        </button>
                       </div>
+                      {inlineDateEditId === n.id && (
+                        <div className="mt-2 p-2.5 rounded-lg bg-muted/50 border border-accent/40 flex flex-wrap items-center gap-2">
+                          <Input
+                            type="datetime-local"
+                            value={inlineDateValue}
+                            onChange={(e) => setInlineDateValue(e.target.value)}
+                            className="h-8 text-xs w-auto flex-1 min-w-[185px] bg-background"
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => saveInlineNewsDate(n.id)}
+                            className="h-8 px-3 text-xs bg-accent text-accent-foreground hover:bg-accent/90"
+                          >
+                            <Check className="w-3.5 h-3.5 mr-1" /> Opslaan
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setInlineDateEditId(null)}
+                            className="h-8 px-2 text-xs"
+                          >
+                            Annuleer
+                          </Button>
+                        </div>
+                      )}
                       {n.description && (
                         <p className="text-xs text-muted-foreground line-clamp-2 mt-2">
                           {n.description}
@@ -6057,6 +6221,11 @@ export default function AdminDashboard() {
         {/* BEZOEKERS LAADTIJDEN & DIAGNOSTIEK */}
         <TabsContent value="performance">
           <PerformanceLogsManager />
+        </TabsContent>
+
+        {/* INLOGPAGINA (/LOGIN) AFBEELDINGEN, VOORDELEN & CARROUSEL BEHEER */}
+        <TabsContent value="login-beheer">
+          <LoginBenefitsManager token={token || effectiveToken} headers={headers} />
         </TabsContent>
 
         {/* SYSTEEM, CACHE & GITHUB UPDATES */}

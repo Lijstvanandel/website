@@ -274,8 +274,8 @@ export default function Nieuws() {
               <div className="p-6 flex flex-col flex-1">
                 <div className="flex items-center justify-between text-xs text-muted-foreground mb-2 font-medium">
                   <span>
-                    {item.createdAt
-                      ? new Date(item.createdAt).toLocaleDateString("nl-NL", {
+                    {item.createdAt || item.date
+                      ? new Date((item.createdAt || item.date) as string).toLocaleDateString("nl-NL", {
                           day: "numeric",
                           month: "long",
                           year: "numeric",

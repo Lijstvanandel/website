@@ -6,17 +6,14 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import {
   CheckCircle2,
-  Users,
-  Bell,
-  Vote,
-  Calendar,
   ArrowRight,
   Sparkles,
   KeyRound,
   Mail,
   Loader2,
   Clock,
-  ShieldCheck,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -38,6 +35,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/context/AuthContext";
+import {
+  LoginBenefitItem,
+  LoginPageSettings,
+  DEFAULT_LOGIN_BENEFITS,
+  DEFAULT_LOGIN_SETTINGS,
+} from "@/data/loginBenefits";
+import { renderLoginBenefitIcon } from "@/components/admin/LoginBenefitsManager";
 
 const loginSchema = z.object({
   username: z.string().min(1, "Gebruikersnaam of e-mailadres is verplicht"),
@@ -47,25 +51,6 @@ const loginSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 
-const memberBenefits = [
-  {
-    icon: Users,
-    text: "Ontmoet u andere LVA'ers die de gemeente een warm hart toedragen",
-  },
-  {
-    icon: Bell,
-    text: "Wordt u regelmatig op de hoogte gehouden met wat speelt in de gemeente",
-  },
-  {
-    icon: Vote,
-    text: "Kunt u actief participeren in het democratisch proces via het ledenportaal",
-  },
-  {
-    icon: Calendar,
-    text: "Krijgt u toegang tot tal van evenementen in Steenwijkerland",
-  },
-];
-
 export default function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -73,6 +58,46 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [pendingApprovalNotice, setPendingApprovalNotice] = useState<string | null>(null);
   const redirectUrl = searchParams.get("redirect");
+
+  // Dynamic benefits carousel state
+  const [benefits, setBenefits] = useState<LoginBenefitItem[]>(DEFAULT_LOGIN_BENEFITS);
+  const [loginSettings, setLoginSettings] = useState<LoginPageSettings>(DEFAULT_LOGIN_SETTINGS);
+  const [activeSlide, setActiveSlide] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    fetch("/api/login-benefits")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!mounted || !data) return;
+        if (Array.isArray(data.benefits) && data.benefits.length > 0) {
+          const sorted = [...data.benefits].sort(
+            (a, b) => (Number(a.order) || 0) - (Number(b.order) || 0)
+          );
+          setBenefits(sorted);
+        }
+        if (data.settings) {
+          setLoginSettings((prev) => ({ ...prev, ...data.settings }));
+        }
+      })
+      .catch(() => {
+        // Keep defaults on network error
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Auto-scrolling carousel effect
+  useEffect(() => {
+    if (isPaused || !loginSettings.autoPlay || benefits.length <= 1) return;
+    const interval = Math.max(2000, Number(loginSettings.autoPlayIntervalMs) || 5000);
+    const timer = setInterval(() => {
+      setActiveSlide((prev) => (prev + 1) % benefits.length);
+    }, interval);
+    return () => clearInterval(timer);
+  }, [isPaused, loginSettings.autoPlay, loginSettings.autoPlayIntervalMs, benefits.length]);
 
   // Auto-redirect if already logged in
   useEffect(() => {
@@ -315,48 +340,128 @@ export default function Login() {
           </div>
         </div>
 
-        {/* Rechterkolom: Voordelen als lid */}
-        <div className="lg:col-span-6 bg-accent/5 border border-accent/30 rounded-xl p-6 sm:p-8 shadow-sm relative overflow-hidden flex flex-col justify-between h-full">
+        {/* Rechterkolom: Voordelen als lid (Automatisch scrollend carrousel) */}
+        <div
+          className="lg:col-span-6 bg-accent/5 border border-accent/30 rounded-xl p-6 sm:p-8 shadow-sm relative overflow-hidden flex flex-col justify-between h-full"
+          onMouseEnter={() => setIsPaused(true)}
+          onMouseLeave={() => setIsPaused(false)}
+        >
           <div>
-            <div className="flex items-center gap-2.5 mb-3">
-              <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-accent/15 text-accent">
-                <CheckCircle2 className="w-5 h-5 text-accent" />
-              </span>
-              <h2 className="text-xl md:text-2xl font-display text-foreground">
-                Voordelen als lid
-              </h2>
+            <div className="flex items-center justify-between gap-2.5 mb-3">
+              <div className="flex items-center gap-2.5">
+                <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-accent/15 text-accent">
+                  <CheckCircle2 className="w-5 h-5 text-accent" />
+                </span>
+                <h2 className="text-xl md:text-2xl font-display text-foreground">
+                  {loginSettings.sectionTitle || "Voordelen als lid"}
+                </h2>
+              </div>
+
+              {benefits.length > 1 && (
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setActiveSlide((prev) => (prev - 1 + benefits.length) % benefits.length)
+                    }
+                    className="w-7 h-7 rounded-lg border border-accent/25 bg-background/60 hover:bg-accent/15 text-foreground/80 hover:text-accent flex items-center justify-center transition-colors cursor-pointer"
+                    aria-label="Vorig voordeel"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveSlide((prev) => (prev + 1) % benefits.length)}
+                    className="w-7 h-7 rounded-lg border border-accent/25 bg-background/60 hover:bg-accent/15 text-foreground/80 hover:text-accent flex items-center justify-center transition-colors cursor-pointer"
+                    aria-label="Volgend voordeel"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
             </div>
-            <p className="text-sm text-foreground/80 mb-6 leading-relaxed">
-              Als lid van Lijst van Andel staat u dicht bij de lokale politiek van Steenwijkerland en bouwt u actief mee aan een betrokken en sterke gemeenschap.
+
+            <p className="text-sm text-foreground/80 mb-5 leading-relaxed">
+              {loginSettings.sectionSubtitle ||
+                "Als lid van Lijst van Andel staat u dicht bij de lokale politiek van Steenwijkerland en bouwt u actief mee aan een betrokken en sterke gemeenschap."}
             </p>
 
-            <ul className="space-y-4">
-              {memberBenefits.map((benefit, index) => {
-                const IconComponent = benefit.icon;
-                return (
-                  <li
-                    key={index}
-                    className="flex items-start gap-3.5 p-3 rounded-lg bg-background/60 border border-accent/15 backdrop-blur-sm transition-colors hover:border-accent/35"
+            {/* Automatisch scrollend carrousel van voordelen */}
+            {benefits.length > 0 && (
+              <div className="space-y-3">
+                <div className="relative overflow-hidden rounded-xl">
+                  <div
+                    className="flex transition-transform duration-500 ease-out"
+                    style={{ transform: `translateX(-${activeSlide * 100}%)` }}
                   >
-                    <div className="shrink-0 mt-0.5 w-7 h-7 rounded-md bg-accent/10 flex items-center justify-center text-accent">
-                      <IconComponent className="w-4 h-4" />
-                    </div>
-                    <span className="text-sm text-foreground/90 font-medium leading-snug">
-                      {benefit.text}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
+                    {benefits.map((benefit, index) => (
+                      <div key={benefit.id || index} className="w-full shrink-0 space-y-3">
+                        {/* Gekoppelde afbeelding BOVEN het balkje */}
+                        <div className="relative aspect-16/10 w-full rounded-xl overflow-hidden border border-accent/25 bg-muted shadow-sm">
+                          <img
+                            src={benefit.imageUrl || "/assets/markt-steenwijk.jpg"}
+                            alt={benefit.imageAlt || benefit.text}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).src =
+                                "/assets/markt-steenwijk.jpg";
+                            }}
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent pointer-events-none" />
+                          <span className="absolute top-3 right-3 px-2.5 py-0.5 rounded-full bg-black/60 backdrop-blur-xs text-white text-[11px] font-semibold">
+                            {index + 1} / {benefits.length}
+                          </span>
+                        </div>
+
+                        {/* Het balkje met geselecteerd icoon en aanpasbare tekst onder de afbeelding */}
+                        <div className="flex items-start gap-3.5 p-3.5 rounded-xl bg-background/80 border border-accent/25 backdrop-blur-sm shadow-xs transition-colors">
+                          <div className="shrink-0 mt-0.5 w-8 h-8 rounded-lg bg-accent/15 flex items-center justify-center text-accent">
+                            {renderLoginBenefitIcon(benefit.icon, "w-4 h-4")}
+                          </div>
+                          <span className="text-sm text-foreground/95 font-medium leading-snug">
+                            {benefit.text}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Carrousel indicator-dots & snelle selectie */}
+                {benefits.length > 1 && (
+                  <div className="flex items-center justify-center gap-2 pt-1">
+                    {benefits.map((benefit, idx) => (
+                      <button
+                        key={benefit.id || idx}
+                        type="button"
+                        onClick={() => setActiveSlide(idx)}
+                        aria-label={`Ga naar voordeel ${idx + 1}`}
+                        className={`h-2 rounded-full transition-all duration-300 cursor-pointer ${
+                          idx === activeSlide
+                            ? "w-7 bg-accent"
+                            : "w-2 bg-accent/30 hover:bg-accent/50"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          <div className="mt-8 pt-6 border-t border-accent/20">
+          <div className="mt-6 pt-5 border-t border-accent/20">
             <p className="text-xs text-foreground/70 mb-3">
-              Samen bereiken we meer voor Steenwijk en alle kernen.
+              {loginSettings.footerText || "Samen bereiken we meer voor Steenwijk en alle kernen."}
             </p>
-            <Link to={redirectUrl ? `/registreren?redirect=${encodeURIComponent(redirectUrl)}` : "/registreren"}>
+            <Link
+              to={
+                redirectUrl
+                  ? `/registreren?redirect=${encodeURIComponent(redirectUrl)}`
+                  : "/registreren"
+              }
+            >
               <Button className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-semibold flex items-center justify-center gap-2">
-                <span>Sluit u vandaag nog aan</span>
+                <span>{loginSettings.ctaButtonText || "Sluit u vandaag nog aan"}</span>
                 <ArrowRight className="w-4 h-4" />
               </Button>
             </Link>

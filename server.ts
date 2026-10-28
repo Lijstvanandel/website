@@ -42,6 +42,11 @@ import { createServer as createViteServer } from "vite";
 import { BUURTKAART_43_WIJKEN, syncWijkenWithBuurtkaart, LEGACY_SLUG_MAP } from "./src/data/defaultWijken.js";
 import { DEFAULT_FRACTIELEDEN } from "./src/data/fractieleden.js";
 import {
+  DEFAULT_LOGIN_BENEFITS,
+  DEFAULT_LOGIN_SETTINGS,
+  PRESET_LOGIN_IMAGES,
+} from "./src/data/loginBenefits.js";
+import {
   generateVideoThumbnailBuffer,
   invalidateVideoThumbnailCache,
   prebakeVideoThumbnailToDisk,
@@ -388,6 +393,7 @@ const UPLOAD_DIRS = [
   "public/uploads/stemgedrag",
   "public/uploads/dataproducts",
   "public/uploads/stellingen",
+  "public/uploads/login",
 ];
 UPLOAD_DIRS.forEach((dir) => {
   const fullPath = path.join(process.cwd(), dir);
@@ -2065,6 +2071,19 @@ function getDb() {
     saveDb(db);
   }
 
+  if (!db.loginBenefits || !Array.isArray(db.loginBenefits) || db.loginBenefits.length === 0) {
+    db.loginBenefits = JSON.parse(JSON.stringify(DEFAULT_LOGIN_BENEFITS));
+    saveDb(db);
+  }
+  if (!db.loginSettings || typeof db.loginSettings !== "object") {
+    db.loginSettings = JSON.parse(JSON.stringify(DEFAULT_LOGIN_SETTINGS));
+    saveDb(db);
+  }
+  if (!db.loginImages || !Array.isArray(db.loginImages)) {
+    db.loginImages = [];
+    saveDb(db);
+  }
+
   isInitialDbSeeded = true;
   return db;
 }
@@ -2118,6 +2137,8 @@ const storage = multer.diskStorage({
       (file.originalname.toLowerCase().endsWith('.pdf') && !url.includes('/stemgedrag') && !url.includes('/moties'))
     ) {
       subfolder = 'public/uploads/documents';
+    } else if (url.includes('/login-benefits') || url.includes('/login-images') || file.fieldname === 'loginImage') {
+      subfolder = 'public/uploads/login';
     } else if (url.includes('/stellingen') || file.fieldname === 'stellingImage' || file.fieldname === 'image') {
       subfolder = 'public/uploads/stellingen';
     }
@@ -8285,6 +8306,22 @@ async function startServer() {
       }
     }
 
+    const rawPubDate = req.body.publishedAt || req.body.createdAt || req.body.date;
+    let resolvedCreatedAt = new Date().toISOString();
+    if (rawPubDate && typeof rawPubDate === "string" && rawPubDate.trim()) {
+      const trimmed = rawPubDate.trim();
+      const parsed = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
+        ? new Date(`${trimmed}T12:00:00.000Z`)
+        : new Date(trimmed);
+      if (!isNaN(parsed.getTime())) {
+        resolvedCreatedAt = parsed.toISOString();
+      }
+    }
+    const resolvedDateOnly =
+      typeof req.body.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.body.date.trim())
+        ? req.body.date.trim()
+        : resolvedCreatedAt.slice(0, 10);
+
     const newArticle = {
       id: Date.now().toString(),
       title,
@@ -8315,7 +8352,8 @@ async function startServer() {
       membersOnly: finalMembersOnly,
       isMembersOnly: finalMembersOnly,
       linkedStandpunten,
-      createdAt: new Date().toISOString()
+      date: resolvedDateOnly,
+      createdAt: resolvedCreatedAt
     };
     db.news.push(newArticle);
     saveDb(db);
@@ -8408,6 +8446,23 @@ async function startServer() {
       }
     }
 
+    const rawPubDate = req.body.publishedAt || req.body.createdAt || req.body.date;
+    let updatedCreatedAt = current.createdAt || current.date || new Date().toISOString();
+    let updatedDateOnly = current.date || (typeof updatedCreatedAt === "string" ? updatedCreatedAt.slice(0, 10) : new Date().toISOString().slice(0, 10));
+    if (rawPubDate && typeof rawPubDate === "string" && rawPubDate.trim()) {
+      const trimmed = rawPubDate.trim();
+      const parsed = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
+        ? new Date(`${trimmed}T12:00:00.000Z`)
+        : new Date(trimmed);
+      if (!isNaN(parsed.getTime())) {
+        updatedCreatedAt = parsed.toISOString();
+        updatedDateOnly =
+          typeof req.body.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.body.date.trim())
+            ? req.body.date.trim()
+            : updatedCreatedAt.slice(0, 10);
+      }
+    }
+
     db.news[index] = {
       ...current,
       title: title !== undefined ? title : current.title,
@@ -8438,6 +8493,8 @@ async function startServer() {
       membersOnly: parsedMembersOnly,
       isMembersOnly: parsedMembersOnly,
       linkedStandpunten: parsedLinkedStandpunten,
+      date: updatedDateOnly,
+      createdAt: updatedCreatedAt,
       updatedAt: new Date().toISOString()
     };
     saveDb(db);
@@ -8561,6 +8618,44 @@ async function startServer() {
 
   app.patch("/api/admin/news/:id/toggle-members-only", requireAuth, requireAdmin, handleToggleMembersOnly);
   app.post("/api/admin/news/:id/toggle-members-only", requireAuth, requireAdmin, handleToggleMembersOnly);
+
+  const handleUpdateNewsPublishedAt = (req: any, res: any) => {
+    const db = getDb();
+    const index = db.news.findIndex((n: any) => String(n.id) === String(req.params.id));
+    if (index === -1) return res.status(404).json({ error: "Nieuwsbericht niet gevonden" });
+
+    const rawPubDate = req.body.publishedAt || req.body.createdAt || req.body.date;
+    if (!rawPubDate || typeof rawPubDate !== "string" || !rawPubDate.trim()) {
+      return res.status(400).json({ error: "Geen geldige publicatiedatum opgegeven" });
+    }
+
+    const trimmed = rawPubDate.trim();
+    const parsed = /^\d{4}-\d{2}-\d{2}$/.test(trimmed)
+      ? new Date(`${trimmed}T12:00:00.000Z`)
+      : new Date(trimmed);
+    if (isNaN(parsed.getTime())) {
+      return res.status(400).json({ error: "Ongeldig datumformaat" });
+    }
+
+    const updatedCreatedAt = parsed.toISOString();
+    const updatedDateOnly =
+      typeof req.body.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.body.date.trim())
+        ? req.body.date.trim()
+        : updatedCreatedAt.slice(0, 10);
+
+    const current = db.news[index];
+    db.news[index] = {
+      ...current,
+      date: updatedDateOnly,
+      createdAt: updatedCreatedAt,
+      updatedAt: new Date().toISOString(),
+    };
+    saveDb(db);
+    res.json(db.news[index]);
+  };
+
+  app.patch("/api/admin/news/:id/published-at", requireAuth, requireAdmin, handleUpdateNewsPublishedAt);
+  app.post("/api/admin/news/:id/published-at", requireAuth, requireAdmin, handleUpdateNewsPublishedAt);
 
   app.delete("/api/admin/news/:id", requireAuth, requireAdmin, (req: any, res: any) => {
     const db = getDb();
@@ -16617,6 +16712,249 @@ Sitemap: ${baseUrl}/sitemap.xml
       res.json({ success, message: "Alle bezoeker prestatielogs zijn succesvol gewist." });
     } catch (err: any) {
       res.status(500).json({ error: "Fout bij wissen prestatielogs: " + err.message });
+    }
+  });
+
+  // ---------------------------------------------------------
+  // 17. Login Page (/login) Benefits Carousel & Image Management APIs
+  // ---------------------------------------------------------
+  const getNormalizedLoginPayload = (db: any) => {
+    const rawBenefits =
+      Array.isArray(db.loginBenefits) && db.loginBenefits.length > 0
+        ? db.loginBenefits
+        : DEFAULT_LOGIN_BENEFITS;
+    const benefits = [...rawBenefits]
+      .sort((a: any, b: any) => (Number(a.order) || 0) - (Number(b.order) || 0))
+      .map((item: any, idx: number) => ({
+        id: String(item.id || `benefit-${idx + 1}`),
+        text: String(item.text || ""),
+        icon: String(item.icon || "CheckCircle2"),
+        imageUrl: String(item.imageUrl || "/assets/markt-steenwijk.jpg"),
+        imageAlt: String(item.imageAlt || item.text || "Voordeel Lijst van Andel"),
+        order: idx + 1,
+      }));
+
+    const customImages = Array.isArray(db.loginImages) ? db.loginImages : [];
+    const settings = {
+      ...DEFAULT_LOGIN_SETTINGS,
+      ...(db.loginSettings && typeof db.loginSettings === "object" ? db.loginSettings : {}),
+    };
+
+    return {
+      benefits,
+      customImages,
+      presetImages: PRESET_LOGIN_IMAGES,
+      allImages: [...customImages, ...PRESET_LOGIN_IMAGES],
+      settings,
+    };
+  };
+
+  app.get("/api/login-benefits", (_req: any, res: any) => {
+    try {
+      const db = getDb();
+      return res.json(getNormalizedLoginPayload(db));
+    } catch (err: any) {
+      return res.status(500).json({ error: "Kon login-voordelen niet ophalen: " + err.message });
+    }
+  });
+
+  app.get("/api/admin/login-benefits", requireAuth, requireAdmin, (_req: any, res: any) => {
+    try {
+      const db = getDb();
+      return res.json(getNormalizedLoginPayload(db));
+    } catch (err: any) {
+      return res.status(500).json({ error: "Kon login-beheerdata niet ophalen: " + err.message });
+    }
+  });
+
+  // Upload a new image to the /login image library
+  app.post(
+    "/api/admin/login-benefits/upload-image",
+    requireAuth,
+    requireAdmin,
+    upload.single("loginImage"),
+    (req: any, res: any) => {
+      try {
+        if (!req.file) {
+          return res.status(400).json({ error: "Geen afbeeldingsbestand ontvangen." });
+        }
+        const relUrl = `/uploads/login/${req.file.filename}`;
+        mirrorUploadToDist(relUrl);
+
+        const db = getDb();
+        if (!Array.isArray(db.loginImages)) {
+          db.loginImages = [];
+        }
+
+        const rawLabel =
+          (req.body && req.body.label && String(req.body.label).trim()) ||
+          path.basename(req.file.originalname, path.extname(req.file.originalname)).replace(/[-_]+/g, " ");
+
+        const newImage = {
+          id: `login-img-${Date.now()}-${Math.round(Math.random() * 1000)}`,
+          url: relUrl,
+          label: rawLabel || "Eigen geüploade afbeelding",
+          isPreset: false,
+          uploadedAt: new Date().toISOString(),
+        };
+
+        db.loginImages.unshift(newImage);
+        saveDb(db);
+
+        return res.json({
+          success: true,
+          image: newImage,
+          ...getNormalizedLoginPayload(db),
+        });
+      } catch (err: any) {
+        return res.status(500).json({ error: "Fout bij uploaden afbeelding: " + err.message });
+      }
+    }
+  );
+
+  // Delete a custom uploaded image from the /login image library
+  const handleDeleteLoginImage = (req: any, res: any) => {
+    try {
+      const imageId = String(req.params.id || "").trim();
+      const db = getDb();
+      if (!Array.isArray(db.loginImages)) {
+        db.loginImages = [];
+      }
+      db.loginImages = db.loginImages.filter((img: any) => String(img.id) !== imageId);
+      saveDb(db);
+      return res.json({
+        success: true,
+        ...getNormalizedLoginPayload(db),
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: "Kon afbeelding niet verwijderen: " + err.message });
+    }
+  };
+  app.delete("/api/admin/login-benefits/images/:id", requireAuth, requireAdmin, handleDeleteLoginImage);
+  app.post("/api/admin/login-benefits/images/:id/delete", requireAuth, requireAdmin, handleDeleteLoginImage);
+
+  // Save/update full benefits list, single benefit item, or carousel settings
+  const handleSaveLoginBenefits = (req: any, res: any) => {
+    try {
+      const db = getDb();
+      const body = req.body || {};
+
+      if (Array.isArray(body.benefits)) {
+        db.loginBenefits = body.benefits.map((b: any, index: number) => ({
+          id: String(b.id || `benefit-${Date.now()}-${index}`),
+          text: String(b.text || "").trim(),
+          icon: String(b.icon || "CheckCircle2").trim(),
+          imageUrl: String(b.imageUrl || "/assets/markt-steenwijk.jpg").trim(),
+          imageAlt: String(b.imageAlt || b.text || "Voordeel Lijst van Andel").trim(),
+          order: typeof b.order === "number" ? b.order : index + 1,
+        }));
+        db.loginBenefits.sort((a: any, b: any) => (Number(a.order) || 0) - (Number(b.order) || 0));
+        db.loginBenefits.forEach((b: any, idx: number) => {
+          b.order = idx + 1;
+        });
+      }
+
+      if (body.settings && typeof body.settings === "object") {
+        db.loginSettings = {
+          ...DEFAULT_LOGIN_SETTINGS,
+          ...(db.loginSettings || {}),
+          sectionTitle:
+            body.settings.sectionTitle !== undefined
+              ? String(body.settings.sectionTitle)
+              : db.loginSettings?.sectionTitle || DEFAULT_LOGIN_SETTINGS.sectionTitle,
+          sectionSubtitle:
+            body.settings.sectionSubtitle !== undefined
+              ? String(body.settings.sectionSubtitle)
+              : db.loginSettings?.sectionSubtitle || DEFAULT_LOGIN_SETTINGS.sectionSubtitle,
+          footerText:
+            body.settings.footerText !== undefined
+              ? String(body.settings.footerText)
+              : db.loginSettings?.footerText || DEFAULT_LOGIN_SETTINGS.footerText,
+          ctaButtonText:
+            body.settings.ctaButtonText !== undefined
+              ? String(body.settings.ctaButtonText)
+              : db.loginSettings?.ctaButtonText || DEFAULT_LOGIN_SETTINGS.ctaButtonText,
+          autoPlay:
+            body.settings.autoPlay !== undefined
+              ? Boolean(body.settings.autoPlay)
+              : db.loginSettings?.autoPlay !== false,
+          autoPlayIntervalMs: Math.max(
+            2000,
+            Math.min(30000, Number(body.settings.autoPlayIntervalMs) || 5000)
+          ),
+        };
+      }
+
+      saveDb(db);
+      return res.json({
+        success: true,
+        ...getNormalizedLoginPayload(db),
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: "Kon login-instellingen niet opslaan: " + err.message });
+    }
+  };
+  app.post("/api/admin/login-benefits", requireAuth, requireAdmin, handleSaveLoginBenefits);
+  app.put("/api/admin/login-benefits", requireAuth, requireAdmin, handleSaveLoginBenefits);
+  app.patch("/api/admin/login-benefits", requireAuth, requireAdmin, handleSaveLoginBenefits);
+
+  // Reorder carousel items directly
+  const handleReorderLoginBenefits = (req: any, res: any) => {
+    try {
+      const db = getDb();
+      const { orderedIds } = req.body || {};
+      if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+        return res.status(400).json({ error: "Geen geldige volgorde opgegeven." });
+      }
+      const current =
+        Array.isArray(db.loginBenefits) && db.loginBenefits.length > 0
+          ? [...db.loginBenefits]
+          : [...DEFAULT_LOGIN_BENEFITS];
+
+      const mapById = new Map(current.map((item: any) => [String(item.id), item]));
+      const reordered: any[] = [];
+      orderedIds.forEach((id: string) => {
+        const found = mapById.get(String(id));
+        if (found) {
+          reordered.push(found);
+          mapById.delete(String(id));
+        }
+      });
+      // Append any remaining items that weren't in orderedIds
+      for (const rem of mapById.values()) {
+        reordered.push(rem);
+      }
+
+      db.loginBenefits = reordered.map((item: any, idx: number) => ({
+        ...item,
+        order: idx + 1,
+      }));
+      saveDb(db);
+
+      return res.json({
+        success: true,
+        ...getNormalizedLoginPayload(db),
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: "Kon volgorde niet wijzigen: " + err.message });
+    }
+  };
+  app.post("/api/admin/login-benefits/reorder", requireAuth, requireAdmin, handleReorderLoginBenefits);
+  app.put("/api/admin/login-benefits/reorder", requireAuth, requireAdmin, handleReorderLoginBenefits);
+
+  // Reset login benefits & settings to factory defaults if desired
+  app.post("/api/admin/login-benefits/reset", requireAuth, requireAdmin, (_req: any, res: any) => {
+    try {
+      const db = getDb();
+      db.loginBenefits = JSON.parse(JSON.stringify(DEFAULT_LOGIN_BENEFITS));
+      db.loginSettings = JSON.parse(JSON.stringify(DEFAULT_LOGIN_SETTINGS));
+      saveDb(db);
+      return res.json({
+        success: true,
+        ...getNormalizedLoginPayload(db),
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: "Kon standaardwaarden niet herstellen: " + err.message });
     }
   });
 
