@@ -1,3 +1,29 @@
+export type OtherPartyId = "BGL" | "CDA" | "D66" | "CPB" | "VVD" | "CU" | "STEM" | "PRO";
+
+export type OtherPartyStanceType = "positief" | "negatief" | "genuanceerd" | "geen_standpunt";
+
+export interface OtherPartyStanceItem {
+  partyId: OtherPartyId;
+  partyName: string; // e.g. "BGL", "CDA", "D66", "CPB", "VVD", "CU", "STEM", "PRO (GroenLinks-PvdA)"
+  partyFullName: string;
+  stance: OtherPartyStanceType;
+  stanceLabel: string;
+  explanation: string;
+  verbatimQuote?: string;
+  chapterOrSection?: string;
+  programPdfUrl?: string;
+}
+
+export interface FactionControlQuestion {
+  id: string;
+  partyId: OtherPartyId;
+  partyName: string;
+  question: string;
+  programBasisQuote: string;
+  programChapter?: string;
+  programPdfUrl?: string;
+}
+
 export interface CouncilDocument {
   id: string; // Document GUID or unique hash
   title: string;
@@ -14,6 +40,8 @@ export interface CouncilDocument {
   isNewAfterCompile?: boolean; // Document added after a support dossier was compiled
   // Partijprogramma & Standpunten koppeling per document
   matchedStandpunten?: DocumentMatchedStandpunt[];
+  // Verwachte posities van de andere 8 raadsfracties op basis van hun verkiezingsprogramma's
+  otherPartiesStances?: OtherPartyStanceItem[];
 }
 
 export type StandpuntStance = "positief" | "negatief" | "genuanceerd";
@@ -160,6 +188,9 @@ export interface CouncilAgendaTopic {
   // Gekoppelde Partijstandpunten (/standpunten) & Stem/Stellingname Analyse
   matchedStandpunten?: MatchedStandpunt[];
   standpuntSummary?: TopicStandpuntSummary;
+
+  // Verwachte posities van de andere 8 raadsfracties op basis van hun verkiezingsprogramma's
+  otherPartiesStances?: OtherPartyStanceItem[];
 }
 
 export interface DossierEvidenceItem {
@@ -188,6 +219,7 @@ export interface SupportDossier {
   historischeLijn: string;
   bewijslast: DossierEvidenceItem[];
   klemzetVragen: string[];
+  fractieVragen?: FactionControlQuestion[];
   gefilterdeDocumenten: {
     filename: string;
     title: string;

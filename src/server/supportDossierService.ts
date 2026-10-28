@@ -7,6 +7,7 @@ import {
   CouncilDocument,
   SupportDossier,
   DossierEvidenceItem,
+  FactionControlQuestion,
 } from "../types/council.js";
 import { Dossier, DossierDocument } from "../types/dossier.js";
 import { slugify, createCustomDossier, updateDossier, getAllDossiers } from "./dossierManager.js";
@@ -15,6 +16,8 @@ import { getDocumentContent, getCouncilDocumentContent, normalizeForSearch } fro
 import { scanTopicDocumentsAndMatchStandpunten } from "./standpuntScannerService.js";
 import { sanitizeTextForGemini } from "./bulkClassificationService.js";
 import { cleanDocumentTitle, physicalFilesCache } from "./dossierManager.js";
+import { OTHER_PARTIES_MANIFESTOS, getOtherPartiesManifestoPromptContext } from "../data/otherPartiesPrograms.js";
+import { buildFactionControlQuestionsForTopic } from "../lib/standpuntMatcher.js";
 
 const METADATA_PATH = path.join(process.cwd(), "public", "data", "raadsstukken_metadata_tussentijds.json");
 const UPLOADS_DOCS_DIR = path.join(process.cwd(), "public", "uploads", "documents");
@@ -37,7 +40,14 @@ const DIST_UPLOADS_FRACTIE_DIR = path.join(process.cwd(), "dist", "uploads", "fr
 let geminiClient: GoogleGenAI | null = null;
 function getGemini(): GoogleGenAI | null {
   if (!geminiClient && process.env.GEMINI_API_KEY) {
-    geminiClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    geminiClient = new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+      httpOptions: {
+        headers: {
+          "User-Agent": "aistudio-build",
+        },
+      },
+    });
   }
   return geminiClient;
 }
@@ -669,10 +679,12 @@ export async function compileEvidenceAndAnalysis(
   historischeLijn: string;
   bewijslast: DossierEvidenceItem[];
   klemzetVragen: string[];
+  fractieVragen: FactionControlQuestion[];
   status: "compleet" | "geen_referenties";
 }> {
   const title = topic.title || "";
   const titleLower = title.toLowerCase();
+  const baselineFractieVragen = buildFactionControlQuestionsForTopic(topic);
 
   // If no candidate documents were found in hybrid search
   if (filteredDocs.length === 0) {
@@ -683,6 +695,7 @@ export async function compileEvidenceAndAnalysis(
         "Vraag 1: Kan de portefeuillehouder toelichten waarom voor dit agendapunt geen eerdere beleidskaders of historische raadstoezeggingen zijn bijgevoegd?",
         "Vraag 2: Welke regionale of wettelijke termijnen zijn van toepassing op dit besluit?"
       ],
+      fractieVragen: baselineFractieVragen,
       status: "geen_referenties",
     };
   }
@@ -747,6 +760,9 @@ ${JSON.stringify(originalDocContents, null, 2)}
 --- GEFILTERDE HISTORISCHE RAADSSTUKKEN UIT HET ARCHIEF (ALLEEN METADATA): ---
 ${JSON.stringify(docSummaries, null, 2)}
 
+--- OFFICIËLE VERKIEZINGSPROGRAMMA'S 2026-2030 VAN DE 8 ANDERE RAADSFRACTIES (BGL, CDA, D66, CPB, VVD, CU, STEM, PRO): ---
+${getOtherPartiesManifestoPromptContext()}
+
 STRIKTE REGELS VOOR DE OUTPUT (ZERO-HALLUCINATION EN FACTUELE DUIDELIJKHEID):
 1. Verzin NOOIT documenten, feiten of citaten die niet in de context hierboven staan.
 2. De 'bewijslast' moet echte, feitelijk geverifieerde bevindingen bevatten uit "DE ORIGINELE STUKKEN VAN DIT AGENDAPUNT" hierboven.
@@ -758,6 +774,8 @@ STRIKTE REGELS VOOR DE OUTPUT (ZERO-HALLUCINATION EN FACTUELE DUIDELIJKHEID):
    - Koppel een bewijspunt met 'contradictionWith' aan het meest relevante historische document (laat quote leeg, maar leg in "finding" de inhoudelijke relatie uit).
 4. Als er daadwerkelijk géén enkel historisch archiefstuk aansluit op dit onderwerp, leg dan uit dat het een nieuw beleidsinitiatief betreft zonder eerdere lokale kaders.
 5. Formuleer 2 tot 3 scherpe, concrete 'klemzetVragen' voor de wethouder / het college waarin de geconstateerde feiten, draagvlakmeting, verantwoording en beleidsmatige discrepanties direct worden voorgelegd.
+6. Formuleer in 'fractieVragen' controlerende debatvragen richting de verschillende andere raadsfracties (BGL, CDA, D66, CPB, VVD, CU, STEM, PRO) over dit onderwerp OP BASIS VAN HUN EIGEN VERKIEZINGSPROGRAMMA'S hierboven:
+   - BELANGRIJK: Juistheid staat boven alles! Formuleer ALLEEN een vraag voor een partij als er een daadwerkelijke passage ('matchedPassageId') in het verkiezingsprogramma van die partij is die inhoudelijk raakt aan dit agendapunt. Als er geen feitelijke vraag te formuleren valt voor een partij, laat die partij dan weg uit 'fractieVragen'. Verzin NOOIT een standpunt dat niet in hun programma staat.
 
 Antwoord UITSLUITEND in valide JSON (geen markdown quotes of uitleg) met deze exacte structuur:
 {
@@ -769,11 +787,11 @@ Antwoord UITSLUITEND in valide JSON (geen markdown quotes of uitleg) met deze ex
       "page": 1,
       "quote": "letterlijk citaat uit de geleverde tekst",
       "finding": "Uitleg van de toezegging, financiële verplichting of beleidswijziging",
-      "type": "beleidswijziging", // of "toezegging", "contradictie", "financieel", "historisch_feit"
+      "type": "beleidswijziging",
       "contradictionWith": {
         "sourceDocName": "bestandsnaam_uit_historische_stukken.pdf",
         "page": 1,
-        "quote": "", // LAAT LEEG (geen fantasie citaten voor historische documenten!)
+        "quote": "",
         "finding": "Uitleg van de inhoudelijke relatie met het eerdere beleidskader of raadsstuk"
       }
     }
@@ -781,12 +799,19 @@ Antwoord UITSLUITEND in valide JSON (geen markdown quotes of uitleg) met deze ex
   "klemzetVragen": [
     "Vraag 1: ...",
     "Vraag 2: ..."
+  ],
+  "fractieVragen": [
+    {
+      "partyId": "BGL" | "CDA" | "D66" | "CPB" | "VVD" | "CU" | "STEM" | "PRO",
+      "matchedPassageId": "exacte_id_uit_verkiezingsprogramma_context",
+      "question": "Scherpe controlerende vraag gericht aan deze fractie waarin haar verkiezingsbelofte direct wordt getoetst aan dit specifieke raadsvoorstel."
+    }
   ]
 }`;
 
       // Enforce 12s timeout on Gemini request to prevent gateway timeouts
       const aiPromise = ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.8-flash",
         contents: prompt,
         config: {
           temperature: 0.1, // Strictest low temperature to ensure absolute determinism & no hallucination
@@ -803,6 +828,31 @@ Antwoord UITSLUITEND in valide JSON (geen markdown quotes of uitleg) met deze ex
       if (text) {
         const parsed = JSON.parse(text);
         if (parsed.historischeLijn && Array.isArray(parsed.bewijslast)) {
+          // Verify fractieVragen strictly against OTHER_PARTIES_MANIFESTOS so no hallucinated quotes or claims can slip through
+          let verifiedFractieVragen: FactionControlQuestion[] = [];
+          if (Array.isArray(parsed.fractieVragen) && parsed.fractieVragen.length > 0) {
+            for (const fv of parsed.fractieVragen) {
+              const party = OTHER_PARTIES_MANIFESTOS.find((p) => p.partyId === fv.partyId);
+              if (!party) continue;
+              const passage = party.passages.find((p) => p.id === fv.matchedPassageId);
+              if (!passage || !fv.question || String(fv.question).trim().length < 15) continue;
+
+              verifiedFractieVragen.push({
+                id: `fq_${topic.id}_${party.partyId}`,
+                partyId: party.partyId,
+                partyName: party.partyName,
+                question: String(fv.question).trim(),
+                programBasisQuote: passage.verbatimQuote, // Strictly locked to real manifesto quote
+                programChapter: `${party.programTitle} (${passage.chapterOrSection})`,
+                programPdfUrl: party.programPdfUrl,
+              });
+            }
+          }
+
+          if (verifiedFractieVragen.length === 0) {
+            verifiedFractieVragen = baselineFractieVragen;
+          }
+
           return {
             historischeLijn: parsed.historischeLijn,
             bewijslast: parsed.bewijslast.map((item: any, i: number) => ({
@@ -826,6 +876,7 @@ Antwoord UITSLUITEND in valide JSON (geen markdown quotes of uitleg) met deze ex
                   "Vraag 1: Hoe verklaart het college de geconstateerde beleidsmatige discrepanties?",
                   "Vraag 2: Welke garanties worden geboden aan de raad?",
                 ],
+            fractieVragen: verifiedFractieVragen,
             status: "compleet",
           };
         }
@@ -851,12 +902,14 @@ function buildDeterministicAnalysis(
   historischeLijn: string;
   bewijslast: DossierEvidenceItem[];
   klemzetVragen: string[];
+  fractieVragen: FactionControlQuestion[];
   status: "compleet" | "geen_referenties";
 } {
   const title = topic.title || "";
   const titleLower = title.toLowerCase();
   const primaryDoc = filteredDocs[0];
   const secondaryDoc = filteredDocs[1] || filteredDocs[0];
+  const fractieVragen = buildFactionControlQuestionsForTopic(topic);
 
   const hasDocs = (topic.documents && topic.documents.length > 0) || originalDocContents.length > 0;
   
@@ -869,6 +922,7 @@ function buildDeterministicAnalysis(
         "Vraag 1: Kan de portefeuillehouder toelichten waarom voor dit agendapunt geen eerdere beleidskaders of historische raadstoezeggingen zijn bijgevoegd?",
         "Vraag 2: Welke specifieke termijnen of wettelijke kaders zijn van toepassing op dit besluit?"
       ],
+      fractieVragen,
       status: "geen_referenties",
     };
   }
@@ -974,6 +1028,7 @@ function buildDeterministicAnalysis(
     historischeLijn,
     bewijslast,
     klemzetVragen,
+    fractieVragen,
     status: "compleet",
   };
 }
@@ -1086,6 +1141,7 @@ export async function compileSupportDossierForTopic(
     historischeLijn: analysis.historischeLijn,
     bewijslast: analysis.bewijslast,
     klemzetVragen: analysis.klemzetVragen,
+    fractieVragen: analysis.fractieVragen,
     gefilterdeDocumenten,
     linkedDossierSlug: dossierSlug,
     rawAnalysis: JSON.stringify(analysis),

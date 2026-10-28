@@ -6,17 +6,32 @@ import {
   DocumentMatchedStandpunt,
   TopicStandpuntSummary,
   StandpuntStance,
+  OtherPartyStanceItem,
+  OtherPartyStanceType,
 } from "../types/council.js";
 import { hoofdstukken, Hoofdstuk, Standpunt } from "../data/partijprogramma.js";
+import { OTHER_PARTIES_MANIFESTOS, getOtherPartiesManifestoPromptContext } from "../data/otherPartiesPrograms.js";
 import { getCouncilDocumentContent } from "./documentTextExtractor.js";
 import { getDbFromSqlite, saveDbToSqlite, persistSqlite } from "./sqliteDatabase.js";
-import { matchStandpuntenForTopic } from "../lib/standpuntMatcher.js";
+import {
+  matchStandpuntenForTopic,
+  matchOtherPartiesForTopic,
+  matchOtherPartiesForDocument,
+  getOtherPartyStanceLabel,
+} from "../lib/standpuntMatcher.js";
 
 // Lazy Gemini Client
 let geminiClient: GoogleGenAI | null = null;
 function getGemini(): GoogleGenAI | null {
   if (!geminiClient && process.env.GEMINI_API_KEY) {
-    geminiClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    geminiClient = new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+      httpOptions: {
+        headers: {
+          "User-Agent": "aistudio-build",
+        },
+      },
+    });
   }
   return geminiClient;
 }
@@ -38,7 +53,7 @@ function getProgrammaContext(): string {
 /**
  * Deeply scan the documents (stukken) belonging to a council topic
  * and match ALL relevant party standpoints (multiple standpoints allowed and encouraged)
- * using the Gemini API (model: gemini-2.5-flash).
+ * as well as the 8 other council parties' stances based strictly on their 2026-2030 manifestos.
  */
 export async function scanTopicDocumentsAndMatchStandpunten(
   topic: CouncilAgendaTopic,
@@ -82,6 +97,7 @@ export async function scanTopicDocumentsAndMatchStandpunten(
   const ai = getGemini();
   let aiMatched: MatchedStandpunt[] | null = null;
   let aiSummary: TopicStandpuntSummary | null = null;
+  let aiOtherParties: OtherPartyStanceItem[] | null = null;
 
   if (ai) {
     try {
@@ -95,26 +111,20 @@ export async function scanTopicDocumentsAndMatchStandpunten(
       const prompt = `Je bent de politiek strateeg en fractiespecialist van 'Lijst van Andel', een lokale politieke partij in de gemeenteraad van Steenwijkerland.
 
 OPDRACHT:
-Voer een INTEGRALE, ZEER KRITISCHE EN SECURE politieke analyse uit over het onderstaande raadsonderwerp en ALLE bijbehorende officiële raadsstukken en bijlagen. Koppel op basis van de inhoud van de stukken de relevante standpunten uit het verkiezingsprogramma van Lijst van Andel (10 hoofdstukken, 136 standpunten).
+1. Voer een INTEGRALE, ZEER KRITISCHE EN SECURE politieke analyse uit over het onderstaande raadsonderwerp en ALLE bijbehorende officiële raadsstukken en bijlagen. Koppel op basis van de inhoud van de stukken de relevante standpunten uit het verkiezingsprogramma van Lijst van Andel (10 hoofdstukken, 136 standpunten).
+2. Analyseer daarnaast voor ELK van de 8 andere raadsfracties (BGL, CDA, D66, CPB, VVD, CU, STEM, PRO) hoe zij op basis van hun officiële verkiezingsprogramma 2026-2030 tegenover dit onderwerp staan. Gebruik UITSLUITEND de hieronder aangeleverde passages uit hun verkiezingsprogramma's (kies per partij het best passende 'matchedPassageId', of zet 'stance' op "geen_standpunt" als het programma van die partij niets specifieks over dit onderwerp zegt. Verzin NOOIT zelf citaten!).
 
 CRUCIALE ANALYTISCHE DIRECTIEVEN:
-1. MEERDERE STANDPUNTEN VEREIST (GEMIDDELD 3 TOT 7 PER VOORSTEL):
+1. MEERDERE STANDPUNTEN LIJST VAN ANDEL VEREIST (GEMIDDELD 3 TOT 7 PER VOORSTEL):
    - Beperk je NOOIT tot slechts 1 standpunt. Raadsvoorstellen hebben altijd meerdere dimensies en effecten.
-   - Toets zowel op het DIRECTE hoofdonderwerp (bijv. Wonen, Verkeer, Zorg/WMO, Veiligheid, Natuur, Economie, Cultuur) als op KRUISVERBANDEN & RANDVOORWAARDEN:
-     * Financiële doelmatigheid, kostenbeheersing & OZB (H10 / H1.12)
-     * Echte burgerparticipatie en overleg met dorps- en wijkraden (H1.3)
-     * Lokale autonomie vs. Haagse/regionale dwang en gemeenschappelijke regelingen (H1.6 / H1.7 / H5.17)
-     * Minder regeldruk, deregulering en bureaucratie (H7.3 / H5.15)
-     * Behoud van het leefbare dorpskarakter, landschap en erfgoed (H4 / H5.8 / H9.7)
+   - Toets zowel op het DIRECTE hoofdonderwerp (bijv. Wonen, Verkeer, Zorg/WMO, Veiligheid, Natuur, Economie, Cultuur) als op KRUISVERBANDEN & RANDVOORWAARDEN.
 2. BRONVERMELDING & FEITELIJKE CITATEN:
    - Verwijs expliciet naar welk(e) document(en) relevant zijn.
    - Geef een concrete, letterlijke passage of cijfer/feit ('citedPassage') uit de gescande stukken die aantoont waarom dit standpunt van toepassing is.
-3. BEPAAL DE FRACTIESTELLINGNAME ('stance'):
-   - "positief": Lijst van Andel steunt dit (onderdeel van het) voorstel omdat het naadloos aansluit bij onze partijdoelen.
-   - "negatief": Lijst van Andel is kritisch, bezorgd of tegen omdat het botst met onze principes (bijv. lastenverzwaring, Haagse dwang, megawindturbines, zonneparken op landbouwgrond, voorrang statushouders boven lokale jeugd, negeren van dorpsparticipatie, geldverspilling).
-   - "genuanceerd": Voorwaardelijk, gemengd beeld, of noodzaak tot het indienen van een motie of amendement.
-4. SCHERPE POLITIEKE MOTIVERING:
-   - Formuleer per standpunt een inhoudelijke, niet-generieke fractietoelichting ('explanation') die direct refereert aan de feiten uit de stukken.
+3. POSITIES VAN DE 8 ANDERE PARTIJEN ('otherParties'):
+   - Geef voor alle 8 partijen ("BGL", "CDA", "D66", "CPB", "VVD", "CU", "STEM", "PRO") een object terug.
+   - Als een passage uit het verkiezingsprogramma van die partij aansluit op dit agendapunt, geef dan het exacte 'matchedPassageId' op en kies 'stance' ("positief", "negatief" of "genuanceerd") met een feitelijke 'explanation'.
+   - Als het verkiezingsprogramma van een partij géén concreet aanknopingspunt heeft voor dit onderwerp, zet 'stance' dan op "geen_standpunt" en 'matchedPassageId' op "".
 
 GEGEVENS AGENDAPUNT:
 - Titel: "${topic.title}"
@@ -128,6 +138,9 @@ ${docsFormatted.length > 0 ? docsFormatted : "(Geen documenttekst beschikbaar, b
 
 OFFICIEEL VERKIEZINGSPROGRAMMA LIJST VAN ANDEL (10 HOOFDSTUKKEN):
 ${getProgrammaContext()}
+
+OFFICIËLE VERKIEZINGSPROGRAMMA'S 2026-2030 VAN DE 8 ANDERE RAADSPARTIJEN:
+${getOtherPartiesManifestoPromptContext()}
 
 ANTWOORD UITSLUITEND IN DIT VALIDE JSON FORMAAT (GEEN MARKDOWN BACKTICKS OF UITLEG):
 {
@@ -145,6 +158,14 @@ ANTWOORD UITSLUITEND IN DIT VALIDE JSON FORMAAT (GEEN MARKDOWN BACKTICKS OF UITL
       "citedPassage": "Letterlijk citaat of feitelijke passage uit de gescande stukken",
       "matchedKeywords": ["zoekterm1", "zoekterm2"]
     }
+  ],
+  "otherParties": [
+    {
+      "partyId": "BGL" | "CDA" | "D66" | "CPB" | "VVD" | "CU" | "STEM" | "PRO",
+      "matchedPassageId": "id_van_passage_of_leeg",
+      "stance": "positief" | "negatief" | "genuanceerd" | "geen_standpunt",
+      "explanation": "Feitelijke toelichting hoe deze partij er op basis van haar verkiezingsprogramma en de gescande stukken in staat (of vermelding dat het programma hier niets over zegt)."
+    }
   ]
 }`;
 
@@ -153,7 +174,7 @@ ANTWOORD UITSLUITEND IN DIT VALIDE JSON FORMAAT (GEEN MARKDOWN BACKTICKS OF UITL
 
       try {
         response = await ai.models.generateContent({
-          model: "gemini-2.5-flash",
+          model: "gemini-3.8-flash",
           contents: prompt,
           config: {
             temperature: 0.15,
@@ -230,6 +251,52 @@ ANTWOORD UITSLUITEND IN DIT VALIDE JSON FORMAAT (GEEN MARKDOWN BACKTICKS OF UITL
             `[STANDPUNT SCANNER] AI analyse geslaagd: ${aiMatched.length} standpunten gekoppeld (${posCount} pos, ${negCount} neg, ${genCount} gen)`
           );
         }
+
+        // Parse and strictly verify AI otherParties against OTHER_PARTIES_MANIFESTOS
+        if (parsed && Array.isArray(parsed.otherParties) && parsed.otherParties.length > 0) {
+          const fallbackOtherParties = matchOtherPartiesForTopic(topic);
+          aiOtherParties = OTHER_PARTIES_MANIFESTOS.map((party) => {
+            const aiEntry = parsed.otherParties.find((op: any) => op.partyId === party.partyId);
+            if (!aiEntry) {
+              return fallbackOtherParties.find((f) => f.partyId === party.partyId)!;
+            }
+            const verifiedPassage = party.passages.find((p) => p.id === aiEntry.matchedPassageId);
+            const rawStance = aiEntry.stance as OtherPartyStanceType;
+            const validStance: OtherPartyStanceType =
+              verifiedPassage && (rawStance === "positief" || rawStance === "negatief" || rawStance === "genuanceerd")
+                ? rawStance
+                : "geen_standpunt";
+
+            if (validStance === "geen_standpunt" || !verifiedPassage) {
+              return {
+                partyId: party.partyId,
+                partyName: party.partyName,
+                partyFullName: party.partyFullName,
+                stance: "geen_standpunt",
+                stanceLabel: getOtherPartyStanceLabel("geen_standpunt"),
+                explanation:
+                  aiEntry.explanation && aiEntry.stance === "geen_standpunt"
+                    ? aiEntry.explanation
+                    : `Het verkiezingsprogramma 2026–2030 van ${party.partyName} bevat geen specifiek standpunt of directe passage over dit specifieke onderwerp.`,
+                verbatimQuote: undefined,
+                chapterOrSection: party.programTitle,
+                programPdfUrl: party.programPdfUrl,
+              };
+            }
+
+            return {
+              partyId: party.partyId,
+              partyName: party.partyName,
+              partyFullName: party.partyFullName,
+              stance: validStance,
+              stanceLabel: getOtherPartyStanceLabel(validStance),
+              explanation: aiEntry.explanation || verifiedPassage.stanceSummary,
+              verbatimQuote: verifiedPassage.verbatimQuote, // Strictly locked to real manifesto quote
+              chapterOrSection: `${party.programTitle} — ${verifiedPassage.chapterOrSection}`,
+              programPdfUrl: party.programPdfUrl,
+            };
+          });
+        }
       }
     } catch (aiErr: any) {
       console.warn("[STANDPUNT SCANNER] Fout tijdens Gemini AI document scan:", aiErr?.message || aiErr);
@@ -295,7 +362,12 @@ ANTWOORD UITSLUITEND IN DIT VALIDE JSON FORMAAT (GEEN MARKDOWN BACKTICKS OF UITL
     keyArguments: finalMatched.map((m) => m.explanation),
   };
 
-  // Step 4: Map standpoints to individual documents (doc.matchedStandpunten)
+  const finalOtherParties: OtherPartyStanceItem[] =
+    aiOtherParties && aiOtherParties.length === 8
+      ? aiOtherParties
+      : matchOtherPartiesForTopic(topic);
+
+  // Step 4: Map standpoints & other party stances to individual documents
   const enrichedDocuments: CouncilDocument[] = (topic.documents || []).map((doc) => {
     const docTitleLower = (doc.title || "").toLowerCase();
     const docStandpunten: DocumentMatchedStandpunt[] = [];
@@ -338,15 +410,19 @@ ANTWOORD UITSLUITEND IN DIT VALIDE JSON FORMAAT (GEEN MARKDOWN BACKTICKS OF UITL
       }
     }
 
+    const docOtherParties = matchOtherPartiesForDocument(doc, topic);
+
     return {
       ...doc,
       matchedStandpunten: docStandpunten.length > 0 ? docStandpunten : undefined,
+      otherPartiesStances: docOtherParties,
     };
   });
 
   // Step 5: Update topic
   topic.matchedStandpunten = finalMatched;
   topic.standpuntSummary = finalSummary;
+  topic.otherPartiesStances = finalOtherParties;
   topic.documents = enrichedDocuments;
 
   // Step 6: Save to SQLite database
@@ -369,6 +445,6 @@ ANTWOORD UITSLUITEND IN DIT VALIDE JSON FORMAAT (GEEN MARKDOWN BACKTICKS OF UITL
     topic,
     matchedStandpunten: finalMatched,
     summary: finalSummary,
-    message: `Stukken succesvol doorgescand: ${finalMatched.length} partijstandpunt(en) gekoppeld.`,
+    message: `Stukken succesvol doorgescand: ${finalMatched.length} partijstandpunt(en) en 8 fractieprogramma's geanalyseerd.`,
   };
 }

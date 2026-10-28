@@ -19,13 +19,15 @@ import {
   CheckCircle2,
   Trash2,
   Lock,
+  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { CouncilAgendaTopic, SupportDossier, DossierEvidenceItem } from "@/types/council";
+import { CouncilAgendaTopic, SupportDossier, DossierEvidenceItem, FactionControlQuestion } from "@/types/council";
 import { MemberDocument } from "@/types/document";
 import { useAuth } from "@/context/AuthContext";
 import { safeLocalStorage, safeSessionStorage } from "@/lib/safeStorage";
+import { buildFactionControlQuestionsForTopic } from "@/lib/standpuntMatcher";
 
 interface SupportDossierPanelProps {
   topic: CouncilAgendaTopic;
@@ -55,11 +57,16 @@ export const SupportDossierPanel: React.FC<SupportDossierPanelProps> = ({
   const [isCompiling, setIsCompiling] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
   const [copiedQuestionIdx, setCopiedQuestionIdx] = useState<number | null>(null);
+  const [copiedFactionQuestionId, setCopiedFactionQuestionId] = useState<string | null>(null);
   const [copiedQuoteId, setCopiedQuoteId] = useState<string | null>(null);
   const [showSourcesList, setShowSourcesList] = useState(false);
   const [resetting, setResetting] = useState(false);
 
   const dossier: SupportDossier | undefined = topic.compiledDossier;
+  const fractieVragen: FactionControlQuestion[] =
+    dossier?.fractieVragen && dossier.fractieVragen.length > 0
+      ? dossier.fractieVragen
+      : buildFactionControlQuestionsForTopic(topic);
   const isBespreek = topic.category === "Oordeelvorming - bespreekstukken" || topic.category.toLowerCase().includes("bespreek");
 
   // Compile / Recompile Handler
@@ -631,6 +638,133 @@ export const SupportDossierPanel: React.FC<SupportDossierPanelProps> = ({
                 Geschikt voor Politieke Markt en mondelinge vragen in de raad.
               </div>
             </div>
+          </div>
+
+          {/* Blok D: Controlerende vragen aan andere fracties o.b.v. verkiezingsprogramma's 2026-2030 */}
+          <div className="p-4 rounded-xl border border-border bg-background space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-border/60 flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <span className="w-5 h-5 rounded-full bg-accent/15 text-accent font-bold text-xs flex items-center justify-center">
+                  D
+                </span>
+                <div>
+                  <h4 className="font-bold text-xs uppercase tracking-wide text-foreground flex items-center gap-2 flex-wrap">
+                    <span>Vragen aan andere fracties</span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono normal-case bg-muted text-muted-foreground border border-border">
+                      o.b.v. verkiezingsprogramma&apos;s 2026–2030
+                    </span>
+                  </h4>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Controlerende interruptie- en debatvragen richting andere raadsfracties, uitsluitend geformuleerd wanneer hun eigen verkiezingsprogramma een aantoonbaar aanknopingspunt biedt.
+                  </p>
+                </div>
+              </div>
+              <Users className="w-4 h-4 text-accent shrink-0" />
+            </div>
+
+            {fractieVragen.length === 0 ? (
+              <div className="p-3.5 rounded-lg bg-muted/20 border border-dashed border-border text-xs text-muted-foreground italic">
+                Geen feitelijk onderbouwde vragen aan andere fracties geformuleerd: de verkiezingsprogramma&apos;s (2026–2030) van de andere partijen bevatten voor dit specifieke onderwerp geen concrete passages waarop zij in het debat aangesproken kunnen worden.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {fractieVragen.map((fq) => (
+                  <div
+                    key={fq.id}
+                    className="p-3 rounded-lg border border-border/80 bg-muted/20 hover:bg-muted/35 transition-colors flex flex-col justify-between space-y-2.5"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="px-2 py-0.5 rounded text-[10.5px] font-display font-bold bg-accent/15 text-accent border border-accent/30">
+                            Aan {fq.partyName}
+                          </span>
+                          {fq.programChapter && (
+                            <span className="text-[10px] font-mono text-muted-foreground">
+                              {fq.programChapter}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(
+                              `Vraag aan ${fq.partyName}: ${fq.question}\n(Bron verkiezingsprogramma ${fq.partyName}, ${fq.programChapter || "2026-2030"}: "${fq.programBasisQuote}")`
+                            );
+                            setCopiedFactionQuestionId(fq.id);
+                            toast.success(`Vraag aan ${fq.partyName} gekopieerd!`);
+                            setTimeout(() => setCopiedFactionQuestionId(null), 2000);
+                          }}
+                          className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+                          title="Kopieer vraag + programmabron"
+                        >
+                          {copiedFactionQuestionId === fq.id ? (
+                            <Check className="w-3.5 h-3.5 text-emerald-500" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
+
+                      <p className="text-xs text-foreground leading-relaxed font-medium">
+                        {fq.question}
+                      </p>
+
+                      <div className="p-2 rounded bg-background/90 border-l-2 border-accent border border-border/50 text-[10.5px] space-y-0.5">
+                        <div className="flex items-center justify-between gap-2 text-[9.5px] font-semibold text-accent">
+                          <span>Basis in verkiezingsprogramma {fq.partyName}:</span>
+                          {fq.programPdfUrl && (
+                            <a
+                              href={fq.programPdfUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-0.5 hover:underline"
+                            >
+                              <span>PDF</span>
+                              <ExternalLink className="w-2.5 h-2.5" />
+                            </a>
+                          )}
+                        </div>
+                        <p className="italic text-muted-foreground">
+                          &ldquo;{fq.programBasisQuote}&rdquo;
+                        </p>
+                      </div>
+                    </div>
+
+                    {onAppendToInbreng && (
+                      <div className="flex items-center gap-2 pt-1.5 border-t border-border/40 text-[10px]">
+                        <span className="text-muted-foreground">Invoegen in:</span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onAppendToInbreng(
+                              `Vraag aan ${fq.partyName}: ${fq.question}\n`,
+                              "markt"
+                            )
+                          }
+                          className="text-accent hover:underline font-medium"
+                        >
+                          + Politieke Markt
+                        </button>
+                        <span className="text-muted-foreground">•</span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onAppendToInbreng(
+                              `Vraag aan ${fq.partyName}: ${fq.question}\n`,
+                              "raad"
+                            )
+                          }
+                          className="text-accent hover:underline font-medium"
+                        >
+                          + Raadsvergadering
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Gefilterde Bronnen & Audit Trail (Hybride Zoekresultaten) */}

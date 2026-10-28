@@ -1,6 +1,6 @@
 {
-  "summary":  "Geïmplementeerd: 'Alleen voor leden' optie voor nieuwsartikelen in /admin en de toegangsbeveiliging op /nieuws/:id. Wanneer een artikel is gemarkeerd als 'Alleen voor leden', vervalt alle content vanaf de auteur voor bezoekers die niet zijn ingelogd of leden met openstaande contributie, en wordt een prominente melding getoond met 'Dit artikel is alleen voor leden' en knoppen 'Word lid' en 'Login'.",
-  "updatedAt":  "2026-10-23T23:46:49.133528668Z",
+  "summary":  "Implementatieplan voor het integreren van de 8 verkiezingsprogramma's (BGL, CDA, D66, CPB, VVD, CU, STEM, PRO (GroenLinks-PvdA)) in /raadspaneel: uitvouwbaar overzicht bij agendapunten, uitvouwbaar overzicht per bijbehorend vergaderstuk, en feitelijk onderbouwde 'Vragen aan andere fracties' onder de vragen aan de wethouder bij het compileren van het steundossier.",
+  "updatedAt":  "2026-10-28T12:03:42.057958597Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

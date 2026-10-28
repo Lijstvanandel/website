@@ -1,4 +1,5 @@
 import { hoofdstukken, type Hoofdstuk, type Standpunt } from "../data/partijprogramma.js";
+import { OTHER_PARTIES_MANIFESTOS, type PartyManifestoPassage } from "../data/otherPartiesPrograms.js";
 import type {
   CouncilAgendaTopic,
   CouncilDocument,
@@ -6,6 +7,9 @@ import type {
   DocumentMatchedStandpunt,
   TopicStandpuntSummary,
   StandpuntStance,
+  OtherPartyStanceItem,
+  OtherPartyStanceType,
+  FactionControlQuestion,
 } from "../types/council.js";
 
 // Pre-indexed rules and themes connecting council topics & documents to Lijst van Andel standpoints
@@ -881,12 +885,275 @@ export function matchStandpuntenForDocument(
   return results;
 }
 
+export function getOtherPartyStanceLabel(stance: OtherPartyStanceType): string {
+  switch (stance) {
+    case "positief":
+      return "Positief / Voor";
+    case "negatief":
+      return "Kritisch / Tegen";
+    case "genuanceerd":
+      return "Genuanceerd / Voorwaardelijk";
+    case "geen_standpunt":
+    default:
+      return "Geen specifiek standpunt in programma";
+  }
+}
+
+function refinePartyStanceForContext(
+  partyId: string,
+  passage: PartyManifestoPassage,
+  contextText: string
+): { stance: Exclude<OtherPartyStanceType, "geen_standpunt">; explanation: string } {
+  const lower = contextText.toLowerCase();
+  let stance: Exclude<OtherPartyStanceType, "geen_standpunt"> = passage.defaultStance;
+  let explanation = passage.stanceSummary;
+
+  // Specific topic-sensitive refinements grounded in the 8 manifestos
+  if (lower.includes("windenergie") || lower.includes("windmolen") || lower.includes("windturbine")) {
+    if (partyId === "STEM" || partyId === "CPB" || partyId === "VVD") {
+      stance = "negatief";
+      explanation = `${passage.stanceSummary} Ten aanzien van windturbines of grootschalige aantasting van het open landschap staat ${partyId} kritisch/afwijzend en verwijst naar zon op daken en parkeerterreinen.`;
+    } else if (partyId === "BGL" || partyId === "CDA") {
+      stance = "genuanceerd";
+      explanation = `${passage.stanceSummary} Bij grootschalige opwekking stelt ${partyId} lokaal draagvlak en landschapsbescherming als harde randvoorwaarde.`;
+    } else if (partyId === "D66" || partyId === "PRO") {
+      stance = "positief";
+      explanation = `${passage.stanceSummary} ${partyId === "PRO" ? "PRO (GroenLinks-PvdA)" : partyId} steunt het aanwijzen van locaties voor duurzame energieopwekking met lokaal eigendom.`;
+    }
+  } else if (lower.includes("zonnecarport") || lower.includes("zon op dak")) {
+    stance = "positief";
+    explanation = `${passage.stanceSummary} Het benutten van parkeerterreinen (zonnecarports) en bedrijfsdaken voor zonne-energie sluit direct aan bij het verkiezingsprogramma.`;
+  } else if (lower.includes("biz") || lower.includes("bedrijveninvesteringszone") || lower.includes("vestingstad")) {
+    if (partyId === "BGL" || partyId === "VVD" || partyId === "CDA" || partyId === "D66" || partyId === "CPB") {
+      stance = "positief";
+    } else {
+      stance = "genuanceerd";
+    }
+  } else if (lower.includes("randweg") && lower.includes("blokzijl")) {
+    if (partyId === "VVD" || partyId === "BGL" || partyId === "CDA" || partyId === "CPB") {
+      stance = "positief";
+    } else if (partyId === "D66" || partyId === "PRO") {
+      stance = "genuanceerd";
+      explanation = `${passage.stanceSummary} Ten aanzien van nieuwe weginfrastructuur weegt ${partyId === "PRO" ? "PRO (GroenLinks-PvdA)" : partyId} natuur-, landschaps- en duurzaamheidsaspecten zwaar mee.`;
+    }
+  } else if (lower.includes("parkeerregulering") || lower.includes("parkeertarieven") || lower.includes("betaald parkeren")) {
+    if (partyId === "VVD" || partyId === "CPB" || partyId === "STEM") {
+      stance = "negatief";
+      explanation = `${passage.stanceSummary} Verhoging van parkeerlasten of het bemoeilijken van autobereikbaarheid botst met het verkiezingsprogramma.`;
+    }
+  } else if (lower.includes("gemeenschappelijke regeling") || lower.includes("ontwerpbegroting") || lower.includes("jaarrekening")) {
+    if (partyId === "STEM" || partyId === "VVD" || partyId === "BGL" || partyId === "CDA" || partyId === "CPB") {
+      stance = "genuanceerd";
+    }
+  }
+
+  return { stance, explanation };
+}
+
+/**
+ * Match how the 8 other council parties likely view a topic based strictly on their 2026-2030 manifestos.
+ * Always returns all 8 parties; if a party's manifesto has no concrete match, explicitly marks it as "geen_standpunt".
+ */
+export function matchOtherPartiesForTopic(topic: CouncilAgendaTopic): OtherPartyStanceItem[] {
+  const titleText = (topic.title || "").toLowerCase();
+  const descText = (topic.description || "").toLowerCase();
+  const docTitles = (topic.documents || []).map((d) => (d.title || "").toLowerCase()).join(" ");
+  const combinedText = `${titleText} ${descText} ${docTitles}`;
+
+  return OTHER_PARTIES_MANIFESTOS.map((party) => {
+    let bestPassage: PartyManifestoPassage | null = null;
+    let bestScore = 0;
+
+    for (const passage of party.passages) {
+      let score = 0;
+      for (const kw of passage.keywords) {
+        const kwLower = kw.toLowerCase();
+        const rx = kwLower.length <= 4 ? new RegExp(`\\b${kwLower}\\b`, "i") : new RegExp(kwLower, "i");
+        if (rx.test(titleText)) {
+          score += 20;
+        } else if (rx.test(docTitles)) {
+          score += 12;
+        } else if (rx.test(descText)) {
+          score += 8;
+        }
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestPassage = passage;
+      }
+    }
+
+    if (bestPassage && bestScore >= 12) {
+      const { stance, explanation } = refinePartyStanceForContext(party.partyId, bestPassage, combinedText);
+      return {
+        partyId: party.partyId,
+        partyName: party.partyName,
+        partyFullName: party.partyFullName,
+        stance,
+        stanceLabel: getOtherPartyStanceLabel(stance),
+        explanation,
+        verbatimQuote: bestPassage.verbatimQuote,
+        chapterOrSection: `${party.programTitle} — ${bestPassage.chapterOrSection}`,
+        programPdfUrl: party.programPdfUrl,
+      };
+    }
+
+    return {
+      partyId: party.partyId,
+      partyName: party.partyName,
+      partyFullName: party.partyFullName,
+      stance: "geen_standpunt",
+      stanceLabel: getOtherPartyStanceLabel("geen_standpunt"),
+      explanation: `Het verkiezingsprogramma 2026–2030 van ${party.partyName} bevat geen specifiek standpunt of directe passage over dit specifieke onderwerp.`,
+      verbatimQuote: undefined,
+      chapterOrSection: party.programTitle,
+      programPdfUrl: party.programPdfUrl,
+    };
+  });
+}
+
+/**
+ * Match how the 8 other council parties approach a specific document within a topic.
+ * Always returns all 8 parties; explicitly states when a party's manifesto says nothing specific about this document.
+ */
+export function matchOtherPartiesForDocument(
+  doc: CouncilDocument,
+  topic: CouncilAgendaTopic
+): OtherPartyStanceItem[] {
+  const docTitleText = (doc.title || "").toLowerCase();
+  const topicTitleText = (topic.title || "").toLowerCase();
+  const isMainProposalDoc =
+    docTitleText.includes("raadsvoorstel") ||
+    docTitleText.includes("raadsbesluit") ||
+    docTitleText.includes("adviesnota") ||
+    docTitleText.includes("verordening") ||
+    docTitleText.includes("begroting") ||
+    docTitleText.includes("omgevingsplan") ||
+    docTitleText.includes("bestemmingsplan");
+
+  const combinedDocContext = `${docTitleText} ${topicTitleText}`;
+
+  return OTHER_PARTIES_MANIFESTOS.map((party) => {
+    let bestPassage: PartyManifestoPassage | null = null;
+    let bestScore = 0;
+
+    for (const passage of party.passages) {
+      let score = 0;
+      for (const kw of passage.keywords) {
+        const kwLower = kw.toLowerCase();
+        const rx = kwLower.length <= 4 ? new RegExp(`\\b${kwLower}\\b`, "i") : new RegExp(kwLower, "i");
+        if (rx.test(docTitleText)) {
+          score += 22;
+        } else if (isMainProposalDoc && rx.test(topicTitleText)) {
+          score += 14;
+        } else if (rx.test(topicTitleText)) {
+          score += 10;
+        }
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestPassage = passage;
+      }
+    }
+
+    if (bestPassage && bestScore >= 10) {
+      const { stance, explanation } = refinePartyStanceForContext(party.partyId, bestPassage, combinedDocContext);
+      return {
+        partyId: party.partyId,
+        partyName: party.partyName,
+        partyFullName: party.partyFullName,
+        stance,
+        stanceLabel: getOtherPartyStanceLabel(stance),
+        explanation: `Ten aanzien van stuk '${doc.title}': ${explanation}`,
+        verbatimQuote: bestPassage.verbatimQuote,
+        chapterOrSection: `${party.programTitle} — ${bestPassage.chapterOrSection}`,
+        programPdfUrl: party.programPdfUrl,
+      };
+    }
+
+    return {
+      partyId: party.partyId,
+      partyName: party.partyName,
+      partyFullName: party.partyFullName,
+      stance: "geen_standpunt",
+      stanceLabel: getOtherPartyStanceLabel("geen_standpunt"),
+      explanation: `Het verkiezingsprogramma 2026–2030 van ${party.partyName} zegt niets specifieks over dit vergaderstuk ('${doc.title}').`,
+      verbatimQuote: undefined,
+      chapterOrSection: party.programTitle,
+      programPdfUrl: party.programPdfUrl,
+    };
+  });
+}
+
+/**
+ * Build strictly grounded controlling questions to other factions based on their 2026-2030 manifestos.
+ * ZERO-HALLUCINATION RULE: Only generates a question for a faction if a concrete passage in its manifesto matches the topic.
+ */
+export function buildFactionControlQuestionsForTopic(topic: CouncilAgendaTopic): FactionControlQuestion[] {
+  const titleText = (topic.title || "").toLowerCase();
+  const descText = (topic.description || "").toLowerCase();
+  const docTitles = (topic.documents || []).map((d) => (d.title || "").toLowerCase()).join(" ");
+  const questions: FactionControlQuestion[] = [];
+
+  for (const party of OTHER_PARTIES_MANIFESTOS) {
+    let bestPassage: PartyManifestoPassage | null = null;
+    let bestScore = 0;
+
+    for (const passage of party.passages) {
+      let score = 0;
+      for (const kw of passage.keywords) {
+        const kwLower = kw.toLowerCase();
+        const rx = kwLower.length <= 4 ? new RegExp(`\\b${kwLower}\\b`, "i") : new RegExp(kwLower, "i");
+        if (rx.test(titleText)) {
+          score += 20;
+        } else if (rx.test(docTitles)) {
+          score += 12;
+        } else if (rx.test(descText)) {
+          score += 8;
+        }
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestPassage = passage;
+      }
+    }
+
+    if (bestPassage && bestScore >= 12 && bestPassage.controlQuestionTemplate) {
+      questions.push({
+        id: `fq_${topic.id}_${party.partyId}`,
+        partyId: party.partyId,
+        partyName: party.partyName,
+        question: bestPassage.controlQuestionTemplate,
+        programBasisQuote: bestPassage.verbatimQuote,
+        programChapter: `${party.programTitle} (${bestPassage.chapterOrSection})`,
+        programPdfUrl: party.programPdfUrl,
+      });
+    }
+  }
+
+  return questions;
+}
+
 /**
  * Enrich a list of topics with standpoints matching on both topic and document level.
  */
 export function enrichTopicWithStandpunten(topic: CouncilAgendaTopic): CouncilAgendaTopic {
-  // Fast-path: If topic already has matchedStandpunten and a summary, skip expensive full-program dynamic re-scanning
-  if (topic.matchedStandpunten && topic.matchedStandpunten.length > 0 && topic.standpuntSummary) {
+  const hasOtherParties = Array.isArray(topic.otherPartiesStances) && topic.otherPartiesStances.length === 8;
+  const allDocsHaveOtherParties = (topic.documents || []).every(
+    (d) => Array.isArray(d.otherPartiesStances) && d.otherPartiesStances.length === 8
+  );
+
+  // Fast-path: If topic already has matchedStandpunten, summary, and 8 otherPartiesStances on topic & docs
+  if (
+    topic.matchedStandpunten &&
+    topic.matchedStandpunten.length > 0 &&
+    topic.standpuntSummary &&
+    hasOtherParties &&
+    allDocsHaveOtherParties
+  ) {
     return topic;
   }
 
@@ -924,12 +1191,24 @@ export function enrichTopicWithStandpunten(topic: CouncilAgendaTopic): CouncilAg
     }
   }
 
+  const topicOtherParties = hasOtherParties
+    ? topic.otherPartiesStances!
+    : matchOtherPartiesForTopic(topic);
+
   // Enrich documents
   const enrichedDocs = (topic.documents || []).map((doc) => {
-    const docStandpunten = matchStandpuntenForDocument(doc, combinedMatched);
+    const docStandpunten =
+      doc.matchedStandpunten && doc.matchedStandpunten.length > 0
+        ? doc.matchedStandpunten
+        : matchStandpuntenForDocument(doc, combinedMatched);
+    const docOtherParties =
+      Array.isArray(doc.otherPartiesStances) && doc.otherPartiesStances.length === 8
+        ? doc.otherPartiesStances
+        : matchOtherPartiesForDocument(doc, topic);
     return {
       ...doc,
       matchedStandpunten: docStandpunten.length > 0 ? docStandpunten : undefined,
+      otherPartiesStances: docOtherParties,
     };
   });
 
@@ -945,6 +1224,7 @@ export function enrichTopicWithStandpunten(topic: CouncilAgendaTopic): CouncilAg
       summaryText,
       keyArguments: combinedMatched.map((m) => m.explanation),
     },
+    otherPartiesStances: topicOtherParties,
     documents: enrichedDocs,
   };
 }

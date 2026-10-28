@@ -44,6 +44,9 @@ import {
   UserPlus,
   ShieldCheck,
   Upload,
+  ChevronDown,
+  ChevronUp,
+  Users,
 } from "lucide-react";
 import { safeLocalStorage, safeSessionStorage } from "@/lib/safeStorage";
 import { indexedDbStorage } from "@/lib/indexedDbStorage";
@@ -83,6 +86,7 @@ import { VragenFormulatorWizard } from "@/components/council/VragenFormulatorWiz
 import { ToezeggingenManager } from "@/components/council/ToezeggingenManager";
 import { MemberDocument } from "@/types/document";
 import { CouncilResearchManager } from "@/components/council/CouncilResearchManager";
+import { matchOtherPartiesForDocument } from "@/lib/standpuntMatcher";
 
 
 const PROCEDURAL_KEYWORDS = [
@@ -436,6 +440,7 @@ export default function Raadspaneel() {
   const [showModalNotes, setShowModalNotes] = useState(true);
   const [isIframeLoading, setIsIframeLoading] = useState(true);
   const [iframeLoadError, setIframeLoadError] = useState(false);
+  const [expandedDocParties, setExpandedDocParties] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (activeDoc) {
@@ -3165,16 +3170,23 @@ export default function Raadspaneel() {
                       {(selectedTopic.documents || []).map((doc) => {
                         const isViewedByMe = doc.viewedBy?.some((v) => v.username === user?.username);
                         const otherViewers = (doc.viewedBy || []).filter((v) => v.username !== user?.username);
+                        const docOtherParties =
+                          Array.isArray(doc.otherPartiesStances) && doc.otherPartiesStances.length === 8
+                            ? doc.otherPartiesStances
+                            : matchOtherPartiesForDocument(doc, selectedTopic);
+                        const isDocPartiesExpanded = Boolean(expandedDocParties[doc.id]);
+                        const docMatchedPartiesCount = docOtherParties.filter((p) => p.stance !== "geen_standpunt").length;
 
                         return (
                           <div
                             key={doc.id}
-                            className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all ${
+                            className={`p-3.5 rounded-xl border flex flex-col gap-3 transition-all ${
                               isViewedByMe
                                 ? "bg-emerald-500/5 border-emerald-500/20"
                                 : "bg-card border-border/80 hover:border-accent/40"
                             }`}
                           >
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <div className="flex items-start gap-3 min-w-0">
                               <button
                                 type="button"
@@ -3254,6 +3266,30 @@ export default function Raadspaneel() {
                                     ))}
                                   </div>
                                 )}
+
+                                {/* Toggle button for per-document other parties stances */}
+                                <div className="mt-2">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setExpandedDocParties((prev) => ({
+                                        ...prev,
+                                        [doc.id]: !prev[doc.id],
+                                      }))
+                                    }
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10.5px] font-medium bg-muted/60 hover:bg-muted text-foreground border border-border/80 transition-colors cursor-pointer"
+                                  >
+                                    <Users className="w-3 h-3 text-accent shrink-0" />
+                                    <span>
+                                      Posities andere partijen bij dit stuk ({docMatchedPartiesCount}/8 met programmapassage)
+                                    </span>
+                                    {isDocPartiesExpanded ? (
+                                      <ChevronUp className="w-3 h-3 text-muted-foreground" />
+                                    ) : (
+                                      <ChevronDown className="w-3 h-3 text-muted-foreground" />
+                                    )}
+                                  </button>
+                                </div>
                               </div>
                             </div>
 
@@ -3319,6 +3355,103 @@ export default function Raadspaneel() {
                                 );
                               })()}
                             </div>
+                            </div>
+
+                            {/* Uitvouwbaar overzicht van de 8 andere partijen voor dit specifieke vergaderstuk */}
+                            {isDocPartiesExpanded && (
+                              <div className="pt-3 border-t border-border/60 space-y-2.5">
+                                <div className="flex items-center justify-between flex-wrap gap-2">
+                                  <span className="text-[11px] font-semibold text-foreground flex items-center gap-1.5">
+                                    <Scale className="w-3.5 h-3.5 text-accent" />
+                                    Hoe benaderen andere partijen &ldquo;{doc.title}&rdquo; o.b.v. hun verkiezingsprogramma 2026–2030?
+                                  </span>
+                                  <span className="text-[10px] text-muted-foreground">
+                                    BGL • CDA • D66 • CPB • VVD • CU • STEM • PRO (GroenLinks-PvdA)
+                                  </span>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                  {docOtherParties.map((partyItem) => {
+                                    const isPos = partyItem.stance === "positief";
+                                    const isNeg = partyItem.stance === "negatief";
+                                    const isGen = partyItem.stance === "genuanceerd";
+
+                                    const cardBorder = isPos
+                                      ? "border-emerald-500/30 bg-emerald-500/[0.04]"
+                                      : isNeg
+                                      ? "border-rose-500/30 bg-rose-500/[0.04]"
+                                      : isGen
+                                      ? "border-amber-500/30 bg-amber-500/[0.04]"
+                                      : "border-border/60 bg-muted/15";
+
+                                    const badgeCls = isPos
+                                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30"
+                                      : isNeg
+                                      ? "bg-rose-500/15 text-rose-700 dark:text-rose-400 border-rose-500/30"
+                                      : isGen
+                                      ? "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30"
+                                      : "bg-muted text-muted-foreground border-border";
+
+                                    return (
+                                      <div
+                                        key={partyItem.partyId}
+                                        className={`p-2.5 rounded-lg border ${cardBorder} flex flex-col justify-between gap-1.5`}
+                                      >
+                                        <div className="space-y-1">
+                                          <div className="flex items-center justify-between gap-1.5 flex-wrap">
+                                            <span className="font-display font-bold text-[11px] px-1.5 py-0.5 rounded bg-background border border-border text-foreground">
+                                              {partyItem.partyName}
+                                            </span>
+                                            <span className={`px-1.5 py-0.5 rounded text-[9.5px] font-bold border inline-flex items-center gap-1 ${badgeCls}`}>
+                                              {isPos && <ThumbsUp className="w-2.5 h-2.5" />}
+                                              {isNeg && <ThumbsDown className="w-2.5 h-2.5" />}
+                                              {isGen && <Scale className="w-2.5 h-2.5" />}
+                                              <span>{partyItem.stanceLabel}</span>
+                                            </span>
+                                          </div>
+
+                                          <p className="text-[11px] text-foreground/90 leading-relaxed">
+                                            {partyItem.explanation}
+                                          </p>
+
+                                          {partyItem.verbatimQuote ? (
+                                            <div className="mt-1 p-2 rounded bg-background/90 border-l-2 border-accent border border-border/50 text-[10.5px] space-y-0.5">
+                                              <div className="flex items-center justify-between text-[9.5px] font-semibold text-accent">
+                                                <span>Citaat verkiezingsprogramma:</span>
+                                                {partyItem.chapterOrSection && (
+                                                  <span className="font-mono text-muted-foreground">{partyItem.chapterOrSection}</span>
+                                                )}
+                                              </div>
+                                              <p className="italic text-foreground/90">
+                                                &ldquo;{partyItem.verbatimQuote}&rdquo;
+                                              </p>
+                                            </div>
+                                          ) : (
+                                            <p className="text-[10.5px] text-muted-foreground italic">
+                                              Het verkiezingsprogramma van {partyItem.partyName} zegt niets specifieks over dit raadsstuk.
+                                            </p>
+                                          )}
+                                        </div>
+
+                                        {partyItem.programPdfUrl && (
+                                          <div className="pt-1 border-t border-border/40 flex justify-end">
+                                            <a
+                                              href={partyItem.programPdfUrl}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              className="inline-flex items-center gap-1 text-[10px] text-accent hover:underline"
+                                            >
+                                              <span>Programma PDF</span>
+                                              <ExternalLink className="w-2.5 h-2.5" />
+                                            </a>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
