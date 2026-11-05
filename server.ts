@@ -11688,11 +11688,12 @@ async function startServer() {
 
     const validCategories = ["motie", "voorstel", "amendement"];
     const validTypes = ["eigen", "mede-indiener", "regulier"];
-    const validVotes = ["voor", "tegen"];
+    const validVotes = ["voor", "tegen", "ingetrokken-toezegging"];
 
-    const effectiveCategory = validCategories.includes(category) ? category : "motie";
-    const effectiveType = validTypes.includes(motionType) ? motionType : "regulier";
     const effectiveVote = validVotes.includes(vote) ? vote : "voor";
+    const rawCategory = validCategories.includes(category) ? category : "motie";
+    const effectiveCategory = effectiveVote === "ingetrokken-toezegging" && rawCategory === "voorstel" ? "motie" : rawCategory;
+    const effectiveType = effectiveVote === "ingetrokken-toezegging" ? "eigen" : (validTypes.includes(motionType) ? motionType : "regulier");
 
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     let imageUrl = req.body.imageUrl || "";
@@ -11780,14 +11781,19 @@ async function startServer() {
 
     const validCategories = ["motie", "voorstel", "amendement"];
     const validTypes = ["eigen", "mede-indiener", "regulier"];
-    const validVotes = ["voor", "tegen"];
+    const validVotes = ["voor", "tegen", "ingetrokken-toezegging"];
+
+    const updatedVote = validVotes.includes(vote) ? vote : current.vote;
+    const rawUpdatedCategory = validCategories.includes(category) ? category : (current.category || "motie");
+    const updatedCategory = updatedVote === "ingetrokken-toezegging" && rawUpdatedCategory === "voorstel" ? "motie" : rawUpdatedCategory;
+    const updatedMotionType = updatedVote === "ingetrokken-toezegging" ? "eigen" : (validTypes.includes(motionType) ? motionType : current.motionType);
 
     db.stemgedrag[index] = {
       ...current,
       title: title !== undefined ? title.trim() : current.title,
-      category: validCategories.includes(category) ? category : (current.category || "motie"),
-      motionType: validTypes.includes(motionType) ? motionType : current.motionType,
-      vote: validVotes.includes(vote) ? vote : current.vote,
+      category: updatedCategory,
+      motionType: updatedMotionType,
+      vote: updatedVote,
       description: cleanDesc,
       date: date !== undefined ? date : current.date,
       raadsvergadering: raadsvergadering !== undefined ? raadsvergadering.trim() : current.raadsvergadering,

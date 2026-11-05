@@ -15,7 +15,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Maximize2,
-  Filter
+  Filter,
+  Handshake
 } from "lucide-react";
 import { StemgedragItem, PrimaryFilter, VoteFilter, MotionCategory } from "@/types/stemgedrag";
 import { Button } from "@/components/ui/button";
@@ -56,16 +57,43 @@ export const StemgedragSection: React.FC = () => {
 
   // Handlers for filter changes
   const handlePrimaryFilterChange = (newPrimary: PrimaryFilter) => {
+    // Als 'Ingetrokken i.v.m. toezegging' actief is en men klikt op een niet-eigen filter, reset dan de stemkeuze-filter
+    if (
+      voteFilter === "ingetrokken-toezegging" &&
+      newPrimary !== "eigen-moties" &&
+      newPrimary !== "eigen-amendementen" &&
+      newPrimary !== "eigen-moties-en-amendementen"
+    ) {
+      setVoteFilter("all");
+    }
     setPrimaryFilter(newPrimary);
     setCurrentPage(1);
   };
 
-  const handleVoteToggle = (clickedVote: "voor" | "tegen") => {
-    // If clicked vote is already active, toggle off to "all", else activate clicked vote
+  const handleVoteToggle = (clickedVote: "voor" | "tegen" | "ingetrokken-toezegging") => {
+    if (clickedVote === "ingetrokken-toezegging") {
+      if (voteFilter === "ingetrokken-toezegging") {
+        setVoteFilter("all");
+        if (primaryFilter === "eigen-moties-en-amendementen") {
+          setPrimaryFilter("alle-stemmingen");
+        }
+      } else {
+        setVoteFilter("ingetrokken-toezegging");
+        // Zet automatisch op zowel 'Eigen moties' als 'Eigen amendementen'
+        setPrimaryFilter("eigen-moties-en-amendementen");
+      }
+      setCurrentPage(1);
+      return;
+    }
+
+    // If clicked vote ("voor" | "tegen") is already active, toggle off to "all", else activate clicked vote
     if (voteFilter === clickedVote) {
       setVoteFilter("all");
     } else {
       setVoteFilter(clickedVote);
+      if (primaryFilter === "eigen-moties-en-amendementen") {
+        setPrimaryFilter("alle-stemmingen");
+      }
     }
     setCurrentPage(1);
   };
@@ -96,14 +124,19 @@ export const StemgedragSection: React.FC = () => {
         if (itemCategory !== "amendement") return false;
       } else if (primaryFilter === "eigen-amendementen") {
         if (itemCategory !== "amendement" || item.motionType !== "eigen") return false;
+      } else if (primaryFilter === "eigen-moties-en-amendementen") {
+        if (item.motionType !== "eigen" || (itemCategory !== "motie" && itemCategory !== "amendement")) {
+          return false;
+        }
       } else if (primaryFilter === "mede-indiener") {
         if (item.motionType !== "mede-indiener") return false;
       }
       // "alle-stemmingen" permits all categories and origin types
 
-      // 2. Vote filter (combinable with any primary filter)
+      // 2. Vote filter (combinable with primary filter)
       if (voteFilter === "voor" && item.vote !== "voor") return false;
       if (voteFilter === "tegen" && item.vote !== "tegen") return false;
+      if (voteFilter === "ingetrokken-toezegging" && item.vote !== "ingetrokken-toezegging") return false;
 
       // 3. Search query
       if (searchQuery.trim()) {
@@ -139,12 +172,27 @@ export const StemgedragSection: React.FC = () => {
       subset = items.filter((i) => i.category === "amendement");
     } else if (primaryFilter === "eigen-amendementen") {
       subset = items.filter((i) => i.category === "amendement" && i.motionType === "eigen");
+    } else if (primaryFilter === "eigen-moties-en-amendementen") {
+      subset = items.filter(
+        (i) => i.motionType === "eigen" && ((i.category || "motie") === "motie" || i.category === "amendement")
+      );
     } else if (primaryFilter === "mede-indiener") {
       subset = items.filter((i) => i.motionType === "mede-indiener");
     }
 
     const voor = subset.filter((i) => i.vote === "voor").length;
     const tegen = subset.filter((i) => i.vote === "tegen").length;
+
+    // Ingetrokken i.v.m. toezegging geldt voor eigen moties en eigen amendementen
+    const ingetrokkenSubset =
+      primaryFilter === "eigen-moties"
+        ? items.filter((i) => (i.category || "motie") === "motie" && i.motionType === "eigen")
+        : primaryFilter === "eigen-amendementen"
+        ? items.filter((i) => i.category === "amendement" && i.motionType === "eigen")
+        : items.filter(
+            (i) => i.motionType === "eigen" && ((i.category || "motie") === "motie" || i.category === "amendement")
+          );
+    const ingetrokkenToezegging = ingetrokkenSubset.filter((i) => i.vote === "ingetrokken-toezegging").length;
 
     return {
       alleStemmingen,
@@ -155,6 +203,7 @@ export const StemgedragSection: React.FC = () => {
       medeIndiener,
       voor,
       tegen,
+      ingetrokkenToezegging,
     };
   }, [items, primaryFilter]);
 
@@ -203,6 +252,11 @@ export const StemgedragSection: React.FC = () => {
     }
   };
 
+  const isEigenMotiesActive =
+    primaryFilter === "eigen-moties" || primaryFilter === "eigen-moties-en-amendementen";
+  const isEigenAmendementenActive =
+    primaryFilter === "eigen-amendementen" || primaryFilter === "eigen-moties-en-amendementen";
+
   return (
     <section id="stemgedrag" className="mt-24 pt-12 border-t border-border">
       {/* Section Header */}
@@ -217,7 +271,7 @@ export const StemgedragSection: React.FC = () => {
         <p className="text-base md:text-lg text-muted-foreground leading-relaxed">
           Lijst van Andel staat voor openheid en een duidelijke koers. Hieronder vindt u exact hoe 
           onze fractie heeft gestemd over moties, voorstellen en amendementen in de gemeenteraad van Steenwijkerland, 
-          inclusief de inhoudelijke toelichting waarom wij voor of tegen hebben gestemd.
+          inclusief de inhoudelijke toelichting waarom wij voor of tegen hebben gestemd of welke toezegging wij hebben binnengehaald.
         </p>
       </div>
 
@@ -268,14 +322,14 @@ export const StemgedragSection: React.FC = () => {
               type="button"
               onClick={() => handlePrimaryFilterChange("eigen-moties")}
               className={`px-3.5 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
-                primaryFilter === "eigen-moties"
+                isEigenMotiesActive
                   ? "bg-amber-600 text-white shadow-sm ring-1 ring-amber-500/50"
                   : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground border border-border/50"
               }`}
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-300" />
               <span>Eigen moties</span>
-              <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${primaryFilter === "eigen-moties" ? "bg-white/20 text-white" : "bg-background/80 text-muted-foreground"}`}>
+              <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${isEigenMotiesActive ? "bg-white/20 text-white" : "bg-background/80 text-muted-foreground"}`}>
                 {counts.eigenMoties}
               </span>
             </button>
@@ -304,14 +358,14 @@ export const StemgedragSection: React.FC = () => {
               type="button"
               onClick={() => handlePrimaryFilterChange("eigen-amendementen")}
               className={`px-3.5 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
-                primaryFilter === "eigen-amendementen"
+                isEigenAmendementenActive
                   ? "bg-amber-700 text-white shadow-sm ring-1 ring-amber-600/50"
                   : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground border border-border/50"
               }`}
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-300" />
               <span>Eigen amendementen</span>
-              <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${primaryFilter === "eigen-amendementen" ? "bg-white/20 text-white" : "bg-background/80 text-muted-foreground"}`}>
+              <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${isEigenAmendementenActive ? "bg-white/20 text-white" : "bg-background/80 text-muted-foreground"}`}>
                 {counts.eigenAmendementen}
               </span>
             </button>
@@ -359,11 +413,11 @@ export const StemgedragSection: React.FC = () => {
           </div>
         </div>
 
-        {/* Combined Vote Selection Bar: Voor en Tegen, selecteerbaar i.c.m. moties of amendementen */}
+        {/* Combined Vote Selection Bar: Voor, Tegen, en Ingetrokken i.v.m. toezegging */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-border/60">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mr-1">
-              Stemkeuze combineren:
+              Stemkeuze / Afdoening combineren:
             </span>
 
             {/* VOOR knop (toggle) */}
@@ -404,31 +458,58 @@ export const StemgedragSection: React.FC = () => {
               </span>
             </button>
 
+            {/* INGETROKKEN I.V.M. TOEZEGGING knop (toggle, selecteert automatisch Eigen moties & Eigen amendementen) */}
+            <button
+              id="filter-ingetrokken-toezegging"
+              type="button"
+              onClick={() => handleVoteToggle("ingetrokken-toezegging")}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                voteFilter === "ingetrokken-toezegging"
+                  ? "bg-sky-600 text-white shadow-sm ring-2 ring-sky-500/30"
+                  : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground border border-border/60"
+              }`}
+              title="Filter op eigen moties en eigen amendementen die zijn ingetrokken na een toezegging van de wethouder"
+            >
+              <Handshake className="w-3.5 h-3.5 text-sky-200" />
+              <span>Ingetrokken i.v.m. toezegging</span>
+              <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${voteFilter === "ingetrokken-toezegging" ? "bg-white/20 text-white" : "bg-background/80 text-muted-foreground"}`}>
+                {counts.ingetrokkenToezegging}
+              </span>
+            </button>
+
             {voteFilter !== "all" && (
               <button
                 type="button"
                 onClick={() => {
                   setVoteFilter("all");
+                  if (primaryFilter === "eigen-moties-en-amendementen") {
+                    setPrimaryFilter("alle-stemmingen");
+                  }
                   setCurrentPage(1);
                 }}
                 className="text-xs text-muted-foreground hover:text-foreground underline ml-1 cursor-pointer"
               >
-                Stemkeuze filter wissen
+                Filter wissen
               </button>
             )}
           </div>
 
           <div className="text-[11px] text-muted-foreground">
+            {voteFilter === "ingetrokken-toezegging" && (
+              <span className="text-foreground font-medium">
+                Toont eigen moties &amp; eigen amendementen die zijn ingetrokken na een toezegging van de wethouder (geen stemming).
+              </span>
+            )}
             {primaryFilter === "alle-moties" && voteFilter === "all" && (
               <span>Toont alle moties. Klik op Voor of Tegen om specifiek te filteren.</span>
             )}
             {primaryFilter === "alle-amendementen" && voteFilter === "all" && (
               <span>Toont alle amendementen. Klik op Voor of Tegen om specifiek te filteren.</span>
             )}
-            {primaryFilter === "alle-amendementen" && voteFilter !== "all" && (
+            {primaryFilter === "alle-amendementen" && (voteFilter === "voor" || voteFilter === "tegen") && (
               <span className="text-foreground font-medium">Combinatie actief: Alle amendementen + {voteFilter === "voor" ? "Voor" : "Tegen"}</span>
             )}
-            {primaryFilter === "alle-moties" && voteFilter !== "all" && (
+            {primaryFilter === "alle-moties" && (voteFilter === "voor" || voteFilter === "tegen") && (
               <span className="text-foreground font-medium">Combinatie actief: Alle moties + {voteFilter === "voor" ? "Voor" : "Tegen"}</span>
             )}
           </div>
@@ -446,15 +527,28 @@ export const StemgedragSection: React.FC = () => {
                   {primaryFilter === "eigen-moties" && "Eigen moties"}
                   {primaryFilter === "alle-amendementen" && "Alle amendementen"}
                   {primaryFilter === "eigen-amendementen" && "Eigen amendementen"}
+                  {primaryFilter === "eigen-moties-en-amendementen" && "Eigen moties & Eigen amendementen"}
                   {primaryFilter === "mede-indiener" && "Mede-indiener"}
                 </span>
               </span>
             )}
             {voteFilter !== "all" && (
               <span>
-                {" "}• Stemkeuze:{" "}
-                <span className={`font-semibold ${voteFilter === "voor" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                  {voteFilter === "voor" ? "Voor gestemd" : "Tegen gestemd"}
+                {" "}• Status:{" "}
+                <span
+                  className={`font-semibold ${
+                    voteFilter === "voor"
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : voteFilter === "tegen"
+                      ? "text-red-600 dark:text-red-400"
+                      : "text-sky-600 dark:text-sky-400"
+                  }`}
+                >
+                  {voteFilter === "voor"
+                    ? "Voor gestemd"
+                    : voteFilter === "tegen"
+                    ? "Tegen gestemd"
+                    : "Ingetrokken i.v.m. toezegging"}
                 </span>
               </span>
             )}
@@ -511,6 +605,7 @@ export const StemgedragSection: React.FC = () => {
         <div className="space-y-6">
           {currentItems.map((item) => {
             const isVoor = item.vote === "voor";
+            const isIngetrokkenToezegging = item.vote === "ingetrokken-toezegging";
             const isEigen = item.motionType === "eigen";
             const isMedeIndiener = item.motionType === "mede-indiener";
             const itemCategory = item.category || "motie";
@@ -561,11 +656,16 @@ export const StemgedragSection: React.FC = () => {
                   {/* Uitleg & informatie rechts van de afbeelding */}
                   <div className="p-6 md:p-7 flex-1 flex flex-col justify-between">
                     <div>
-                      {/* Bovenste rij met stemstatus (voor/tegen), type indiening en datum */}
+                      {/* Bovenste rij met stemstatus (voor/tegen/ingetrokken), type indiening en datum */}
                       <div className="flex flex-wrap items-center justify-between gap-2.5 mb-4">
                         <div className="flex flex-wrap items-center gap-2">
-                          {/* Stemming: VOOR of TEGEN */}
-                          {isVoor ? (
+                          {/* Stemming: VOOR, TEGEN of INGETROKKEN I.V.M. TOEZEGGING */}
+                          {isIngetrokkenToezegging ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30">
+                              <Handshake className="w-4 h-4 stroke-[2.2]" />
+                              <span>Ingetrokken i.v.m. toezegging</span>
+                            </span>
+                          ) : isVoor ? (
                             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
                               <Check className="w-4 h-4 stroke-[2.5]" />
                               <span>Voor gestemd</span>
@@ -627,10 +727,14 @@ export const StemgedragSection: React.FC = () => {
                         </div>
                       )}
 
-                      {/* Rechts van de afbeelding: Uitleg waarom er voor of tegen is gestemd (max 600 tekens) */}
+                      {/* Rechts van de afbeelding: Uitleg waarom er voor of tegen is gestemd of over de toezegging (max 600 tekens) */}
                       <div className="space-y-1.5 mb-6">
                         <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                          <span>Waarom heeft Lijst van Andel {isVoor ? "voor" : "tegen"} gestemd?</span>
+                          <span>
+                            {isIngetrokkenToezegging
+                              ? "Toelichting bij intrekking & toezegging door de wethouder"
+                              : `Waarom heeft Lijst van Andel ${isVoor ? "voor" : "tegen"} gestemd?`}
+                          </span>
                         </div>
                         <div className="text-sm md:text-base text-foreground/95 leading-relaxed bg-muted/25 p-4 rounded-xl border border-border/60">
                           <p className="whitespace-pre-line">{item.description}</p>

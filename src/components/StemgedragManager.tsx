@@ -20,6 +20,7 @@ import {
   CheckCircle2,
   FileSpreadsheet,
   FileCheck2,
+  Handshake,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetchWithAuth } from "@/lib/api";
@@ -131,6 +132,22 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
     window.scrollTo({ top: 350, behavior: "smooth" });
   };
 
+  const handleSelectVote = (newVote: VoteType) => {
+    setVote(newVote);
+    if (newVote === "ingetrokken-toezegging") {
+      // Automatisch op Eigen zetten en categorie op Motie of Amendement houden
+      setMotionType("eigen");
+      if (category === "voorstel") {
+        setCategory("motie");
+      }
+      if (!resultaat.trim() || resultaat === "Aangenomen" || resultaat === "Verworpen") {
+        setResultaat("Ingetrokken i.v.m. toezegging");
+      }
+    } else if (resultaat === "Ingetrokken i.v.m. toezegging") {
+      setResultaat("Aangenomen");
+    }
+  };
+
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -175,12 +192,17 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
       return;
     }
 
+    const effectiveCategory: MotionCategory =
+      vote === "ingetrokken-toezegging" && category === "voorstel" ? "motie" : category;
+    const effectiveMotionType: MotionType =
+      vote === "ingetrokken-toezegging" ? "eigen" : motionType;
+
     try {
       setSubmitting(true);
       const formData = new FormData();
       formData.append("title", title.trim());
-      formData.append("category", category);
-      formData.append("motionType", motionType);
+      formData.append("category", effectiveCategory);
+      formData.append("motionType", effectiveMotionType);
       formData.append("vote", vote);
       formData.append("description", description.trim());
       formData.append("date", date);
@@ -254,6 +276,7 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
     if (filterType === "mede-indiener" && item.motionType !== "mede-indiener") return false;
     if (filterType === "voor" && item.vote !== "voor") return false;
     if (filterType === "tegen" && item.vote !== "tegen") return false;
+    if (filterType === "ingetrokken-toezegging" && item.vote !== "ingetrokken-toezegging") return false;
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
@@ -353,7 +376,12 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
               <button
                 type="button"
                 id="btn-cat-voorstel"
-                onClick={() => setCategory("voorstel")}
+                onClick={() => {
+                  setCategory("voorstel");
+                  if (vote === "ingetrokken-toezegging") {
+                    setVote("voor");
+                  }
+                }}
                 className={`py-2 px-3 rounded-md text-xs font-semibold transition-all flex items-center justify-center gap-2 ${
                   category === "voorstel"
                     ? "bg-primary text-primary-foreground shadow-xs"
@@ -428,7 +456,12 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
                 <button
                   type="button"
                   id="btn-type-mede"
-                  onClick={() => setMotionType("mede-indiener")}
+                  onClick={() => {
+                    setMotionType("mede-indiener");
+                    if (vote === "ingetrokken-toezegging") {
+                      setVote("voor");
+                    }
+                  }}
                   className={`py-1.5 px-2 rounded text-xs font-semibold transition-all flex items-center justify-center gap-1 ${
                     motionType === "mede-indiener"
                       ? "bg-blue-600 text-white shadow-xs"
@@ -441,7 +474,12 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
                 <button
                   type="button"
                   id="btn-type-regulier"
-                  onClick={() => setMotionType("regulier")}
+                  onClick={() => {
+                    setMotionType("regulier");
+                    if (vote === "ingetrokken-toezegging") {
+                      setVote("voor");
+                    }
+                  }}
                   className={`py-1.5 px-2 rounded text-xs font-semibold transition-all flex items-center justify-center gap-1 ${
                     motionType === "regulier"
                       ? "bg-muted text-foreground font-bold shadow-xs"
@@ -461,48 +499,65 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
               </p>
             </div>
 
-            {/* 2. Onze Stem: VOOR of TEGEN */}
+            {/* 2. Onze Stem / Afdoening: VOOR, TEGEN of INGETROKKEN I.V.M. TOEZEGGING */}
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                Stem Lijst van Andel
+                Stemkeuze / Afdoening Lijst van Andel
               </label>
-              <div className="grid grid-cols-2 gap-2 bg-background p-1 rounded-lg border border-border">
+              <div className="space-y-1.5 bg-background p-1.5 rounded-lg border border-border">
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    id="btn-vote-voor"
+                    onClick={() => handleSelectVote("voor")}
+                    className={`py-1.5 px-2.5 rounded text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
+                      vote === "voor"
+                        ? "bg-emerald-600 text-white shadow-xs"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                    }`}
+                  >
+                    <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                    <span>Voor gestemd</span>
+                  </button>
+                  <button
+                    type="button"
+                    id="btn-vote-tegen"
+                    onClick={() => handleSelectVote("tegen")}
+                    className={`py-1.5 px-2.5 rounded text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
+                      vote === "tegen"
+                        ? "bg-red-600 text-white shadow-xs"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                    }`}
+                  >
+                    <X className="w-3.5 h-3.5 stroke-[2.5]" />
+                    <span>Tegen gestemd</span>
+                  </button>
+                </div>
                 <button
                   type="button"
-                  id="btn-vote-voor"
-                  onClick={() => setVote("voor")}
-                  className={`py-1.5 px-3 rounded text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
-                    vote === "voor"
-                      ? "bg-emerald-600 text-white shadow-xs"
-                      : "text-muted-foreground hover:text-foreground"
+                  id="btn-vote-ingetrokken-toezegging"
+                  onClick={() => handleSelectVote("ingetrokken-toezegging")}
+                  className={`w-full py-1.5 px-2.5 rounded text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
+                    vote === "ingetrokken-toezegging"
+                      ? "bg-sky-600 text-white shadow-xs"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/40 border border-dashed border-border"
                   }`}
                 >
-                  <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-                  <span>Voor gestemd</span>
-                </button>
-                <button
-                  type="button"
-                  id="btn-vote-tegen"
-                  onClick={() => setVote("tegen")}
-                  className={`py-1.5 px-3 rounded text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
-                    vote === "tegen"
-                      ? "bg-red-600 text-white shadow-xs"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <X className="w-3.5 h-3.5 stroke-[2.5]" />
-                  <span>Tegen gestemd</span>
+                  <Handshake className="w-3.5 h-3.5" />
+                  <span>Ingetrokken i.v.m. toezegging</span>
                 </button>
               </div>
               <p className="text-[11px] text-muted-foreground mt-1">
-                Fractiestem tijdens de besluitvorming in de raad.
+                {vote === "ingetrokken-toezegging"
+                  ? "Eigen motie/amendement ingetrokken na toezegging van de wethouder (geen stemming)."
+                  : "Fractiestem tijdens de besluitvorming in de raad."}
               </p>
             </div>
 
-            {/* 3. Datum van stemming */}
+            {/* 3. Datum van stemming / behandeling */}
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                Datum van de stemming
+                {vote === "ingetrokken-toezegging" ? "Datum van behandeling" : "Datum van de stemming"}
               </label>
               <Input
                 id="motie-date-input"
@@ -513,7 +568,9 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
                 className="bg-background border-border text-sm"
               />
               <p className="text-[11px] text-muted-foreground mt-1">
-                Datum waarop over het voorstel is gestemd.
+                {vote === "ingetrokken-toezegging"
+                  ? "Datum waarop de toezegging in de raad is gedaan."
+                  : "Datum waarop over het voorstel is gestemd."}
               </p>
             </div>
           </div>
@@ -538,7 +595,7 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
               </label>
               <Input
                 type="text"
-                placeholder="Bijv. Aangenomen, Verworpen of Aangenomen met 19-12 stemmen"
+                placeholder="Bijv. Aangenomen, Verworpen of Ingetrokken i.v.m. toezegging"
                 value={resultaat}
                 onChange={(e) => setResultaat(e.target.value)}
                 className="bg-background border-border text-sm"
@@ -550,7 +607,10 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Uitleg waarom er zo is gestemd <span className="text-red-500">* (max. 600 tekens)</span>
+                {vote === "ingetrokken-toezegging"
+                  ? "Toelichting op de toezegging & intrekking"
+                  : "Uitleg waarom er zo is gestemd"}{" "}
+                <span className="text-red-500">* (max. 600 tekens)</span>
               </label>
               <span
                 className={`text-xs font-mono font-medium ${
@@ -568,7 +628,11 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
               id="motie-description-input"
               rows={4}
               maxLength={600}
-              placeholder="Geef een heldere toelichting waarom Lijst van Andel vóór of tegen dit voorstel heeft gestemd..."
+              placeholder={
+                vote === "ingetrokken-toezegging"
+                  ? "Geef een heldere toelichting welke toezegging de wethouder heeft gedaan waardoor deze eigen motie of dit eigen amendement is ingetrokken..."
+                  : "Geef een heldere toelichting waarom Lijst van Andel vóór of tegen dit voorstel heeft gestemd..."
+              }
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className={`bg-background border-border text-sm leading-relaxed ${
@@ -762,6 +826,7 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
               <option value="mede-indiener">Mede-indiener ({items.filter(i => i.motionType === 'mede-indiener').length})</option>
               <option value="voor">Voor gestemd ({items.filter(i => i.vote === 'voor').length})</option>
               <option value="tegen">Tegen gestemd ({items.filter(i => i.vote === 'tegen').length})</option>
+              <option value="ingetrokken-toezegging">Ingetrokken i.v.m. toezegging ({items.filter(i => i.vote === 'ingetrokken-toezegging').length})</option>
             </select>
 
             <div className="relative w-48 sm:w-60">
@@ -790,6 +855,7 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
           <div className="grid grid-cols-1 gap-3.5">
             {filteredList.map((item) => {
               const isVoor = item.vote === "voor";
+              const isIngetrokkenToezegging = item.vote === "ingetrokken-toezegging";
               const isEigen = item.motionType === "eigen";
               const isMede = item.motionType === "mede-indiener";
               const itemCat = item.category || "motie";
@@ -815,7 +881,11 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
                             : "Motie"}
                         </span>
 
-                        {isVoor ? (
+                        {isIngetrokkenToezegging ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold uppercase bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30">
+                            <Handshake className="w-3 h-3" /> Ingetrokken i.v.m. toezegging
+                          </span>
+                        ) : isVoor ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold uppercase bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
                             <Check className="w-3 h-3 stroke-[3]" /> Voor gestemd
                           </span>
