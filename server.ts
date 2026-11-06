@@ -11635,6 +11635,32 @@ async function startServer() {
   app.get("/api/stemgedrag", (req, res) => {
     const db = getDb();
     let items = db.stemgedrag || [];
+
+    // Herstel eventuele items die met resultaat 'Ingetrokken ... toezegging' zijn opgeslagen
+    let normalizedChanged = false;
+    items.forEach((m: any) => {
+      if (!m) return;
+      const rawRes = String(m.resultaat || "");
+      const isIngetrokkenRes = /ingetrokken.*toezegging/i.test(rawRes);
+      if (m.vote === "ingetrokken-door-toezegging" || isIngetrokkenRes) {
+        if (m.vote !== "ingetrokken-toezegging") {
+          m.vote = "ingetrokken-toezegging";
+          normalizedChanged = true;
+        }
+        if (m.motionType !== "eigen") {
+          m.motionType = "eigen";
+          normalizedChanged = true;
+        }
+      }
+      if (/ingetrokken\s+i\.?v\.?m\.?\s+toezegging/i.test(rawRes)) {
+        m.resultaat = rawRes.replace(/Ingetrokken\s+i\.?v\.?m\.?\s+toezegging/gi, "Ingetrokken door toezegging");
+        normalizedChanged = true;
+      }
+    });
+    if (normalizedChanged) {
+      saveDb(db);
+    }
+
     const { type, vote, search, category } = req.query;
 
     if (category && typeof category === "string" && category !== "all") {
@@ -11690,10 +11716,19 @@ async function startServer() {
     const validTypes = ["eigen", "mede-indiener", "regulier"];
     const validVotes = ["voor", "tegen", "ingetrokken-toezegging"];
 
-    const effectiveVote = validVotes.includes(vote) ? vote : "voor";
+    const normalizedInputVote =
+      vote === "ingetrokken-door-toezegging" || /ingetrokken.*toezegging/i.test(String(resultaat || ""))
+        ? "ingetrokken-toezegging"
+        : vote;
+    const effectiveVote = validVotes.includes(normalizedInputVote) ? normalizedInputVote : "voor";
     const rawCategory = validCategories.includes(category) ? category : "motie";
     const effectiveCategory = effectiveVote === "ingetrokken-toezegging" && rawCategory === "voorstel" ? "motie" : rawCategory;
     const effectiveType = effectiveVote === "ingetrokken-toezegging" ? "eigen" : (validTypes.includes(motionType) ? motionType : "regulier");
+    const cleanResultaat = (resultaat || "").trim().replace(/Ingetrokken\s+i\.?v\.?m\.?\s+toezegging/gi, "Ingetrokken door toezegging");
+    const effectiveResultaat =
+      effectiveVote === "ingetrokken-toezegging" && (!cleanResultaat || cleanResultaat === "Aangenomen" || cleanResultaat === "Verworpen")
+        ? "Ingetrokken door toezegging"
+        : cleanResultaat;
 
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     let imageUrl = req.body.imageUrl || "";
@@ -11719,7 +11754,7 @@ async function startServer() {
       description: cleanDesc,
       date: date || new Date().toISOString().split("T")[0],
       raadsvergadering: (raadsvergadering || "").trim(),
-      resultaat: (resultaat || "").trim(),
+      resultaat: effectiveResultaat,
       imageUrl,
       pdfUrl,
       pdfFileName,
@@ -11783,10 +11818,14 @@ async function startServer() {
     const validTypes = ["eigen", "mede-indiener", "regulier"];
     const validVotes = ["voor", "tegen", "ingetrokken-toezegging"];
 
-    const updatedVote = validVotes.includes(vote) ? vote : current.vote;
+    const normalizedUpdateVote =
+      vote === "ingetrokken-door-toezegging" ? "ingetrokken-toezegging" : vote;
+    const updatedVote = validVotes.includes(normalizedUpdateVote) ? normalizedUpdateVote : current.vote;
     const rawUpdatedCategory = validCategories.includes(category) ? category : (current.category || "motie");
     const updatedCategory = updatedVote === "ingetrokken-toezegging" && rawUpdatedCategory === "voorstel" ? "motie" : rawUpdatedCategory;
     const updatedMotionType = updatedVote === "ingetrokken-toezegging" ? "eigen" : (validTypes.includes(motionType) ? motionType : current.motionType);
+    const rawUpdatedResultaat = resultaat !== undefined ? resultaat.trim() : (current.resultaat || "");
+    const updatedResultaat = rawUpdatedResultaat.replace(/Ingetrokken\s+i\.?v\.?m\.?\s+toezegging/gi, "Ingetrokken door toezegging");
 
     db.stemgedrag[index] = {
       ...current,
@@ -11797,7 +11836,7 @@ async function startServer() {
       description: cleanDesc,
       date: date !== undefined ? date : current.date,
       raadsvergadering: raadsvergadering !== undefined ? raadsvergadering.trim() : current.raadsvergadering,
-      resultaat: resultaat !== undefined ? resultaat.trim() : current.resultaat,
+      resultaat: updatedResultaat,
       imageUrl,
       pdfUrl,
       pdfFileName,

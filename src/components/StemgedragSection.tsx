@@ -18,7 +18,7 @@ import {
   Filter,
   Handshake
 } from "lucide-react";
-import { StemgedragItem, PrimaryFilter, VoteFilter, MotionCategory } from "@/types/stemgedrag";
+import { StemgedragItem, PrimaryFilter, VoteFilter, MotionCategory, isIngetrokkenDoorToezegging } from "@/types/stemgedrag";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -57,7 +57,7 @@ export const StemgedragSection: React.FC = () => {
 
   // Handlers for filter changes
   const handlePrimaryFilterChange = (newPrimary: PrimaryFilter) => {
-    // Als 'Ingetrokken i.v.m. toezegging' actief is en men klikt op een niet-eigen filter, reset dan de stemkeuze-filter
+    // Als 'Ingetrokken door toezegging' actief is en men klikt op een niet-eigen filter, reset dan de stemkeuze-filter
     if (
       voteFilter === "ingetrokken-toezegging" &&
       newPrimary !== "eigen-moties" &&
@@ -114,18 +114,20 @@ export const StemgedragSection: React.FC = () => {
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
       const itemCategory = item.category || "motie";
+      const itemIngetrokken = isIngetrokkenDoorToezegging(item);
+      const itemIsEigen = item.motionType === "eigen" || itemIngetrokken;
 
       // 1. Primary filter
       if (primaryFilter === "alle-moties") {
         if (itemCategory !== "motie") return false;
       } else if (primaryFilter === "eigen-moties") {
-        if (itemCategory !== "motie" || item.motionType !== "eigen") return false;
+        if (itemCategory !== "motie" || !itemIsEigen) return false;
       } else if (primaryFilter === "alle-amendementen") {
         if (itemCategory !== "amendement") return false;
       } else if (primaryFilter === "eigen-amendementen") {
-        if (itemCategory !== "amendement" || item.motionType !== "eigen") return false;
+        if (itemCategory !== "amendement" || !itemIsEigen) return false;
       } else if (primaryFilter === "eigen-moties-en-amendementen") {
-        if (item.motionType !== "eigen" || (itemCategory !== "motie" && itemCategory !== "amendement")) {
+        if (!itemIsEigen || (itemCategory !== "motie" && itemCategory !== "amendement")) {
           return false;
         }
       } else if (primaryFilter === "mede-indiener") {
@@ -134,9 +136,9 @@ export const StemgedragSection: React.FC = () => {
       // "alle-stemmingen" permits all categories and origin types
 
       // 2. Vote filter (combinable with primary filter)
-      if (voteFilter === "voor" && item.vote !== "voor") return false;
-      if (voteFilter === "tegen" && item.vote !== "tegen") return false;
-      if (voteFilter === "ingetrokken-toezegging" && item.vote !== "ingetrokken-toezegging") return false;
+      if (voteFilter === "voor" && (itemIngetrokken || item.vote !== "voor")) return false;
+      if (voteFilter === "tegen" && (itemIngetrokken || item.vote !== "tegen")) return false;
+      if (voteFilter === "ingetrokken-toezegging" && !itemIngetrokken) return false;
 
       // 3. Search query
       if (searchQuery.trim()) {
@@ -157,9 +159,13 @@ export const StemgedragSection: React.FC = () => {
   const counts = useMemo(() => {
     const alleStemmingen = items.length;
     const alleMoties = items.filter((i) => (i.category || "motie") === "motie").length;
-    const eigenMoties = items.filter((i) => (i.category || "motie") === "motie" && i.motionType === "eigen").length;
+    const eigenMoties = items.filter(
+      (i) => (i.category || "motie") === "motie" && (i.motionType === "eigen" || isIngetrokkenDoorToezegging(i))
+    ).length;
     const alleAmendementen = items.filter((i) => i.category === "amendement").length;
-    const eigenAmendementen = items.filter((i) => i.category === "amendement" && i.motionType === "eigen").length;
+    const eigenAmendementen = items.filter(
+      (i) => i.category === "amendement" && (i.motionType === "eigen" || isIngetrokkenDoorToezegging(i))
+    ).length;
     const medeIndiener = items.filter((i) => i.motionType === "mede-indiener").length;
 
     // Subset for Voor / Tegen count based on active primary filter
@@ -167,32 +173,44 @@ export const StemgedragSection: React.FC = () => {
     if (primaryFilter === "alle-moties") {
       subset = items.filter((i) => (i.category || "motie") === "motie");
     } else if (primaryFilter === "eigen-moties") {
-      subset = items.filter((i) => (i.category || "motie") === "motie" && i.motionType === "eigen");
+      subset = items.filter(
+        (i) => (i.category || "motie") === "motie" && (i.motionType === "eigen" || isIngetrokkenDoorToezegging(i))
+      );
     } else if (primaryFilter === "alle-amendementen") {
       subset = items.filter((i) => i.category === "amendement");
     } else if (primaryFilter === "eigen-amendementen") {
-      subset = items.filter((i) => i.category === "amendement" && i.motionType === "eigen");
+      subset = items.filter(
+        (i) => i.category === "amendement" && (i.motionType === "eigen" || isIngetrokkenDoorToezegging(i))
+      );
     } else if (primaryFilter === "eigen-moties-en-amendementen") {
       subset = items.filter(
-        (i) => i.motionType === "eigen" && ((i.category || "motie") === "motie" || i.category === "amendement")
+        (i) =>
+          (i.motionType === "eigen" || isIngetrokkenDoorToezegging(i)) &&
+          ((i.category || "motie") === "motie" || i.category === "amendement")
       );
     } else if (primaryFilter === "mede-indiener") {
       subset = items.filter((i) => i.motionType === "mede-indiener");
     }
 
-    const voor = subset.filter((i) => i.vote === "voor").length;
-    const tegen = subset.filter((i) => i.vote === "tegen").length;
+    const voor = subset.filter((i) => !isIngetrokkenDoorToezegging(i) && i.vote === "voor").length;
+    const tegen = subset.filter((i) => !isIngetrokkenDoorToezegging(i) && i.vote === "tegen").length;
 
-    // Ingetrokken i.v.m. toezegging geldt voor eigen moties en eigen amendementen
+    // Ingetrokken door toezegging geldt voor eigen moties en eigen amendementen
     const ingetrokkenSubset =
       primaryFilter === "eigen-moties"
-        ? items.filter((i) => (i.category || "motie") === "motie" && i.motionType === "eigen")
+        ? items.filter(
+            (i) => (i.category || "motie") === "motie" && (i.motionType === "eigen" || isIngetrokkenDoorToezegging(i))
+          )
         : primaryFilter === "eigen-amendementen"
-        ? items.filter((i) => i.category === "amendement" && i.motionType === "eigen")
+        ? items.filter(
+            (i) => i.category === "amendement" && (i.motionType === "eigen" || isIngetrokkenDoorToezegging(i))
+          )
         : items.filter(
-            (i) => i.motionType === "eigen" && ((i.category || "motie") === "motie" || i.category === "amendement")
+            (i) =>
+              (i.motionType === "eigen" || isIngetrokkenDoorToezegging(i)) &&
+              ((i.category || "motie") === "motie" || i.category === "amendement")
           );
-    const ingetrokkenToezegging = ingetrokkenSubset.filter((i) => i.vote === "ingetrokken-toezegging").length;
+    const ingetrokkenToezegging = ingetrokkenSubset.filter((i) => isIngetrokkenDoorToezegging(i)).length;
 
     return {
       alleStemmingen,
@@ -413,7 +431,7 @@ export const StemgedragSection: React.FC = () => {
           </div>
         </div>
 
-        {/* Combined Vote Selection Bar: Voor, Tegen, en Ingetrokken i.v.m. toezegging */}
+        {/* Combined Vote Selection Bar: Voor, Tegen, en Ingetrokken door toezegging */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-border/60">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mr-1">
@@ -458,7 +476,7 @@ export const StemgedragSection: React.FC = () => {
               </span>
             </button>
 
-            {/* INGETROKKEN I.V.M. TOEZEGGING knop (toggle, selecteert automatisch Eigen moties & Eigen amendementen) */}
+            {/* INGETROKKEN DOOR TOEZEGGING knop (toggle, selecteert automatisch Eigen moties & Eigen amendementen) */}
             <button
               id="filter-ingetrokken-toezegging"
               type="button"
@@ -468,10 +486,10 @@ export const StemgedragSection: React.FC = () => {
                   ? "bg-sky-600 text-white shadow-sm ring-2 ring-sky-500/30"
                   : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground border border-border/60"
               }`}
-              title="Filter op eigen moties en eigen amendementen die zijn ingetrokken na een toezegging van de wethouder"
+              title="Filter op eigen moties en eigen amendementen die zijn ingetrokken door toezegging van de wethouder"
             >
               <Handshake className="w-3.5 h-3.5 text-sky-200" />
-              <span>Ingetrokken i.v.m. toezegging</span>
+              <span>Ingetrokken door toezegging</span>
               <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${voteFilter === "ingetrokken-toezegging" ? "bg-white/20 text-white" : "bg-background/80 text-muted-foreground"}`}>
                 {counts.ingetrokkenToezegging}
               </span>
@@ -497,7 +515,7 @@ export const StemgedragSection: React.FC = () => {
           <div className="text-[11px] text-muted-foreground">
             {voteFilter === "ingetrokken-toezegging" && (
               <span className="text-foreground font-medium">
-                Toont eigen moties &amp; eigen amendementen die zijn ingetrokken na een toezegging van de wethouder (geen stemming).
+                Toont eigen moties &amp; eigen amendementen met status &apos;Ingetrokken door toezegging&apos; (geen stemming).
               </span>
             )}
             {primaryFilter === "alle-moties" && voteFilter === "all" && (
@@ -548,7 +566,7 @@ export const StemgedragSection: React.FC = () => {
                     ? "Voor gestemd"
                     : voteFilter === "tegen"
                     ? "Tegen gestemd"
-                    : "Ingetrokken i.v.m. toezegging"}
+                    : "Ingetrokken door toezegging"}
                 </span>
               </span>
             )}
@@ -604,13 +622,16 @@ export const StemgedragSection: React.FC = () => {
       {!loading && filteredItems.length > 0 && (
         <div className="space-y-6">
           {currentItems.map((item) => {
-            const isVoor = item.vote === "voor";
-            const isIngetrokkenToezegging = item.vote === "ingetrokken-toezegging";
-            const isEigen = item.motionType === "eigen";
-            const isMedeIndiener = item.motionType === "mede-indiener";
+            const isIngetrokkenToezegging = isIngetrokkenDoorToezegging(item);
+            const isVoor = !isIngetrokkenToezegging && item.vote === "voor";
+            const isEigen = item.motionType === "eigen" || isIngetrokkenToezegging;
+            const isMedeIndiener = !isEigen && item.motionType === "mede-indiener";
             const itemCategory = item.category || "motie";
             const originalButtonLabel = getOriginalButtonLabel(itemCategory);
             const categoryBadge = getCategoryBadgeLabel(itemCategory);
+            const displayResultaat = item.resultaat
+              ? item.resultaat.replace(/Ingetrokken\s+i\.?v\.?m\.?\s+toezegging/gi, "Ingetrokken door toezegging")
+              : "";
 
             // Fallback image if no specific photo was uploaded
             const displayImageUrl = item.imageUrl || "/assets/markt-steenwijk.jpg";
@@ -659,11 +680,11 @@ export const StemgedragSection: React.FC = () => {
                       {/* Bovenste rij met stemstatus (voor/tegen/ingetrokken), type indiening en datum */}
                       <div className="flex flex-wrap items-center justify-between gap-2.5 mb-4">
                         <div className="flex flex-wrap items-center gap-2">
-                          {/* Stemming: VOOR, TEGEN of INGETROKKEN I.V.M. TOEZEGGING */}
+                          {/* Stemming: VOOR, TEGEN of INGETROKKEN DOOR TOEZEGGING */}
                           {isIngetrokkenToezegging ? (
                             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30">
                               <Handshake className="w-4 h-4 stroke-[2.2]" />
-                              <span>Ingetrokken i.v.m. toezegging</span>
+                              <span>Ingetrokken door toezegging</span>
                             </span>
                           ) : isVoor ? (
                             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
@@ -718,11 +739,11 @@ export const StemgedragSection: React.FC = () => {
                       </h3>
 
                       {/* Uitslag raadsvergadering indien ingevuld */}
-                      {item.resultaat && (
+                      {displayResultaat && (
                         <div className="mb-3 text-xs text-muted-foreground flex items-center gap-1.5">
                           <span className="font-medium text-foreground">Besluit gemeenteraad:</span>
                           <span className="bg-muted/70 px-2 py-0.5 rounded font-semibold text-foreground border border-border/60">
-                            {item.resultaat}
+                            {displayResultaat}
                           </span>
                         </div>
                       )}
@@ -732,7 +753,7 @@ export const StemgedragSection: React.FC = () => {
                         <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                           <span>
                             {isIngetrokkenToezegging
-                              ? "Toelichting bij intrekking & toezegging door de wethouder"
+                              ? "Ingetrokken door toezegging"
                               : `Waarom heeft Lijst van Andel ${isVoor ? "voor" : "tegen"} gestemd?`}
                           </span>
                         </div>

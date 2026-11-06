@@ -11,12 +11,25 @@ export interface StemgedragItem {
   description: string; // maximaal 600 tekens
   date: string;
   raadsvergadering?: string;
-  resultaat?: string; // bijv. "Aangenomen", "Verworpen", "Ingetrokken i.v.m. toezegging"
+  resultaat?: string; // bijv. "Aangenomen", "Verworpen", "Ingetrokken door toezegging"
   imageUrl?: string;
   pdfUrl?: string;
   pdfFileName?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export function isIngetrokkenDoorToezegging(item?: Partial<StemgedragItem> | null): boolean {
+  if (!item) return false;
+  const rawVote = String(item.vote || "").toLowerCase();
+  if (rawVote === "ingetrokken-toezegging" || rawVote === "ingetrokken-door-toezegging" || rawVote === "ingetrokken") {
+    return true;
+  }
+  const rawResultaat = String(item.resultaat || "").toLowerCase();
+  if (rawResultaat.includes("ingetrokken") && rawResultaat.includes("toezegging")) {
+    return true;
+  }
+  return false;
 }
 
 export type PrimaryFilter =
@@ -41,5 +54,6 @@ export type StemgedragFilter =
   | "voorstel"
   | "amendement"
   | PrimaryFilter;
+
 
 

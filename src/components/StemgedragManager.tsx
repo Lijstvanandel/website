@@ -27,7 +27,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { StemgedragItem, MotionType, VoteType, MotionCategory } from "@/types/stemgedrag";
+import { StemgedragItem, MotionType, VoteType, MotionCategory, isIngetrokkenDoorToezegging } from "@/types/stemgedrag";
 
 interface StemgedragManagerProps {
   token: string | null;
@@ -110,15 +110,22 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
   };
 
   const handleEditClick = (item: StemgedragItem) => {
+    const itemIngetrokken = isIngetrokkenDoorToezegging(item);
     setEditingId(item.id);
     setTitle(item.title || "");
     setCategory(item.category || "motie");
-    setMotionType(item.motionType || "regulier");
-    setVote(item.vote || "voor");
+    setMotionType(itemIngetrokken ? "eigen" : (item.motionType || "regulier"));
+    setVote(itemIngetrokken ? "ingetrokken-toezegging" : (item.vote || "voor"));
     setDescription(item.description || "");
     setDate(item.date || new Date().toISOString().split("T")[0]);
     setRaadsvergadering(item.raadsvergadering || "");
-    setResultaat(item.resultaat || "");
+    setResultaat(
+      item.resultaat
+        ? item.resultaat.replace(/Ingetrokken\s+i\.?v\.?m\.?\s+toezegging/gi, "Ingetrokken door toezegging")
+        : itemIngetrokken
+        ? "Ingetrokken door toezegging"
+        : ""
+    );
 
     setImageFile(null);
     setCurrentImageUrl(item.imageUrl || "");
@@ -140,11 +147,16 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
       if (category === "voorstel") {
         setCategory("motie");
       }
-      if (!resultaat.trim() || resultaat === "Aangenomen" || resultaat === "Verworpen") {
-        setResultaat("Ingetrokken i.v.m. toezegging");
+      if (
+        !resultaat.trim() ||
+        resultaat === "Aangenomen" ||
+        resultaat === "Verworpen" ||
+        /ingetrokken.*toezegging/i.test(resultaat)
+      ) {
+        setResultaat("Ingetrokken door toezegging");
       }
-    } else if (resultaat === "Ingetrokken i.v.m. toezegging") {
-      setResultaat("Aangenomen");
+    } else if (/ingetrokken.*toezegging/i.test(resultaat)) {
+      setResultaat(newVote === "voor" ? "Aangenomen" : "Verworpen");
     }
   };
 
@@ -196,6 +208,14 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
       vote === "ingetrokken-toezegging" && category === "voorstel" ? "motie" : category;
     const effectiveMotionType: MotionType =
       vote === "ingetrokken-toezegging" ? "eigen" : motionType;
+    const effectiveResultaat =
+      vote === "ingetrokken-toezegging" &&
+      (!resultaat.trim() ||
+        resultaat === "Aangenomen" ||
+        resultaat === "Verworpen" ||
+        /ingetrokken\s+i\.?v\.?m\.?\s+toezegging/i.test(resultaat))
+        ? "Ingetrokken door toezegging"
+        : resultaat.trim();
 
     try {
       setSubmitting(true);
@@ -207,7 +227,7 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
       formData.append("description", description.trim());
       formData.append("date", date);
       formData.append("raadsvergadering", raadsvergadering.trim());
-      formData.append("resultaat", resultaat.trim());
+      formData.append("resultaat", effectiveResultaat);
 
       if (imageFile) {
         formData.append("image", imageFile);
@@ -270,13 +290,14 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
   // Filtered list for display
   const filteredList = items.filter((item) => {
     const itemCat = item.category || "motie";
+    const itemIngetrokken = isIngetrokkenDoorToezegging(item);
     if (filterCategory !== "all" && itemCat !== filterCategory) return false;
 
-    if (filterType === "eigen" && item.motionType !== "eigen") return false;
+    if (filterType === "eigen" && item.motionType !== "eigen" && !itemIngetrokken) return false;
     if (filterType === "mede-indiener" && item.motionType !== "mede-indiener") return false;
-    if (filterType === "voor" && item.vote !== "voor") return false;
-    if (filterType === "tegen" && item.vote !== "tegen") return false;
-    if (filterType === "ingetrokken-toezegging" && item.vote !== "ingetrokken-toezegging") return false;
+    if (filterType === "voor" && (itemIngetrokken || item.vote !== "voor")) return false;
+    if (filterType === "tegen" && (itemIngetrokken || item.vote !== "tegen")) return false;
+    if (filterType === "ingetrokken-toezegging" && !itemIngetrokken) return false;
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
@@ -380,6 +401,9 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
                   setCategory("voorstel");
                   if (vote === "ingetrokken-toezegging") {
                     setVote("voor");
+                    if (/ingetrokken.*toezegging/i.test(resultaat)) {
+                      setResultaat("Aangenomen");
+                    }
                   }
                 }}
                 className={`py-2 px-3 rounded-md text-xs font-semibold transition-all flex items-center justify-center gap-2 ${
@@ -460,6 +484,9 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
                     setMotionType("mede-indiener");
                     if (vote === "ingetrokken-toezegging") {
                       setVote("voor");
+                      if (/ingetrokken.*toezegging/i.test(resultaat)) {
+                        setResultaat("Aangenomen");
+                      }
                     }
                   }}
                   className={`py-1.5 px-2 rounded text-xs font-semibold transition-all flex items-center justify-center gap-1 ${
@@ -478,6 +505,9 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
                     setMotionType("regulier");
                     if (vote === "ingetrokken-toezegging") {
                       setVote("voor");
+                      if (/ingetrokken.*toezegging/i.test(resultaat)) {
+                        setResultaat("Aangenomen");
+                      }
                     }
                   }}
                   className={`py-1.5 px-2 rounded text-xs font-semibold transition-all flex items-center justify-center gap-1 ${
@@ -499,7 +529,7 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
               </p>
             </div>
 
-            {/* 2. Onze Stem / Afdoening: VOOR, TEGEN of INGETROKKEN I.V.M. TOEZEGGING */}
+            {/* 2. Onze Stem / Afdoening: VOOR, TEGEN of INGETROKKEN DOOR TOEZEGGING */}
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
                 Stemkeuze / Afdoening Lijst van Andel
@@ -544,12 +574,12 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
                   }`}
                 >
                   <Handshake className="w-3.5 h-3.5" />
-                  <span>Ingetrokken i.v.m. toezegging</span>
+                  <span>Ingetrokken door toezegging</span>
                 </button>
               </div>
               <p className="text-[11px] text-muted-foreground mt-1">
                 {vote === "ingetrokken-toezegging"
-                  ? "Eigen motie/amendement ingetrokken na toezegging van de wethouder (geen stemming)."
+                  ? "Eigen motie/amendement ingetrokken door toezegging van de wethouder (geen stemming)."
                   : "Fractiestem tijdens de besluitvorming in de raad."}
               </p>
             </div>
@@ -595,7 +625,7 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
               </label>
               <Input
                 type="text"
-                placeholder="Bijv. Aangenomen, Verworpen of Ingetrokken i.v.m. toezegging"
+                placeholder="Bijv. Aangenomen, Verworpen of Ingetrokken door toezegging"
                 value={resultaat}
                 onChange={(e) => setResultaat(e.target.value)}
                 className="bg-background border-border text-sm"
@@ -822,11 +852,11 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
               className="h-9 text-xs rounded-md bg-background border border-border px-3 text-foreground"
             >
               <option value="all">Alle types ({items.length})</option>
-              <option value="eigen">Eigen indiening ({items.filter(i => i.motionType === 'eigen').length})</option>
-              <option value="mede-indiener">Mede-indiener ({items.filter(i => i.motionType === 'mede-indiener').length})</option>
-              <option value="voor">Voor gestemd ({items.filter(i => i.vote === 'voor').length})</option>
-              <option value="tegen">Tegen gestemd ({items.filter(i => i.vote === 'tegen').length})</option>
-              <option value="ingetrokken-toezegging">Ingetrokken i.v.m. toezegging ({items.filter(i => i.vote === 'ingetrokken-toezegging').length})</option>
+              <option value="eigen">Eigen indiening ({items.filter(i => i.motionType === 'eigen' || isIngetrokkenDoorToezegging(i)).length})</option>
+              <option value="mede-indiener">Mede-indiener ({items.filter(i => i.motionType === 'mede-indiener' && !isIngetrokkenDoorToezegging(i)).length})</option>
+              <option value="voor">Voor gestemd ({items.filter(i => !isIngetrokkenDoorToezegging(i) && i.vote === 'voor').length})</option>
+              <option value="tegen">Tegen gestemd ({items.filter(i => !isIngetrokkenDoorToezegging(i) && i.vote === 'tegen').length})</option>
+              <option value="ingetrokken-toezegging">Ingetrokken door toezegging ({items.filter(i => isIngetrokkenDoorToezegging(i)).length})</option>
             </select>
 
             <div className="relative w-48 sm:w-60">
@@ -854,11 +884,14 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
         ) : (
           <div className="grid grid-cols-1 gap-3.5">
             {filteredList.map((item) => {
-              const isVoor = item.vote === "voor";
-              const isIngetrokkenToezegging = item.vote === "ingetrokken-toezegging";
-              const isEigen = item.motionType === "eigen";
-              const isMede = item.motionType === "mede-indiener";
+              const isIngetrokkenToezegging = isIngetrokkenDoorToezegging(item);
+              const isVoor = !isIngetrokkenToezegging && item.vote === "voor";
+              const isEigen = item.motionType === "eigen" || isIngetrokkenToezegging;
+              const isMede = !isEigen && item.motionType === "mede-indiener";
               const itemCat = item.category || "motie";
+              const displayResultaat = item.resultaat
+                ? item.resultaat.replace(/Ingetrokken\s+i\.?v\.?m\.?\s+toezegging/gi, "Ingetrokken door toezegging")
+                : "";
 
               return (
                 <div
@@ -883,7 +916,7 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
 
                         {isIngetrokkenToezegging ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold uppercase bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30">
-                            <Handshake className="w-3 h-3" /> Ingetrokken i.v.m. toezegging
+                            <Handshake className="w-3 h-3" /> Ingetrokken door toezegging
                           </span>
                         ) : isVoor ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold uppercase bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
@@ -915,9 +948,9 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
                           <Calendar className="w-3 h-3 text-accent" /> {item.date}
                         </span>
 
-                        {item.resultaat && (
+                        {displayResultaat && (
                           <span className="text-xs text-muted-foreground bg-muted/60 px-2 py-0.5 rounded">
-                            Uitslag: {item.resultaat}
+                            Uitslag: {displayResultaat}
                           </span>
                         )}
                       </div>
