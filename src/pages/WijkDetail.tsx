@@ -53,6 +53,7 @@ import { useAuth } from "@/context/AuthContext";
 import { getSubdossierClientThumbnail } from "@/lib/dossierClientUtils";
 import { BUURTKAART_WIJKEN, LEGACY_SLUG_MAP } from "@/data/defaultWijken";
 import { FormattedMathText } from "@/utils/mathRenderer";
+import { getVideoThumbnail } from "@/lib/videoUtils";
 
 function formatSocialUrl(platform: string, value?: string): string | undefined {
   if (!value) return undefined;
@@ -96,7 +97,14 @@ const DEFAULT_CIJFERS = [
 interface WijkVideo {
   id: string;
   title: string;
+  burgerraadslidTitle?: string;
+  description?: string;
   videoUrl: string;
+  thumbnailUrl?: string;
+  posterJpgUrl?: string;
+  wijkSlug?: string;
+  personId?: string;
+  fractieledenIds?: string[];
   category?: string;
   date?: string;
 }
@@ -616,21 +624,48 @@ const WijkDetail = () => {
             title={`Video's over ${wijk.naam}`}
             ctaHref="#"
           >
-            {videos.map((v) => (
-              <CarouselItem key={v.id} className="md:basis-1/2 lg:basis-1/3">
-                <div className="bg-card border border-border h-full flex flex-col hover-lift overflow-hidden rounded-lg">
-                  <div className="aspect-video bg-black flex-shrink-0 relative overflow-hidden">
-                    <VideoPlayer url={v.videoUrl} title={v.title} className="w-full h-full" />
-                  </div>
-                  <div className="p-6 flex flex-col">
-                    <div className="text-[10px] uppercase tracking-widest text-accent mb-3">
-                      {v.category} • {v.date}
+            {videos.map((v) => {
+              const memberId = v.fractieledenIds?.[0] || v.personId;
+              const effectivePoster =
+                getVideoThumbnail(v.videoUrl, v.thumbnailUrl, v.id, memberId) ||
+                v.posterJpgUrl ||
+                `/uploads/thumbnails/video-${v.id}.webp`;
+
+              return (
+                <CarouselItem key={v.id} className="md:basis-1/2 lg:basis-1/3">
+                  <div className="bg-card border border-border h-full flex flex-col hover-lift overflow-hidden rounded-lg">
+                    <div className="aspect-video bg-black flex-shrink-0 relative overflow-hidden">
+                      <VideoPlayer
+                        url={v.videoUrl}
+                        title={v.burgerraadslidTitle || v.title}
+                        poster={effectivePoster}
+                        videoId={v.id}
+                        memberId={memberId}
+                        className="w-full h-full"
+                      />
                     </div>
-                    <h3 className="font-display text-xl mb-3 leading-snug">{v.title}</h3>
+                    <div className="p-6 flex flex-col flex-1 justify-between">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-widest text-accent mb-3">
+                          {v.category} • {v.date}
+                        </div>
+                        <h3 className="font-display text-xl mb-3 leading-snug">
+                          <Link to={`/video/${v.id}`} className="hover:text-accent transition-colors">
+                            {v.title}
+                          </Link>
+                        </h3>
+                      </div>
+                      <Link
+                        to={`/video/${v.id}`}
+                        className="text-xs text-accent hover:underline inline-flex items-center gap-1 mt-1"
+                      >
+                        Bekijk video <ArrowRight className="w-3 h-3" />
+                      </Link>
+                    </div>
                   </div>
-                </div>
-              </CarouselItem>
-            ))}
+                </CarouselItem>
+              );
+            })}
           </CarouselSection>
         )}
 

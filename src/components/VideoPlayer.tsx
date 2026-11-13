@@ -1,11 +1,14 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Play } from "lucide-react";
+import { getVideoThumbnailFallbackUrl } from "@/lib/videoUtils";
 
 interface VideoPlayerProps {
   url?: string;
   title?: string;
   className?: string;
   poster?: string;
+  videoId?: string;
+  memberId?: string;
 }
 
 function parseVideoUrl(rawUrl?: string): {
@@ -59,8 +62,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   title = "Video",
   className = "",
   poster,
+  videoId,
+  memberId,
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
+  const [activePoster, setActivePoster] = useState<string | undefined>(poster);
+  const [didFallback, setDidFallback] = useState(false);
+
+  useEffect(() => {
+    setActivePoster(poster);
+    setDidFallback(false);
+  }, [poster]);
+
   const { type, src } = parseVideoUrl(url);
 
   if (!src) {
@@ -74,7 +87,30 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Ultra-lightweight click-to-play facade: eliminates 10MB+ video buffering overhead on page load
   if (!isPlaying) {
-    const webpPoster = poster && !poster.startsWith("/api/") ? poster.replace(/\.(jpg|jpeg|png)$/i, ".webp") : undefined;
+    const webpPoster =
+      !didFallback &&
+      activePoster &&
+      !activePoster.startsWith("/api/") &&
+      /\.(jpg|jpeg|png)(\?.*)?$/i.test(activePoster)
+        ? activePoster.replace(/\.(jpg|jpeg|png)(\?.*)?$/i, ".webp$2")
+        : undefined;
+
+    const handlePosterError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+      const currentSrc = activePoster || (e.currentTarget && e.currentTarget.src) || "";
+      if (videoId) {
+        const nextSrc = getVideoThumbnailFallbackUrl(videoId, memberId, currentSrc);
+        if (nextSrc && nextSrc !== currentSrc) {
+          setDidFallback(true);
+          setActivePoster(nextSrc);
+          return;
+        }
+      }
+      if (currentSrc && !currentSrc.includes("/assets/markt-steenwijk.jpg")) {
+        setDidFallback(true);
+        setActivePoster("/assets/markt-steenwijk.jpg");
+      }
+    };
+
     return (
       <div
         className={`relative w-full h-full bg-black overflow-hidden group cursor-pointer select-none ${className}`}
@@ -89,16 +125,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }}
         aria-label={`Speel video af: ${title}`}
       >
-        {poster ? (
+        {activePoster ? (
           <picture className="w-full h-full">
             {webpPoster && <source srcSet={webpPoster} type="image/webp" />}
             <img
-              src={poster}
+              src={activePoster}
               alt={title}
               loading="lazy"
               decoding="async"
               width="640"
               height="360"
+              onError={handlePosterError}
               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 opacity-85 group-hover:opacity-100"
             />
           </picture>
