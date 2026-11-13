@@ -400,7 +400,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
   }
 
   // 6. Agenda detail: /agenda/:id
-  const agendaMatch = cleanPath.match(/^\/agenda\/([a-zA-Z0-9_-]+)$/);
+  const agendaMatch = cleanPath.match(/^\/agenda\/([a-zA-Z0-9_.-]+)$/);
   if (agendaMatch) {
     const eventId = agendaMatch[1].toLowerCase();
     const event = (db?.events || []).find((e: any) =>
@@ -410,8 +410,17 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
 
     if (event) {
       const cleanDesc = truncate(stripHtml(event.shortDescription || event.description || ""), 160);
-      const rawImage = event.thumbnailUrl || event.headerUrl || event.image || event.imageUrl || event.bannerUrl || event.fotoUrl;
-      const eventImage = resolveImageUrl(baseUrl, rawImage);
+      const rawImage =
+        event.thumbnailUrl ||
+        event.backgroundUrl ||
+        event.headerUrl ||
+        event.image ||
+        event.imageUrl ||
+        event.bannerUrl ||
+        event.fotoUrl ||
+        "/assets/markt-steenwijk.jpg";
+      const eventImage = `${baseUrl}/api/events/${encodeURIComponent(String(event.id))}/og-image.jpg`;
+      const resolvedFallbackImage = resolveImageUrl(baseUrl, rawImage);
       const title = `${event.title} | Agenda Lijst van Andel`;
 
       return {
@@ -424,7 +433,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
         ogImageWidth: 1200,
         ogImageHeight: 630,
         ogImageAlt: event.title,
-        ogType: "event",
+        ogType: "website",
         canonicalUrl,
         structuredData: {
           "@context": "https://schema.org",
@@ -455,7 +464,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
                   "addressCountry": "NL"
                 }
               },
-              "image": [eventImage],
+              "image": [eventImage, resolvedFallbackImage],
               "organizer": {
                 "@type": "PoliticalParty",
                 "name": "Lijst van Andel",

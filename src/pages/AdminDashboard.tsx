@@ -207,6 +207,8 @@ interface EventItem {
   isPublished: boolean;
   isCancelled?: boolean;
   thumbnailUrl?: string;
+  backgroundUrl?: string;
+  headerUrl?: string;
   nonMemberPrice?: number;
   ticketNotes?: string;
   locationHiddenUntil12h?: boolean;
@@ -563,6 +565,12 @@ export default function AdminDashboard() {
   const [ePublic, setEPublic] = useState(true);
   const [ePublish, setEPublish] = useState(true);
   const [eThumb, setEThumb] = useState<File | null>(null);
+  const [eBgImage, setEBgImage] = useState<File | null>(null);
+  const [eExistingThumbUrl, setEExistingThumbUrl] = useState<string>("");
+  const [eExistingBgUrl, setEExistingBgUrl] = useState<string>("");
+  const [eRemoveThumb, setERemoveThumb] = useState<boolean>(false);
+  const [eRemoveBg, setERemoveBg] = useState<boolean>(false);
+  const [eFileResetKey, setEFileResetKey] = useState<number>(0);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [eNonMemberPrice, setENonMemberPrice] = useState("0");
   const [eTicketNotes, setETicketNotes] = useState("");
@@ -1940,6 +1948,12 @@ export default function AdminDashboard() {
     setETicketNotes(ev.ticketNotes || "");
     setELocationHiddenUntil12h(ev.locationHiddenUntil12h !== false);
     setEThumb(null);
+    setEBgImage(null);
+    setEExistingThumbUrl(ev.thumbnailUrl || "");
+    setEExistingBgUrl(ev.backgroundUrl || ev.headerUrl || "");
+    setERemoveThumb(false);
+    setERemoveBg(false);
+    setEFileResetKey((k) => k + 1);
     window.scrollTo({ top: 350, behavior: "smooth" });
   };
 
@@ -1958,6 +1972,12 @@ export default function AdminDashboard() {
     setETicketNotes("");
     setELocationHiddenUntil12h(true);
     setEThumb(null);
+    setEBgImage(null);
+    setEExistingThumbUrl("");
+    setEExistingBgUrl("");
+    setERemoveThumb(false);
+    setERemoveBg(false);
+    setEFileResetKey((k) => k + 1);
   };
 
   const submitEvent = async (e: React.FormEvent) => {
@@ -1975,7 +1995,16 @@ export default function AdminDashboard() {
     formData.append("nonMemberPrice", eNonMemberPrice || "0");
     formData.append("ticketNotes", eTicketNotes);
     formData.append("locationHiddenUntil12h", String(eLocationHiddenUntil12h));
-    if (eThumb) formData.append("thumbnail", eThumb);
+    if (eThumb) {
+      formData.append("thumbnail", eThumb);
+    } else if (eRemoveThumb) {
+      formData.append("removeThumbnail", "true");
+    }
+    if (eBgImage) {
+      formData.append("backgroundImage", eBgImage);
+    } else if (eRemoveBg) {
+      formData.append("removeBackgroundImage", "true");
+    }
 
     try {
       const url = editingEventId ? `/api/admin/events/${editingEventId}` : "/api/admin/events";
@@ -5348,20 +5377,106 @@ export default function AdminDashboard() {
                   </p>
                 </div>
 
-                <div>
-                  <label className="text-sm font-medium mb-1 block">
-                    Thumbnail / Achtergrondfoto
-                  </label>
-                  <Input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => setEThumb(e.target.files?.[0] || null)}
-                  />
-                  <p className="text-[11px] text-muted-foreground mt-1">
-                    {editingEventId
-                      ? "Laat leeg om de huidige afbeelding te behouden. Wordt getoond als thumbnail en als achtergrondfoto op de detailpagina."
-                      : "Wordt getoond als thumbnail op /Agenda en als achtergrondfoto bovenaan de evenementpagina."}
-                  </p>
+                <div key={eFileResetKey} className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">
+                      Thumbnail afbeelding (overzicht &amp; delen)
+                    </label>
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        setEThumb(file);
+                        if (file) setERemoveThumb(false);
+                      }}
+                    />
+                    {editingEventId && eExistingThumbUrl && !eRemoveThumb && !eThumb && (
+                      <div className="mt-2 flex items-center gap-2 p-2 rounded-lg bg-muted/40 border border-border">
+                        <img
+                          src={eExistingThumbUrl}
+                          alt="Huidige thumbnail"
+                          className="w-12 h-9 rounded object-cover shrink-0 border border-border"
+                        />
+                        <span className="text-[11px] text-muted-foreground truncate flex-1">
+                          Huidige thumbnail actief
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setERemoveThumb(true)}
+                          className="text-[11px] text-red-500 hover:underline font-medium shrink-0"
+                        >
+                          Verwijder
+                        </button>
+                      </div>
+                    )}
+                    {eRemoveThumb && !eThumb && (
+                      <div className="mt-2 flex items-center justify-between text-[11px] text-amber-600 bg-amber-500/10 border border-amber-500/20 rounded-md px-2.5 py-1.5">
+                        <span>Thumbnail wordt verwijderd bij opslaan.</span>
+                        <button
+                          type="button"
+                          onClick={() => setERemoveThumb(false)}
+                          className="underline font-semibold"
+                        >
+                          Herstellen
+                        </button>
+                      </div>
+                    )}
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      {editingEventId
+                        ? "Laat leeg om de huidige thumbnail te behouden. Wordt gebruikt op /Agenda, bij delen en als standaard achtergrond als er geen aparte achtergrondafbeelding is."
+                        : "Wordt getoond op /Agenda, bij sociale media delen en als achtergrondfoto indien geen aparte achtergrondafbeelding is gekozen."}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">
+                      Achtergrondafbeelding (optioneel, detailpagina)
+                    </label>
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        setEBgImage(file);
+                        if (file) setERemoveBg(false);
+                      }}
+                    />
+                    {editingEventId && eExistingBgUrl && !eRemoveBg && !eBgImage && (
+                      <div className="mt-2 flex items-center gap-2 p-2 rounded-lg bg-muted/40 border border-border">
+                        <img
+                          src={eExistingBgUrl}
+                          alt="Huidige achtergrondafbeelding"
+                          className="w-12 h-9 rounded object-cover shrink-0 border border-border"
+                        />
+                        <span className="text-[11px] text-muted-foreground truncate flex-1">
+                          Aparte achtergrond actief
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setERemoveBg(true)}
+                          className="text-[11px] text-red-500 hover:underline font-medium shrink-0"
+                        >
+                          Verwijder
+                        </button>
+                      </div>
+                    )}
+                    {eRemoveBg && !eBgImage && (
+                      <div className="mt-2 flex items-center justify-between text-[11px] text-amber-600 bg-amber-500/10 border border-amber-500/20 rounded-md px-2.5 py-1.5">
+                        <span>Achtergrondafbeelding wordt verwijderd (valt terug op thumbnail).</span>
+                        <button
+                          type="button"
+                          onClick={() => setERemoveBg(false)}
+                          className="underline font-semibold"
+                        >
+                          Herstellen
+                        </button>
+                      </div>
+                    )}
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Optioneel: wordt getoond als banner bovenaan de detailpagina. Is er geen achtergrondafbeelding geüpload? Dan gebruikt de detailpagina automatisch de thumbnail.
+                    </p>
+                  </div>
                 </div>
 
                 <div className="grid sm:grid-cols-2 gap-4 p-3 bg-muted/40 rounded-xl border border-border">

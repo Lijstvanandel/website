@@ -17,6 +17,8 @@ export interface EventItem {
   coords?: [number, number];
   image?: string;
   thumbnailUrl?: string;
+  backgroundUrl?: string;
+  headerUrl?: string;
   ticketUrl?: string;
   isPublic?: boolean;
   isPublished?: boolean;

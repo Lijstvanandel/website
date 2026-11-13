@@ -61,6 +61,8 @@ export interface EventDetailItem {
   lat?: number;
   lng?: number;
   thumbnailUrl?: string;
+  backgroundUrl?: string;
+  headerUrl?: string;
   image?: string;
   attendees?: string[];
   isPrivateForUser?: boolean;
@@ -358,7 +360,12 @@ export default function AgendaDetail() {
     : "";
 
   const capitalizedDate = formattedDate ? formattedDate.charAt(0).toUpperCase() + formattedDate.slice(1) : "";
-  const heroImage = event.thumbnailUrl || event.image || "/assets/markt-steenwijk.jpg";
+  const heroImage =
+    event.backgroundUrl ||
+    event.headerUrl ||
+    event.thumbnailUrl ||
+    event.image ||
+    "/assets/markt-steenwijk.jpg";
   const nonMemberPrice = event.nonMemberPrice || 0;
   const isLocationReleased = Boolean(event.locationStatus?.isReleased);
 
@@ -960,7 +967,7 @@ export default function AgendaDetail() {
         title={`${event.title} | Agenda Lijst van Andel`}
         description={event.shortDescription || (event.description ? event.description.replace(/<[^>]*>/g, '').slice(0, 160) : "")}
         url={currentUrl}
-        imageUrl={event.thumbnailUrl || event.image || event.headerUrl}
+        imageUrl={event.thumbnailUrl || event.backgroundUrl || event.headerUrl || event.image}
       />
 
       {/* Guest Event Registration Modal (Pop-up without requiring an account) */}

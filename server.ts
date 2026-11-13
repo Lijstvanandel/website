@@ -9276,6 +9276,160 @@ async function startServer() {
     res.json(sanitizedEvents);
   });
 
+  const eventOgImageCache = new Map<string, { buffer: Buffer; cacheKey: string; timestamp: number }>();
+
+  app.get(["/api/events/:id/og-image.jpg", "/api/events/:id/og-image"], async (req: any, res: any) => {
+    try {
+      const db = getDb();
+      const targetId = String(req.params.id || "").toLowerCase();
+      const ev = (db.events || []).find(
+        (e: any) => String(e.id).toLowerCase() === targetId || (e.slug && String(e.slug).toLowerCase() === targetId)
+      );
+
+      const rawTarget = (
+        ev?.thumbnailUrl ||
+        ev?.backgroundUrl ||
+        ev?.headerUrl ||
+        ev?.image ||
+        ev?.imageUrl ||
+        ev?.bannerUrl ||
+        ev?.fotoUrl ||
+        "/assets/markt-steenwijk.jpg"
+      ).trim();
+
+      const cacheKey = `${ev?.id || targetId}::${rawTarget}`;
+      const cached = eventOgImageCache.get(String(ev?.id || targetId));
+      if (cached && cached.cacheKey === cacheKey && Date.now() - cached.timestamp < 3600 * 1000 * 24) {
+        res.setHeader("Content-Type", "image/jpeg");
+        res.setHeader("Content-Length", cached.buffer.length);
+        res.setHeader("Cache-Control", "public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400");
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        return res.send(cached.buffer);
+      }
+
+      let inputBuffer: Buffer | null = null;
+
+      if (rawTarget.startsWith("http://") || rawTarget.startsWith("https://")) {
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 4000);
+          const response = await fetch(rawTarget, {
+            signal: controller.signal,
+            headers: { "User-Agent": "LijstVanAndel-OGBot/1.0" },
+          });
+          clearTimeout(timeout);
+          if (response.ok) {
+            const arr = await response.arrayBuffer();
+            inputBuffer = Buffer.from(arr);
+          }
+        } catch (fetchErr) {
+          console.warn("[EVENT OG IMAGE] Kon externe afbeelding niet downloaden:", rawTarget, fetchErr);
+        }
+      }
+
+      if (!inputBuffer && rawTarget) {
+        const cleanPath = rawTarget.split("?")[0].replace(/^\/+/, "").replace(/\.\./g, "");
+        const baseName = path.basename(cleanPath);
+        const subdirs = ["events", "news", "wijken", "fractieleden", "videos", "documents"];
+
+        const candidatePaths = [
+          path.join(process.cwd(), "public", cleanPath),
+          path.join(process.cwd(), "dist", cleanPath),
+          path.join(process.cwd(), cleanPath),
+          path.join(process.cwd(), "public", "assets", baseName),
+          path.join(process.cwd(), "dist", "assets", baseName),
+          path.join(process.cwd(), "public", "uploads", baseName),
+          path.join(process.cwd(), "dist", "uploads", baseName),
+        ];
+
+        for (const sub of subdirs) {
+          candidatePaths.push(path.join(process.cwd(), "public", "uploads", sub, baseName));
+          candidatePaths.push(path.join(process.cwd(), "dist", "uploads", sub, baseName));
+        }
+
+        for (const p of candidatePaths) {
+          if (fs.existsSync(p) && fs.statSync(p).isFile()) {
+            inputBuffer = fs.readFileSync(p);
+            break;
+          }
+        }
+      }
+
+      if (!inputBuffer) {
+        const defaultCandidates = [
+          path.join(process.cwd(), "public", "assets", "markt-steenwijk.jpg"),
+          path.join(process.cwd(), "dist", "assets", "markt-steenwijk.jpg"),
+          path.join(process.cwd(), "public", "assets", "hero-banner.jpg"),
+          path.join(process.cwd(), "public", "apple-touch-icon.png"),
+        ];
+        for (const p of defaultCandidates) {
+          if (fs.existsSync(p) && fs.statSync(p).isFile()) {
+            inputBuffer = fs.readFileSync(p);
+            break;
+          }
+        }
+      }
+
+      let finalBuffer: Buffer;
+      const sharpLib = await getSafeSharp();
+
+      if (inputBuffer) {
+        if (sharpLib) {
+          try {
+            finalBuffer = await sharpLib(inputBuffer)
+              .resize(1200, 630, {
+                fit: "cover",
+                position: "center",
+              })
+              .flatten({ background: { r: 15, g: 23, b: 42 } })
+              .jpeg({
+                quality: 82,
+                progressive: true,
+                mozjpeg: true,
+              })
+              .toBuffer();
+          } catch {
+            finalBuffer = inputBuffer;
+          }
+        } else {
+          finalBuffer = inputBuffer;
+        }
+      } else if (sharpLib) {
+        finalBuffer = await sharpLib({
+          create: {
+            width: 1200,
+            height: 630,
+            channels: 3,
+            background: { r: 15, g: 23, b: 42 },
+          },
+        })
+          .jpeg({ quality: 82 })
+          .toBuffer();
+      } else {
+        finalBuffer = Buffer.from("");
+      }
+
+      if (eventOgImageCache.size > 200) {
+        const firstKey = eventOgImageCache.keys().next().value;
+        if (firstKey) eventOgImageCache.delete(firstKey);
+      }
+      eventOgImageCache.set(String(ev?.id || targetId), {
+        buffer: finalBuffer,
+        cacheKey,
+        timestamp: Date.now(),
+      });
+
+      res.setHeader("Content-Type", "image/jpeg");
+      res.setHeader("Content-Length", finalBuffer.length);
+      res.setHeader("Cache-Control", "public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400");
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      return res.send(finalBuffer);
+    } catch (err) {
+      console.error("[EVENT OG IMAGE FOUT]:", err);
+      res.status(500).send("Fout bij genereren van evenement preview afbeelding");
+    }
+  });
+
   app.get("/api/events/:id", (req: any, res: any) => {
     const db = getDb();
     let isMember = false;
@@ -9348,7 +9502,10 @@ async function startServer() {
     res.json(db.events);
   });
 
-  app.post("/api/admin/events", requireAuth, requireAdmin, upload.single('thumbnail'), (req: any, res: any) => {
+  app.post("/api/admin/events", requireAuth, requireAdmin, upload.fields([
+    { name: 'thumbnail', maxCount: 1 },
+    { name: 'backgroundImage', maxCount: 1 },
+  ]), (req: any, res: any) => {
     const db = getDb();
     const {
       title,
@@ -9366,7 +9523,14 @@ async function startServer() {
       ticketNotes,
       locationHiddenUntil12h
     } = req.body;
-    const thumbnailUrl = req.file ? `/uploads/events/${req.file.filename}` : '';
+    const files = (req.files as { [fieldname: string]: Express.Multer.File[] }) || {};
+    const thumbFile = files?.['thumbnail']?.[0] || req.file;
+    const bgFile = files?.['backgroundImage']?.[0];
+    if (thumbFile) mirrorUploadToDist(path.join("uploads", "events", thumbFile.filename));
+    if (bgFile) mirrorUploadToDist(path.join("uploads", "events", bgFile.filename));
+
+    const thumbnailUrl = thumbFile ? `/uploads/events/${thumbFile.filename}` : '';
+    const backgroundUrl = bgFile ? `/uploads/events/${bgFile.filename}` : '';
     
     const parsedPrice = nonMemberPrice !== undefined && nonMemberPrice !== "" ? Math.max(0, parseFloat(nonMemberPrice) || 0) : 0;
 
@@ -9388,6 +9552,7 @@ async function startServer() {
       lat: lat ? parseFloat(lat) : undefined,
       lng: lng ? parseFloat(lng) : undefined,
       thumbnailUrl,
+      backgroundUrl,
       attendees: [],
       createdAt: new Date().toISOString()
     };
@@ -9488,7 +9653,10 @@ async function startServer() {
     }
   });
 
-  app.put("/api/admin/events/:id", requireAuth, requireAdmin, upload.single('thumbnail'), (req: any, res: any) => {
+  app.put("/api/admin/events/:id", requireAuth, requireAdmin, upload.fields([
+    { name: 'thumbnail', maxCount: 1 },
+    { name: 'backgroundImage', maxCount: 1 },
+  ]), (req: any, res: any) => {
     const db = getDb();
     const ev = db.events.find((e: any) => e.id === req.params.id);
     if (!ev) return res.status(404).json({ error: "Evenement niet gevonden" });
@@ -9508,7 +9676,9 @@ async function startServer() {
       lng,
       nonMemberPrice,
       ticketNotes,
-      locationHiddenUntil12h
+      locationHiddenUntil12h,
+      removeThumbnail,
+      removeBackgroundImage
     } = req.body;
 
     if (title !== undefined) ev.title = title;
@@ -9526,16 +9696,33 @@ async function startServer() {
     if (locationHiddenUntil12h !== undefined) ev.locationHiddenUntil12h = locationHiddenUntil12h === 'true' || locationHiddenUntil12h === true;
     if (lat !== undefined && lat !== "") ev.lat = parseFloat(lat);
     if (lng !== undefined && lng !== "") ev.lng = parseFloat(lng);
-    if (req.file) {
-      ev.thumbnailUrl = `/uploads/events/${req.file.filename}`;
+
+    const files = (req.files as { [fieldname: string]: Express.Multer.File[] }) || {};
+    const thumbFile = files?.['thumbnail']?.[0] || req.file;
+    const bgFile = files?.['backgroundImage']?.[0];
+
+    if (thumbFile) {
+      mirrorUploadToDist(path.join("uploads", "events", thumbFile.filename));
+      ev.thumbnailUrl = `/uploads/events/${thumbFile.filename}`;
+    } else if (removeThumbnail === 'true' || removeThumbnail === true) {
+      ev.thumbnailUrl = '';
     }
-    
+
+    if (bgFile) {
+      mirrorUploadToDist(path.join("uploads", "events", bgFile.filename));
+      ev.backgroundUrl = `/uploads/events/${bgFile.filename}`;
+    } else if (removeBackgroundImage === 'true' || removeBackgroundImage === true) {
+      ev.backgroundUrl = '';
+    }
+
+    eventOgImageCache.delete(String(ev.id));
     saveDb(db);
     res.json(ev);
   });
 
   app.delete("/api/admin/events/:id", requireAuth, requireAdmin, (req: any, res: any) => {
     const db = getDb();
+    eventOgImageCache.delete(String(req.params.id));
     db.events = db.events.filter((e: any) => e.id !== req.params.id);
     saveDb(db);
     res.json({ message: "Evenement verwijderd" });

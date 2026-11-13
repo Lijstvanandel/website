@@ -129,7 +129,7 @@ export default function Agenda() {
       title: `${event.title} | Agenda Lijst van Andel`,
       description: cleanDesc,
       url,
-      imageUrl: event.thumbnailUrl || event.headerUrl || event.image,
+      imageUrl: event.thumbnailUrl || event.backgroundUrl || event.headerUrl || event.image,
     });
     setShareDialogOpen(true);
   };
@@ -238,8 +238,12 @@ export default function Agenda() {
                 style={{ animationDelay: `${index * 100}ms` }}
               >
                 <div className="md:w-1/3 aspect-video md:aspect-auto bg-muted relative min-h-[200px]">
-                  {item.thumbnailUrl ? (
-                    <img src={item.thumbnailUrl} alt={item.title} className="w-full h-full object-cover" />
+                  {(item.thumbnailUrl || item.backgroundUrl || item.headerUrl || item.image) ? (
+                    <img
+                      src={item.thumbnailUrl || item.backgroundUrl || item.headerUrl || item.image}
+                      alt={item.title}
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-muted-foreground bg-secondary/40">
                       <Calendar className="w-12 h-12 opacity-20 text-accent" />
