@@ -9502,10 +9502,21 @@ async function startServer() {
     res.json(db.events);
   });
 
-  app.post("/api/admin/events", requireAuth, requireAdmin, upload.fields([
+  const uploadEventMedia = upload.fields([
     { name: 'thumbnail', maxCount: 1 },
     { name: 'backgroundImage', maxCount: 1 },
-  ]), (req: any, res: any) => {
+    { name: 'background', maxCount: 1 },
+    { name: 'header', maxCount: 1 },
+  ]);
+
+  app.post("/api/admin/events", requireAuth, requireAdmin, (req: any, res: any, next: any) => {
+    uploadEventMedia(req, res, (err: any) => {
+      if (err) {
+        return res.status(400).json({ error: `Fout bij uploaden van evenement-afbeelding: ${err.message}` });
+      }
+      next();
+    });
+  }, (req: any, res: any) => {
     const db = getDb();
     const {
       title,
@@ -9525,7 +9536,7 @@ async function startServer() {
     } = req.body;
     const files = (req.files as { [fieldname: string]: Express.Multer.File[] }) || {};
     const thumbFile = files?.['thumbnail']?.[0] || req.file;
-    const bgFile = files?.['backgroundImage']?.[0];
+    const bgFile = files?.['backgroundImage']?.[0] || files?.['background']?.[0] || files?.['header']?.[0];
     if (thumbFile) mirrorUploadToDist(path.join("uploads", "events", thumbFile.filename));
     if (bgFile) mirrorUploadToDist(path.join("uploads", "events", bgFile.filename));
 
@@ -9653,10 +9664,14 @@ async function startServer() {
     }
   });
 
-  app.put("/api/admin/events/:id", requireAuth, requireAdmin, upload.fields([
-    { name: 'thumbnail', maxCount: 1 },
-    { name: 'backgroundImage', maxCount: 1 },
-  ]), (req: any, res: any) => {
+  app.put("/api/admin/events/:id", requireAuth, requireAdmin, (req: any, res: any, next: any) => {
+    uploadEventMedia(req, res, (err: any) => {
+      if (err) {
+        return res.status(400).json({ error: `Fout bij uploaden van evenement-afbeelding: ${err.message}` });
+      }
+      next();
+    });
+  }, (req: any, res: any) => {
     const db = getDb();
     const ev = db.events.find((e: any) => e.id === req.params.id);
     if (!ev) return res.status(404).json({ error: "Evenement niet gevonden" });
@@ -9699,7 +9714,7 @@ async function startServer() {
 
     const files = (req.files as { [fieldname: string]: Express.Multer.File[] }) || {};
     const thumbFile = files?.['thumbnail']?.[0] || req.file;
-    const bgFile = files?.['backgroundImage']?.[0];
+    const bgFile = files?.['backgroundImage']?.[0] || files?.['background']?.[0] || files?.['header']?.[0];
 
     if (thumbFile) {
       mirrorUploadToDist(path.join("uploads", "events", thumbFile.filename));

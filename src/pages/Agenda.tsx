@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Calendar, MapPin, Clock, ArrowRight, BookOpen, Share2, Lock, CheckCircle2 } from "lucide-react";
+import { Calendar, MapPin, Clock, ArrowRight, BookOpen, Share2, Lock, CheckCircle2, History } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { AgendaMap, AgendaEventLocation } from "@/components/AgendaMap";
@@ -12,6 +12,7 @@ import { GuestEventRegistrationModal } from "@/components/GuestEventRegistration
 
 export default function Agenda() {
   const [events, setEvents] = useState<EventItem[]>([]);
+  const [showExpired, setShowExpired] = useState<boolean>(false);
   const [selectedEventId, setSelectedEventId] = useState<string | undefined>(undefined);
   const { isAuthenticated, token } = useAuth();
   const navigate = useNavigate();
@@ -38,7 +39,7 @@ export default function Agenda() {
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
-    fetch("/api/events", { headers })
+    fetch("/api/events?includeExpired=true", { headers })
       .then((res) => (res.ok ? res.json().catch(() => []) : []))
       .then((data) => {
         if (Array.isArray(data)) {
@@ -134,13 +135,19 @@ export default function Agenda() {
     setShareDialogOpen(true);
   };
 
-  // Filter out events with an expired date and sort soonest first
+  // Partition into upcoming (soonest first) and expired (most recent first)
   const upcomingEvents = events
     .filter((ev) => !isEventExpired(ev))
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
+  const expiredEvents = events
+    .filter((ev) => isEventExpired(ev))
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  const displayedEvents = showExpired ? [...upcomingEvents, ...expiredEvents] : upcomingEvents;
+
   // Convert events to map format
-  const mapEvents: AgendaEventLocation[] = upcomingEvents
+  const mapEvents: AgendaEventLocation[] = displayedEvents
     .filter((ev) => isAuthenticated || ev.isPublic)
     .map((ev) => ({
       id: ev.id,
@@ -174,7 +181,7 @@ export default function Agenda() {
           {/* Calendar View (Left side) */}
           <div className="lg:col-span-5 flex flex-col">
             <AgendaCalendar
-              events={upcomingEvents}
+              events={displayedEvents}
               selectedEventId={selectedEventId}
               onSelectEvent={(id) => {
                 setSelectedEventId(id);
@@ -197,32 +204,54 @@ export default function Agenda() {
         </div>
 
         {/* Events Heading */}
-        <div className="flex items-center justify-between mb-8 max-w-4xl mx-auto">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 max-w-4xl mx-auto">
           <div>
-            <h2 className="text-3xl font-display">Geplande Bijeenkomsten</h2>
+            <h2 className="text-3xl font-display">
+              {showExpired ? "Geplande & Verlopen Bijeenkomsten" : "Geplande Bijeenkomsten"}
+            </h2>
             <p className="text-xs text-muted-foreground mt-1">
               Klik op &quot;Bekijk op kaart&quot; om de locatie op de interactieve kaart hierboven te bekijken, of &quot;Lees meer&quot; voor alle details.
             </p>
           </div>
-          <div className="text-xs text-muted-foreground bg-secondary/80 px-3 py-1.5 rounded border border-border">
-            {upcomingEvents.length} {upcomingEvents.length === 1 ? "gepland evenement" : "geplande evenementen"}
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            <div className="text-xs text-muted-foreground bg-secondary/80 px-3 py-1.5 rounded border border-border">
+              {upcomingEvents.length} {upcomingEvents.length === 1 ? "gepland evenement" : "geplande evenementen"}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowExpired((prev) => !prev)}
+              aria-pressed={showExpired}
+              className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded border transition-colors cursor-pointer ${
+                showExpired
+                  ? "bg-accent text-accent-foreground border-accent shadow-sm"
+                  : "bg-card text-foreground border-border hover:bg-secondary/80"
+              }`}
+            >
+              <History className="w-3.5 h-3.5" />
+              {showExpired
+                ? `Verberg verlopen evenementen (${expiredEvents.length})`
+                : `Bekijk verlopen evenementen${expiredEvents.length > 0 ? ` (${expiredEvents.length})` : ""}`}
+            </button>
           </div>
         </div>
 
         {/* Events List */}
         <div className="grid gap-8 max-w-4xl mx-auto">
-          {upcomingEvents.length === 0 && (
+          {displayedEvents.length === 0 && (
             <div className="text-center py-16 bg-card border border-border rounded-xl text-muted-foreground">
               <Calendar className="w-12 h-12 mx-auto mb-3 opacity-25" />
               <p className="text-base font-medium">Geen geplande evenementen gevonden.</p>
               <p className="text-xs text-muted-foreground/80 mt-1">
-                Evenementen met een verlopen datum worden niet getoond. Kom binnenkort terug voor nieuwe data en bijeenkomsten.
+                {expiredEvents.length > 0 && !showExpired
+                  ? "Er zijn wel verlopen evenementen uit het verleden beschikbaar. Klik op 'Bekijk verlopen evenementen' om ze te tonen."
+                  : "Evenementen met een verlopen datum worden standaard niet getoond. Kom binnenkort terug voor nieuwe data en bijeenkomsten."}
               </p>
             </div>
           )}
 
-          {upcomingEvents.map((item, index) => {
+          {displayedEvents.map((item, index) => {
             const isSelected = selectedEventId === item.id;
+            const expired = isEventExpired(item);
             const previewText = item.shortDescription || (item.description ? item.description.replace(/<[^>]*>/g, '') : '');
             return (
               <div
@@ -231,6 +260,8 @@ export default function Agenda() {
                 className={`bg-card rounded-xl border ${
                   item.isCancelled
                     ? "border-red-500/50 opacity-80"
+                    : expired
+                    ? "border-border/70 opacity-90"
                     : isSelected
                     ? "border-accent ring-1 ring-accent"
                     : "border-border"
@@ -278,6 +309,11 @@ export default function Agenda() {
                     {item.isCancelled && (
                       <span className="px-2.5 py-1 bg-red-500/10 text-red-500 text-xs font-semibold uppercase tracking-wider rounded-full">
                         Gecanceld
+                      </span>
+                    )}
+                    {!item.isCancelled && expired && (
+                      <span className="px-2.5 py-1 bg-zinc-500/15 text-zinc-600 dark:text-zinc-400 text-xs font-semibold uppercase tracking-wider rounded-full">
+                        Verlopen
                       </span>
                     )}
                   </div>
@@ -328,9 +364,9 @@ export default function Agenda() {
                   <div className="mt-auto pt-2 flex flex-wrap items-center gap-2.5">
                     <button
                       onClick={() => handleAttend(item)}
-                      disabled={item.isCancelled}
+                      disabled={Boolean(item.isCancelled || (expired && !item.isAttending))}
                       className={`inline-flex items-center justify-center px-5 py-2.5 rounded-full font-semibold text-xs transition-all duration-300 ${
-                        item.isCancelled
+                        item.isCancelled || (expired && !item.isAttending)
                           ? "bg-muted text-muted-foreground cursor-not-allowed"
                           : item.isAttending
                           ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-md"
@@ -344,6 +380,8 @@ export default function Agenda() {
                           <CheckCircle2 className="mr-1.5 w-3.5 h-3.5" />
                           {item.ticketCode ? "Aangemeld (Bekijk Ticket)" : "Aanmelding Bevestigd"}
                         </>
+                      ) : expired ? (
+                        "Evenement Afgelopen"
                       ) : (
                         <>
                           Meld u aan
