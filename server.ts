@@ -118,7 +118,7 @@ import {
   importCouncilContributions,
   hydrateTopicsWithContributions,
 } from "./src/server/councilContributionVault.js";
-import { normalizeSubdossier } from "./src/server/taxonomyClassifier.js";
+import { normalizeSubdossier, WIJKEN_KERNEN_LIST } from "./src/server/taxonomyClassifier.js";
 import { indexUploadedFile } from "./src/server/documentTextExtractor.js";
 import {
   scrapeCouncilAgendas,
@@ -166,6 +166,8 @@ import {
   getRawMetadata,
   distributeSteenwijkerlandDossiers,
   invalidateDossierCache,
+  getScraperSourceBreakdown,
+  getMetadataVersion,
 } from "./src/server/dossierManager.js";
 import {
   compileSupportDossierForTopic,
@@ -14769,12 +14771,13 @@ Sitemap: ${baseUrl}/sitemap.xml
       const limit = Math.max(1, parseInt(req.query.limit || "12", 10));
 
       // Use cached dossier statistics to avoid expensive disk/metadata recalculations on every page/search request
-      const statsCacheKey = `steenwijkerland_${allDossiers.length}`;
+      const statsCacheKey = `steenwijkerland_${allDossiers.length}_${getMetadataVersion()}`;
       let cachedStatsEntry = dossierStatsCache.get(statsCacheKey);
       const now = Date.now();
 
       if (!cachedStatsEntry || (now - cachedStatsEntry.timestamp > 30000)) {
         const diskStats = countPhysicalFilesOnDisk();
+        const sourceBreakdown = getScraperSourceBreakdown();
         const masterMetadataList = getRawMetadata();
         const aiProcessedCount = masterMetadataList.filter(m => {
           if (!m) return false;
@@ -14817,6 +14820,7 @@ Sitemap: ${baseUrl}/sitemap.xml
             classifiedSuccessCount: aiProcessedCount,
             unclassifiedFailCount,
             totalDocumentLinks,
+            sourceBreakdown,
           },
         };
         dossierStatsCache.set(statsCacheKey, cachedStatsEntry);
@@ -14826,19 +14830,46 @@ Sitemap: ${baseUrl}/sitemap.xml
       const filtered = allDossiers
         .map((d) => {
           if (wijkSlug) {
-            const wijkClean = wijkSlug.replace(/-/g, " ").toLowerCase();
+            const canonicalSlug = LEGACY_SLUG_MAP[wijkSlug] || wijkSlug;
+            const wijkClean = canonicalSlug.replace(/-/g, " ").toLowerCase();
+            const wijkEntry = WIJKEN_KERNEN_LIST.find(
+              (w) => w.slug.toLowerCase() === canonicalSlug || w.slug.toLowerCase() === wijkSlug
+            );
+            const canonicalNameLower = wijkEntry ? wijkEntry.naam.toLowerCase() : wijkClean;
+            const matchTerms = Array.from(
+              new Set([
+                wijkClean,
+                canonicalNameLower,
+                ...(wijkEntry ? wijkEntry.aliases : []),
+              ])
+            )
+              .map((t) => t.toLowerCase().trim())
+              .filter((t) => t.length >= 3 && t !== "nederland");
+            const termRegexes = matchTerms.map(
+              (t) => new RegExp(`\\b${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i")
+            );
+
             const matchingDocs = (d.documents || []).filter((doc) => {
               const docWijk = (doc.wijk_of_kern || "").toLowerCase();
               const docTitle = (doc.titel || "").toLowerCase();
               const docEnt = (doc.entiteiten || []).join(" ").toLowerCase();
-              return (
-                (d.wijkSlug && d.wijkSlug.toLowerCase() === wijkSlug) ||
-                (d.wijkNaam && d.wijkNaam.toLowerCase() === wijkSlug) ||
-                (doc.wijken && doc.wijken.some((w) => w.toLowerCase().includes(wijkClean) || wijkClean.includes(w.toLowerCase()))) ||
-                docWijk.includes(wijkClean) ||
-                docTitle.includes(wijkClean) ||
-                docEnt.includes(wijkClean)
-              );
+              if (
+                (d.wijkSlug && (d.wijkSlug.toLowerCase() === wijkSlug || d.wijkSlug.toLowerCase() === canonicalSlug)) ||
+                (d.wijkNaam && d.wijkNaam.toLowerCase() === canonicalNameLower)
+              ) {
+                return true;
+              }
+              if (
+                doc.wijken &&
+                doc.wijken.some((w: string) => {
+                  const wl = w.toLowerCase().trim();
+                  return wl === canonicalNameLower || wl.includes(wijkClean) || wijkClean.includes(wl) || termRegexes.some((rx) => rx.test(wl));
+                })
+              ) {
+                return true;
+              }
+              const combinedDocMeta = `${docWijk} ${docTitle} ${docEnt}`;
+              return termRegexes.some((rx) => rx.test(combinedDocMeta));
             });
 
             if (matchingDocs.length === 0) {
@@ -16134,9 +16165,11 @@ Sitemap: ${baseUrl}/sitemap.xml
     try {
       const diskStats = countPhysicalFilesOnDisk();
       const metadata = getRawMetadata();
+      const sourceBreakdown = getScraperSourceBreakdown();
       res.json({
         success: true,
         diskStats,
+        sourceBreakdown,
         metadataCount: metadata.length,
         needsSync: diskStats.totalFiles > metadata.length,
       });

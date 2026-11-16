@@ -10,6 +10,7 @@ import {
   sanitizeCleanText,
   isCorruptOrHtmlGarbage,
 } from "./scraperContractValidator.js";
+import { registerPhysicalFileInCache, syncExternalScraperMetadataToMaster } from "./dossierManager.js";
 
 try {
   dns.setDefaultResultOrder("ipv4first");
@@ -653,6 +654,7 @@ export async function startWaterschapSync(): Promise<void> {
                   // ignore
                 }
                 localRelPath = `/uploads/documents/waterschap/${filename}`;
+                registerPhysicalFileInCache(`waterschap/${filename}`, publicFilePath, doc.fileSize);
                 syncState.savedDocuments++;
                 addLog(`[GEACCEPTEERD] (${classification.scope}) ${cleanTitle}`, "success");
               } else {
@@ -710,11 +712,16 @@ export async function startWaterschapSync(): Promise<void> {
     }
 
     saveWaterschapMetadata(Array.from(recordsMap.values()));
+    try {
+      await syncExternalScraperMetadataToMaster();
+    } catch (_syncErr) {
+      // ignore dossier merge warn
+    }
 
     syncState.isRunning = false;
     syncState.currentAction = "Voltooid";
     syncState.completedAt = new Date().toISOString();
-    addLog(`Synchronisatie Waterschap Drents Overijsselse Delta succesvol voltooid! ${syncState.savedDocuments} relevante bestanden opgeslagen. CSV bijgewerkt.`, "success");
+    addLog(`Synchronisatie Waterschap Drents Overijsselse Delta succesvol voltooid! ${syncState.savedDocuments} relevante bestanden opgeslagen en opgenomen in de dossiersystematiek.`, "success");
   } catch (err: any) {
     syncState.isRunning = false;
     syncState.currentAction = "Fout opgetreden";

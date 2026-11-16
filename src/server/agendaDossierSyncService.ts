@@ -9,32 +9,17 @@ import {
 import {
   normalizeHoofddossier,
   normalizeSubdossier,
+  detectWijkenKernen,
   CANONICAL_PRIMARY_SUBDOSSIERS,
   CanonicalHoofddossier,
 } from "./taxonomyClassifier.js";
-import type { RaadsstukMetadata, Dossier } from "../types/dossier.js";
-import type { CouncilAgendaTopic, CouncilDocument } from "../types/council.js";
-
-const STEENWIJKERLAND_KERNEN = [
-  "steenwijk", "giethoorn", "blokzijl", "vollenhove", "oldemarkt", "kuinre",
-  "willemsoord", "tuk", "ossenzijl", "sint jansklooster", "witte paarden",
-  "steenwijkerwold", "scheerwolde", "belt-schutsloot", "onna", "kalenberg"
-];
-
-function detectSteenwijkerlandWijk(title: string, desc = ""): string | null {
-  const combined = `${title} ${desc}`.toLowerCase();
-  for (const kern of STEENWIJKERLAND_KERNEN) {
-    const regex = new RegExp(`\\b${kern}\\b`, "i");
-    if (regex.test(combined)) {
-      return kern.charAt(0).toUpperCase() + kern.slice(1);
-    }
-  }
-  return null;
-}
+import { getCouncilDocumentContent } from "./documentTextExtractor.js";
+import type { RaadsstukMetadata } from "../types/dossier.js";
+import type { CouncilAgendaTopic } from "../types/council.js";
 
 const lastSyncStats = {
   lastSyncedAt: null as string | null,
-  steenwijkerland: { topics: 0, newDocsAdded: 0, totalDocs: 0 },
+  steenwijkerland: { topics: 0, newDocsAdded: 0, upgradedWijkenCount: 0, totalDocs: 0 },
   isRunning: false,
 };
 
@@ -44,12 +29,14 @@ export function getAgendaDossierSyncStatus() {
 
 /**
  * Synchronizes all scraped Steenwijkerland agenda documents into the master metadata
- * and distributes them across the 7 canonical hoofddossiers and relevant subdossiers.
+ * and distributes them across the 7 canonical hoofddossiers and relevant subdossiers,
+ * including full 42-wijk/kern detection (title, description, street aliases & PDF content).
  */
 export async function syncSteenwijkerlandAgendaToDossiers(): Promise<{
   success: boolean;
   topicsProcessed: number;
   newDocsAdded: number;
+  upgradedWijkenCount: number;
   totalMasterDocs: number;
 }> {
   const db = getDbFromSqlite();
@@ -59,19 +46,61 @@ export async function syncSteenwijkerlandAgendaToDossiers(): Promise<{
   if (!db.customSubdossiers) db.customSubdossiers = {};
 
   const masterList = getRawMetadata();
-  const existingFilesSet = new Set(masterList.map((m) => (m.bestandsnaam || "").toLowerCase().trim()));
-  const existingUrlsSet = new Set(masterList.map((m) => (m.bestand_url || "").toLowerCase().trim()).filter(Boolean));
-  const existingTitlesSet = new Set(masterList.map((m) => (m.titel || "").toLowerCase().trim()));
+  const byFileMap = new Map<string, RaadsstukMetadata>();
+  const byUrlMap = new Map<string, RaadsstukMetadata>();
+  const byTitleMap = new Map<string, RaadsstukMetadata>();
+
+  for (const item of masterList) {
+    if (!item) continue;
+    const fn = (item.bestandsnaam || "").toLowerCase().trim();
+    const url = (item.bestand_url || "").toLowerCase().trim();
+    const ttl = (item.titel || "").toLowerCase().trim();
+    if (fn) byFileMap.set(fn, item);
+    if (url) byUrlMap.set(url, item);
+    if (ttl) byTitleMap.set(ttl, item);
+  }
 
   let newDocsAdded = 0;
+  let upgradedWijkenCount = 0;
+  // Cap remote PDF downloads per sync cycle so startup & auto-sync remain fast
+  let pdfExtractBudget = 15;
+
+  const resolveWijkListForDoc = async (
+    docTitle: string,
+    topicTitle: string,
+    topicDesc: string,
+    docObj?: { id?: string; url?: string }
+  ): Promise<string[]> => {
+    // 1. Check document title + topic title + description across all 42 wijken/kernen & street aliases
+    let wijken = detectWijkenKernen(`${docTitle} ${topicTitle}`, "", topicDesc);
+    if (wijken.length > 0) return wijken;
+
+    // 2. Fall back to PDF content (cached disk shards & local PDFs first, bounded remote fetches)
+    if (docObj && (docObj.id || docObj.url) && pdfExtractBudget > 0) {
+      try {
+        pdfExtractBudget--;
+        const pdfText = await getCouncilDocumentContent({
+          id: docObj.id,
+          title: docTitle,
+          url: docObj.url,
+        });
+        if (pdfText && pdfText.trim().length > 0) {
+          wijken = detectWijkenKernen("", "", pdfText);
+          if (wijken.length > 0) return wijken;
+        }
+      } catch (_pdfErr) {
+        // Ignore transient PDF extraction failures during sync
+      }
+    }
+
+    return [];
+  };
 
   for (const topic of swlTopics) {
     const docs = Array.isArray(topic.documents) ? topic.documents : [];
-    if (docs.length === 0) continue;
-
     const topicTitle = (topic.title || "").trim();
     const topicDesc = (topic.description || "").trim();
-    const detectedWijk = detectSteenwijkerlandWijk(topicTitle, topicDesc);
+    const topicWijken = detectWijkenKernen(topicTitle, "", topicDesc);
 
     // Determine canonical hoofddossier
     const canonicalHoofd = normalizeHoofddossier(topicTitle, topicDesc, topic.category) as CanonicalHoofddossier;
@@ -91,13 +120,11 @@ export async function syncSteenwijkerlandAgendaToDossiers(): Promise<{
       canonicalHoofd,
       topicTitle,
       topicDesc,
-      detectedWijk || "",
+      topicWijken.join(", "),
       undefined,
       customSubs
     );
 
-    // If normalizeSubdossier defaulted to the primary generic subdossier and the topic title is specific,
-    // use the specific topic title as a dedicated subdossier to keep agenda topics cleanly organized
     const primaryGeneric = CANONICAL_PRIMARY_SUBDOSSIERS[canonicalHoofd];
     if ((subTitle === primaryGeneric || subTitle === "Algemeen") && cleanTopicTitle.length >= 6 && cleanTopicTitle.length <= 60) {
       subTitle = cleanTopicTitle;
@@ -115,14 +142,14 @@ export async function syncSteenwijkerlandAgendaToDossiers(): Promise<{
         hoofddossier: canonicalHoofd,
         description: `Officiële raadsvoorstellen en vergaderstukken rondom ${subTitle}.`,
         thumbnail: getSubdossierThumbnail(subTitle, canonicalHoofd),
-        tags: [topic.category, ...(detectedWijk ? [detectedWijk] : [])],
+        tags: [topic.category, ...topicWijken],
         createdAt: topic.meetingDate || new Date().toISOString(),
       };
     }
 
     const isBespreek = (topic.category || "").toLowerCase().includes("bespreek") || topicTitle.toLowerCase().includes("bespreek");
 
-    // Ingest each document into master metadata
+    // Ingest or upgrade each document in master metadata
     for (const doc of docs) {
       const rawDocTitle = (doc.title || "Vergaderstuk").trim();
       const isGeneric = !rawDocTitle || /^(raadsvoorstel|bijlage|nota|voorstel|besluit|brief|document|overig|stuk)(\s*[-_.:\d]*)?$/i.test(rawDocTitle);
@@ -135,10 +162,41 @@ export async function syncSteenwijkerlandAgendaToDossiers(): Promise<{
       const titleLower = enrichedTitle.toLowerCase();
       const urlLower = (doc.url || "").toLowerCase().trim();
 
-      // Check if already indexed
-      if (existingFilesSet.has(fileLower) || (urlLower && existingUrlsSet.has(urlLower)) || existingTitlesSet.has(titleLower)) {
+      const existingItem =
+        byFileMap.get(fileLower) ||
+        (urlLower ? byUrlMap.get(urlLower) : undefined) ||
+        byTitleMap.get(titleLower);
+
+      if (existingItem) {
+        // Upgrade existing items previously tagged as "Gemeentebreed" / empty when we now detect specific wijken/kernen
+        const currentWijk = (existingItem.wijk_of_kern || "").trim();
+        if (!currentWijk || currentWijk.toLowerCase() === "gemeentebreed") {
+          const detectedWijken = topicWijken.length > 0
+            ? topicWijken
+            : await resolveWijkListForDoc(enrichedTitle, topicTitle, topicDesc, { id: doc.id, url: doc.url });
+          if (detectedWijken.length > 0) {
+            const wijkStr = detectedWijken.join(", ");
+            existingItem.wijk_of_kern = wijkStr;
+            const currentEntities = (existingItem.entiteiten || "")
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean);
+            for (const w of detectedWijken) {
+              if (!currentEntities.some((e) => e.toLowerCase() === w.toLowerCase())) {
+                currentEntities.push(w);
+              }
+            }
+            existingItem.entiteiten = currentEntities.join(", ");
+            upgradedWijkenCount++;
+          }
+        }
         continue;
       }
+
+      const detectedWijken = topicWijken.length > 0
+        ? topicWijken
+        : await resolveWijkListForDoc(enrichedTitle, topicTitle, topicDesc, { id: doc.id, url: doc.url });
+      const wijkValue = detectedWijken.length > 0 ? detectedWijken.join(", ") : "Gemeentebreed";
 
       const metaItem: RaadsstukMetadata = {
         id: `swl_ibabs_${doc.id}`,
@@ -146,17 +204,17 @@ export async function syncSteenwijkerlandAgendaToDossiers(): Promise<{
         titel: enrichedTitle,
         dossier: canonicalHoofd,
         subdossier: subTitle,
-        wijk_of_kern: detectedWijk || "Gemeentebreed",
+        wijk_of_kern: wijkValue,
         datum: topic.meetingDate || new Date().toISOString().slice(0, 10),
-        entiteiten: `Gemeenteraad Steenwijkerland, ${topic.category}, ${isBespreek ? "Bespreekstukken" : "Vergaderagenda"}${detectedWijk ? `, ${detectedWijk}` : ""}`,
+        entiteiten: `Gemeenteraad Steenwijkerland, ${topic.category}, ${isBespreek ? "Bespreekstukken" : "Vergaderagenda"}${detectedWijken.length > 0 ? `, ${detectedWijken.join(", ")}` : ""}`,
         relaties: `Vergaderagenda: ${topic.meetingTitle} (${topic.meetingDateDisplay || topic.meetingDate}), Agendapunt: ${topicTitle}, Categorie: ${topic.category}`,
         bestand_url: doc.url,
       };
 
       masterList.push(metaItem);
-      existingFilesSet.add(fileLower);
-      existingTitlesSet.add(titleLower);
-      if (urlLower) existingUrlsSet.add(urlLower);
+      byFileMap.set(fileLower, metaItem);
+      byTitleMap.set(titleLower, metaItem);
+      if (urlLower) byUrlMap.set(urlLower, metaItem);
       newDocsAdded++;
     }
 
@@ -165,38 +223,50 @@ export async function syncSteenwijkerlandAgendaToDossiers(): Promise<{
       const topicFilename = `${slugify(cleanTopicTitle) || topic.id}.pdf`;
       const fileLower = topicFilename.toLowerCase();
       const titleLower = `agendapunt: ${cleanTopicTitle.toLowerCase()}`;
-      if (!existingFilesSet.has(fileLower) && !existingTitlesSet.has(titleLower)) {
+      const existingTopicItem = byFileMap.get(fileLower) || byTitleMap.get(titleLower);
+
+      if (existingTopicItem) {
+        const currentWijk = (existingTopicItem.wijk_of_kern || "").trim();
+        if ((!currentWijk || currentWijk.toLowerCase() === "gemeentebreed") && topicWijken.length > 0) {
+          existingTopicItem.wijk_of_kern = topicWijken.join(", ");
+          upgradedWijkenCount++;
+        }
+      } else {
         const topicUrl = topic.sourceUrl || (topic.meetingId ? `https://steenwijkerland.bestuurlijkeinformatie.nl/Agenda/Index/${topic.meetingId}` : undefined);
+        const wijkValue = topicWijken.length > 0 ? topicWijken.join(", ") : "Gemeentebreed";
         const metaItem: RaadsstukMetadata = {
           id: `swl_topic_${topic.id}`,
           bestandsnaam: topicFilename,
           titel: `Agendapunt: ${cleanTopicTitle}`,
           dossier: canonicalHoofd,
           subdossier: subTitle,
-          wijk_of_kern: detectedWijk || "Gemeentebreed",
+          wijk_of_kern: wijkValue,
           datum: topic.meetingDate || new Date().toISOString().slice(0, 10),
-          entiteiten: `Gemeenteraad Steenwijkerland, ${topic.category}, ${isBespreek ? "Bespreekstukken" : "Vergaderagenda"}${detectedWijk ? `, ${detectedWijk}` : ""}`,
+          entiteiten: `Gemeenteraad Steenwijkerland, ${topic.category}, ${isBespreek ? "Bespreekstukken" : "Vergaderagenda"}${topicWijken.length > 0 ? `, ${topicWijken.join(", ")}` : ""}`,
           relaties: `Vergaderagenda: ${topic.meetingTitle} (${topic.meetingDateDisplay || topic.meetingDate}), Agendapunt: ${topicTitle}, Categorie: ${topic.category}`,
           bestand_url: topicUrl,
         };
         masterList.push(metaItem);
-        existingFilesSet.add(fileLower);
-        existingTitlesSet.add(titleLower);
+        byFileMap.set(fileLower, metaItem);
+        byTitleMap.set(titleLower, metaItem);
         newDocsAdded++;
       }
     }
   }
 
-  if (newDocsAdded > 0) {
+  if (newDocsAdded > 0 || upgradedWijkenCount > 0) {
     saveMasterMetadata(masterList);
     saveDbToSqlite(db);
     invalidateDossierCache();
-    console.log(`[AGENDA DOSSIER SYNC] Steenwijkerland: ${newDocsAdded} nieuwe agendastukken verdeeld over (sub)dossiers.`);
+    console.log(
+      `[AGENDA DOSSIER SYNC] Steenwijkerland: ${newDocsAdded} nieuwe agendastukken verdeeld, ${upgradedWijkenCount} bestaande stukken verrijkt met wijk/kern.`
+    );
   }
 
   lastSyncStats.steenwijkerland = {
     topics: swlTopics.length,
     newDocsAdded,
+    upgradedWijkenCount,
     totalDocs: masterList.length,
   };
 
@@ -204,6 +274,7 @@ export async function syncSteenwijkerlandAgendaToDossiers(): Promise<{
     success: true,
     topicsProcessed: swlTopics.length,
     newDocsAdded,
+    upgradedWijkenCount,
     totalMasterDocs: masterList.length,
   };
 }
@@ -221,11 +292,12 @@ export async function syncAllAgendaTopicsToDossiers(): Promise<typeof lastSyncSt
   console.log("[AGENDA DOSSIER SYNC] Automatische synchronisatie van agendastukken naar dossiers gestart...");
 
   try {
-    // Steenwijkerland
     await syncSteenwijkerlandAgendaToDossiers();
 
     lastSyncStats.lastSyncedAt = new Date().toISOString();
-    console.log(`[AGENDA DOSSIER SYNC] Voltooid! Steenwijkerland (+${lastSyncStats.steenwijkerland.newDocsAdded} docs).`);
+    console.log(
+      `[AGENDA DOSSIER SYNC] Voltooid! Steenwijkerland (+${lastSyncStats.steenwijkerland.newDocsAdded} nieuw, ${lastSyncStats.steenwijkerland.upgradedWijkenCount} wijk-verrijkingen).`
+    );
   } catch (err: any) {
     console.error("[AGENDA DOSSIER SYNC FOUT]:", err?.message || err);
   } finally {

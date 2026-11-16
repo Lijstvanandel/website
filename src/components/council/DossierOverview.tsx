@@ -26,6 +26,9 @@ import {
   ShieldCheck,
   Copy,
   Check,
+  Landmark,
+  Building2,
+  Waves,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -88,6 +91,24 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
     totalUploadedFiles: number;
     classifiedSuccessCount?: number;
     unclassifiedFailCount?: number;
+    sourceBreakdown?: {
+      gemeente: {
+        dossiersCount: number;
+        scrapedTopicsCount: number;
+        scrapedDocsCount: number;
+        filesOnDisk: number;
+      };
+      provincie: {
+        savedCount: number;
+        scannedCount: number;
+        filesOnDisk: number;
+      };
+      waterschap: {
+        savedCount: number;
+        scannedCount: number;
+        filesOnDisk: number;
+      };
+    };
   }>(() => {
     try {
       const cached = safeLocalStorage.getItem(`lva_dossier_stats_${effectiveMuni}`) || safeSessionStorage.getItem(`lva_dossier_stats_${effectiveMuni}`);
@@ -530,6 +551,12 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
             metadataCount: data.metadataCount,
             needsSync: !!data.needsSync,
           });
+        }
+        if (data.sourceBreakdown) {
+          setStats((prev) => ({
+            ...prev,
+            sourceBreakdown: data.sourceBreakdown,
+          }));
         }
       }
     } catch (_e) {
@@ -1486,6 +1513,148 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Opgenomen documenten via scraping per bestuurslaag */}
+      {(() => {
+        const sb = stats.sourceBreakdown;
+        const gemCount = sb?.gemeente?.dossiersCount ?? filesystemScan?.rootCount ?? 0;
+        const gemScrapedDocs = sb?.gemeente?.scrapedDocsCount ?? 0;
+        const gemScrapedTopics = sb?.gemeente?.scrapedTopicsCount ?? 0;
+        const gemDisk = sb?.gemeente?.filesOnDisk ?? filesystemScan?.rootCount ?? 0;
+
+        const provSaved = sb?.provincie?.savedCount ?? filesystemScan?.overijsselCount ?? 0;
+        const provScanned = sb?.provincie?.scannedCount ?? provSaved;
+        const provDisk = sb?.provincie?.filesOnDisk ?? filesystemScan?.overijsselCount ?? 0;
+
+        const wsSaved = sb?.waterschap?.savedCount ?? filesystemScan?.waterschapCount ?? 0;
+        const wsScanned = sb?.waterschap?.scannedCount ?? wsSaved;
+        const wsDisk = sb?.waterschap?.filesOnDisk ?? filesystemScan?.waterschapCount ?? 0;
+
+        return (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Opgenomen documenten via scraping (per bestuurslaag)
+              </h3>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* Gemeente Steenwijkerland */}
+              <div className="p-4 rounded-2xl bg-card border border-border shadow-xs flex flex-col justify-between gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    Gemeente Steenwijkerland
+                  </span>
+                  <Landmark className="w-4 h-4 text-accent shrink-0" />
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-bold text-foreground">
+                    {gemCount.toLocaleString("nl-NL")}
+                  </span>
+                  <span className="text-[11px] font-medium text-muted-foreground">
+                    opgenomen stukken
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                  <span>
+                    {gemScrapedDocs.toLocaleString("nl-NL")} iBabs-stukken ({gemScrapedTopics} agendapunten) · {gemDisk.toLocaleString("nl-NL")} PDF's lokaal
+                  </span>
+                  {isCouncilOrAdmin && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSearchParams((prev) => {
+                          const next = new URLSearchParams(prev);
+                          next.set("tab", "agenda");
+                          return next;
+                        })
+                      }
+                      className="text-accent hover:underline font-semibold shrink-0 cursor-pointer"
+                    >
+                      Agenda
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Provincie Overijssel */}
+              <div className="p-4 rounded-2xl bg-card border border-border shadow-xs flex flex-col justify-between gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    Provincie Overijssel
+                  </span>
+                  <Building2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-bold text-foreground">
+                    {provSaved.toLocaleString("nl-NL")}
+                  </span>
+                  <span className="text-[11px] font-medium text-muted-foreground">
+                    opgenomen stukken
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                  <span>
+                    {provDisk.toLocaleString("nl-NL")} PDF's lokaal · {provScanned.toLocaleString("nl-NL")} gescand (OpenRaadsinformatie)
+                  </span>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSearchParams((prev) => {
+                          const next = new URLSearchParams(prev);
+                          next.set("tab", "overijssel");
+                          return next;
+                        })
+                      }
+                      className="text-emerald-600 dark:text-emerald-400 hover:underline font-semibold shrink-0 cursor-pointer"
+                    >
+                      Beheer
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Waterschap Drents Overijsselse Delta */}
+              <div className="p-4 rounded-2xl bg-card border border-border shadow-xs flex flex-col justify-between gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    Waterschap (WDODelta)
+                  </span>
+                  <Waves className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-bold text-foreground">
+                    {wsSaved.toLocaleString("nl-NL")}
+                  </span>
+                  <span className="text-[11px] font-medium text-muted-foreground">
+                    opgenomen stukken
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                  <span>
+                    {wsDisk.toLocaleString("nl-NL")} PDF's lokaal · {wsScanned.toLocaleString("nl-NL")} gescand (NotuBiz)
+                  </span>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSearchParams((prev) => {
+                          const next = new URLSearchParams(prev);
+                          next.set("tab", "waterschap");
+                          return next;
+                        })
+                      }
+                      className="text-blue-600 dark:text-blue-400 hover:underline font-semibold shrink-0 cursor-pointer"
+                    >
+                      Beheer
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Missing Files Reconciliation Banner (Alleen zichtbaar voor beheerders/admins) */}
       {isAdmin && stats.totalDocuments > stats.totalUploadedFiles && (

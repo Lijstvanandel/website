@@ -5,7 +5,7 @@ import { execSync, spawn } from "child_process";
 import AdmZip from "adm-zip";
 import type { Dossier, DossierDocument, GraphNode, GraphEdge, NetworkGraphData, RaadsstukMetadata } from "../types/dossier.js";
 import { getKv, setKv, getDbFromSqlite } from "./sqliteDatabase.js";
-import { CANONICAL_HOOFDDOSSIERS, CANONICAL_PRIMARY_SUBDOSSIERS, normalizeHoofddossier, normalizeSubdossier } from "./taxonomyClassifier.js";
+import { CANONICAL_HOOFDDOSSIERS, CANONICAL_PRIMARY_SUBDOSSIERS, normalizeHoofddossier, normalizeSubdossier, detectWijkenKernen } from "./taxonomyClassifier.js";
 
 const METADATA_PATH = path.join(process.cwd(), "public", "data", "raadsstukken_metadata_tussentijds.json");
 const METADATA_CSV_PATH = path.join(process.cwd(), "public", "data", "raadsstukken_metadata_tussentijds.csv");
@@ -373,6 +373,10 @@ setImmediate(() => {
 });
 
 // Explicit cache invalidation
+export function getMetadataVersion(): number {
+  return metadataVersion;
+}
+
 export function invalidateDossierCache(): void {
   cachedAllDossiers = null;
   cachedDossiersKey = "";
@@ -732,28 +736,11 @@ export function extractDateFromFilename(fileName: string, mtime?: Date): string 
   return new Date().toISOString().slice(0, 10);
 }
 
-// Steenwijkerland kernen & wijken list
-const STEENWIJKERLAND_KERNEN = [
-  "Centrum Steenwijk", "Steenwijk", "Tuk", "Giethoorn", "Vollenhove", "Blokzijl",
-  "Oldemarkt", "Kuinre", "Steenwijkerwold", "Sint Jansklooster", "Wanneperveen",
-  "Belt-Schutsloot", "Scheerwolde", "Willemsoord", "Eesveen", "Kalenberg",
-  "Ossenzijl", "Blankenham", "Onna", "Kallenkote", "Basse", "Baarlo",
-  "Muggenbeet", "Nederland", "Groot Verlaat", "Oostermeenthe", "De Meenthe",
-  "Clingenborgh", "Westerclinge", "Dolderkanaal", "Wetering", "Zuidveen",
-  "Marijenkampen", "Heetveld", "Barsbeek", "Doosje", "Dwarsgracht", "Ronduite", "IJsselham"
-];
-
-// Detect wijk or kern from text
+// Detect wijk or kern from text across all 42 wijken & kernen + street aliases
 export function detectWijkOrKern(text: string): string | undefined {
-  const l = text.toLowerCase();
-  for (const kern of STEENWIJKERLAND_KERNEN) {
-    const kLower = kern.toLowerCase();
-    const regex = new RegExp(`\\b${kLower.replace("-", "[- ]")}\\b`, "i");
-    if (regex.test(l)) {
-      return kern;
-    }
-  }
-  return undefined;
+  if (!text || !text.trim()) return undefined;
+  const list = detectWijkenKernen(text, "", text);
+  return list.length > 0 ? list.join(", ") : undefined;
 }
 
 // Detect dossier and subdossier from keywords and subdirectory using canonical 10-hoofddossier taxonomy
@@ -938,32 +925,36 @@ export async function syncPhysicalFilesystemDocuments(): Promise<{
     baseNameMap.set(baseKey, itemMap.get(cleanKey)!);
   }
 
-  // Check specialized Waterschap metadata JSON
+  // Check specialized Waterschap metadata JSON (only accepted/saved Steenwijkerland/Waterschapbreed items)
   const waterschapJsonPath = path.join(DOCUMENTS_DIR, "raadsstukken_metadata_waterschap.json");
   try {
     const raw = await fsp.readFile(waterschapJsonPath, "utf-8");
     const wsDocs = JSON.parse(raw);
     if (Array.isArray(wsDocs)) {
       for (const ws of wsDocs) {
+        if (ws.opslaan === false) continue;
         const fn = ws.bestandsnaam || ws.filename || (ws.document_id ? `waterschap_${ws.document_id}.pdf` : "");
         if (!fn) continue;
-        const wsKey = fn.toLowerCase().trim();
+        const relFn = fn.includes("/") ? fn : `waterschap/${fn}`;
+        const wsKey = relFn.toLowerCase().trim();
         const wsBase = path.basename(fn).toLowerCase().trim();
-        if (!itemMap.has(wsKey) && !baseNameMap.has(wsBase)) {
+        if (!itemMap.has(wsKey) && !itemMap.has(fn.toLowerCase().trim()) && !baseNameMap.has(wsBase)) {
           const docTitle = ws.titel || cleanDocumentTitle(fn);
-          const docEntities = ws.entiteiten || "Waterschap Drents Overijsselse Delta, Waterbeheer, Dijken, Peilbesluit";
-          const canonicalHoofd = normalizeHoofddossier(ws.dossier || "Klimaat, Water & Natuur", docTitle, docEntities, "");
+          const docEntities = ws.entiteiten || "Waterschap Drents Overijsselse Delta, WDODelta, Waterbeheer";
+          const canonicalHoofd = normalizeHoofddossier(ws.dossier || "Landbouw, Natuur & Waterbeheer", docTitle, docEntities, "");
           const canonicalSub = normalizeSubdossier(canonicalHoofd, ws.subdossier, docTitle, docEntities, "");
+          const detectedWijk = ws.wijk_of_kern || detectWijkOrKern(docTitle) || "";
 
           const wsItem: RaadsstukMetadata = {
-            bestandsnaam: fn.includes("/") ? fn : `waterschap/${fn}`,
+            bestandsnaam: relFn,
             titel: docTitle,
             dossier: canonicalHoofd,
             subdossier: canonicalSub,
-            wijk_of_kern: ws.wijk_of_kern || detectWijkOrKern(docTitle) || "",
+            wijk_of_kern: detectedWijk,
             datum: ws.datum || extractDateFromFilename(fn),
-            entiteiten: docEntities,
-            relaties: ws.relaties || "",
+            entiteiten: [docEntities, detectedWijk].filter(Boolean).join(", "),
+            relaties: ws.relaties || (ws.meeting_titel ? `Vergadering: ${ws.meeting_titel}` : ""),
+            bestand_url: ws.notubiz_url || ws.bestand_url || undefined,
           };
           itemMap.set(wsKey, wsItem);
           baseNameMap.set(wsBase, wsItem);
@@ -974,32 +965,36 @@ export async function syncPhysicalFilesystemDocuments(): Promise<{
     // ignore waterschap json read error
   }
 
-  // Check specialized Overijssel metadata JSON
+  // Check specialized Overijssel metadata JSON (only accepted/saved Steenwijkerland/Provinciebreed items)
   const overijsselJsonPath = path.join(DOCUMENTS_DIR, "raadsstukken_metadata_overijssel.json");
   try {
     const raw = await fsp.readFile(overijsselJsonPath, "utf-8");
     const ovDocs = JSON.parse(raw);
     if (Array.isArray(ovDocs)) {
       for (const ov of ovDocs) {
+        if (ov.opslaan === false) continue;
         const fn = ov.bestandsnaam || ov.filename || (ov.document_id ? `overijssel_${ov.document_id}.pdf` : "");
         if (!fn) continue;
-        const ovKey = fn.toLowerCase().trim();
+        const relFn = fn.includes("/") ? fn : `overijssel/${fn}`;
+        const ovKey = relFn.toLowerCase().trim();
         const ovBase = path.basename(fn).toLowerCase().trim();
-        if (!itemMap.has(ovKey) && !baseNameMap.has(ovBase)) {
+        if (!itemMap.has(ovKey) && !itemMap.has(fn.toLowerCase().trim()) && !baseNameMap.has(ovBase)) {
           const docTitle = ov.titel || cleanDocumentTitle(fn);
           const docEntities = ov.entiteiten || "Provincie Overijssel, Regionaal Beleid";
           const canonicalHoofd = normalizeHoofddossier(ov.dossier, docTitle, docEntities, "");
           const canonicalSub = normalizeSubdossier(canonicalHoofd, ov.subdossier, docTitle, docEntities, "");
+          const detectedWijk = ov.wijk_of_kern || detectWijkOrKern(docTitle) || "";
 
           const ovItem: RaadsstukMetadata = {
-            bestandsnaam: fn.includes("/") ? fn : `overijssel/${fn}`,
+            bestandsnaam: relFn,
             titel: docTitle,
             dossier: canonicalHoofd,
             subdossier: canonicalSub,
-            wijk_of_kern: ov.wijk_of_kern || detectWijkOrKern(docTitle) || "",
+            wijk_of_kern: detectedWijk,
             datum: ov.datum || extractDateFromFilename(fn),
-            entiteiten: docEntities,
-            relaties: ov.relaties || "",
+            entiteiten: [docEntities, detectedWijk].filter(Boolean).join(", "),
+            relaties: ov.relaties || (ov.meeting_titel ? `Vergadering: ${ov.meeting_titel}` : ""),
+            bestand_url: ov.notubiz_url || ov.bestand_url || undefined,
           };
           itemMap.set(ovKey, ovItem);
           baseNameMap.set(ovBase, ovItem);
@@ -3073,6 +3068,254 @@ export function generateMissingDocumentsCsv(
 }
 
 /**
+ * Merge newly scraped Waterschap (WDODelta) and Provincie Overijssel documents
+ * into raadsstukken_metadata_master with automatic wijk/kern detection.
+ */
+export async function syncExternalScraperMetadataToMaster(): Promise<{
+  waterschapAdded: number;
+  overijsselAdded: number;
+}> {
+  const existing = getRawMetadata();
+  const seenKeys = new Set<string>();
+  const seenBases = new Set<string>();
+  const seenUrls = new Set<string>();
+
+  for (const item of existing) {
+    if (!item) continue;
+    if (item.bestandsnaam) {
+      seenKeys.add(item.bestandsnaam.toLowerCase().trim());
+      seenBases.add(path.basename(item.bestandsnaam).toLowerCase().trim());
+    }
+    if (item.bestand_url) {
+      seenUrls.add(item.bestand_url.toLowerCase().trim());
+    }
+  }
+
+  let waterschapAdded = 0;
+  let overijsselAdded = 0;
+
+  // 1. Waterschap
+  try {
+    const wsPath = path.join(DOCUMENTS_DIR, "raadsstukken_metadata_waterschap.json");
+    if (fs.existsSync(wsPath)) {
+      const raw = await fsp.readFile(wsPath, "utf-8");
+      const wsDocs = JSON.parse(raw);
+      if (Array.isArray(wsDocs)) {
+        for (const ws of wsDocs) {
+          if (ws.opslaan === false) continue;
+          const fn = ws.bestandsnaam || ws.filename || (ws.document_id ? `waterschap_${ws.document_id}.pdf` : "");
+          if (!fn) continue;
+          const relFn = fn.includes("/") ? fn : `waterschap/${fn}`;
+          const key = relFn.toLowerCase().trim();
+          const base = path.basename(fn).toLowerCase().trim();
+          const urlKey = (ws.notubiz_url || ws.bestand_url || "").toLowerCase().trim();
+          if (seenKeys.has(key) || seenBases.has(base) || (urlKey && seenUrls.has(urlKey))) continue;
+
+          const docTitle = ws.titel || cleanDocumentTitle(fn);
+          const baseEntities = ws.entiteiten || "Waterschap Drents Overijsselse Delta, WDODelta, Waterbeheer";
+          const canonicalHoofd = normalizeHoofddossier(ws.dossier || "Landbouw, Natuur & Waterbeheer", docTitle, baseEntities, ws.meeting_titel || "");
+          const canonicalSub = normalizeSubdossier(canonicalHoofd, ws.subdossier, docTitle, baseEntities, ws.meeting_titel || "");
+          const detectedWijk = ws.wijk_of_kern || detectWijkOrKern(`${docTitle} ${ws.meeting_titel || ""}`) || "";
+
+          const item: RaadsstukMetadata = {
+            id: ws.id || `ws_${ws.document_id || base}`,
+            bestandsnaam: relFn,
+            titel: docTitle,
+            dossier: canonicalHoofd,
+            subdossier: canonicalSub,
+            wijk_of_kern: detectedWijk,
+            datum: ws.datum || extractDateFromFilename(fn),
+            entiteiten: [baseEntities, detectedWijk].filter(Boolean).join(", "),
+            relaties: ws.relaties || (ws.meeting_titel ? `Waterschap: ${ws.meeting_titel}` : ""),
+            bestand_url: ws.notubiz_url || ws.bestand_url || undefined,
+          };
+          existing.push(item);
+          seenKeys.add(key);
+          seenBases.add(base);
+          if (urlKey) seenUrls.add(urlKey);
+          waterschapAdded++;
+        }
+      }
+    }
+  } catch (_e) {
+    // ignore waterschap read error
+  }
+
+  // 2. Provincie Overijssel
+  try {
+    const ovPath = path.join(DOCUMENTS_DIR, "raadsstukken_metadata_overijssel.json");
+    if (fs.existsSync(ovPath)) {
+      const raw = await fsp.readFile(ovPath, "utf-8");
+      const ovDocs = JSON.parse(raw);
+      if (Array.isArray(ovDocs)) {
+        for (const ov of ovDocs) {
+          if (ov.opslaan === false) continue;
+          const fn = ov.bestandsnaam || ov.filename || (ov.document_id ? `overijssel_${ov.document_id}.pdf` : "");
+          if (!fn) continue;
+          const relFn = fn.includes("/") ? fn : `overijssel/${fn}`;
+          const key = relFn.toLowerCase().trim();
+          const base = path.basename(fn).toLowerCase().trim();
+          const urlKey = (ov.notubiz_url || ov.bestand_url || "").toLowerCase().trim();
+          if (seenKeys.has(key) || seenBases.has(base) || (urlKey && seenUrls.has(urlKey))) continue;
+
+          const docTitle = ov.titel || cleanDocumentTitle(fn);
+          const baseEntities = ov.entiteiten || "Provincie Overijssel, Regionaal Beleid";
+          const canonicalHoofd = normalizeHoofddossier(ov.dossier, docTitle, baseEntities, ov.meeting_titel || "");
+          const canonicalSub = normalizeSubdossier(canonicalHoofd, ov.subdossier, docTitle, baseEntities, ov.meeting_titel || "");
+          const detectedWijk = ov.wijk_of_kern || detectWijkOrKern(`${docTitle} ${ov.meeting_titel || ""}`) || "";
+
+          const item: RaadsstukMetadata = {
+            id: ov.id || `ov_${ov.document_id || base}`,
+            bestandsnaam: relFn,
+            titel: docTitle,
+            dossier: canonicalHoofd,
+            subdossier: canonicalSub,
+            wijk_of_kern: detectedWijk,
+            datum: ov.datum || extractDateFromFilename(fn),
+            entiteiten: [baseEntities, detectedWijk].filter(Boolean).join(", "),
+            relaties: ov.relaties || (ov.meeting_titel ? `Provincie Overijssel: ${ov.meeting_titel}` : ""),
+            bestand_url: ov.notubiz_url || ov.bestand_url || undefined,
+          };
+          existing.push(item);
+          seenKeys.add(key);
+          seenBases.add(base);
+          if (urlKey) seenUrls.add(urlKey);
+          overijsselAdded++;
+        }
+      }
+    }
+  } catch (_e) {
+    // ignore overijssel read error
+  }
+
+  if (waterschapAdded > 0 || overijsselAdded > 0) {
+    saveMasterMetadata(existing);
+    invalidateDossierCache();
+    console.log(`[EXTERNAL SCRAPER SYNC] ${waterschapAdded} Waterschap- en ${overijsselAdded} Provincie-documenten opgenomen in dossiersystematiek.`);
+  }
+
+  return { waterschapAdded, overijsselAdded };
+}
+
+/**
+ * Compute transparent document counts per government tier (Gemeente, Provincie, Waterschap)
+ * for display on /raadspaneel.
+ */
+export function getScraperSourceBreakdown(): {
+  gemeente: {
+    dossiersCount: number;
+    scrapedTopicsCount: number;
+    scrapedDocsCount: number;
+    filesOnDisk: number;
+  };
+  provincie: {
+    savedCount: number;
+    scannedCount: number;
+    filesOnDisk: number;
+  };
+  waterschap: {
+    savedCount: number;
+    scannedCount: number;
+    filesOnDisk: number;
+  };
+} {
+  const diskStats = countPhysicalFilesOnDisk();
+  const masterList = getRawMetadata();
+
+  // Deduplicated counts per tier inside master metadata
+  const gemeenteKeys = new Set<string>();
+  const provincieKeys = new Set<string>();
+  const waterschapKeys = new Set<string>();
+
+  for (const item of masterList) {
+    if (!item) continue;
+    const fn = (item.bestandsnaam || "").toLowerCase().trim();
+    const ent = (item.entiteiten || "").toLowerCase();
+    const key = fn || (item.titel || item.id || "").toLowerCase().trim();
+    if (!key) continue;
+
+    if (fn.startsWith("waterschap/") || fn.includes("waterschap_") || ent.includes("wdodelta") || ent.includes("waterschap drents")) {
+      waterschapKeys.add(path.basename(key));
+    } else if (fn.startsWith("overijssel/") || fn.includes("overijssel_") || ent.includes("provincie overijssel")) {
+      provincieKeys.add(path.basename(key));
+    } else {
+      gemeenteKeys.add(path.basename(key));
+    }
+  }
+
+  // Live scraped Steenwijkerland iBabs topics & attached docs
+  let stTopicsCount = 0;
+  let stScrapedDocsCount = 0;
+  try {
+    const db = getDbFromSqlite();
+    if (Array.isArray(db.councilAgendaTopics)) {
+      const stTopics = db.councilAgendaTopics.filter(
+        (t: any) => (t.municipality || "steenwijkerland") === "steenwijkerland"
+      );
+      stTopicsCount = stTopics.length;
+      for (const t of stTopics) {
+        if (Array.isArray(t.documents)) {
+          stScrapedDocsCount += t.documents.length;
+        }
+      }
+    }
+  } catch (_e) {
+    // ignore db read error
+  }
+
+  // Read Waterschap JSON metadata counts
+  let wsJsonSaved = 0;
+  let wsJsonScanned = 0;
+  try {
+    const wsPath = path.join(DOCUMENTS_DIR, "raadsstukken_metadata_waterschap.json");
+    if (fs.existsSync(wsPath)) {
+      const parsed = JSON.parse(fs.readFileSync(wsPath, "utf-8"));
+      if (Array.isArray(parsed)) {
+        wsJsonScanned = parsed.length;
+        wsJsonSaved = parsed.filter((r: any) => r && r.opslaan !== false).length;
+      }
+    }
+  } catch (_e) {
+    // ignore read error
+  }
+
+  // Read Overijssel JSON metadata counts
+  let ovJsonSaved = 0;
+  let ovJsonScanned = 0;
+  try {
+    const ovPath = path.join(DOCUMENTS_DIR, "raadsstukken_metadata_overijssel.json");
+    if (fs.existsSync(ovPath)) {
+      const parsed = JSON.parse(fs.readFileSync(ovPath, "utf-8"));
+      if (Array.isArray(parsed)) {
+        ovJsonScanned = parsed.length;
+        ovJsonSaved = parsed.filter((r: any) => r && r.opslaan !== false).length;
+      }
+    }
+  } catch (_e) {
+    // ignore read error
+  }
+
+  return {
+    gemeente: {
+      dossiersCount: Math.max(gemeenteKeys.size, diskStats.rootCount + (gemeenteKeys.size === 0 ? stScrapedDocsCount : 0)),
+      scrapedTopicsCount: stTopicsCount,
+      scrapedDocsCount: stScrapedDocsCount,
+      filesOnDisk: diskStats.rootCount,
+    },
+    provincie: {
+      savedCount: Math.max(provincieKeys.size, ovJsonSaved, diskStats.overijsselCount),
+      scannedCount: Math.max(ovJsonScanned, provincieKeys.size, diskStats.overijsselCount),
+      filesOnDisk: diskStats.overijsselCount,
+    },
+    waterschap: {
+      savedCount: Math.max(waterschapKeys.size, wsJsonSaved, diskStats.waterschapCount),
+      scannedCount: Math.max(wsJsonScanned, waterschapKeys.size, diskStats.waterschapCount),
+      filesOnDisk: diskStats.waterschapCount,
+    },
+  };
+}
+
+/**
  * Main Dossierverdeler Engine for Gemeente Steenwijkerland
  * Synchronizes and distributes all scraped council agenda topics and attached documents
  * into the canonical dossiers and subdossiers, ensuring zero manual uploads needed.
@@ -3091,6 +3334,13 @@ export async function distributeSteenwijkerlandDossiers(): Promise<{
     await syncSteenwijkerlandAgendaToDossiers();
   } catch (syncErr: any) {
     console.warn("[STEENWIJKERLAND DOSSIERVERDELER SYNC WARN]:", syncErr?.message);
+  }
+
+  // Also ensure any scraped Waterschap / Provincie Overijssel items are synced into master dossiers
+  try {
+    await syncExternalScraperMetadataToMaster();
+  } catch (extErr: any) {
+    console.warn("[EXTERNAL SCRAPER DOSSIER SYNC WARN]:", extErr?.message);
   }
 
   invalidateDossierCache();

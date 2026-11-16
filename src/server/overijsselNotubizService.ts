@@ -10,6 +10,7 @@ import {
   sanitizeCleanText,
   isCorruptOrHtmlGarbage,
 } from "./scraperContractValidator.js";
+import { registerPhysicalFileInCache, syncExternalScraperMetadataToMaster } from "./dossierManager.js";
 
 try {
   dns.setDefaultResultOrder("ipv4first");
@@ -1054,6 +1055,7 @@ export async function startOverijsselNotubizSync(options?: {
 
                         if (classification.opslaan) {
                           fs.writeFileSync(localAbsPath, pdfBuffer);
+                          registerPhysicalFileInCache(`overijssel/${filename}`, localAbsPath, pdfBuffer.length);
                           try {
                             const distPath = path.join(DIST_UPLOADS_DIR, filename);
                             fs.writeFileSync(distPath, pdfBuffer);
@@ -1128,9 +1130,14 @@ export async function startOverijsselNotubizSync(options?: {
 
       // Final save
       saveOverijsselMetadata(Array.from(existingDocMap.values()));
+      try {
+        await syncExternalScraperMetadataToMaster();
+      } catch (_syncErr) {
+        // ignore dossier merge warn
+      }
       syncState.currentAction = "Voltooid!";
       syncState.completedAt = new Date().toISOString();
-      addLog(`Synchronisatie via OpenRaadsinformatie (organization=overijssel, sort=date_desc) succesvol voltooid! Totaal ${syncState.savedDocuments} documenten opgeslagen. CSV bijgewerkt.`, "success");
+      addLog(`Synchronisatie via OpenRaadsinformatie (organization=overijssel, sort=date_desc) succesvol voltooid! Totaal ${syncState.savedDocuments} documenten opgeslagen en opgenomen in de dossiersystematiek.`, "success");
     } catch (err: any) {
       if (signal.aborted) {
         syncState.currentAction = "Geannuleerd door gebruiker";

@@ -146,50 +146,50 @@ export const BANNED_GENERIC_WIJKEN = new Set([
   "waterschapbreed",
 ]);
 
-// 42 wijken en kernen in Steenwijkerland met verfijnde alias-matching (voorkomt false positives)
+// 42 wijken en kernen in Steenwijkerland met verfijnde alias- en straatnaam-matching (voorkomt false positives)
 export const WIJKEN_KERNEN_LIST = [
-  { slug: "centrum-steenwijk", naam: "Steenwijk Centrum / Binnenstad", aliases: ["steenwijk centrum", "binnenstad steenwijk", "markt steenwijk", "stadshart steenwijk", "centrum steenwijk", "binnenstad", "gasthuisstraat steenwijk", "steenwijk centrum / binnenstad"] },
-  { slug: "clingenborgh", naam: "Clingenborgh", aliases: ["clingenborgh"] },
-  { slug: "de-gagels", naam: "De Gagels", aliases: ["de gagels", "gagels"] },
+  { slug: "centrum-steenwijk", naam: "Steenwijk Centrum / Binnenstad", aliases: ["steenwijk centrum", "binnenstad steenwijk", "markt steenwijk", "stadshart steenwijk", "centrum steenwijk", "binnenstad", "gasthuisstraat steenwijk", "gasthuisstraat", "onze lieve vrouwekerk", "oosterstraat steenwijk", "scholestraat", "kalenderstraat", "steenwijk centrum / binnenstad"] },
+  { slug: "clingenborgh", naam: "Clingenborgh", aliases: ["clingenborgh", "westerclinge", "oosterclinge"] },
+  { slug: "de-gagels", naam: "De Gagels", aliases: ["de gagels", "gagels", "gagelsweg"] },
   { slug: "nieuwe-gagels", naam: "Nieuwe Gagels", aliases: ["nieuwe gagels"] },
   { slug: "dolderkanaal", naam: "Dolderkanaal", aliases: ["dolderkanaal", "dolder"] },
-  { slug: "groot-verlaat", naam: "Groot Verlaat", aliases: ["groot verlaat", "icebear", "bedrijventerrein groot verlaat"] },
-  { slug: "oostermeenthe", naam: "Oostermeenthe", aliases: ["oostermeenthe", "het vrije veld"] },
-  { slug: "oostwijken-de-beitel", naam: "Oostwijken, De Beitel", aliases: ["oostwijken", "de beitel"] },
-  { slug: "paddenpoel-en-kornputkwartier", naam: "Paddenpoel en Kornputkwartier", aliases: ["paddenpoel", "kornputkwartier", "kornput"] },
-  { slug: "steenwijk-west", naam: "Steenwijk West", aliases: ["steenwijk west", "spoorzone steenwijk", "spoorzone", "steenwijk 2040", "station steenwijk"] },
+  { slug: "groot-verlaat", naam: "Groot Verlaat", aliases: ["groot verlaat", "icebear", "bedrijventerrein groot verlaat", "koematen"] },
+  { slug: "oostermeenthe", naam: "Oostermeenthe", aliases: ["oostermeenthe", "het vrije veld", "oostermeentherand", "de meenthe"] },
+  { slug: "oostwijken-de-beitel", naam: "Oostwijken, De Beitel", aliases: ["oostwijken", "de beitel", "oostwijkstraat"] },
+  { slug: "paddenpoel-en-kornputkwartier", naam: "Paddenpoel en Kornputkwartier", aliases: ["paddenpoel", "kornputkwartier", "kornput", "kornputsingel"] },
+  { slug: "steenwijk-west", naam: "Steenwijk West", aliases: ["steenwijk west", "spoorzone steenwijk", "spoorzone", "steenwijk 2040", "station steenwijk", "westerstraat steenwijk"] },
   { slug: "steenwijkerdiep", naam: "Steenwijkerdiep", aliases: ["steenwijkerdiep"] },
   { slug: "torenlanden", naam: "Torenlanden", aliases: ["torenlanden"] },
   { slug: "woldmeenthe", naam: "Woldmeenthe", aliases: ["woldmeenthe", "woldmeentherand"] },
   { slug: "eeserwold", naam: "Eeserwold", aliases: ["eeserwold", "bedrijventerrein eeserwold", "meer van eeserwold"] },
-  { slug: "barsbeek-heetveld-en-kadoelen", naam: "Barsbeek, Heetveld en Kadoelen", aliases: ["barsbeek", "heetveld", "kadoelen"] },
-  { slug: "belt-schutsloot", naam: "Belt-schutsloot", aliases: ["belt-schutsloot", "beltschutsloot", "dorpsgracht belt-schutsloot", "belterweg", "belterwiede"] },
-  { slug: "blankenham", naam: "Blankenham", aliases: ["blankenham", "hammerdijk"] },
-  { slug: "blokzijl", naam: "Blokzijl", aliases: ["blokzijl", "de hoop blokzijl", "noordermaten", "mauritsstraat", "haven blokzijl"] },
-  { slug: "de-pol-baars-en-de-bult", naam: "De Pol, Baars en de Bult", aliases: ["de pol", "baars", "de bult", "huis ten wolde"] },
-  { slug: "doosje", naam: "Doosje", aliases: ["doosje"] },
-  { slug: "eesveen", naam: "Eesveen", aliases: ["eesveen", "gaswinning eesveen", "vermilion eesveen"] },
-  { slug: "giethoorn", naam: "Giethoorn", aliases: ["giethoorn", "binnenpad", "dorpsgracht giethoorn", "middenbuurt", "loswal kerkweg", "de landije"] },
-  { slug: "ijsselham-paasloo-en-de-basse", naam: "Ijsselham, Paasloo en de Basse", aliases: ["ijsselham", "paasloo", "de basse", "basse"] },
-  { slug: "jonen-en-dwarsgracht", naam: "Jonen en Dwarsgracht", aliases: ["jonen", "dwarsgracht", "pontje jonen", "walengracht"] },
-  { slug: "kalenberg", naam: "Kalenberg", aliases: ["kalenberg"] },
-  { slug: "kallenkote", naam: "Kallenkote", aliases: ["kallenkote", "zorgboerderij kallenkote"] },
-  { slug: "klosse-roekebos-en-dinxterveen", naam: "Klosse, Roekebos en Dinxterveen", aliases: ["klosse", "roekebos", "dinxterveen"] },
-  { slug: "kuinre", naam: "Kuinre", aliases: ["kuinre", "overhavendijk", "worstdijk", "kuinderbos"] },
-  { slug: "marijenkampen-en-willemsoord", naam: "Marijenkampen en Willemsoord", aliases: ["marijenkampen", "willemsoord", "reunedal", "koloniën van weldadigheid", "kolonien van weldadigheid", "kolonie willemsoord"] },
+  { slug: "barsbeek-heetveld-en-kadoelen", naam: "Barsbeek, Heetveld en Kadoelen", aliases: ["barsbeek", "heetveld", "kadoelen", "barsbekerweg"] },
+  { slug: "belt-schutsloot", naam: "Belt-schutsloot", aliases: ["belt-schutsloot", "beltschutsloot", "dorpsgracht belt-schutsloot", "belterweg", "belterwiede", "schutsloterwijde", "ronduite"] },
+  { slug: "blankenham", naam: "Blankenham", aliases: ["blankenham", "hammerdijk", "zeedijk blankenham"] },
+  { slug: "blokzijl", naam: "Blokzijl", aliases: ["blokzijl", "de hoop blokzijl", "noordermaten", "mauritsstraat", "haven blokzijl", "brewerstraat", "kade blokzijl", "muggenbeet"] },
+  { slug: "de-pol-baars-en-de-bult", naam: "De Pol, Baars en de Bult", aliases: ["de pol", "baars", "de bult", "huis ten wolde", "steenwijkerweg de bult", "de eese"] },
+  { slug: "doosje", naam: "Doosje", aliases: ["doosje", "buurtschap doosje"] },
+  { slug: "eesveen", naam: "Eesveen", aliases: ["eesveen", "gaswinning eesveen", "vermilion eesveen", "eesveenseweg"] },
+  { slug: "giethoorn", naam: "Giethoorn", aliases: ["giethoorn", "binnenpad", "dorpsgracht giethoorn", "middenbuurt", "loswal kerkweg", "de landije", "beulakerweg", "ds. t.o. hylkemaweg", "molengat"] },
+  { slug: "ijsselham-paasloo-en-de-basse", naam: "Ijsselham, Paasloo en de Basse", aliases: ["ijsselham", "paasloo", "de basse", "basse", "paasloërweg", "paasloerweg", "basserweg", "klimbos paasloo"] },
+  { slug: "jonen-en-dwarsgracht", naam: "Jonen en Dwarsgracht", aliases: ["jonen", "dwarsgracht", "pontje jonen", "walengracht", "jonenbrug"] },
+  { slug: "kalenberg", naam: "Kalenberg", aliases: ["kalenberg", "kalenbergergracht", "kalenbergerpad", "hoogeweg kalenberg"] },
+  { slug: "kallenkote", naam: "Kallenkote", aliases: ["kallenkote", "zorgboerderij kallenkote", "kallenkoterweg"] },
+  { slug: "klosse-roekebos-en-dinxterveen", naam: "Klosse, Roekebos en Dinxterveen", aliases: ["klosse", "roekebos", "dinxterveen", "beulakerweg dinxterveen"] },
+  { slug: "kuinre", naam: "Kuinre", aliases: ["kuinre", "overhavendijk", "worstdijk", "kuinderbos", "kuinderdijk", "slikenburg", "henric de crane"] },
+  { slug: "marijenkampen-en-willemsoord", naam: "Marijenkampen en Willemsoord", aliases: ["marijenkampen", "willemsoord", "reunedal", "koloniën van weldadigheid", "kolonien van weldadigheid", "kolonie willemsoord", "paasloërweg willemsoord", "steenwijkerweg willemsoord"] },
   { slug: "moespot-en-leeuwte", naam: "Moespot en Leeuwte", aliases: ["moespot", "leeuwte"] },
-  { slug: "nederland-en-baarlo", naam: "Nederland en Baarlo", aliases: ["nederland", "baarlo"] },
-  { slug: "oldemarkt", naam: "Oldemarkt", aliases: ["oldemarkt", "oosterbroek"] },
-  { slug: "onna", naam: "Onna", aliases: ["onna", "onnase doodweg", "transformatorstation steenwijk-onna"] },
-  { slug: "ossenzijl", naam: "Ossenzijl", aliases: ["ossenzijl", "kooibomenpad"] },
-  { slug: "scheerwolde", naam: "Scheerwolde", aliases: ["scheerwolde", "scheerwolderweg", "scheerbrug"] },
-  { slug: "sint-jansklooster", naam: "Sint Jansklooster", aliases: ["sint jansklooster", "st. jansklooster", "molenstraat sint jansklooster", "eben haezer"] },
-  { slug: "steenwijkerwold-en-witte-paarden", naam: "Steenwijkerwold en Witte paarden", aliases: ["steenwijkerwold", "witte paarden", "gelderingen", "dierenasiel de kluif"] },
-  { slug: "tuk", naam: "Tuk", aliases: ["tuk", "tukseweg"] },
-  { slug: "vollenhove", naam: "Vollenhove", aliases: ["vollenhove", "bloemwijk", "royal huisman", "haven vollenhove"] },
-  { slug: "wanneperveen", naam: "Wanneperveen", aliases: ["wanneperveen", "lozedijk", "beulakerwiede"] },
-  { slug: "wetering", naam: "Wetering", aliases: ["wetering", "wetering-west", "wetering-oost"] },
-  { slug: "zuidveen", naam: "Zuidveen", aliases: ["zuidveen", "stroïnkweg", "stroinkweg"] }
+  { slug: "nederland-en-baarlo", naam: "Nederland en Baarlo", aliases: ["nederland en baarlo", "buurtschap nederland", "dorp nederland", "kern nederland", "baarlo", "muggenbeet", "rietweg nederland"] },
+  { slug: "oldemarkt", naam: "Oldemarkt", aliases: ["oldemarkt", "oosterbroek", "hoofdstraat oldemarkt", "kruisstraat oldemarkt", "lambertsberg"] },
+  { slug: "onna", naam: "Onna", aliases: ["onna", "onnase doodweg", "transformatorstation steenwijk-onna", "onnasestraat"] },
+  { slug: "ossenzijl", naam: "Ossenzijl", aliases: ["ossenzijl", "kooibomenpad", "hoofdstraat ossenzijl", "kalenbergerweg", "meenteweg ossenzijl", "de weerribben ossenzijl"] },
+  { slug: "scheerwolde", naam: "Scheerwolde", aliases: ["scheerwolde", "scheerwolderweg", "scheerbrug", "heerlijkheid scheerwolde"] },
+  { slug: "sint-jansklooster", naam: "Sint Jansklooster", aliases: ["sint jansklooster", "st. jansklooster", "st jansklooster", "molenstraat sint jansklooster", "eben haezer", "kloosterweg", "monnikenweg"] },
+  { slug: "steenwijkerwold-en-witte-paarden", naam: "Steenwijkerwold en Witte paarden", aliases: ["steenwijkerwold", "witte paarden", "gelderingen", "dierenasiel de kluif", "thijssenlaan", "oldemarktseweg"] },
+  { slug: "tuk", naam: "Tuk", aliases: ["tuk", "tukseweg", "bergsteinweg"] },
+  { slug: "vollenhove", naam: "Vollenhove", aliases: ["vollenhove", "bloemwijk", "royal huisman", "haven vollenhove", "bisschopstraat", "voorpoort", "alles voor vollenhove", "de furstenberg"] },
+  { slug: "wanneperveen", naam: "Wanneperveen", aliases: ["wanneperveen", "lozedijk", "beulakerwiede", "veneperweg", "bovenboer", "ronduitebrug"] },
+  { slug: "wetering", naam: "Wetering", aliases: ["wetering", "wetering-west", "wetering-oost", "weteringbrug"] },
+  { slug: "zuidveen", naam: "Zuidveen", aliases: ["zuidveen", "stroïnkweg", "stroinkweg", "dorpstraat zuidveen", "zuidveenerweg"] }
 ];
 
 /**
@@ -1179,21 +1179,30 @@ export function detectWijkenKernen(
     }
   }
 
-  // 4. Als laatste redmiddel: zoek in eerste 1500 tekens van de tekst met strenge regex
+  // 4. Als laatste redmiddel: zoek in eerste 6000 tekens van de tekst (o.a. PDF-tekst & straatnamen) met strenge regex
   if (detected.size === 0 && text && text.trim().length > 0) {
-    const sample = text.substring(0, 1500).toLowerCase();
+    const sample = text.substring(0, 6000).toLowerCase();
     for (const w of WIJKEN_KERNEN_LIST) {
-      if (["clingenborgh", "de-gagels", "nieuwe-gagels", "doosje"].includes(w.slug)) continue;
+      if (w.slug === "doosje") {
+        if (/\bbuurtschap\s+doosje\b/i.test(sample)) {
+          detected.add(w.naam);
+        }
+        continue;
+      }
 
       for (const alias of w.aliases) {
         if (alias.length <= 4) continue;
+        // Voorkom false positive voor het land Nederland in langere tekst
+        if (alias === "nederland") continue;
+        // Voor Wetering alleen matchen op 'wetering-west'/'wetering-oost'/'weteringbrug' of 'kern wetering'/'buurtschap wetering'
+        if (alias === "wetering" && !/\b(kern|buurtschap|dorp)\s+wetering\b/i.test(sample)) continue;
         const pattern = new RegExp(`\\b${alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
         if (pattern.test(sample)) {
           detected.add(w.naam);
           break;
         }
       }
-      if (detected.size >= 2) break;
+      if (detected.size >= 3) break;
     }
   }
 
