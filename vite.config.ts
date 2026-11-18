@@ -38,6 +38,21 @@ export default defineConfig(({ mode }) => ({
   },
   plugins: [
     react(),
+    VitePWA({
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.ts",
+      registerType: "autoUpdate",
+      injectRegister: "auto",
+      manifest: false,
+      injectManifest: {
+        globPatterns: ["index.html"],
+      },
+      devOptions: {
+        enabled: true,
+        type: "module",
+      },
+    }),
   ],
   esbuild: {
     legalComments: "none",

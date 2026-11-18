@@ -3120,11 +3120,11 @@ export default function AdminDashboard() {
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-11 h-11 rounded-full overflow-hidden border border-border bg-muted shrink-0 relative">
                         <img
-                          src={f.imageUrl || f.imgUrl || "/assets/logo.png"}
+                          src={f.imageUrl || f.imgUrl || "/assets/osl-logo.png?v=osl2"}
                           alt={f.name}
                           className="w-full h-full object-cover"
                           onError={(e) => {
-                            (e.target as HTMLImageElement).src = "/assets/logo.png";
+                            (e.target as HTMLImageElement).src = "/assets/osl-logo.png?v=osl2";
                           }}
                         />
                       </div>

@@ -156,7 +156,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
             "name": "Onafhankelijk Steenwijkerland",
             "alternateName": ["OSL", "Onafhankelijk Steenwijkerland (OSL)", "voorheen Lijst van Andel", "LvA"],
             "url": baseUrl,
-            "logo": DEFAULT_IMAGE,
+            "logo": `${baseUrl}/assets/osl-logo.png`,
             "image": DEFAULT_IMAGE,
             "description": "Onafhankelijke lokale politieke partij in de gemeenteraad van Steenwijkerland, opkomend voor lokale inwoners, betaalbare starterswoningen en leefbare kernen.",
             "address": {
@@ -262,7 +262,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
                 "name": "Onafhankelijk Steenwijkerland",
                 "logo": {
                   "@type": "ImageObject",
-                  "url": DEFAULT_IMAGE
+                  "url": `${baseUrl}/assets/osl-logo.png`
                 }
               },
               "mainEntityOfPage": {
@@ -1082,7 +1082,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
               "url": baseUrl,
               "logo": {
                 "@type": "ImageObject",
-                "url": DEFAULT_IMAGE,
+                "url": `${baseUrl}/assets/osl-logo.png`,
               },
             },
             "contentLocation": {

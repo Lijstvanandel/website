@@ -176,8 +176,8 @@ export async function sendPushNotificationToUser(
     body: payload.body || "Nieuw bericht",
     url: payload.url || "/dashboard",
     tag: payload.tag || "osl-belafspraak",
-    icon: payload.icon || "/pwa-192x192.png",
-    badge: payload.badge || "/pwa-192x192.png",
+    icon: payload.icon || "/pwa-192x192.png?v=osl2",
+    badge: payload.badge || "/pwa-192x192.png?v=osl2",
   });
 
   for (const subItem of userSubs) {

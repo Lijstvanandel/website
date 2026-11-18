@@ -51,13 +51,22 @@ export function PWAInstallButton({ variant = "button", className = "" }: PWAInst
           <span className="hidden 2xl:inline">App</span>
         </Button>
 
-        {/* iOS Install Dialog */}
+        {/* iOS / Manual Install Dialog */}
         <Dialog open={showIOSModal} onOpenChange={setShowIOSModal}>
           <DialogContent className="max-w-md bg-card border-border">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-foreground font-display text-lg">
-                <Smartphone className="w-5 h-5 text-primary" />
-                Onafhankelijk Steenwijkerland App Installeren
+              <DialogTitle className="flex items-center gap-3 text-foreground font-display text-lg">
+                <div className="w-10 h-10 rounded-xl bg-white p-1 shadow-sm ring-1 ring-accent/40 shrink-0 flex items-center justify-center">
+                  <img
+                    src="/pwa-192x192.png?v=osl2"
+                    alt="Onafhankelijk Steenwijkerland (OSL) PWA logo"
+                    className="w-full h-full object-contain"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src = "/assets/osl-logo.webp?v=osl2";
+                    }}
+                  />
+                </div>
+                <span>Onafhankelijk Steenwijkerland App Installeren</span>
               </DialogTitle>
               <DialogDescription className="text-muted-foreground text-sm">
                 Installeer onze PWA direct op het startscherm van uw telefoon of computer voor snellere toegang en notificaties.
@@ -115,8 +124,17 @@ export function PWAInstallButton({ variant = "button", className = "" }: PWAInst
     return (
       <div className="bg-primary/10 border-b border-primary/20 text-foreground px-4 py-2.5 transition-all">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 text-xs sm:text-sm">
-          <div className="flex items-center gap-2">
-            <Smartphone className="w-4 h-4 text-primary shrink-0" />
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-white p-0.5 shadow-xs ring-1 ring-accent/40 shrink-0 flex items-center justify-center">
+              <img
+                src="/pwa-192x192.png?v=osl2"
+                alt="OSL App"
+                className="w-full h-full object-contain"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).src = "/assets/osl-logo.webp?v=osl2";
+                }}
+              />
+            </div>
             <span>
               <strong>Onafhankelijk Steenwijkerland (OSL) App:</strong> Installeer voor snelle toegang en directe notificaties voor belafspraken.
             </span>

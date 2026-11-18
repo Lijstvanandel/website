@@ -37,8 +37,8 @@ self.addEventListener("push", (event: PushEvent) => {
     body: "Nieuwe notificatie ontvangen",
     url: "/dashboard",
     tag: "osl-belafspraak",
-    icon: "/pwa-192x192.png",
-    badge: "/pwa-192x192.png",
+    icon: "/pwa-192x192.png?v=osl2",
+    badge: "/pwa-192x192.png?v=osl2",
   };
 
   try {
@@ -54,8 +54,8 @@ self.addEventListener("push", (event: PushEvent) => {
 
   const options: NotificationOptions = {
     body: data.body,
-    icon: data.icon || "/pwa-192x192.png",
-    badge: data.badge || "/pwa-192x192.png",
+    icon: data.icon || "/pwa-192x192.png?v=osl2",
+    badge: data.badge || "/pwa-192x192.png?v=osl2",
     tag: data.tag || "osl-belafspraak",
     data: {
       url: data.url || "/dashboard",

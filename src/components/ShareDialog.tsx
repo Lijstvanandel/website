@@ -208,7 +208,7 @@ export function ShareDialog({
               alt={title}
               className="w-full h-full object-cover"
               onError={(e) => {
-                (e.target as HTMLImageElement).src = "/assets/osl-logo.png";
+                (e.target as HTMLImageElement).src = "/assets/osl-logo.png?v=osl2";
               }}
             />
           </div>

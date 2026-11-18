@@ -242,7 +242,7 @@ export default function FractielidVideos() {
       title: `${member?.name || "Fractielid"} | Onafhankelijk Steenwijkerland`,
       description: `Bekijk de debatten, videobijdragen en nieuwsberichten van ${member?.name || "Onafhankelijk Steenwijkerland"} in Steenwijkerland.`,
       url: pageUrl,
-      imageUrl: member?.imgUrl || "/assets/logo.png",
+      imageUrl: member?.imgUrl || "/assets/osl-logo.png?v=osl2",
     });
     setShareDialogOpen(true);
   };
@@ -270,7 +270,7 @@ export default function FractielidVideos() {
       title: `${article.title} - ${member?.name || "Onafhankelijk Steenwijkerland"}`,
       description: article.excerpt || article.description || `Lees dit bericht van ${member?.name || "Onafhankelijk Steenwijkerland"}.`,
       url: articleUrl,
-      imageUrl: article.thumbnailUrl || article.headerUrl || member?.imgUrl || "/assets/logo.png",
+      imageUrl: article.thumbnailUrl || article.headerUrl || member?.imgUrl || "/assets/osl-logo.png?v=osl2",
     });
     setShareDialogOpen(true);
   };

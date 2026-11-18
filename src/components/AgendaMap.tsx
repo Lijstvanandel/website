@@ -30,9 +30,9 @@ const eventMarkerIcon = L.divIcon({
   html: `
     <div style="position: relative; width: 44px; height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end;">
       <img
-        src="/assets/map-marker.webp"
+        src="/assets/map-marker.webp?v=osl2"
         alt="OSL Evenement"
-        onerror="this.onerror=null;this.src='/assets/map-marker.png';"
+        onerror="this.onerror=null;this.src='/assets/map-marker.png?v=osl2';"
         style="width: 44px; height: 60px; object-fit: contain; display: block; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.45)); transition: transform 0.2s ease;"
       />
       <div style="position: absolute; bottom: -2px; width: 14px; height: 4px; background: rgba(0,0,0,0.38); border-radius: 50%; filter: blur(1.5px); pointer-events: none;"></div>
@@ -49,9 +49,9 @@ const selectedEventMarkerIcon = L.divIcon({
   html: `
     <div style="position: relative; width: 52px; height: 71px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end;">
       <img
-        src="/assets/map-marker.webp"
+        src="/assets/map-marker.webp?v=osl2"
         alt="Geselecteerd OSL Evenement"
-        onerror="this.onerror=null;this.src='/assets/map-marker.png';"
+        onerror="this.onerror=null;this.src='/assets/map-marker.png?v=osl2';"
         style="width: 52px; height: 71px; object-fit: contain; display: block; filter: drop-shadow(0 0 6px rgba(234,179,8,0.75)) drop-shadow(0 6px 12px rgba(0,0,0,0.55));"
       />
       <div style="position: absolute; bottom: -2px; width: 16px; height: 5px; background: rgba(0,0,0,0.45); border-radius: 50%; filter: blur(1.5px); pointer-events: none;"></div>
@@ -416,11 +416,11 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
         <div className="flex items-center gap-4">
           <span className="flex items-center gap-1.5">
             <img
-              src="/assets/map-marker.webp"
+              src="/assets/map-marker.webp?v=osl2"
               alt=""
               aria-hidden="true"
               onError={(e) => {
-                (e.currentTarget as HTMLImageElement).src = "/assets/map-marker.png";
+                (e.currentTarget as HTMLImageElement).src = "/assets/map-marker.png?v=osl2";
               }}
               className="w-4 h-5 object-contain shrink-0"
             />

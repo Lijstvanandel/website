@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Facebook, Instagram, Linkedin, Twitter, Mail, CheckCircle2, ArrowRight, Heart } from "lucide-react";
-const logo = "/assets/logo.webp";
+const logo = "/assets/osl-logo.webp?v=osl2";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -58,7 +58,7 @@ export const Footer = () => {
                 loading="lazy"
                 decoding="async"
                 onError={(e) => {
-                  (e.target as HTMLImageElement).src = "/assets/logo.png";
+                  (e.target as HTMLImageElement).src = "/assets/osl-logo.png?v=osl2";
                 }}
                 className="h-9 w-auto object-contain"
               />

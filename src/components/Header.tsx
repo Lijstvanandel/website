@@ -32,7 +32,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-const logo = "/assets/logo.webp";
+const logo = "/assets/osl-logo.webp?v=osl2";
 import { BUURTKAART_43_WIJKEN, LEGACY_SLUG_MAP } from "@/data/defaultWijken";
 
 const navItems = [
@@ -167,7 +167,7 @@ export const Header = () => {
                   loading="eager"
                   decoding="async"
                   onError={(e) => {
-                    (e.target as HTMLImageElement).src = "/assets/logo.png";
+                    (e.target as HTMLImageElement).src = "/assets/osl-logo.png?v=osl2";
                   }}
                   className="h-7 sm:h-8 xl:h-9 w-auto object-contain shrink-0"
                 />
