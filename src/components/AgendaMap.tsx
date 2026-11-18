@@ -24,20 +24,42 @@ const searchedAddressIcon = L.divIcon({
   popupAnchor: [0, -46],
 });
 
-// Custom Leaflet DivIcon for agenda events
+// Custom Leaflet DivIcon for agenda events (OSL teardrop marker)
 const eventMarkerIcon = L.divIcon({
   className: "custom-event-marker",
   html: `
-    <div style="transform: translate(-50%, -100%); display: flex; flex-direction: column; align-items: center;">
-      <div style="background: linear-gradient(135deg, #1e4d38, #143627); width: 34px; height: 34px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 2px solid #EAB308; box-shadow: 0 4px 12px rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center;">
-        <div style="transform: rotate(45deg); color: #EAB308; font-size: 14px; font-weight: bold; line-height: 1;">📅</div>
-      </div>
-      <div style="width: 10px; height: 4px; background: rgba(0,0,0,0.4); border-radius: 50%; margin-top: 2px; filter: blur(1px);"></div>
+    <div style="position: relative; width: 44px; height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end;">
+      <img
+        src="/assets/map-marker.webp"
+        alt="OSL Evenement"
+        onerror="this.onerror=null;this.src='/assets/map-marker.png';"
+        style="width: 44px; height: 60px; object-fit: contain; display: block; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.45)); transition: transform 0.2s ease;"
+      />
+      <div style="position: absolute; bottom: -2px; width: 14px; height: 4px; background: rgba(0,0,0,0.38); border-radius: 50%; filter: blur(1.5px); pointer-events: none;"></div>
     </div>
   `,
-  iconSize: [34, 40],
-  iconAnchor: [0, 0],
-  popupAnchor: [0, -40],
+  iconSize: [44, 60],
+  iconAnchor: [22, 60],
+  popupAnchor: [0, -58],
+});
+
+// Slightly larger highlighted OSL marker when an event is actively selected
+const selectedEventMarkerIcon = L.divIcon({
+  className: "custom-event-marker",
+  html: `
+    <div style="position: relative; width: 52px; height: 71px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end;">
+      <img
+        src="/assets/map-marker.webp"
+        alt="Geselecteerd OSL Evenement"
+        onerror="this.onerror=null;this.src='/assets/map-marker.png';"
+        style="width: 52px; height: 71px; object-fit: contain; display: block; filter: drop-shadow(0 0 6px rgba(234,179,8,0.75)) drop-shadow(0 6px 12px rgba(0,0,0,0.55));"
+      />
+      <div style="position: absolute; bottom: -2px; width: 16px; height: 5px; background: rgba(0,0,0,0.45); border-radius: 50%; filter: blur(1.5px); pointer-events: none;"></div>
+    </div>
+  `,
+  iconSize: [52, 71],
+  iconAnchor: [26, 71],
+  popupAnchor: [0, -68],
 });
 
 // Helper component to smoothly move map
@@ -109,6 +131,7 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
     lat: number;
     lng: number;
     label: string;
+    isCustomClick?: boolean;
   } | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number]>(STEENWIJK_CENTER);
   const [mapZoom, setMapZoom] = useState<number>(12);
@@ -165,6 +188,7 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
       lat,
       lng,
       label: `Geprikt punt: ${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+      isCustomClick: true,
     });
     setMapCenter([lat, lng]);
 
@@ -181,6 +205,7 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
             lat,
             lng,
             label: shortAddress,
+            isCustomClick: true,
           });
         }
       }
@@ -246,6 +271,7 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
             label: ev.isAttending
               ? `${ev.title} — ${ev.fullAddress || ev.address}`
               : `${ev.title} — Plaats: ${ev.city || extractCity(ev.address)}`,
+            isCustomClick: false,
           });
         }
       }
@@ -310,7 +336,7 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
           />
 
           {/* Clicked Address Marker */}
-          {activeMarker && (
+          {activeMarker && activeMarker.isCustomClick && (
             <Marker
               position={[activeMarker.lat, activeMarker.lng]}
               icon={searchedAddressIcon}
@@ -333,12 +359,14 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
           {resolvedEvents.map((ev) => {
             if (!ev.lat || !ev.lng) return null;
             const eventCity = ev.city || extractCity(ev.address);
+            const isSelected = selectedEventId === ev.id;
 
             return (
               <Marker
                 key={ev.id}
                 position={[ev.lat, ev.lng]}
-                icon={eventMarkerIcon}
+                icon={isSelected ? selectedEventMarkerIcon : eventMarkerIcon}
+                zIndexOffset={isSelected ? 500 : 0}
                 eventHandlers={{
                   click: () => {
                     if (onSelectEvent) onSelectEvent(ev.id);
@@ -387,7 +415,16 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
       <div className="px-6 py-3 bg-secondary/30 border-t border-border flex flex-wrap items-center justify-between gap-4 text-xs text-muted-foreground">
         <div className="flex items-center gap-4">
           <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-[#143627] inline-block border border-accent" /> Bijeenkomsten & evenementen
+            <img
+              src="/assets/map-marker.webp"
+              alt=""
+              aria-hidden="true"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src = "/assets/map-marker.png";
+              }}
+              className="w-4 h-5 object-contain shrink-0"
+            />
+            Bijeenkomsten & evenementen
           </span>
         </div>
         <div>Gemeente Steenwijkerland • OpenStreetMap</div>
