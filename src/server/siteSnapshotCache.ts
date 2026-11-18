@@ -199,7 +199,7 @@ export function buildPublicSiteSnapshot(db: any, forceNewVersion = false): Publi
     fractieleden,
     videos: videos.map((v: any) => ({
       ...v,
-      description: v.description ? String(v.description).slice(0, 260) : "",
+      description: v.description ? String(v.description).slice(0, 2000) : "",
     })),
     newsSummaries: newsSummaries.slice(0, 36),
     events: events.slice(0, 16).map((e: any) => {

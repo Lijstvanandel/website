@@ -12870,7 +12870,27 @@ async function startServer() {
         lastmod: e.updatedAt ? e.updatedAt.split("T")[0] : (e.createdAt ? e.createdAt.split("T")[0] : new Date().toISOString().split("T")[0])
       }));
 
-      const allUrls = [...staticRoutes, ...newsRoutes, ...wijkRoutes, ...eventRoutes];
+      const videoRoutes = (db.videos || [])
+        .filter((v: any) => v && v.id && v.isHidden !== true && v.isHidden !== "true")
+        .map((v: any) => ({
+          url: `/video/${v.id}`,
+          priority: "0.8",
+          changefreq: "weekly",
+          lastmod: v.updatedAt
+            ? String(v.updatedAt).split("T")[0]
+            : (v.date ? String(v.date).split("T")[0] : new Date().toISOString().split("T")[0])
+        }));
+
+      const fractieledenRoutes = (db.fractieleden || [])
+        .filter((m: any) => m && m.id)
+        .map((m: any) => ({
+          url: `/raadsleden/${m.id}`,
+          priority: "0.8",
+          changefreq: "monthly",
+          lastmod: m.updatedAt ? String(m.updatedAt).split("T")[0] : new Date().toISOString().split("T")[0]
+        }));
+
+      const allUrls = [...staticRoutes, ...newsRoutes, ...wijkRoutes, ...eventRoutes, ...videoRoutes, ...fractieledenRoutes];
 
       const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -13704,12 +13724,20 @@ Sitemap: ${baseUrl}/sitemap.xml
   // 4c. Member Dashboard: Get Active Council Topics for Members
   app.get("/api/council/member-topics", requireAuth, (req: any, res: any) => {
     const user = req.user;
-    const isPaidMember = user?.role === "admin" || user?.role === "raadslid" || user?.role === "bestuur" || user?.billingStatus === "paid" || user?.billingStatus === "exempt";
+    const isPaidMember =
+      user?.role === "admin" ||
+      user?.role === "raadslid" ||
+      user?.role === "bestuur" ||
+      user?.role === "secretaris" ||
+      user?.role === "penningmeester" ||
+      user?.billingStatus === "paid" ||
+      user?.billingStatus === "exempt";
 
     // If membership dues are not paid/exempt, do not expose the council topics
     if (!isPaidMember) {
       return res.json({
         topics: [],
+        myContributions: [],
         requiresMembership: true,
         message: "Onderwerpen en stukken zijn exclusief toegankelijk voor leden van wie de contributie is voldaan."
       });
@@ -13750,8 +13778,38 @@ Sitemap: ${baseUrl}/sitemap.xml
         };
       });
 
+    // Collect all contributions submitted by this member across both active and archived topics
+    const myContributions = allTopics
+      .flatMap((t: any) => {
+        const enriched = enrichTopicWithMemberData(t, db);
+        const ownNotes = (enriched.notes || []).filter(
+          (n: any) => n.authorUsername === req.user.username && n.source === "ledenfeedback"
+        );
+        return ownNotes.map((n: any) => ({
+          id: n.id,
+          topicId: enriched.id,
+          topicTitle: enriched.title,
+          topicCategory: enriched.category || "Oordeelvorming",
+          meetingDate: enriched.meetingDate || "",
+          meetingDateDisplay: enriched.meetingDateDisplay || "",
+          meetingTitle: enriched.meetingTitle || "",
+          isArchived: Boolean(t.isArchived),
+          assignedName: enriched.assignedName || null,
+          documentId: n.documentId || null,
+          documentTitle: n.documentTitle || null,
+          note: n.note,
+          createdAt: n.createdAt,
+        }));
+      })
+      .sort((a: any, b: any) => {
+        const ta = new Date(a.createdAt || 0).getTime();
+        const tb = new Date(b.createdAt || 0).getTime();
+        return tb - ta;
+      });
+
     return res.json({
-      topics: memberTopics
+      topics: memberTopics,
+      myContributions,
     });
   });
 
@@ -13789,6 +13847,8 @@ Sitemap: ${baseUrl}/sitemap.xml
 
     topic.notes.push(newFeedbackNote);
     saveDb(db);
+    recordCouncilContribution(topic);
+    persistSqlite();
 
     // Send push notification to assigned council member & fractie admins
     try {

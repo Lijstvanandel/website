@@ -25,6 +25,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { getVideoThumbnail } from "@/lib/videoUtils";
+import { getInitialPublicSnapshot } from "@/lib/publicSnapshotClient";
 import { FractielidItem } from "@/components/FractielidWidget";
 import { DEFAULT_FRACTIELEDEN } from "@/data/fractieleden";
 import { hoofdstukken } from "@/data/partijprogramma";
@@ -51,11 +52,21 @@ interface VideoItem {
 
 export default function VideoDetail() {
   const { id } = useParams<{ id: string }>();
+  const initialSnapshot = useMemo(() => getInitialPublicSnapshot(), []);
+  const initialVideos: VideoItem[] = Array.isArray(initialSnapshot?.videos) ? initialSnapshot.videos : [];
+  const initialTarget = useMemo(
+    () => initialVideos.find((v) => String(v.id).toLowerCase() === String(id).toLowerCase()) || null,
+    [initialVideos, id]
+  );
 
-  const [currentVideo, setCurrentVideo] = useState<VideoItem | null>(null);
-  const [allVideos, setAllVideos] = useState<VideoItem[]>([]);
-  const [fractieleden, setFractieleden] = useState<FractielidItem[]>(DEFAULT_FRACTIELEDEN);
-  const [loading, setLoading] = useState(true);
+  const [currentVideo, setCurrentVideo] = useState<VideoItem | null>(initialTarget);
+  const [allVideos, setAllVideos] = useState<VideoItem[]>(initialVideos);
+  const [fractieleden, setFractieleden] = useState<FractielidItem[]>(
+    Array.isArray(initialSnapshot?.fractieleden) && initialSnapshot.fractieleden.length > 0
+      ? initialSnapshot.fractieleden
+      : DEFAULT_FRACTIELEDEN
+  );
+  const [loading, setLoading] = useState(!initialTarget);
   const [error, setError] = useState<string | null>(null);
 
   // Sharing states
@@ -64,10 +75,14 @@ export default function VideoDetail() {
 
   // Belafspraak state
   const [belOpen, setBelOpen] = useState(false);
-  const [descExpanded, setDescExpanded] = useState(false);
+  const [descExpanded, setDescExpanded] = useState(true);
 
   // Random carousel state for right column
-  const [shuffledVideos, setShuffledVideos] = useState<VideoItem[]>([]);
+  const [shuffledVideos, setShuffledVideos] = useState<VideoItem[]>(() => {
+    if (!initialTarget) return [];
+    const others = initialVideos.filter((v) => String(v.id) !== String(initialTarget.id));
+    return [...others].sort(() => Math.random() - 0.5);
+  });
   const [carouselPage, setCarouselPage] = useState(0);
   const ITEMS_PER_CAROUSEL_PAGE = 5;
 
@@ -85,10 +100,24 @@ export default function VideoDetail() {
       });
   }, []);
 
-  // 2. Fetch all videos & select current video
+  // 2. Fetch all videos & select current video (hydrates immediately from snapshot when present)
   useEffect(() => {
-    setLoading(true);
-    setError(null);
+    const snap = getInitialPublicSnapshot();
+    const snapVideos: VideoItem[] = Array.isArray(snap?.videos) ? snap.videos : [];
+    const snapTarget = snapVideos.find((v) => String(v.id).toLowerCase() === String(id).toLowerCase()) || null;
+
+    if (snapTarget) {
+      setAllVideos(snapVideos);
+      setCurrentVideo(snapTarget);
+      const others = snapVideos.filter((v) => String(v.id) !== String(snapTarget.id));
+      setShuffledVideos([...others].sort(() => Math.random() - 0.5));
+      setCarouselPage(0);
+      setError(null);
+      setLoading(false);
+    } else {
+      setLoading(true);
+      setError(null);
+    }
 
     fetch("/api/videos")
       .then((res) => (res.ok ? res.json() : []))
@@ -98,31 +127,112 @@ export default function VideoDetail() {
         const target = videos.find((v) => String(v.id).toLowerCase() === String(id).toLowerCase());
         if (target) {
           setCurrentVideo(target);
-          // Initialiseer willekeurige volgorde voor alle overige video's van alle raadsleden
-          const others = videos.filter((v) => String(v.id) !== String(target.id));
-          const randomized = [...others].sort(() => Math.random() - 0.5);
-          setShuffledVideos(randomized);
-          setCarouselPage(0);
+          setError(null);
+          // Initialiseer willekeurige volgorde voor alle overige video's van alle raadsleden (als nog niet gevuld)
+          setShuffledVideos((prev) => {
+            if (snapTarget && prev.length > 0) return prev;
+            const others = videos.filter((v) => String(v.id) !== String(target.id));
+            return [...others].sort(() => Math.random() - 0.5);
+          });
+          if (!snapTarget) {
+            setCarouselPage(0);
+          }
         } else {
           setError(`De opgevraagde video (ID: ${id}) kon niet worden gevonden.`);
         }
       })
       .catch((err) => {
         console.error("Fout bij ophalen van video:", err);
-        setError("Er is een fout opgetreden bij het laden van de video.");
+        if (!snapTarget) {
+          setError("Er is een fout opgetreden bij het laden van de video.");
+        }
       })
       .finally(() => {
         setLoading(false);
       });
   }, [id]);
 
-  // Update document title for SEO & UX
+  // Update document title, meta description & client-side VideoObject JSON-LD on SPA navigation
   useEffect(() => {
-    if (currentVideo) {
-      const displayTitle = currentVideo.burgerraadslidTitle || currentVideo.title;
-      document.title = `${displayTitle} | Lijst van Andel Video's`;
+    if (!currentVideo) return;
+
+    const matchedSpeaker =
+      currentVideo.fractieledenIds && currentVideo.fractieledenIds.length > 0
+        ? fractieleden.find((m) => String(m.id).toLowerCase() === String(currentVideo.fractieledenIds![0]).toLowerCase())
+        : null;
+    const spName = matchedSpeaker?.name || "Lijst van Andel";
+    let cleanTitle = (currentVideo.burgerraadslidTitle || currentVideo.title || "").trim();
+    cleanTitle = cleanTitle.replace(new RegExp(`^${spName}\\s+over\\s+`, "i"), "");
+    cleanTitle = cleanTitle.replace(/^(?:videobijdrage|video bijdrage|videobijdragen|video-bijdrage|tussenkomst|bijdrage|inbreng|toelichting)\s*(?:over\s*)?/i, "");
+    cleanTitle = cleanTitle.replace(/^['"‘“](.*)['"’”]$/, "$1").trim() || "het raadsvoorstel";
+    const formatted = `${spName} over ‘${cleanTitle}’`;
+
+    document.title = `${formatted} | Lijst van Andel`;
+
+    const fullDesc = (currentVideo.description || "").trim();
+    const shortDesc =
+      fullDesc.length > 160
+        ? `${fullDesc.slice(0, 157)}...`
+        : fullDesc || `Bekijk hoe ${spName} spreekt over ‘${cleanTitle}’ in de gemeenteraad van Steenwijkerland.`;
+
+    const metaDescEl = document.querySelector('meta[name="description"]');
+    if (metaDescEl) {
+      metaDescEl.setAttribute("content", shortDesc);
     }
-  }, [currentVideo]);
+
+    const origin = window.location.origin;
+    const canonicalHref = `${origin}/video/${currentVideo.id}`;
+    const canonicalEl = document.querySelector('link[rel="canonical"]');
+    if (canonicalEl) {
+      canonicalEl.setAttribute("href", canonicalHref);
+    }
+
+    const poster =
+      getVideoThumbnail(currentVideo.videoUrl, currentVideo.thumbnailUrl, currentVideo.id, matchedSpeaker?.id) ||
+      `${origin}/api/videos/${currentVideo.id}/thumbnail.jpg`;
+    const absPoster = poster.startsWith("http") ? poster : `${origin}${poster.startsWith("/") ? "" : "/"}${poster}`;
+
+    const jsonLdId = "video-detail-client-jsonld";
+    let scriptEl = document.getElementById(jsonLdId) as HTMLScriptElement | null;
+    if (!scriptEl) {
+      scriptEl = document.createElement("script");
+      scriptEl.id = jsonLdId;
+      scriptEl.type = "application/ld+json";
+      document.head.appendChild(scriptEl);
+    }
+    scriptEl.textContent = JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "VideoObject",
+      "name": formatted,
+      "description": fullDesc || shortDesc,
+      "thumbnailUrl": [absPoster],
+      "uploadDate": currentVideo.date ? new Date(currentVideo.date).toISOString() : new Date().toISOString(),
+      "inLanguage": "nl-NL",
+      "url": canonicalHref,
+      "author": {
+        "@type": "Person",
+        "name": spName,
+        "affiliation": {
+          "@type": "PoliticalParty",
+          "name": "Lijst van Andel",
+        },
+      },
+      "publisher": {
+        "@type": "PoliticalParty",
+        "name": "Lijst van Andel",
+        "url": origin,
+      },
+      "contentLocation": {
+        "@type": "AdministrativeArea",
+        "name": currentVideo.wijkSlug ? `${currentVideo.wijkSlug}, Steenwijkerland` : "Steenwijkerland",
+      },
+    });
+
+    return () => {
+      const existing = document.getElementById(jsonLdId);
+      if (existing) existing.remove();
+    };
+  }, [currentVideo, fractieleden]);
 
   // Gekoppelde spreker (raadslid / burgerraadslid)
   const speaker = useMemo(() => {

@@ -1,6 +1,9 @@
 import fs from "fs";
 import path from "path";
 import { BUURTKAART_43_WIJKEN, LEGACY_SLUG_MAP } from "../data/defaultWijken.js";
+import { DEFAULT_FRACTIELEDEN } from "../data/fractieleden.js";
+import { hoofdstukken } from "../data/partijprogramma.js";
+import { DEFAULT_VIDEO_STANDPUNTEN } from "./siteSnapshotCache.js";
 
 export interface PageMetadata {
   title: string;
@@ -20,6 +23,7 @@ export interface PageMetadata {
   publishedTime?: string;
   modifiedTime?: string;
   structuredData?: object;
+  semanticHtml?: string;
   robots?: string;
 }
 
@@ -94,6 +98,29 @@ function extractYouTubeThumb(videoUrl?: string): string | null {
   const ytRegex = /(?:youtube\.com\/(?:[^/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i;
   const match = videoUrl.trim().match(ytRegex);
   return match && match[1] ? `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg` : null;
+}
+
+function extractVideoEmbedUrl(videoUrl?: string): string | null {
+  if (!videoUrl || typeof videoUrl !== "string") return null;
+  const trimmed = videoUrl.trim();
+  const ytMatch = trimmed.match(/(?:youtube\.com\/(?:[^/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
+  if (ytMatch && ytMatch[1]) {
+    return `https://www.youtube.com/embed/${ytMatch[1]}`;
+  }
+  const vimeoMatch = trimmed.match(/vimeo\.com\/(?:video\/)?(\d+)/i);
+  if (vimeoMatch && vimeoMatch[1]) {
+    return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
+  }
+  return null;
+}
+
+function toIsoDateString(rawDate?: string): string {
+  if (!rawDate) return new Date().toISOString();
+  const parsed = new Date(rawDate);
+  if (!isNaN(parsed.getTime())) {
+    return parsed.toISOString();
+  }
+  return new Date().toISOString();
 }
 
 export function getPageMetadata(urlPath: string, host: string, db: Record<string, any>): PageMetadata {
@@ -880,15 +907,33 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
     const videoId = directVideoMatch[1].toLowerCase();
     const video = (db?.videos || []).find((v: any) => String(v.id).toLowerCase() === videoId);
     if (video) {
-      // Zoek eventueel gekoppeld fractielid voor extra context
-      let speakerName = "Lijst van Andel";
+      const membersList =
+        Array.isArray(db?.fractieleden) && db.fractieleden.length > 0
+          ? db.fractieleden
+          : DEFAULT_FRACTIELEDEN;
+
+      // Zoek gekoppeld fractielid voor extra context
+      let speaker: any = null;
       if (video.fractieledenIds && video.fractieledenIds.length > 0) {
         const firstFid = String(video.fractieledenIds[0]).toLowerCase();
-        const member = (db?.fractieleden || []).find((m: any) => String(m.id).toLowerCase() === firstFid);
-        if (member) {
-          speakerName = member.name;
-        }
+        speaker =
+          membersList.find(
+            (m: any) =>
+              String(m.id).toLowerCase() === firstFid ||
+              (m.name && m.name.toLowerCase().includes(firstFid))
+          ) || null;
       }
+      if (!speaker && video.title) {
+        speaker =
+          membersList.find(
+            (m: any) => m.name && video.title.toLowerCase().includes(m.name.toLowerCase())
+          ) || null;
+      }
+      const speakerName = speaker?.name || "Lijst van Andel";
+      const isBurger =
+        speaker?.type?.toLowerCase() === "burgerraadslid" ||
+        speaker?.role?.toLowerCase().includes("burgerraadslid");
+      const speakerRole = isBurger ? "Burgerraadslid" : (speaker?.role || "Gemeenteraadslid");
 
       // Format: '%naam%' over '%titel van de video%'
       let rawVTitle = (video.burgerraadslidTitle || video.title || "").trim();
@@ -906,8 +951,9 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
       }
       const formattedHeadline = `${speakerName} over ‘${cleanVTitle}’`;
 
-      const cleanDesc = video.description
-        ? truncate(stripHtml(video.description), 160)
+      const fullContextDesc = stripHtml(video.description || "");
+      const cleanDesc = fullContextDesc
+        ? truncate(fullContextDesc, 160)
         : `Bekijk hoe ${speakerName} spreekt over ‘${cleanVTitle}’ in de gemeenteraad van Steenwijkerland.`;
 
       let videoImage = "";
@@ -916,6 +962,179 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
       } else {
         videoImage = `${baseUrl}/api/videos/${video.id}/thumbnail.jpg`;
       }
+
+      // Gekoppelde wijk/kern
+      const allWijken = db?.wijken?.length ? db.wijken : BUURTKAART_43_WIJKEN;
+      const linkedWijk = video.wijkSlug
+        ? allWijken.find((w: any) => String(w.slug).toLowerCase() === String(video.wijkSlug).toLowerCase())
+        : null;
+
+      // Gekoppeld standpunt uit het partijprogramma
+      const defSp = DEFAULT_VIDEO_STANDPUNTEN[String(video.id)];
+      const hNr = Number(video.hoofdstukNr ?? defSp?.hoofdstukNr);
+      const sNr = Number(video.standpuntNr ?? defSp?.standpuntNr);
+      const linkedHoofdstuk = hNr ? hoofdstukken.find((h) => h.nr === hNr) : undefined;
+      const linkedStandpunt = linkedHoofdstuk && sNr ? linkedHoofdstuk.standpunten.find((s) => s.nr === sNr) : undefined;
+
+      const videoCanonicalUrl = `${baseUrl}/video/${video.id}`;
+      const uploadDateIso = toIsoDateString(video.date || video.createdAt);
+      const embedUrl = extractVideoEmbedUrl(video.videoUrl);
+      const isDirectVideoFile =
+        video.videoUrl &&
+        typeof video.videoUrl === "string" &&
+        !embedUrl &&
+        /\.(mp4|webm|mov|m4v)(\?|$)/i.test(video.videoUrl);
+      const contentUrl = isDirectVideoFile ? resolveImageUrl(baseUrl, video.videoUrl) : undefined;
+
+      const aboutTopics: any[] = [
+        { "@type": "Thing", "name": cleanVTitle },
+        { "@type": "AdministrativeArea", "name": "Gemeente Steenwijkerland", "sameAs": "https://nl.wikipedia.org/wiki/Steenwijkerland" },
+      ];
+      if (video.category) {
+        aboutTopics.push({ "@type": "Thing", "name": video.category });
+      }
+      if (linkedWijk) {
+        aboutTopics.push({
+          "@type": "Place",
+          "name": `${linkedWijk.naam}, Steenwijkerland`,
+          "url": `${baseUrl}/wijken-en-kernen/${linkedWijk.slug}`,
+        });
+      }
+      if (linkedHoofdstuk && linkedStandpunt) {
+        aboutTopics.push({
+          "@type": "Thing",
+          "name": `Standpunt H${linkedHoofdstuk.nr}.${linkedStandpunt.nr}: ${linkedStandpunt.titel}`,
+          "description": linkedStandpunt.standpunt,
+          "url": `${baseUrl}/standpunten?hoofdstuk=${linkedHoofdstuk.nr}&standpunt=${linkedStandpunt.nr}`,
+        });
+      }
+
+      const keywordsList = [
+        cleanVTitle,
+        speakerName,
+        "Lijst van Andel",
+        "Steenwijkerland",
+        "gemeenteraad Steenwijkerland",
+        video.category,
+        linkedWijk?.naam,
+        linkedStandpunt?.titel,
+      ].filter(Boolean);
+
+      const breadcrumbItems: any[] = [
+        { "@type": "ListItem", "position": 1, "name": "Home", "item": baseUrl },
+        { "@type": "ListItem", "position": 2, "name": "Fractie", "item": `${baseUrl}/fractie` },
+      ];
+      if (speaker) {
+        breadcrumbItems.push({
+          "@type": "ListItem",
+          "position": 3,
+          "name": speaker.name,
+          "item": `${baseUrl}/raadsleden/${speaker.id}`,
+        });
+      }
+      breadcrumbItems.push({
+        "@type": "ListItem",
+        "position": breadcrumbItems.length + 1,
+        "name": formattedHeadline,
+        "item": videoCanonicalUrl,
+      });
+
+      const structuredData = {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "VideoObject",
+            "@id": `${videoCanonicalUrl}#video`,
+            "name": formattedHeadline,
+            "headline": formattedHeadline,
+            "description": fullContextDesc || cleanDesc,
+            "abstract": cleanDesc,
+            "thumbnailUrl": [videoImage],
+            "uploadDate": uploadDateIso,
+            "datePublished": uploadDateIso,
+            "dateModified": toIsoDateString(video.updatedAt || video.date || video.createdAt),
+            "inLanguage": "nl-NL",
+            "url": videoCanonicalUrl,
+            ...(embedUrl ? { "embedUrl": embedUrl } : {}),
+            ...(contentUrl ? { "contentUrl": contentUrl } : {}),
+            "author": {
+              "@type": "Person",
+              "name": speakerName,
+              "jobTitle": speakerRole,
+              "url": speaker ? `${baseUrl}/raadsleden/${speaker.id}` : `${baseUrl}/fractie`,
+              "affiliation": {
+                "@type": "PoliticalParty",
+                "@id": `${baseUrl}/#party`,
+                "name": "Lijst van Andel",
+              },
+            },
+            "creator": {
+              "@type": "Person",
+              "name": speakerName,
+              "jobTitle": speakerRole,
+            },
+            "publisher": {
+              "@type": "PoliticalParty",
+              "@id": `${baseUrl}/#party`,
+              "name": "Lijst van Andel",
+              "url": baseUrl,
+              "logo": {
+                "@type": "ImageObject",
+                "url": DEFAULT_IMAGE,
+              },
+            },
+            "contentLocation": {
+              "@type": "AdministrativeArea",
+              "name": linkedWijk ? `${linkedWijk.naam}, Steenwijkerland` : "Steenwijkerland",
+              "sameAs": "https://nl.wikipedia.org/wiki/Steenwijkerland",
+            },
+            "about": aboutTopics,
+            "keywords": keywordsList.join(", "),
+            "isPartOf": {
+              "@type": "WebSite",
+              "@id": `${baseUrl}/#website`,
+              "name": "Lijst van Andel Steenwijkerland",
+            },
+            "mainEntityOfPage": {
+              "@type": "WebPage",
+              "@id": videoCanonicalUrl,
+            },
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": breadcrumbItems,
+          },
+        ],
+      };
+
+      const semanticHtml = `
+    <header class="sr-only" style="opacity:0.01;height:1px;overflow:hidden;position:absolute;pointer-events:none;">
+      <h1>${escapeHtml(formattedHeadline)}</h1>
+      <p>${escapeHtml(cleanDesc)}</p>
+    </header>
+    <main class="sr-only" style="opacity:0.01;height:1px;overflow:hidden;position:absolute;pointer-events:none;">
+      <article>
+        <h2>${escapeHtml(formattedHeadline)}</h2>
+        <p><strong>Spreker:</strong> ${escapeHtml(speakerName)} (${escapeHtml(speakerRole)}, Lijst van Andel Steenwijkerland)</p>
+        <p><strong>Onderwerp:</strong> ${escapeHtml(cleanVTitle)}${video.category ? ` • Categorie: ${escapeHtml(video.category)}` : ""}${linkedWijk ? ` • Wijk/Kern: ${escapeHtml(linkedWijk.naam)}` : ""}</p>
+        <section>
+          <h3>Toelichting &amp; Context</h3>
+          <p>${escapeHtml(fullContextDesc || cleanDesc)}</p>
+        </section>
+        ${linkedHoofdstuk && linkedStandpunt ? `<section>
+          <h3>Gekoppeld Standpunt Lijst van Andel (H${linkedHoofdstuk.nr}.${linkedStandpunt.nr})</h3>
+          <p><strong>${escapeHtml(linkedStandpunt.titel)}:</strong> ${escapeHtml(linkedStandpunt.standpunt)}</p>
+        </section>` : ""}
+        <nav aria-label="Hoofdmenu">
+          <a href="/standpunten">Standpunten</a> |
+          <a href="/raadsleden">Raadsleden</a> |
+          <a href="/nieuws">Nieuws</a> |
+          <a href="/agenda">Agenda</a> |
+          <a href="/wijken-en-kernen">Wijken &amp; Kernen</a> |
+          <a href="/contact">Contact</a>
+        </nav>
+      </article>
+    </main>`;
 
       const title = `${formattedHeadline} | Lijst van Andel`;
 
@@ -930,7 +1149,12 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
         ogImageHeight: 630,
         ogImageAlt: formattedHeadline,
         ogType: "video.other",
-        canonicalUrl
+        canonicalUrl: videoCanonicalUrl,
+        author: speakerName,
+        publishedTime: uploadDateIso,
+        keywords: keywordsList.join(", "),
+        structuredData,
+        semanticHtml,
       };
     }
   }
@@ -1101,10 +1325,14 @@ export function injectMetadataIntoHtml(html: string, meta: PageMetadata): string
     modified = modified.replace("</head>", `${preloadImageTag}</head>`);
   }
 
+  // Optional keywords
+  if (meta.keywords) {
+    setMetaName("keywords", meta.keywords);
+  }
+
   // Pre-render semantic content for LLM crawlers and SEO bots inside <div id="root">
-  const rootPlaceholder = '<div id="root">';
   if (modified.includes('<div id="root"></div>')) {
-    const semanticContent = `
+    const semanticContent = meta.semanticHtml || `
     <header class="sr-only" style="opacity:0.01;height:1px;overflow:hidden;position:absolute;pointer-events:none;">
       <h1>${escapeHtml(meta.title)}</h1>
       <p>${escapeHtml(meta.description)}</p>

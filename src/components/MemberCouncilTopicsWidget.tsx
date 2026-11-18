@@ -69,6 +69,22 @@ export interface MemberCouncilTopic {
   }[];
 }
 
+export interface MemberContribution {
+  id: string;
+  topicId: string;
+  topicTitle: string;
+  topicCategory?: string;
+  meetingDate?: string;
+  meetingDateDisplay?: string;
+  meetingTitle?: string;
+  isArchived?: boolean;
+  assignedName?: string | null;
+  documentId?: string | null;
+  documentTitle?: string | null;
+  note: string;
+  createdAt: string;
+}
+
 interface MemberCouncilTopicsWidgetProps {
   token: string | null;
   currentUser: any;
@@ -79,10 +95,14 @@ export function MemberCouncilTopicsWidget({ token, currentUser }: MemberCouncilT
     currentUser?.role === "admin" ||
     currentUser?.role === "raadslid" ||
     currentUser?.role === "bestuur" ||
+    currentUser?.role === "secretaris" ||
+    currentUser?.role === "penningmeester" ||
     currentUser?.billingStatus === "paid" ||
     currentUser?.billingStatus === "exempt";
 
   const [topics, setTopics] = useState<MemberCouncilTopic[]>([]);
+  const [myContributions, setMyContributions] = useState<MemberContribution[]>([]);
+  const [showMyContributions, setShowMyContributions] = useState(false);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterAssigned, setFilterAssigned] = useState<string>("all"); // "all" | "assigned" | "unassigned"
@@ -113,11 +133,37 @@ export function MemberCouncilTopicsWidget({ token, currentUser }: MemberCouncilT
         throw new Error("Kon raadsonderwerpen niet ophalen");
       }
       const data = await res.json();
-      setTopics(data.topics || []);
+      const loadedTopics: MemberCouncilTopic[] = data.topics || [];
+      setTopics(loadedTopics);
+
+      if (Array.isArray(data.myContributions)) {
+        setMyContributions(data.myContributions);
+      } else {
+        const fallbackContribs: MemberContribution[] = loadedTopics
+          .flatMap((t) =>
+            (t.myFeedback || []).map((fb) => ({
+              id: fb.id,
+              topicId: t.id,
+              topicTitle: t.title,
+              topicCategory: t.category,
+              meetingDate: t.meetingDate,
+              meetingDateDisplay: t.meetingDateDisplay,
+              meetingTitle: t.meetingTitle,
+              isArchived: false,
+              assignedName: t.assignedName || null,
+              documentId: null,
+              documentTitle: fb.documentTitle || null,
+              note: fb.note,
+              createdAt: fb.createdAt,
+            }))
+          )
+          .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        setMyContributions(fallbackContribs);
+      }
       
       // Auto expand first topic if available
-      if (data.topics && data.topics.length > 0 && !expandedTopicId) {
-        setExpandedTopicId(data.topics[0].id);
+      if (loadedTopics.length > 0 && !expandedTopicId) {
+        setExpandedTopicId(loadedTopics[0].id);
       }
     } catch (err: any) {
       console.warn("Fout bij laden van raadsonderwerpen voor leden:", err.message);
@@ -206,8 +252,8 @@ export function MemberCouncilTopicsWidget({ token, currentUser }: MemberCouncilT
     );
   }
 
-  if (topics.length === 0) {
-    return null; // Geen actuele onderwerpen beschikbaar
+  if (topics.length === 0 && myContributions.length === 0) {
+    return null; // Geen actuele onderwerpen of eerdere bijdragen beschikbaar
   }
 
   return (
@@ -238,33 +284,39 @@ export function MemberCouncilTopicsWidget({ token, currentUser }: MemberCouncilT
       </div>
 
       {/* Filter & Search Bar */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Zoek in actuele onderwerpen, raadsleden of stukken..."
-            className="text-xs pl-9 bg-muted/20"
-          />
-          <FileText className="w-4 h-4 text-muted-foreground absolute left-3 top-2.5" />
+      {topics.length > 0 && (
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Zoek in actuele onderwerpen, raadsleden of stukken..."
+              className="text-xs pl-9 bg-muted/20"
+            />
+            <FileText className="w-4 h-4 text-muted-foreground absolute left-3 top-2.5" />
+          </div>
+          <div className="w-full sm:w-48 shrink-0">
+            <Select value={filterAssigned} onValueChange={setFilterAssigned}>
+              <SelectTrigger className="text-xs bg-muted/20">
+                <SelectValue placeholder="Toewijzing" />
+              </SelectTrigger>
+              <SelectContent className="text-xs">
+                <SelectItem value="all">Alle onderwerpen ({topics.length})</SelectItem>
+                <SelectItem value="assigned">Opgepakt door fractielid</SelectItem>
+                <SelectItem value="unassigned">Nog onverdeeld</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-        <div className="w-full sm:w-48 shrink-0">
-          <Select value={filterAssigned} onValueChange={setFilterAssigned}>
-            <SelectTrigger className="text-xs bg-muted/20">
-              <SelectValue placeholder="Toewijzing" />
-            </SelectTrigger>
-            <SelectContent className="text-xs">
-              <SelectItem value="all">Alle onderwerpen ({topics.length})</SelectItem>
-              <SelectItem value="assigned">Opgepakt door fractielid</SelectItem>
-              <SelectItem value="unassigned">Nog onverdeeld</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      )}
 
       {/* Topics List */}
       <div className="space-y-3">
-        {filteredTopics.length === 0 ? (
+        {topics.length === 0 ? (
+          <div className="p-6 text-center rounded-xl bg-muted/20 border border-dashed border-border text-xs text-muted-foreground">
+            Momenteel staan er geen actuele raadsonderwerpen open. Hieronder kunt u wel uw eerder geleverde bijdragen terugzien.
+          </div>
+        ) : filteredTopics.length === 0 ? (
           <div className="p-8 text-center rounded-xl bg-muted/20 border border-dashed border-border text-xs text-muted-foreground">
             Geen raadsonderwerpen gevonden die voldoen aan uw zoekopdracht.
           </div>
@@ -278,6 +330,7 @@ export function MemberCouncilTopicsWidget({ token, currentUser }: MemberCouncilT
             return (
               <div
                 key={topic.id}
+                id={`member-topic-${topic.id}`}
                 className={`rounded-xl border transition-all overflow-hidden ${
                   isExpanded
                     ? "bg-card border-accent/40 shadow-sm"
@@ -500,6 +553,136 @@ export function MemberCouncilTopicsWidget({ token, currentUser }: MemberCouncilT
               </div>
             );
           })
+        )}
+      </div>
+
+      {/* Collapsible Overview: Member's Own Submitted Contributions */}
+      <div className="pt-4 border-t border-border/70">
+        <button
+          type="button"
+          onClick={() => setShowMyContributions((prev) => !prev)}
+          aria-expanded={showMyContributions}
+          className="w-full flex items-center justify-between gap-3 p-4 rounded-xl border border-border/80 bg-muted/20 hover:bg-muted/35 hover:border-accent/40 transition-colors text-left"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 flex items-center justify-center shrink-0">
+              <MessageSquare className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-display font-bold text-sm sm:text-base text-foreground">
+                  Mijn geleverde bijdragen
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30">
+                  {myContributions.length}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Bekijk alle inbreng en feedback die u eerder aan de fractie heeft doorgegeven.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0 text-xs font-semibold text-accent">
+            <span className="hidden sm:inline">
+              {showMyContributions ? "Verbergen" : "Overzicht tonen"}
+            </span>
+            {showMyContributions ? (
+              <ChevronUp className="w-4 h-4" />
+            ) : (
+              <ChevronDown className="w-4 h-4" />
+            )}
+          </div>
+        </button>
+
+        {showMyContributions && (
+          <div className="mt-3 space-y-2.5">
+            {myContributions.length === 0 ? (
+              <div className="p-5 rounded-xl bg-muted/15 border border-dashed border-border text-center text-xs text-muted-foreground">
+                U heeft nog geen eigen bijdragen of feedback ingestuurd. Klik bij een actueel onderwerp hierboven op <strong className="text-foreground">Inbreng leveren</strong> om uw inbreng met de fractie te delen.
+              </div>
+            ) : (
+              myContributions.map((item) => {
+                const isActiveTopic = !item.isArchived && topics.some((t) => t.id === item.topicId);
+                return (
+                  <div
+                    key={item.id}
+                    className="p-4 rounded-xl bg-blue-500/5 border border-blue-500/20 space-y-2"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                      <div className="space-y-1 min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                          <span className="px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-accent/10 text-accent border border-accent/20 text-[10px]">
+                            {item.topicCategory || "Oordeelvorming"}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded-full font-semibold border text-[10px] ${
+                              isActiveTopic
+                                ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                                : "bg-muted text-muted-foreground border-border"
+                            }`}
+                          >
+                            {isActiveTopic ? "Actueel onderwerp" : "Gearchiveerd"}
+                          </span>
+                          {item.meetingDateDisplay && (
+                            <span className="text-muted-foreground flex items-center gap-1">
+                              <Calendar className="w-3 h-3 text-accent" />
+                              {item.meetingDateDisplay}
+                            </span>
+                          )}
+                        </div>
+
+                        <h4 className="font-display font-bold text-sm text-foreground leading-snug">
+                          {item.topicTitle}
+                        </h4>
+
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                          <span className="font-semibold text-foreground/90">
+                            {item.documentTitle ? `Bij stuk: ${item.documentTitle}` : "Algemene inbreng"}
+                          </span>
+                          {item.assignedName && (
+                            <span>Behandelaar: {item.assignedName}</span>
+                          )}
+                          <span className="inline-flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {new Date(item.createdAt).toLocaleString("nl-NL", {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </span>
+                        </div>
+                      </div>
+
+                      {isActiveTopic && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setExpandedTopicId(item.topicId);
+                            setTimeout(() => {
+                              document
+                                .getElementById(`member-topic-${item.topicId}`)
+                                ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                            }, 50);
+                          }}
+                          className="h-7 text-[11px] px-2.5 border-accent/40 text-accent hover:bg-accent/10 rounded-lg shrink-0 self-start"
+                        >
+                          Bekijk onderwerp <ArrowRight className="w-3 h-3 ml-1" />
+                        </Button>
+                      )}
+                    </div>
+
+                    <p className="text-xs sm:text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed bg-background/60 p-3 rounded-lg border border-border/60">
+                      {item.note}
+                    </p>
+                  </div>
+                );
+              })
+            )}
+          </div>
         )}
       </div>
 
