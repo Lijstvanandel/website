@@ -70,16 +70,17 @@ interface VragenFormulatorWizardProps {
   } | null;
 }
 
-const STORAGE_KEY = "lva_written_question_active_dossier";
+const STORAGE_KEY = "osl_written_question_active_dossier";
+const LEGACY_STORAGE_KEY = "lva_written_question_active_dossier";
 
 const createDefaultDossier = (
   topic?: { id: string; title: string; meetingDate?: string } | null,
   user?: { id: string; username: string; fullName?: string } | null
 ): WrittenQuestionDossier => ({
-  id: `lva-sq-${Date.now()}`,
+  id: `osl-sq-${Date.now()}`,
   title: topic ? `Schriftelijke vragen inzake: ${topic.title}` : "",
   authorId: user?.id || user?.username || "fractielid",
-  authorName: user?.fullName || user?.username || "Fractielid Lijst van Andel",
+  authorName: user?.fullName || user?.username || "Fractielid Onafhankelijk Steenwijkerland",
   topicId: topic?.id,
   topicTitle: topic?.title,
   createdAt: new Date().toISOString(),
@@ -142,7 +143,7 @@ export const VragenFormulatorWizard: React.FC<VragenFormulatorWizardProps> = ({
     const qToezeggingId = searchParams.get("toezeggingId");
 
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
       if (saved && !qPromisedQuote && !qTopicTitle) {
         const parsed = JSON.parse(saved);
         if (parsed && typeof parsed === "object") {
@@ -495,7 +496,7 @@ export const VragenFormulatorWizard: React.FC<VragenFormulatorWizardProps> = ({
     try {
       const blob = await generateQuestionDossierDocx(
         dossier,
-        currentUser?.fullName || currentUser?.username || "Fractie Lijst van Andel"
+        currentUser?.fullName || currentUser?.username || "Fractie Onafhankelijk Steenwijkerland"
       );
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -520,7 +521,7 @@ export const VragenFormulatorWizard: React.FC<VragenFormulatorWizardProps> = ({
     try {
       const pdfBytes = await generateQuestionDossierPdf(
         dossier,
-        currentUser?.fullName || currentUser?.username || "Fractie Lijst van Andel"
+        currentUser?.fullName || currentUser?.username || "Fractie Onafhankelijk Steenwijkerland"
       );
       const blob = new Blob([pdfBytes], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
@@ -543,7 +544,7 @@ export const VragenFormulatorWizard: React.FC<VragenFormulatorWizardProps> = ({
   const handleCopyEmailText = () => {
     const text = formatQuestionDossierAsPlainText(
       dossier,
-      currentUser?.fullName || currentUser?.username || "Fractie Lijst van Andel"
+      currentUser?.fullName || currentUser?.username || "Fractie Onafhankelijk Steenwijkerland"
     );
     navigator.clipboard.writeText(text);
     toast.success("Officiële tekst gekopieerd! Plak direct in e-mail naar griffie@steenwijkerland.nl.");
@@ -1536,7 +1537,7 @@ export const VragenFormulatorWizard: React.FC<VragenFormulatorWizardProps> = ({
                   rows={8}
                   value={dossier.considerans}
                   onChange={(e) => setDossier((prev) => ({ ...prev, considerans: e.target.value }))}
-                  placeholder={`De ondergetekende, lid van de raad der gemeente Steenwijkerland namens de fractie Lijst van Andel;\n\nOverwegende dat:\n- Het college in het verleden heeft toegezegd dat...\n- De huidige feitelijke realiteit daarmee in directe tegenspraak is...\n\nStelt de volgende vragen aan het College van B&W:`}
+                  placeholder={`De ondergetekende, lid van de raad der gemeente Steenwijkerland namens de fractie Onafhankelijk Steenwijkerland;\n\nOverwegende dat:\n- Het college in het verleden heeft toegezegd dat...\n- De huidige feitelijke realiteit daarmee in directe tegenspraak is...\n\nStelt de volgende vragen aan het College van B&W:`}
                   className="w-full p-4 rounded-2xl bg-background border border-border text-xs leading-relaxed font-sans text-foreground focus:outline-hidden focus:ring-2 focus:ring-amber-500/40 font-mono"
                 />
                 <p className="text-[11px] text-muted-foreground">
@@ -1856,7 +1857,7 @@ export const VragenFormulatorWizard: React.FC<VragenFormulatorWizardProps> = ({
               <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-3 text-xs text-emerald-900 dark:text-emerald-200">
                 <Unlock className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                 <div>
-                  <strong>Document Generator ontgrendeld!</strong> U kunt nu de officiële fractiedocumenten downloaden in de huisstijl van Lijst van Andel.
+                  <strong>Document Generator ontgrendeld!</strong> U kunt nu de officiële fractiedocumenten downloaden in de huisstijl van Onafhankelijk Steenwijkerland.
                 </div>
               </div>
             )}
@@ -1867,7 +1868,7 @@ export const VragenFormulatorWizard: React.FC<VragenFormulatorWizardProps> = ({
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-bold text-foreground flex items-center gap-2">
                 <Download className="w-4 h-4 text-amber-500" />
-                Functie 5.2: Officiële Document Generator (Lijst van Andel Huisstijl)
+                Functie 5.2: Officiële Document Generator (Onafhankelijk Steenwijkerland Huisstijl)
               </h4>
               <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-bold">
                 Klaar voor griffie@steenwijkerland.nl
@@ -1913,7 +1914,7 @@ export const VragenFormulatorWizard: React.FC<VragenFormulatorWizardProps> = ({
                   {exportingPdf ? "Bezig met genereren..." : "Officiële PDF"}
                 </h5>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Gestyled PDF-bestand met marineblauw en goud briefhoofd, direct printklaar.
+                  Gestyled PDF-bestand in woudgroen en helder amber huisstijl, direct printklaar.
                 </p>
               </button>
 

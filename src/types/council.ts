@@ -54,7 +54,7 @@ export interface MatchedStandpunt {
   standpuntTitel: string;
   standpuntText: string;
   stance: StandpuntStance; // "positief" = voor / ondersteunend | "negatief" = tegen / kritisch / afwijzend | "genuanceerd" = voorwaardelijk / gemengd
-  explanation: string; // Waarom Lijst van Andel deze positie inneemt t.a.v. dit onderwerp
+  explanation: string; // Waarom Onafhankelijk Steenwijkerland (OSL) deze positie inneemt t.a.v. dit onderwerp
   relevanceScore: number; // 0 - 100
   matchedKeywords: string[];
   sourceDocumentTitles?: string[];

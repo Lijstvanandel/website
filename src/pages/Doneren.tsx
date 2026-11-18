@@ -123,7 +123,7 @@ export default function Doneren() {
 
     if (effectiveAmount > 4500) {
       toast.error(
-        "Conform artikel 3 van het Giftenreglement worden giften boven € 4.500,- per jaar slechts geaccepteerd na schriftelijke instemming van het bestuur. Neem a.u.b. contact op via bestuur@lijstvanandel.nl."
+        "Conform artikel 3 van het Giftenreglement worden giften boven € 4.500,- per jaar slechts geaccepteerd na schriftelijke instemming van het bestuur. Neem a.u.b. contact op via bestuur@onafhankelijksteenwijkerland.nl."
       );
       return;
     }
@@ -186,7 +186,7 @@ export default function Doneren() {
         nextParams.set("session_id", paymentModal.sessionId);
         setSearchParams(nextParams);
         toast.success("Donatie succesvol ontvangen!", {
-          description: "Hartelijk dank voor uw waardevolle steun aan Lijst van Andel.",
+          description: "Hartelijk dank voor uw waardevolle steun aan Onafhankelijk Steenwijkerland.",
         });
       } else {
         toast.info("Betaling nog niet afgerond bij Stripe. Heeft u de betaling in het andere tabblad al voltooid?");
@@ -211,7 +211,7 @@ export default function Doneren() {
               Hartelijk dank voor uw steun!
             </h1>
             <p className="text-muted-foreground text-sm max-w-md mx-auto leading-relaxed">
-              Uw donatie aan <strong>Lijst van Andel</strong> is in goede orde ontvangen. Dankzij betrokken inwoners zoals u kunnen wij ons inzetten voor een leefbaar, bereikbaar en krachtig Steenwijkerland.
+              Uw donatie aan <strong>Onafhankelijk Steenwijkerland</strong> is in goede orde ontvangen. Dankzij betrokken inwoners zoals u kunnen wij ons inzetten voor een leefbaar, bereikbaar en krachtig Steenwijkerland.
             </p>
           </div>
 
@@ -246,7 +246,7 @@ export default function Doneren() {
           Steun de lokale democratie
         </div>
         <h1 className="text-3xl sm:text-4xl font-display font-bold text-foreground">
-          Doneren aan Lijst van Andel
+          Doneren aan Onafhankelijk Steenwijkerland
         </h1>
         <p className="text-muted-foreground text-sm sm:text-base leading-relaxed">
           Als onafhankelijke lokale partij zijn wij niet afhankelijk van landelijke subsidies. Uw donatie stelt ons in staat om actief aanwezig te zijn in alle kernen en wijken van Steenwijkerland, bijeenkomsten te organiseren en dossiers grondig uit te pluizen.
@@ -356,7 +356,7 @@ export default function Doneren() {
                     onClick={() => setShowRegulations(true)}
                     className="text-primary underline font-medium hover:text-primary/90"
                   >
-                    Giftenreglement van Lijst van Andel
+                    Giftenreglement van Onafhankelijk Steenwijkerland
                   </button>
                   .
                 </label>
@@ -418,7 +418,7 @@ export default function Doneren() {
               Transparantie & Giftenreglement
             </h4>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Lijst van Andel hecht aan absolute integriteit. In onze jaarstukken leggen wij volledige verantwoording af over omvang, herkomst en bestemming van ontvangen giften. Giften vanaf € 4.500,- worden tevens openbaar vermeld op onze website.
+              Onafhankelijk Steenwijkerland hecht aan absolute integriteit. In onze jaarstukken leggen wij volledige verantwoording af over omvang, herkomst en bestemming van ontvangen giften. Giften vanaf € 4.500,- worden tevens openbaar vermeld op onze website.
             </p>
             <Button
               variant="outline"
@@ -449,7 +449,7 @@ export default function Doneren() {
         <div className="bg-card p-6 sm:p-8 rounded-2xl border border-border shadow-sm space-y-6 animate-in fade-in">
           <div className="border-b border-border pb-4">
             <h2 className="text-xl font-display font-bold text-foreground">
-              Giftenreglement Lijst van Andel
+              Giftenreglement Onafhankelijk Steenwijkerland
             </h2>
             <p className="text-xs text-muted-foreground mt-1">
               Vastgesteld door het partijbestuur conform de beginselen van integriteit, openbaarheid en onafhankelijkheid.
@@ -470,7 +470,7 @@ export default function Doneren() {
               <div>
                 <h4 className="font-semibold text-foreground text-sm mb-1">Artikel 2 &ndash; De toelaatbaarheid van giften</h4>
                 <ol className="list-decimal list-inside space-y-1">
-                  <li>Raadsleden van Lijst van Andel doneren boven op de jaarlijkse contributie (op vrijwillige basis) een onderling afgestemd bedrag.</li>
+                  <li>Raadsleden van Onafhankelijk Steenwijkerland doneren boven op de jaarlijkse contributie (op vrijwillige basis) een onderling afgestemd bedrag.</li>
                   <li>Giften waarvan de juiste herkomst niet vast te stellen is, worden niet aangenomen.</li>
                   <li>Giften die kennelijk gedaan worden in de verwachting van een economische of politieke begunstiging, worden niet aangenomen.</li>
                 </ol>
@@ -500,7 +500,7 @@ export default function Doneren() {
                   <li>Bij sponsoring is sprake van een ontvangen geldsom of geldswaardige prestatie, waarbij de partij een duidelijke tegenprestatie levert aan de sponsor. Deze tegenprestatie kan bijvoorbeeld bestaan uit het bieden van ruimte voor promotie van diensten en producten of naamvermelding bij partijactiviteiten.</li>
                   <li>Sponsoring is herkenbaar verbonden aan een activiteit of project van de partij.</li>
                   <li>In de jaarstukken wordt verantwoording afgelegd over alle in het betreffende jaar ontvangen sponsorgelden.</li>
-                  <li>Voor Lijst van Andel gelden geen beperkingen met betrekking tot de hoogte van in totaal ontvangen sponsorgelden. Sponsoring is pas toegestaan na goedkeuring van het bestuur.</li>
+                  <li>Voor Onafhankelijk Steenwijkerland gelden geen beperkingen met betrekking tot de hoogte van in totaal ontvangen sponsorgelden. Sponsoring is pas toegestaan na goedkeuring van het bestuur.</li>
                   <li>Het is individuele leden niet toegestaan sponsorgelden te ontvangen.</li>
                 </ol>
               </div>
@@ -534,7 +534,7 @@ export default function Doneren() {
               Veilige Stripe Betaalomgeving
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground pt-1">
-              Vrijwillige donatie aan Lijst van Andel Steenwijkerland
+              Vrijwillige donatie aan Onafhankelijk Steenwijkerland
             </DialogDescription>
           </DialogHeader>
 
@@ -552,7 +552,7 @@ export default function Doneren() {
             <div className="p-4 rounded-xl bg-secondary/50 border border-border text-xs space-y-2">
               <div className="flex justify-between items-center text-muted-foreground">
                 <span>Doel:</span>
-                <span className="font-medium text-foreground">Gift Lijst van Andel</span>
+                <span className="font-medium text-foreground">Gift Onafhankelijk Steenwijkerland</span>
               </div>
               <div className="flex justify-between items-center pt-1 border-t border-border/60">
                 <span className="font-medium text-foreground">Donatiebedrag:</span>

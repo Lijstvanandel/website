@@ -242,7 +242,7 @@ export default function Dashboard() {
           wijkSlug: applyWijk,
           gemeente: "Steenwijkerland",
           category: "Wijkvertegenwoordiger",
-          description: `Als vertegenwoordiger voor ${formattedWijk} bent u het centrale aanspreekpunt voor signalen en wensen uit de buurt. U brengt deze rechtstreeks in bij de fractie van Lijst van Andel.`,
+          description: `Als vertegenwoordiger voor ${formattedWijk} bent u het centrale aanspreekpunt voor signalen en wensen uit de buurt. U brengt deze rechtstreeks in bij de fractie van Onafhankelijk Steenwijkerland.`,
           tasks: [
             "Aanspreekpunt zijn voor inwoners uit de buurt",
             "Signalen, kansen en knelpunten bespreken met de fractie",
@@ -418,7 +418,7 @@ export default function Dashboard() {
           vacancyTitle: selectedVacancy.title,
           wijkNaam: selectedVacancy.wijkNaam,
           applicantName: user.fullName,
-          applicantEmail: user.email || (user.username?.includes("@") ? user.username : `${user.username}@leden.lijstvanandel.nl`),
+          applicantEmail: user.email || (user.username?.includes("@") ? user.username : `${user.username}@leden.onafhankelijksteenwijkerland.nl`),
           motivation: motivationText.trim(),
         }),
       });
@@ -573,7 +573,7 @@ export default function Dashboard() {
     }
   };
 
-  const currentEmail = user?.email || (user?.username ? (user.username.includes("@") ? user.username : `${user.username.toLowerCase()}@leden.lijstvanandel.nl`) : "");
+  const currentEmail = user?.email || (user?.username ? (user.username.includes("@") ? user.username : `${user.username.toLowerCase()}@leden.onafhankelijksteenwijkerland.nl`) : "");
 
   // Filtered positions for full overview modal
   const filteredPositions = allPositions.filter((pos) => {
@@ -816,7 +816,7 @@ export default function Dashboard() {
                         <span>Lidmaatschap & Contributie</span>
                       </h2>
                       <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-                        Uw jaarlijkse partijcontributie voor Lijst van Andel ter ondersteuning van lokale politiek.
+                        Uw jaarlijkse partijcontributie voor Onafhankelijk Steenwijkerland ter ondersteuning van lokale politiek.
                       </p>
                     </div>
                   </div>
@@ -862,7 +862,7 @@ export default function Dashboard() {
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground leading-relaxed">
-                        Conform het partijreglement van Lijst van Andel wordt een nieuw account <strong>24 uur na registratie/afrekenen</strong> officieel erkend als volwaardig lid. Zodra deze termijn verstreken is, worden alle stem- en raadplegingsfuncties automatisch voor u ontgrendeld.
+                        Conform het partijreglement van Onafhankelijk Steenwijkerland wordt een nieuw account <strong>24 uur na registratie/afrekenen</strong> officieel erkend als volwaardig lid. Zodra deze termijn verstreken is, worden alle stem- en raadplegingsfuncties automatisch voor u ontgrendeld.
                       </p>
                     </div>
                   ) : user.billingStatus === "paid" ? (
@@ -893,7 +893,7 @@ export default function Dashboard() {
                         Vrijgesteld van contributie
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Als bestuurs- of fractielid van Lijst van Andel bent u vrijgesteld van de jaarlijkse ledencontributie.
+                        Als bestuurs- of fractielid van Onafhankelijk Steenwijkerland bent u vrijgesteld van de jaarlijkse ledencontributie.
                       </p>
                     </div>
                   ) : (
@@ -944,7 +944,7 @@ export default function Dashboard() {
                     </div>
                     <div>
                       <h2 className="text-xl sm:text-2xl font-display text-foreground flex items-center gap-2.5">
-                        <span>Nieuwsbrief van Lijst van Andel</span>
+                        <span>Nieuwsbrief van Onafhankelijk Steenwijkerland</span>
                       </h2>
                       <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
                         Blijf direct op de hoogte van moties, besluiten in de gemeenteraad en acties in uw wijk.
@@ -1626,7 +1626,7 @@ export default function Dashboard() {
               <span>Account definitief verwijderen?</span>
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground pt-1">
-              Weet u zeker dat u uw account bij Lijst van Andel wilt opzeggen en verwijderen?
+              Weet u zeker dat u uw account bij Onafhankelijk Steenwijkerland wilt opzeggen en verwijderen?
             </DialogDescription>
           </DialogHeader>
 
@@ -1758,7 +1758,7 @@ export default function Dashboard() {
               Veilige Stripe Betaalomgeving
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground pt-1">
-              Jaarlijkse lidmaatschapscontributie Lijst van Andel
+              Jaarlijkse lidmaatschapscontributie Onafhankelijk Steenwijkerland
             </DialogDescription>
           </DialogHeader>
 

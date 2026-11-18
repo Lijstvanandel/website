@@ -166,7 +166,7 @@ export const FRAMING_DEFINITIONS: Record<
 export function generateSuggestedConsiderans(dossier: Partial<WrittenQuestionDossier>): string {
   const parts: string[] = [];
 
-  parts.push("De ondergetekende, lid van de raad der gemeente Steenwijkerland namens de fractie Lijst van Andel;");
+  parts.push("De ondergetekende, lid van de raad der gemeente Steenwijkerland namens de fractie Onafhankelijk Steenwijkerland (OSL);");
   parts.push("");
   parts.push("Overwegende dat:");
 

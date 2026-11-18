@@ -101,7 +101,7 @@ export function PwaUpdatePrompt() {
             Nieuwe versie beschikbaar
           </h4>
           <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
-            Er zijn zojuist verbeteringen en updates uitgerold voor Lijst van Andel.
+            Er zijn zojuist verbeteringen en updates uitgerold voor Onafhankelijk Steenwijkerland.
           </p>
           <div className="mt-3 flex items-center gap-2">
             <Button

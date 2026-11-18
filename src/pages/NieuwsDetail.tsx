@@ -50,7 +50,10 @@ export default function NieuwsDetail() {
   const [shareDialogOpen, setShareDialogOpen] = useState<boolean>(false);
   const [isGooglePrefVisible, setIsGooglePrefVisible] = useState<boolean>(() => {
     try {
-      return localStorage.getItem("lvandel_google_preferred_source_selected") !== "true";
+      return (
+        localStorage.getItem("osl_google_preferred_source_selected") !== "true" &&
+        localStorage.getItem("lvandel_google_preferred_source_selected") !== "true"
+      );
     } catch {
       return true;
     }
@@ -137,7 +140,7 @@ export default function NieuwsDetail() {
       if (found) return found;
     }
     const nameToMatch = (article.authorName || article.author || "").trim().toLowerCase();
-    if (nameToMatch && nameToMatch !== "redactie" && nameToMatch !== "lijst van andel") {
+    if (nameToMatch && nameToMatch !== "redactie" && nameToMatch !== "lijst van andel" && nameToMatch !== "onafhankelijk steenwijkerland") {
       const found = fractieleden.find(
         (m) =>
           m.name.toLowerCase() === nameToMatch ||
@@ -212,7 +215,7 @@ export default function NieuwsDetail() {
             setActiveRetentionTab("podcast");
           }
 
-          document.title = `${data.title} | Lijst van Andel`;
+          document.title = `${data.title} | Onafhankelijk Steenwijkerland`;
         } else {
           setNotFound(true);
         }
@@ -479,7 +482,7 @@ export default function NieuwsDetail() {
     synth.cancel();
 
     // Prepare clear text for speech synthesis (including embedded HTML dossier text if present)
-    const titleText = `Nieuwsbericht van Lijst van Andel: ${article.title}. `;
+    const titleText = `Nieuwsbericht van Onafhankelijk Steenwijkerland: ${article.title}. `;
     const authorText = article.authorName ? `Geschreven door ${article.authorName}. ` : "";
     const contentSource = embeddedDossierText
       ? `${article.description || ""} ${embeddedDossierText}`
@@ -1026,7 +1029,7 @@ export default function NieuwsDetail() {
                     </>
                   ) : (
                     <>
-                      Dit diepgaande artikel en de bijbehorende documentatie zijn uitsluitend toegankelijk voor leden van Lijst van Andel. Word vandaag nog lid om onze lokale beweging te versterken of log in met uw bestaande partijaccount om direct toegang te krijgen.
+                      Dit diepgaande artikel en de bijbehorende documentatie zijn uitsluitend toegankelijk voor leden van Onafhankelijk Steenwijkerland. Word vandaag nog lid om onze lokale beweging te versterken of log in met uw bestaande partijaccount om direct toegang te krijgen.
                     </>
                   )}
                 </p>
@@ -1059,15 +1062,15 @@ export default function NieuwsDetail() {
 
               <div className="pt-4 border-t border-border/50 text-[11px] text-muted-foreground max-w-lg mx-auto">
                 Vragen over uw lidmaatschap of contributiebetaling? Neem contact op met het partijbestuur via{" "}
-                <a href="mailto:penningmeester@lijstvanandel.nl" className="text-accent underline hover:opacity-80">
-                  penningmeester@lijstvanandel.nl
+                <a href="mailto:penningmeester@onafhankelijksteenwijkerland.nl" className="text-accent underline hover:opacity-80">
+                  penningmeester@onafhankelijksteenwijkerland.nl
                 </a>.
               </div>
             </div>
           ) : (
             <>
               {/* Optioneel: Auteur / (Burger)raadslid blok met directe link naar het betreffende raadslid */}
-              {(article.authorName || (article.author && article.author !== "Redactie" && article.author !== "Lijst van Andel")) && (
+              {(article.authorName || (article.author && article.author !== "Redactie" && article.author !== "Lijst van Andel" && article.author !== "Onafhankelijk Steenwijkerland")) && (
                 <div className="pt-2 border-t border-border/60 flex items-center justify-between gap-3 text-xs mb-6">
                   <Link
                     to={authorMemberUrl}

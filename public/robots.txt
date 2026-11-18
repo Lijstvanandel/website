@@ -8,5 +8,5 @@ Disallow: /api/
 Disallow: /*?*filter=
 Disallow: /*?*sort=
 
-Sitemap: https://lijstvanandel.nl/sitemap.xml
+Sitemap: https://onafhankelijksteenwijkerland.nl/sitemap.xml
 

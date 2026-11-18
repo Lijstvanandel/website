@@ -32,20 +32,20 @@ export interface ShareDialogProps {
 }
 
 export function toCanonicalShareUrl(rawUrl?: string): string {
-  if (!rawUrl && typeof window === "undefined") return "https://lijstvanandel.nl";
-  const urlToParse = rawUrl || (typeof window !== "undefined" ? window.location.href : "https://lijstvanandel.nl");
+  if (!rawUrl && typeof window === "undefined") return "https://onafhankelijksteenwijkerland.nl";
+  const urlToParse = rawUrl || (typeof window !== "undefined" ? window.location.href : "https://onafhankelijksteenwijkerland.nl");
   try {
-    const parsed = new URL(urlToParse, typeof window !== "undefined" ? window.location.origin : "https://lijstvanandel.nl");
+    const parsed = new URL(urlToParse, typeof window !== "undefined" ? window.location.origin : "https://onafhankelijksteenwijkerland.nl");
     const host = parsed.hostname.toLowerCase();
     const isLocal = host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0";
     
     // In local development, social crawlers need the canonical public domain
     if (isLocal) {
-      return `https://lijstvanandel.nl${parsed.pathname}${parsed.search}${parsed.hash}`;
+      return `https://onafhankelijksteenwijkerland.nl${parsed.pathname}${parsed.search}${parsed.hash}`;
     }
     return parsed.href;
   } catch {
-    return rawUrl || "https://lijstvanandel.nl";
+    return rawUrl || "https://onafhankelijksteenwijkerland.nl";
   }
 }
 
@@ -208,13 +208,13 @@ export function ShareDialog({
               alt={title}
               className="w-full h-full object-cover"
               onError={(e) => {
-                (e.target as HTMLImageElement).src = "/assets/logo.png";
+                (e.target as HTMLImageElement).src = "/assets/osl-logo.png";
               }}
             />
           </div>
           <div className="flex-1 min-w-0">
             <span className="text-[10px] font-semibold text-accent uppercase tracking-wider block mb-0.5">
-              lijstvanandel.nl
+              onafhankelijksteenwijkerland.nl
             </span>
             <div className="text-xs font-semibold text-foreground line-clamp-1 leading-tight">
               {title}

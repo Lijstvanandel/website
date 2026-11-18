@@ -386,13 +386,13 @@ export async function ensureVerifiablePdfFile(
       const page = pdfDoc.addPage([595.28, 841.89]); // A4 portrait in points
       const { width, height } = page.getSize();
 
-      // Official Header Bar
+      // Official Header Bar (Diep Woudgroen #143627 & Helder Amber #EAB308)
       page.drawRectangle({
         x: 40,
         y: height - 60,
         width: width - 80,
         height: 2,
-        color: rgb(0.12, 0.23, 0.36),
+        color: rgb(0.918, 0.702, 0.031),
       });
 
       page.drawText(`GEMEENTE ${muniUpper} • RAADSINFORMATIEDOCUMENT`, {
@@ -400,15 +400,15 @@ export async function ensureVerifiablePdfFile(
         y: height - 50,
         size: 9,
         font: helveticaBold,
-        color: rgb(0.2, 0.3, 0.45),
+        color: rgb(0.078, 0.212, 0.153),
       });
 
-      page.drawText("FRACTIE LIJST VAN ANDEL • OFFICIËLE RAADSSTUKKEN VERIFICATIE", {
+      page.drawText("FRACTIE ONAFHANKELIJK STEENWIJKERLAND (OSL) • OFFICIËLE RAADSSTUKKEN VERIFICATIE", {
         x: 40,
         y: height - 72,
         size: 8,
         font: helvetica,
-        color: rgb(0.4, 0.45, 0.5),
+        color: rgb(0.3, 0.38, 0.35),
       });
 
       // Subtle Watermark
@@ -417,7 +417,7 @@ export async function ensureVerifiablePdfFile(
         y: height / 2,
         size: 22,
         font: helveticaBold,
-        color: rgb(0.92, 0.94, 0.96),
+        color: rgb(0.92, 0.94, 0.93),
         rotate: degrees(45),
       });
 
@@ -429,7 +429,7 @@ export async function ensureVerifiablePdfFile(
           y: height - 160,
           size: 13,
           font: helveticaBold,
-          color: rgb(0.1, 0.45, 0.3),
+          color: rgb(0.078, 0.212, 0.153),
         });
 
         // Split title into lines
@@ -745,7 +745,7 @@ export async function compileEvidenceAndAnalysis(
         relaties: d.relaties,
       }));
 
-      const prompt = `Je bent de strikte feitelijke verificateur en ondersteuningsdossier-compiler van fractie Lijst van Andel (gemeenteraad Steenwijkerland).
+      const prompt = `Je bent de strikte feitelijke verificateur en ondersteuningsdossier-compiler van fractie Onafhankelijk Steenwijkerland (OSL) in de gemeenteraad van Steenwijkerland.
 Jouw taak is het compileren van een feitelijk ondersteuningsdossier voor het volgende agendapunt:
 
 AGENDAPUNT: "${title}"
@@ -1136,7 +1136,7 @@ export async function compileSupportDossierForTopic(
     topicId: topic.id,
     topicTitle: topic.title,
     compiledAt: now,
-    compiledBy: user?.name || "Fractie-assistent (Lijst van Andel)",
+    compiledBy: user?.name || "Fractie-assistent (Onafhankelijk Steenwijkerland)",
     status: analysis.status,
     historischeLijn: analysis.historischeLijn,
     bewijslast: analysis.bewijslast,
@@ -1159,6 +1159,7 @@ export async function compileSupportDossierForTopic(
       datum: topic.meetingDate,
       entiteiten: [
         "Gemeenteraad Steenwijkerland",
+        "Onafhankelijk Steenwijkerland (OSL)",
         "Lijst van Andel",
         ...(matchedTags || [])
       ],

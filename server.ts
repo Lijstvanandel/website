@@ -299,7 +299,7 @@ async function sendTransactionalEmail(
   attachments?: any[]
 ): Promise<{ success: boolean; simulated?: boolean; error?: string; messageId?: string }> {
   const transporter = getEmailTransporter();
-  const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER || '"Lijst van Andel" <info@lijstvanandel.nl>';
+  const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER || '"Onafhankelijk Steenwijkerland" <info@onafhankelijksteenwijkerland.nl>';
 
   if (!transporter) {
     console.warn(`[EMAIL DISPATCH - SIMULATION MODE]
@@ -466,7 +466,7 @@ function getDb() {
         tags: ["Subsidies", "Dorpshuizen", "Leefbaarheid"],
         date: "2026-01-20",
         authorName: "Onderzoeksbureau Sociaal Domein",
-        createdByName: "Raadslid Fractie LVA",
+        createdByName: "Raadslid Fractie OSL",
         createdByUsername: "raadslid",
         fileUrl: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
         fileName: "Evaluatie_Subsidies_Sociaal_Domein_2026.pdf",
@@ -526,9 +526,9 @@ function getDb() {
       {
         id: "kopwijzer-rtv-slos",
         title: "Sammy van Andel te gast bij Kopwijzer (RTV SLOS)",
-        excerpt: "In de uitzending van Kopwijzer sprak Sammy met de presentator over de speerpunten van Lijst van Andel en de lokale agenda.",
-        description: "In de uitzending van Kopwijzer sprak Sammy met de presentator over de speerpunten van Lijst van Andel en de lokale agenda.",
-        content: "<p>Tijdens de uitzending van Kopwijzer op RTV SLOS ging Sammy van Andel uitgebreid in op de lokale prioriteiten van Lijst van Andel.</p><p>Onderwerpen die voorbijkwamen waren onder meer voorrang voor eigen inwoners op de woningmarkt, het behoud van de Weerribben-Wieden en een bestuurscultuur die dichter bij de inwoner staat. Sammy benadrukte het belang van een lokale, onafhankelijke stem in de raad — vrij van Haagse invloeden.</p>",
+        excerpt: "In de uitzending van Kopwijzer sprak Sammy met de presentator over de speerpunten van Onafhankelijk Steenwijkerland (OSL) en de lokale agenda.",
+        description: "In de uitzending van Kopwijzer sprak Sammy met de presentator over de speerpunten van Onafhankelijk Steenwijkerland (OSL) en de lokale agenda.",
+        content: "<p>Tijdens de uitzending van Kopwijzer op RTV SLOS ging Sammy van Andel uitgebreid in op de lokale prioriteiten van Onafhankelijk Steenwijkerland (OSL).</p><p>Onderwerpen die voorbijkwamen waren onder meer voorrang voor eigen inwoners op de woningmarkt, het behoud van de Weerribben-Wieden en een bestuurscultuur die dichter bij de inwoner staat. Sammy benadrukte het belang van een lokale, onafhankelijke stem in de raad — vrij van Haagse invloeden.</p>",
         date: "2026-04-18",
         createdAt: "2026-04-18T10:00:00.000Z",
         author: "Redactie",
@@ -538,13 +538,13 @@ function getDb() {
       },
       {
         id: "nieuwe-impulsen-binnenstad",
-        title: "Lijst van Andel pleit voor nieuwe impulsen in de binnenstad",
+        title: "Onafhankelijk Steenwijkerland pleit voor nieuwe impulsen in de binnenstad",
         excerpt: "De fractie dient een motie in om leegstand op de Markt actief aan te pakken en lokale ondernemers ruimte te geven.",
         description: "De fractie dient een motie in om leegstand op de Markt actief aan te pakken en lokale ondernemers ruimte te geven.",
-        content: "<p>In de komende raadsvergadering dient Lijst van Andel een motie in die het college oproept met een concreet plan te komen om leegstand in het centrum van Steenwijk te bestrijden.</p><p>Volgens de fractie verdient de binnenstad een impuls die past bij de identiteit van de gemeente: ruimte voor lokale ondernemers, sfeer op de Markt en een aantrekkelijk verblijfsklimaat voor inwoners én bezoekers.</p>",
+        content: "<p>In de komende raadsvergadering dient Onafhankelijk Steenwijkerland (OSL) een motie in die het college oproept met een concreet plan te komen om leegstand in het centrum van Steenwijk te bestrijden.</p><p>Volgens de fractie verdient de binnenstad een impuls die past bij de identiteit van de gemeente: ruimte voor lokale ondernemers, sfeer op de Markt en een aantrekkelijk verblijfsklimaat voor inwoners én bezoekers.</p>",
         date: "2026-05-02",
         createdAt: "2026-05-02T14:30:00.000Z",
-        author: "Lijst van Andel",
+        author: "Onafhankelijk Steenwijkerland",
         thumbnailUrl: "/assets/markt-steenwijk.jpg",
         headerUrl: "/assets/markt-steenwijk.jpg",
         category: "Politiek",
@@ -586,7 +586,7 @@ function getDb() {
         wijkNaam: "Oldemarkt & Omgeving",
         duration: "19 min",
         date: "2026-04-20",
-        author: "Lijst van Andel",
+        author: "Onafhankelijk Steenwijkerland",
         authorId: "",
         spotifyUrl: "https://open.spotify.com",
         appleUrl: "https://podcasts.apple.com",
@@ -607,7 +607,7 @@ function getDb() {
         startTime: "19:30",
         endTime: "21:30",
         shortDescription: "Praat mee over de toekomst van onze gemeente. Iedereen is welkom voor een open gesprek met fractieleden onder het genot van koffie.",
-        description: "<p>Lijst van Andel organiseert een openbare inloopavond in het hart van Steenwijk. Tijdens dit ideeëncafé gaan fractieleden en inwoners met elkaar in gesprek over actuele thema's die spelen in onze wijken en kernen.</p><h3>Wat staat er op de agenda?</h3><ul class=\"list-disc pl-6 my-4 space-y-1\"><li>Woningbouw en voorrang voor lokale inwoners</li><li>Leefbaarheid in de dorpen en bereikbaarheid van voorzieningen</li><li>Ruimte voor vragen, ideeën en directe input voor de gemeenteraad</li></ul><p>Aanmelden is gratis. We zien u graag op dinsdag 15 september op de Markt in Steenwijk!</p>",
+        description: "<p>Onafhankelijk Steenwijkerland (OSL) organiseert een openbare inloopavond in het hart van Steenwijk. Tijdens dit ideeëncafé gaan fractieleden en inwoners met elkaar in gesprek over actuele thema's die spelen in onze wijken en kernen.</p><h3>Wat staat er op de agenda?</h3><ul class=\"list-disc pl-6 my-4 space-y-1\"><li>Woningbouw en voorrang voor lokale inwoners</li><li>Leefbaarheid in de dorpen en bereikbaarheid van voorzieningen</li><li>Ruimte voor vragen, ideeën en directe input voor de gemeenteraad</li></ul><p>Aanmelden is gratis. We zien u graag op dinsdag 15 september op de Markt in Steenwijk!</p>",
         isPublic: true,
         isPublished: true,
         isCancelled: false,
@@ -632,12 +632,12 @@ function getDb() {
   }
   if (!db.categories || !Array.isArray(db.categories) || db.categories.length === 0) {
     db.categories = [
-      { id: "cat-1", name: "Politiek", slug: "politiek", description: "Standpunten, moties en raadsdebatten van de fractie", color: "#c6a858" },
-      { id: "cat-2", name: "Media", slug: "media", description: "Interviews, artikelen en optredens in de media", color: "#2d6a4f" },
+      { id: "cat-1", name: "Politiek", slug: "politiek", description: "Standpunten, moties en raadsdebatten van de fractie", color: "#EAB308" },
+      { id: "cat-2", name: "Media", slug: "media", description: "Interviews, artikelen en optredens in de media", color: "#143627" },
       { id: "cat-3", name: "Wijken & Kernen", slug: "wijken-en-kernen", description: "Lokaal nieuws uit de wijken en dorpen in Steenwijkerland", color: "#3d5a80" },
       { id: "cat-4", name: "Woningbouw", slug: "woningbouw", description: "Huisvesting, woningmarkt en nieuwbouw voor inwoners", color: "#d4a373" },
       { id: "cat-5", name: "Evenementen", slug: "evenementen", description: "Inloopavonden, bijeenkomsten en acties", color: "#e76f51" },
-      { id: "cat-6", name: "Algemeen", slug: "algemeen", description: "Algemene mededelingen van Lijst van Andel", color: "#6c757d" }
+      { id: "cat-6", name: "Algemeen", slug: "algemeen", description: "Algemene mededelingen van Onafhankelijk Steenwijkerland", color: "#6c757d" }
     ];
     saveDb(db);
   }
@@ -649,7 +649,7 @@ function getDb() {
         email: "jan.mulder@outlook.com",
         phone: "06-12345678",
         subject: "Vraag over starterslening en nieuwbouw Steenwijkerland",
-        message: "Beste fractie van Lijst van Andel,\n\nIk las jullie speerpunt over voorrang voor eigen inwoners bij woningbouw. Ik woon al mijn hele leven in Steenwijk en zoek al geruime tijd een betaalbare starterswoning. Hebben jullie plannen om de starterslening in onze gemeente te verruimen of nieuwe projecten te versnellen?\n\nMet vriendelijke groet,\nJan Mulder",
+        message: "Beste fractie van Onafhankelijk Steenwijkerland,\n\nIk las jullie speerpunt over voorrang voor eigen inwoners bij woningbouw. Ik woon al mijn hele leven in Steenwijk en zoek al geruime tijd een betaalbare starterswoning. Hebben jullie plannen om de starterslening in onze gemeente te verruimen of nieuwe projecten te versnellen?\n\nMet vriendelijke groet,\nJan Mulder",
         status: "moet nog beantwoord worden",
         createdAt: "2026-09-01T14:20:00.000Z",
         handledAt: null,
@@ -676,8 +676,8 @@ function getDb() {
     db.faqs = [
       {
         id: "faq-1",
-        question: "Wat is de werkwijze van Lijst van Andel in Steenwijkerland?",
-        answer: "Lijst van Andel staat voor een nuchtere, transparante en direct benaderbare lokale politiek. Wij geloven in duidelijke taal, gezond verstand en besluitvorming mét de inwoners in plaats van over hen. Wij zijn actief in alle wijken van Steenwijk en de omliggende kernen van Steenwijkerland.",
+        question: "Wat is de werkwijze van Onafhankelijk Steenwijkerland in Steenwijkerland?",
+        answer: "Onafhankelijk Steenwijkerland (OSL) staat voor een nuchtere, transparante en direct benaderbare lokale politiek. Wij geloven in duidelijke taal, gezond verstand en besluitvorming mét de inwoners in plaats van over hen. Wij zijn actief in alle wijken van Steenwijk en de omliggende kernen van Steenwijkerland.",
         category: "Algemeen",
         order: 1,
         published: true,
@@ -686,7 +686,7 @@ function getDb() {
       {
         id: "faq-2",
         question: "Hoe kan ik als inwoner een probleem of idee doorgeven aan de fractie?",
-        answer: "U kunt ons direct een bericht sturen via het contactformulier op deze pagina, een persoonlijke belafspraak van maximaal 30 minuten inplannen met een van onze raadsleden, of ons mailen via info@lijstvanandel.nl. Wij reageren doorgaans binnen 1 tot 2 werkdagen en brengen relevante signalen in bij de gemeenteraad of commissievergaderingen.",
+        answer: "U kunt ons direct een bericht sturen via het contactformulier op deze pagina, een persoonlijke belafspraak van maximaal 30 minuten inplannen met een van onze raadsleden, of ons mailen via info@onafhankelijksteenwijkerland.nl. Wij reageren doorgaans binnen 1 tot 2 werkdagen en brengen relevante signalen in bij de gemeenteraad of commissievergaderingen.",
         category: "Contact & Inwoners",
         order: 2,
         published: true,
@@ -703,7 +703,7 @@ function getDb() {
       },
       {
         id: "faq-4",
-        question: "Wat zijn de belangrijkste speerpunten van Lijst van Andel?",
+        question: "Wat zijn de belangrijkste speerpunten van Onafhankelijk Steenwijkerland?",
         answer: "Onze kernprioriteiten zijn: voorrang voor eigen inwoners bij woningbouw en toewijzing, behoud en versterking van onze natuur en het veengebied, behoud van voorzieningen en basisscholen in de dorpen en kernen, lagere lokale lasten en een moderne, digitale en efficiënte overheid.",
         category: "Politiek & Standpunten",
         order: 4,
@@ -753,7 +753,7 @@ function getDb() {
         pageCount: 3,
         author: "Sammy van Andel & Programmacommissie",
         createdAt: "2026-05-10T09:00:00.000Z",
-        content: "HOOFDSTUK 1: WONINGBOUW & LEEFBAARHEID IN STEENWIJKERLAND\\n\\n1.1 Voorrang voor lokale woningzoekenden\\nLijst van Andel stelt vast dat starters en senioren uit onze eigen kernen en wijken te vaak buiten de boot vallen. In het nieuwe programma eisen wij bindende voorrangsregels voor lokale inwoners bij nieuwbouwprojecten in Steenwijk en omliggende kernen.\\n\\n1.2 Behoud van het unieke landschap\\nBouwen doen we met respect voor het Weerribben-Wieden gebied en ons waardevolle cultuurlandschap. Geen massale hoogbouw in authentieke dorpsgezichten.\\n\\nHOOFDSTUK 2: VOORZIENINGEN & BEREIKBAARHEID\\n\\n2.1 Basisscholen en dorpshuizen\\nIedere kern moet kunnen rekenen op het behoud van ontmoetingsplekken. Het buurthuis is het kloppend hart van de dorpsgemeenschap.\\n\\n2.2 Openbaar vervoer en buurtbussen\\nVerbetering van de aansluiting tussen de buitengebieden en het NS-station in Steenwijk.\\n\\nHOOFDSTUK 3: TRANSPARANTE BESTUURSSTIJL\\n\\nFractieleden zijn direct aanspreekbaar. Besluiten worden genomen in open dialoog met wijkvertegenwoordigers."
+        content: "HOOFDSTUK 1: WONINGBOUW & LEEFBAARHEID IN STEENWIJKERLAND\\n\\n1.1 Voorrang voor lokale woningzoekenden\\nOnafhankelijk Steenwijkerland (OSL) stelt vast dat starters en senioren uit onze eigen kernen en wijken te vaak buiten de boot vallen. In het nieuwe programma eisen wij bindende voorrangsregels voor lokale inwoners bij nieuwbouwprojecten in Steenwijk en omliggende kernen.\\n\\n1.2 Behoud van het unieke landschap\\nBouwen doen we met respect voor het Weerribben-Wieden gebied en ons waardevolle cultuurlandschap. Geen massale hoogbouw in authentieke dorpsgezichten.\\n\\nHOOFDSTUK 2: VOORZIENINGEN & BEREIKBAARHEID\\n\\n2.1 Basisscholen en dorpshuizen\\nIedere kern moet kunnen rekenen op het behoud van ontmoetingsplekken. Het buurthuis is het kloppend hart van de dorpsgemeenschap.\\n\\n2.2 Openbaar vervoer en buurtbussen\\nVerbetering van de aansluiting tussen de buitengebieden en het NS-station in Steenwijk.\\n\\nHOOFDSTUK 3: TRANSPARANTE BESTUURSSTIJL\\n\\nFractieleden zijn direct aanspreekbaar. Besluiten worden genomen in open dialoog met wijkvertegenwoordigers."
       },
       {
         id: "doc-financieel-jaarverslag-2025",
@@ -766,14 +766,14 @@ function getDb() {
         fileName: "financieel_jaarverslag_2025.pdf",
         fileSize: "840 KB",
         pageCount: 2,
-        author: "Penningmeester Lijst van Andel",
+        author: "Penningmeester Onafhankelijk Steenwijkerland",
         createdAt: "2026-03-28T14:30:00.000Z",
         content: "FINANCIEEL OVERZICHT BOEKJAAR 2025\\n\\n1. BATEN & INKOMSTEN\\n- Contributies geregistreerde leden: € 14.850,-\\n- Vrijwillige donaties & giften: € 6.420,-\\n- Totaal baten: € 21.270,-\\n\\n2. LASTEN & UITGAVEN\\n- Communicatie, website & ledenportaal: € 4.150,-\\n- Zaalhuur ALV & wijkbijeenkomsten: € 2.800,-\\n- Drukwerk & flyers kernenbezoek: € 3.200,-\\n- Reserve campagnekas gemeenteraad 2026: € 9.500,-\\n- Algemene administratie & bankkosten: € 820,-\\n- Totaal lasten: € 20.470,-\\n\\n3. RESULTAAT & BALANS\\nPositief exploitatiesaldo van € 800,- toegevoegd aan de algemene reserve.\\n\\n4. KASCOMMISSIEVERKLARING\\nDe kascommissie heeft de boeken en bankafschriften gecontroleerd en adviseert de ALV om het bestuur decharge te verlenen."
       },
       {
         id: "doc-fractiestatuut-reglement",
         title: "Fractiestatuut & Huishoudelijk Reglement",
-        description: "Interne gedragsregels, stemprocedures en vertrouwelijkheidsrichtlijnen van Lijst van Andel.",
+        description: "Interne gedragsregels, stemprocedures en vertrouwelijkheidsrichtlijnen van Onafhankelijk Steenwijkerland (OSL).",
         category: "Statuten & Reglementen",
         confidentiality: "Vertrouwelijk - Alleen Leden",
         date: "2026-01-15",
@@ -783,7 +783,7 @@ function getDb() {
         pageCount: 2,
         author: "Fractiebestuur",
         createdAt: "2026-01-15T11:00:00.000Z",
-        content: "FRACTIESTATUUT LIJST VAN ANDEL\\n\\nARTIKEL 1: GEMEENSCHAPPELIJKE VERANTWOORDELIJKHEID\\n1. De fractie van Lijst van Andel vertegenwoordigt de inwoners van Steenwijkerland op basis van het verkiezingsprogramma en lokale speerpunten.\\n2. Leden en fractieleden handelen te allen tijde integer, transparant en met respect voor elkaar.\\n\\nARTIKEL 2: VERTROUWELIJKHEID & DIGITALE STUKKEN\\n1. Documenten aangemerkt als vertrouwelijk zijn uitsluitend bestemd voor geregistreerde leden en fractieleden.\\n2. Het delen, exporteren of kopiëren van interne beraadstukken zonder schriftelijke instemming van de fractievoorzitter is uitdrukkelijk verboden.\\n\\nARTIKEL 3: BESLUITVORMING & STEMPROCEDURE\\n1. Besluiten binnen de fractie worden bij voorkeur genomen op basis van consensus.\\n2. Bij stemming beslist de gewone meerderheid der uitgebrachte geldige stemmen."
+        content: "FRACTIESTATUUT ONAFHANKELIJK STEENWIJKERLAND (OSL)\\n\\nARTIKEL 1: GEMEENSCHAPPELIJKE VERANTWOORDELIJKHEID\\n1. De fractie van Onafhankelijk Steenwijkerland vertegenwoordigt de inwoners van Steenwijkerland op basis van het verkiezingsprogramma en lokale speerpunten.\\n2. Leden en fractieleden handelen te allen tijde integer, transparant en met respect voor elkaar.\\n\\nARTIKEL 2: VERTROUWELIJKHEID & DIGITALE STUKKEN\\n1. Documenten aangemerkt als vertrouwelijk zijn uitsluitend bestemd voor geregistreerde leden en fractieleden.\\n2. Het delen, exporteren of kopiëren van interne beraadstukken zonder schriftelijke instemming van de fractievoorzitter is uitdrukkelijk verboden.\\n\\nARTIKEL 3: BESLUITVORMING & STEMPROCEDURE\\n1. Besluiten binnen de fractie worden bij voorkeur genomen op basis van consensus.\\n2. Bij stemming beslist de gewone meerderheid der uitgebrachte geldige stemmen."
       }
     ];
     saveDb(db);
@@ -832,7 +832,7 @@ function getDb() {
         date: "2026-05-20",
         raadsvergadering: "Raadsvergadering 20 mei 2026",
         resultaat: "Aangenomen",
-        description: "Lijst van Andel heeft deze motie zelf opgesteld en ingediend om bindende afspraken te maken dat minimaal 50% van de nieuwe koop- en huurwoningen in Steenwijkerland met voorrang wordt toegewezen aan inwoners met een aantoonbare economische of maatschappelijke binding met onze gemeente of dorpen. Onze eigen jeugd en gezinnen mogen niet langer verdrongen worden op de woningmarkt.",
+        description: "Onafhankelijk Steenwijkerland (OSL) heeft deze motie zelf opgesteld en ingediend om bindende afspraken te maken dat minimaal 50% van de nieuwe koop- en huurwoningen in Steenwijkerland met voorrang wordt toegewezen aan inwoners met een aantoonbare economische of maatschappelijke binding met onze gemeente of dorpen. Onze eigen jeugd en gezinnen mogen niet langer verdrongen worden op de woningmarkt.",
         imageUrl: "/assets/markt-steenwijk.jpg",
         pdfUrl: "",
         pdfFileName: "",
@@ -878,11 +878,11 @@ function getDb() {
       amount: 12.00,
       currency: "eur",
       interval: "year",
-      productName: "Lidmaatschap Lijst van Andel (1 jaar)",
-      description: "Jaarlijkse partijcontributie voor leden van Lijst van Andel",
+      productName: "Lidmaatschap Onafhankelijk Steenwijkerland (1 jaar)",
+      description: "Jaarlijkse partijcontributie voor leden van Onafhankelijk Steenwijkerland (OSL)",
       requirePaymentAtRegistration: true,
       bankIban: "NL91 RBRB 0823 4192 11",
-      bankAccountName: "Lijst van Andel",
+      bankAccountName: "Onafhankelijk Steenwijkerland",
       manualPaymentAmount: 25.00,
       popupEnabled: true,
       popupDelaySeconds: 90,
@@ -892,10 +892,12 @@ function getDb() {
     };
     saveDb(db);
   } else {
-    // Ensure fallback fields exist on existing db.membershipSettings
+    // Ensure fallback fields exist and migrate legacy brand defaults on existing db.membershipSettings
     let modified = false;
+    if (db.membershipSettings.productName === "Lidmaatschap Lijst van Andel (1 jaar)") { db.membershipSettings.productName = "Lidmaatschap Onafhankelijk Steenwijkerland (1 jaar)"; modified = true; }
+    if (db.membershipSettings.description === "Jaarlijkse partijcontributie voor leden van Lijst van Andel") { db.membershipSettings.description = "Jaarlijkse partijcontributie voor leden van Onafhankelijk Steenwijkerland (OSL)"; modified = true; }
     if (db.membershipSettings.bankIban === undefined) { db.membershipSettings.bankIban = "NL91 RBRB 0823 4192 11"; modified = true; }
-    if (db.membershipSettings.bankAccountName === undefined) { db.membershipSettings.bankAccountName = "Lijst van Andel"; modified = true; }
+    if (db.membershipSettings.bankAccountName === undefined || db.membershipSettings.bankAccountName === "Lijst van Andel") { db.membershipSettings.bankAccountName = "Onafhankelijk Steenwijkerland"; modified = true; }
     if (db.membershipSettings.manualPaymentAmount === undefined) { db.membershipSettings.manualPaymentAmount = 25.00; modified = true; }
     if (db.membershipSettings.popupEnabled === undefined) { db.membershipSettings.popupEnabled = true; modified = true; }
     if (db.membershipSettings.popupDelaySeconds === undefined) { db.membershipSettings.popupDelaySeconds = 90; modified = true; }
@@ -1041,7 +1043,7 @@ function getDb() {
           "2026-Q3": { status: "paid", amount: 150, paidAt: "2026-09-05" },
           "2026-Q4": { status: "pending", amount: 150, paidAt: null }
         },
-        remarks: "Afdracht conform partijreglement Lijst van Andel"
+        remarks: "Afdracht conform partijreglement Onafhankelijk Steenwijkerland (OSL)"
       },
       {
         id: "afd-002",
@@ -1087,8 +1089,11 @@ function getDb() {
       nextAuditDate: "2027-03-20",
       dechargeStatus: "Goedgekeurd door Kascommissie",
       dechargeAdvice: "De kascommissie heeft de boeken, rekeningafschriften, het kasboek en de onderliggende bewijsstukken (facturen en kwitanties) gecontroleerd. Alle uitgaven boven de drempel voldeden aan het vierogenprincipe. De commissie adviseert de Algemene Ledenvergadering om het bestuur decharge te verlenen voor het gevoerde financiële beheer.",
-      reportFileName: "kascommissie_verslag_lijstvanandel_boekjaar2025.pdf"
+      reportFileName: "kascommissie_verslag_osl_boekjaar2025.pdf"
     };
+    saveDb(db);
+  } else if (db.treasurerKascommissie.reportFileName === "kascommissie_verslag_lijstvanandel_boekjaar2025.pdf") {
+    db.treasurerKascommissie.reportFileName = "kascommissie_verslag_osl_boekjaar2025.pdf";
     saveDb(db);
   }
 
@@ -1113,8 +1118,8 @@ function getDb() {
     db.users.push({
       id: "user_admin",
       username: "admin",
-      fullName: "Systeembeheerder Lijst van Andel",
-      email: "info@lijstvanandel.nl",
+      fullName: "Systeembeheerder Onafhankelijk Steenwijkerland",
+      email: "info@onafhankelijksteenwijkerland.nl",
       role: "admin",
       isActive: true,
       billingStatus: "exempt",
@@ -1139,7 +1144,7 @@ function getDb() {
       id: "user_penningmeester",
       username: "penningmeester",
       fullName: "Hendrik van Dijk (Penningmeester)",
-      email: "penningmeester@lijstvanandel.nl",
+      email: "penningmeester@onafhankelijksteenwijkerland.nl",
       role: "penningmeester",
       isActive: true,
       billingStatus: "exempt",
@@ -1159,7 +1164,7 @@ function getDb() {
       id: "user_secretaris",
       username: "secretaris",
       fullName: "Anja ter Horst (Secretaris)",
-      email: "secretaris@lijstvanandel.nl",
+      email: "secretaris@onafhankelijksteenwijkerland.nl",
       role: "secretaris",
       isActive: true,
       billingStatus: "exempt",
@@ -1179,7 +1184,7 @@ function getDb() {
       id: "user_voorzitter",
       username: "voorzitter",
       fullName: "Sammy van Andel (Partijvoorzitter)",
-      email: "voorzitter@lijstvanandel.nl",
+      email: "voorzitter@onafhankelijksteenwijkerland.nl",
       role: "voorzitter",
       isActive: true,
       billingStatus: "exempt",
@@ -1331,7 +1336,7 @@ function getDb() {
     db.secretaryCompliance = {
       kvk: {
         kvkNumber: "08194821",
-        associationName: "Politieke Vereniging Lijst van Andel Steenwijkerland",
+        associationName: "Politieke Vereniging Onafhankelijk Steenwijkerland",
         statutorySeat: "Steenwijkerland",
         lastMutationDate: "2026-04-10",
         status: "Actueel en geregistreerd",
@@ -1728,17 +1733,17 @@ function getDb() {
 
   if (!db.chairmanDailyBoard) {
     db.chairmanDailyBoard = {
-      partyName: "Lijst van Andel",
+      partyName: "Onafhankelijk Steenwijkerland",
       boardTitle: "Bestuur",
-      boardSubtitle: "Het bestuur bewaakt de koers van Lijst van Andel, zorgt voor een gezonde organisatie en vormt de schakel tussen leden, fractie en samenleving.",
-      pageIntro: "Het bestuur bewaakt de koers van Lijst van Andel, zorgt voor een gezonde organisatie en vormt de schakel tussen leden, fractie en samenleving.",
+      boardSubtitle: "Het bestuur bewaakt de koers van Onafhankelijk Steenwijkerland (OSL), zorgt voor een gezonde organisatie en vormt de schakel tussen leden, fractie en samenleving.",
+      pageIntro: "Het bestuur bewaakt de koers van Onafhankelijk Steenwijkerland (OSL), zorgt voor een gezonde organisatie en vormt de schakel tussen leden, fractie en samenleving.",
       status: "Bestuur Compleet & Operationeel",
       chairman: {
         roleTitle: "Partijvoorzitter",
         name: "Sammy van Andel",
         description: "Leidt ALV en bestuursvergaderingen, bewaakt fractierelatie via 5 instrumenten, stuurt commissies aan en is het gezicht naar buiten.",
-        bio: "Voorzitter van het bestuur van Lijst van Andel. Bewaakt koers, samenhang en verbinding tussen bestuur en fractie.",
-        email: "voorzitter@lijstvanandel.nl",
+        bio: "Voorzitter van het bestuur van Onafhankelijk Steenwijkerland. Bewaakt koers, samenhang en verbinding tussen bestuur en fractie.",
+        email: "voorzitter@onafhankelijksteenwijkerland.nl",
         phone: "",
         img: "",
         socials: { instagram: "", facebook: "", linkedin: "" },
@@ -1748,8 +1753,8 @@ function getDb() {
         roleTitle: "Secretaris",
         name: "Anja ter Horst",
         description: "Verantwoordelijk voor correspondentie, notulering ALV, ledenadministratie, KvK/WBTR-formaliteiten en het partijarchief.",
-        bio: "Bestuurslid van Lijst van Andel. Betrokken bij organisatie, leden en lokale verankering van de partij.",
-        email: "secretariaat@lijstvanandel.nl",
+        bio: "Bestuurslid van Onafhankelijk Steenwijkerland. Betrokken bij organisatie, leden en lokale verankering van de partij.",
+        email: "secretariaat@onafhankelijksteenwijkerland.nl",
         phone: "",
         img: "",
         socials: { instagram: "", facebook: "", linkedin: "" },
@@ -1759,8 +1764,8 @@ function getDb() {
         roleTitle: "Penningmeester",
         name: "Stef Mars",
         description: "Beheert begroting, kasboek, contributie-inning via Stripe/SEPA, giftenregister en verantwoording naar de kascommissie.",
-        bio: "Bestuurslid van Lijst van Andel. Met een nuchtere blik en oog voor detail draagt hij bij aan een gezonde partijorganisatie.",
-        email: "penningmeester@lijstvanandel.nl",
+        bio: "Bestuurslid van Onafhankelijk Steenwijkerland. Met een nuchtere blik en oog voor detail draagt hij bij aan een gezonde partijorganisatie.",
+        email: "penningmeester@onafhankelijksteenwijkerland.nl",
         phone: "",
         img: "",
         socials: { instagram: "", facebook: "", linkedin: "" },
@@ -1773,7 +1778,7 @@ function getDb() {
           name: "Lid Organisatie & Wijkcontacten",
           description: "Ondersteunt bij wijkcontacten, evenementen en de verbinding met inwoners in Steenwijkerland.",
           bio: "Betrokken bij lokale initiatieven en versterking van de dorpskernen in Steenwijkerland.",
-          email: "bestuur@lijstvanandel.nl",
+          email: "bestuur@onafhankelijksteenwijkerland.nl",
           phone: "",
           img: "",
           socials: { instagram: "", facebook: "", linkedin: "" }
@@ -1786,7 +1791,7 @@ function getDb() {
           beschrijving: "Officiële verenigingsstatuten conform de Wet bestuur en toezicht rechtspersonen (WBTR).",
           category: "Statutair",
           fileUrl: "",
-          fileName: "statuten_lijstvanandel.pdf",
+          fileName: "statuten_osl.pdf",
           fileSize: "1.2 MB",
           datum: "2026-01-15",
           href: ""
@@ -1808,7 +1813,7 @@ function getDb() {
           beschrijving: "Gedragscode en integriteitsprotocol voor bestuursleden, fractieleden en kandidaten.",
           category: "Integriteit",
           fileUrl: "",
-          fileName: "integriteitscode_lijstvanandel.pdf",
+          fileName: "integriteitscode_osl.pdf",
           fileSize: "420 KB",
           datum: "2026-02-20",
           href: ""
@@ -1839,15 +1844,39 @@ function getDb() {
     };
     saveDb(db);
   } else {
-    // Ensure organisatieDocs, pageIntro and boardTitle are always present and properly titled
+    // Ensure organisatieDocs, pageIntro and boardTitle are always present and migrate legacy LvA defaults
     let updated = false;
-    if (!db.chairmanDailyBoard.boardTitle || db.chairmanDailyBoard.boardTitle === "Dagelijks Bestuur Lijst van Andel") {
+    if (db.chairmanDailyBoard.partyName === "Lijst van Andel") {
+      db.chairmanDailyBoard.partyName = "Onafhankelijk Steenwijkerland";
+      updated = true;
+    }
+    if (db.chairmanDailyBoard.boardSubtitle && db.chairmanDailyBoard.boardSubtitle.includes("Lijst van Andel")) {
+      db.chairmanDailyBoard.boardSubtitle = db.chairmanDailyBoard.boardSubtitle.replace(/Lijst van Andel/g, "Onafhankelijk Steenwijkerland");
+      updated = true;
+    }
+    if (!db.chairmanDailyBoard.boardTitle || db.chairmanDailyBoard.boardTitle === "Dagelijks Bestuur Lijst van Andel" || db.chairmanDailyBoard.boardTitle === "Dagelijks Bestuur Onafhankelijk Steenwijkerland") {
       db.chairmanDailyBoard.boardTitle = "Bestuur";
       updated = true;
     }
     if (!db.chairmanDailyBoard.pageIntro) {
-      db.chairmanDailyBoard.pageIntro = db.chairmanDailyBoard.boardSubtitle || "Het bestuur bewaakt de koers van Lijst van Andel, zorgt voor een gezonde organisatie en vormt de schakel tussen leden, fractie en samenleving.";
+      db.chairmanDailyBoard.pageIntro = db.chairmanDailyBoard.boardSubtitle || "Het bestuur bewaakt de koers van Onafhankelijk Steenwijkerland (OSL), zorgt voor een gezonde organisatie en vormt de schakel tussen leden, fractie en samenleving.";
       updated = true;
+    } else if (db.chairmanDailyBoard.pageIntro.includes("Lijst van Andel")) {
+      db.chairmanDailyBoard.pageIntro = db.chairmanDailyBoard.pageIntro.replace(/Lijst van Andel/g, "Onafhankelijk Steenwijkerland");
+      updated = true;
+    }
+    for (const memberKey of ["chairman", "secretary", "treasurer"] as const) {
+      const m = db.chairmanDailyBoard[memberKey];
+      if (m) {
+        if (m.bio && m.bio.includes("Lijst van Andel")) { m.bio = m.bio.replace(/Lijst van Andel/g, "Onafhankelijk Steenwijkerland"); updated = true; }
+        if (m.email && m.email.includes("@lijstvanandel.nl")) { m.email = m.email.replace(/@lijstvanandel\.nl/g, "@onafhankelijksteenwijkerland.nl"); updated = true; }
+      }
+    }
+    if (Array.isArray(db.chairmanDailyBoard.additionalMembers)) {
+      for (const am of db.chairmanDailyBoard.additionalMembers) {
+        if (am.email && am.email.includes("@lijstvanandel.nl")) { am.email = am.email.replace(/@lijstvanandel\.nl/g, "@onafhankelijksteenwijkerland.nl"); updated = true; }
+        if (am.bio && am.bio.includes("Lijst van Andel")) { am.bio = am.bio.replace(/Lijst van Andel/g, "Onafhankelijk Steenwijkerland"); updated = true; }
+      }
     }
     if (!db.chairmanDailyBoard.organisatieDocs || !Array.isArray(db.chairmanDailyBoard.organisatieDocs) || db.chairmanDailyBoard.organisatieDocs.length === 0) {
       db.chairmanDailyBoard.organisatieDocs = [
@@ -1856,8 +1885,8 @@ function getDb() {
           titel: "Statuten",
           beschrijving: "Officiële verenigingsstatuten conform de Wet bestuur en toezicht rechtspersonen (WBTR).",
           category: "Statutair",
-          fileUrl: "/api/document/view?file=statuten_lijstvanandel.pdf",
-          fileName: "statuten_lijstvanandel.pdf",
+          fileUrl: "/api/document/view?file=statuten_osl.pdf",
+          fileName: "statuten_osl.pdf",
           fileSize: "1.2 MB",
           datum: "2026-01-15",
           href: ""
@@ -1878,8 +1907,8 @@ function getDb() {
           titel: "Integriteitscode",
           beschrijving: "Gedragscode en integriteitsprotocol voor bestuursleden, fractieleden en kandidaten.",
           category: "Integriteit",
-          fileUrl: "/api/document/view?file=integriteitscode_lijstvanandel.pdf",
-          fileName: "integriteitscode_lijstvanandel.pdf",
+          fileUrl: "/api/document/view?file=integriteitscode_osl.pdf",
+          fileName: "integriteitscode_osl.pdf",
           fileSize: "420 KB",
           datum: "2026-02-20",
           href: ""
@@ -1909,8 +1938,17 @@ function getDb() {
       ];
       updated = true;
     } else {
-      // Normalize existing documents to ensure safe streaming URLs and correct filenames
+      // Normalize existing documents to ensure safe streaming URLs and updated OSL filenames
       for (const d of db.chairmanDailyBoard.organisatieDocs) {
+        if (d.fileName === "statuten_lijstvanandel.pdf") {
+          d.fileName = "statuten_osl.pdf";
+          d.fileUrl = "/api/document/view?file=statuten_osl.pdf";
+          updated = true;
+        } else if (d.fileName === "integriteitscode_lijstvanandel.pdf") {
+          d.fileName = "integriteitscode_osl.pdf";
+          d.fileUrl = "/api/document/view?file=integriteitscode_osl.pdf";
+          updated = true;
+        }
         if (d.fileUrl && typeof d.fileUrl === "string" && d.fileUrl.startsWith("/uploads/")) {
           const bname = path.basename(d.fileUrl);
           d.fileUrl = `/api/document/view?file=${encodeURIComponent(bname)}`;
@@ -1928,9 +1966,9 @@ function getDb() {
 
     // Pre-generate all 5 official verifiable documents on disk
     [
-      "statuten_lijstvanandel.pdf",
+      "statuten_osl.pdf",
       "huishoudelijk_reglement.pdf",
-      "integriteitscode_lijstvanandel.pdf",
+      "integriteitscode_osl.pdf",
       "bestuursreglement.pdf",
       "kandidaatstellingsreglement.pdf"
     ].forEach((fn) => {
@@ -2603,7 +2641,7 @@ async function startServer() {
           "Fractiedossier Verificatiestuk",
           14,
           "Geverifieerde raadsverklaring en beleidsmatige passage uit het gemeentelijk archief.",
-          "Gevalideerd raadsinformatiedocument Lijst van Andel"
+          "Gevalideerd raadsinformatiedocument Onafhankelijk Steenwijkerland (OSL)"
         );
         const genPath = path.join(uploadsPath, "fractiestukken", safeFilename);
         if (fs.existsSync(genPath)) {
@@ -2719,12 +2757,12 @@ async function startServer() {
 
     // Only synthesize official default PDF on-demand if the requested file is one of the default document filenames
     let targetPdfName = "";
-    if (baseName === "statuten_lijstvanandel.pdf" || baseName === "statuten.pdf") {
-      targetPdfName = "statuten_lijstvanandel.pdf";
+    if (baseName === "statuten_osl.pdf" || baseName === "statuten_lijstvanandel.pdf" || baseName === "statuten.pdf") {
+      targetPdfName = baseName === "statuten_lijstvanandel.pdf" ? "statuten_lijstvanandel.pdf" : "statuten_osl.pdf";
     } else if (baseName === "huishoudelijk_reglement.pdf" || baseName === "huishoudelijk.pdf") {
       targetPdfName = "huishoudelijk_reglement.pdf";
-    } else if (baseName === "integriteitscode_lijstvanandel.pdf" || baseName === "integriteit.pdf") {
-      targetPdfName = "integriteitscode_lijstvanandel.pdf";
+    } else if (baseName === "integriteitscode_osl.pdf" || baseName === "integriteitscode_lijstvanandel.pdf" || baseName === "integriteit.pdf") {
+      targetPdfName = baseName === "integriteitscode_lijstvanandel.pdf" ? "integriteitscode_lijstvanandel.pdf" : "integriteitscode_osl.pdf";
     } else if (baseName === "bestuursreglement.pdf") {
       targetPdfName = "bestuursreglement.pdf";
     } else if (baseName === "kandidaatstellingsreglement.pdf") {
@@ -2750,16 +2788,16 @@ async function startServer() {
   // Dedicated direct routes for core party documents
   app.get(["/statuten", "/statuten.pdf", "/api/statuten"], async (req: any, res: any) => {
     try {
-      const genPath = await ensureBestuurDocumentPdf("statuten_lijstvanandel.pdf");
+      const genPath = await ensureBestuurDocumentPdf("statuten_osl.pdf");
       if (genPath && fs.existsSync(genPath)) {
         res.setHeader("Content-Type", "application/pdf");
-        res.setHeader("Content-Disposition", 'inline; filename="statuten_lijstvanandel.pdf"');
+        res.setHeader("Content-Disposition", 'inline; filename="statuten_osl.pdf"');
         return res.sendFile(genPath);
       }
     } catch (_e) {
       console.debug("[DOC ROUTE] Statuten fallback to view endpoint");
     }
-    res.redirect("/api/document/view?file=statuten_lijstvanandel.pdf");
+    res.redirect("/api/document/view?file=statuten_osl.pdf");
   });
 
   app.get(["/huishoudelijk-reglement", "/huishoudelijk-reglement.pdf", "/api/huishoudelijk-reglement"], async (req: any, res: any) => {
@@ -2778,16 +2816,16 @@ async function startServer() {
 
   app.get(["/integriteitscode", "/integriteitscode.pdf", "/api/integriteitscode"], async (req: any, res: any) => {
     try {
-      const genPath = await ensureBestuurDocumentPdf("integriteitscode_lijstvanandel.pdf");
+      const genPath = await ensureBestuurDocumentPdf("integriteitscode_osl.pdf");
       if (genPath && fs.existsSync(genPath)) {
         res.setHeader("Content-Type", "application/pdf");
-        res.setHeader("Content-Disposition", 'inline; filename="integriteitscode_lijstvanandel.pdf"');
+        res.setHeader("Content-Disposition", 'inline; filename="integriteitscode_osl.pdf"');
         return res.sendFile(genPath);
       }
     } catch (_e) {
       console.debug("[DOC ROUTE] Integriteitscode fallback to view endpoint");
     }
-    res.redirect("/api/document/view?file=integriteitscode_lijstvanandel.pdf");
+    res.redirect("/api/document/view?file=integriteitscode_osl.pdf");
   });
 
   app.get(["/bestuursreglement", "/bestuursreglement.pdf", "/api/bestuursreglement"], async (req: any, res: any) => {
@@ -2971,7 +3009,7 @@ async function startServer() {
           const timeout = setTimeout(() => controller.abort(), 4000);
           const response = await fetch(targetStr, {
             signal: controller.signal,
-            headers: { "User-Agent": "LijstVanAndel-OGBot/1.0" }
+            headers: { "User-Agent": "OnafhankelijkSteenwijkerland-OGBot/1.0" }
           });
           clearTimeout(timeout);
           if (response.ok) {
@@ -3564,8 +3602,8 @@ async function startServer() {
       amount: 12.00,
       currency: "eur",
       interval: "year",
-      productName: "Lidmaatschap Lijst van Andel (1 jaar)",
-      description: "Jaarlijkse partijcontributie voor leden van Lijst van Andel",
+      productName: "Lidmaatschap Onafhankelijk Steenwijkerland (1 jaar)",
+      description: "Jaarlijkse partijcontributie voor leden van Onafhankelijk Steenwijkerland (OSL)",
       requirePaymentAtRegistration: true,
     };
 
@@ -3614,7 +3652,7 @@ async function startServer() {
                 price_data: {
                   currency: (settings.currency || "eur").toLowerCase(),
                   product_data: {
-                    name: settings.productName || "Lidmaatschap Lijst van Andel (1 jaar)",
+                    name: settings.productName || "Lidmaatschap Onafhankelijk Steenwijkerland (1 jaar)",
                     description: settings.description || `Jaarlijkse lidmaatschapscontributie voor ${fullName || username}`,
                   },
                   unit_amount: Math.round((Number(settings.amount) || 12) * 100),
@@ -3841,7 +3879,7 @@ async function startServer() {
       const resetUrl = `${origin}/reset-wachtwoord?token=${resetToken}`;
       console.log(`[PASSWORD RESET] Wachtwoord herstelverzoek aangemaakt voor ${user.username}`);
 
-      const emailSubject = "Wachtwoord opnieuw instellen - Lijst van Andel";
+      const emailSubject = "Wachtwoord opnieuw instellen - Onafhankelijk Steenwijkerland (OSL)";
       const emailHtml = `
         <!DOCTYPE html>
         <html lang="nl">
@@ -3851,19 +3889,19 @@ async function startServer() {
             body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; padding: 24px 0; }
             .container { max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
             .header { text-align: center; margin-bottom: 24px; }
-            .header h1 { color: #005a36; font-size: 24px; margin: 0 0 8px 0; }
-            .btn { display: inline-block; background-color: #005a36; color: #ffffff !important; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px; margin: 20px 0; }
+            .header h1 { color: #143627; font-size: 24px; margin: 0 0 8px 0; }
+            .btn { display: inline-block; background-color: #143627; border-bottom: 3px solid #EAB308; color: #ffffff !important; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px; margin: 20px 0; }
             .footer { margin-top: 32px; pt-4; border-top: 1px solid #e2e8f0; font-size: 12px; color: #64748b; line-height: 1.5; }
           </style>
         </head>
         <body>
           <div class="container">
             <div class="header">
-              <h1>Lijst van Andel</h1>
+              <h1>Onafhankelijk Steenwijkerland</h1>
               <p style="color: #64748b; font-size: 14px; margin: 0;">Ledenportaal Steenwijkerland</p>
             </div>
             <p>Beste <strong>${user.name || user.username}</strong>,</p>
-            <p>Er is een aanvraag gedaan om het wachtwoord van uw ledenaccount bij Lijst van Andel opnieuw in te stellen.</p>
+            <p>Er is een aanvraag gedaan om het wachtwoord van uw ledenaccount bij Onafhankelijk Steenwijkerland (OSL) opnieuw in te stellen.</p>
             <p>Klik op de onderstaande knop om een nieuw wachtwoord te kiezen:</p>
             <div style="text-align: center;">
               <a href="${resetUrl}" class="btn" target="_blank">Nieuw wachtwoord instellen</a>
@@ -3873,17 +3911,17 @@ async function startServer() {
             </p>
             <p style="font-size: 12px; color: #94a3b8; word-break: break-all;">
               Werkt de knop niet? Kopieer en plak deze link in uw browser:<br>
-              <a href="${resetUrl}" style="color: #005a36;">${resetUrl}</a>
+              <a href="${resetUrl}" style="color: #143627;">${resetUrl}</a>
             </p>
             <div class="footer">
-              <p>Met vriendelijke groet,<br><strong>Lijst van Andel Steenwijkerland</strong><br>
-              <a href="https://lijstvanandel.nl" style="color: #005a36;">lijstvanandel.nl</a> &bull; info@lijstvanandel.nl</p>
+              <p>Met vriendelijke groet,<br><strong>Onafhankelijk Steenwijkerland (OSL)</strong><br>
+              <a href="https://onafhankelijksteenwijkerland.nl" style="color: #143627;">onafhankelijksteenwijkerland.nl</a> &bull; info@onafhankelijksteenwijkerland.nl</p>
             </div>
           </div>
         </body>
         </html>
       `;
-      const emailText = `Beste ${user.name || user.username},\n\nEr is een aanvraag gedaan om het wachtwoord van uw ledenaccount bij Lijst van Andel opnieuw in te stellen.\n\nOpen deze link om een nieuw wachtwoord in te stellen:\n${resetUrl}\n\nDeze link is 1 uur geldig.\n\nMet vriendelijke groet,\nLijst van Andel Steenwijkerland`;
+      const emailText = `Beste ${user.name || user.username},\n\nEr is een aanvraag gedaan om het wachtwoord van uw ledenaccount bij Onafhankelijk Steenwijkerland (OSL) opnieuw in te stellen.\n\nOpen deze link om een nieuw wachtwoord in te stellen:\n${resetUrl}\n\nDeze link is 1 uur geldig.\n\nMet vriendelijke groet,\nOnafhankelijk Steenwijkerland (OSL)`;
 
       try {
         const mailRes = await sendTransactionalEmail(user.email || normalizedEmail, emailSubject, emailHtml, emailText);
@@ -3994,8 +4032,8 @@ async function startServer() {
               price_data: {
                 currency: "eur",
                 product_data: {
-                  name: "Vrijwillige Gift aan Lijst van Andel",
-                  description: `Steun aan politieke partij Lijst van Andel Steenwijkerland (Giftenreglement conform)`,
+                  name: "Vrijwillige Gift aan Onafhankelijk Steenwijkerland",
+                  description: `Steun aan politieke partij Onafhankelijk Steenwijkerland (OSL) (Giftenreglement conform)`,
                 },
                 unit_amount: Math.round(numAmount * 100),
               },
@@ -4280,11 +4318,11 @@ async function startServer() {
         formatVersion: "AVG-GDPR-Art15-Art20-v1",
         legalBasis: "Algemene Verordening Gegevensbescherming (EU) 2016/679",
         dataController: {
-          name: "Lijst van Andel",
+          name: "Onafhankelijk Steenwijkerland (OSL)",
           legalForm: "Politieke partij / kiesvereniging Gemeente Steenwijkerland",
-          contactEmail: "privacy@lijstvanandel.nl",
-          website: "https://lijstvanandel.nl",
-          dpoOfficer: "Functionaris Gegevensbescherming Lijst van Andel"
+          contactEmail: "privacy@onafhankelijksteenwijkerland.nl",
+          website: "https://onafhankelijksteenwijkerland.nl",
+          dpoOfficer: "Functionaris Gegevensbescherming Onafhankelijk Steenwijkerland"
         }
       },
       dataSubject: {
@@ -4360,7 +4398,7 @@ async function startServer() {
       ).join("\r\n");
 
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
-      res.setHeader("Content-Disposition", `attachment; filename="lijstvanandel-avg-export-${user.username}.csv"`);
+      res.setHeader("Content-Disposition", `attachment; filename="osl-avg-export-${user.username}.csv"`);
       return res.status(200).send(csvContent);
     }
 
@@ -4484,11 +4522,11 @@ async function startServer() {
       amount: 12.00,
       currency: "eur",
       interval: "year",
-      productName: "Lidmaatschap Lijst van Andel (1 jaar)",
-      description: "Jaarlijkse partijcontributie voor leden van Lijst van Andel",
+      productName: "Lidmaatschap Onafhankelijk Steenwijkerland (1 jaar)",
+      description: "Jaarlijkse partijcontributie voor leden van Onafhankelijk Steenwijkerland (OSL)",
       requirePaymentAtRegistration: true,
       bankIban: "NL91 RBRB 0823 4192 11",
-      bankAccountName: "Lijst van Andel",
+      bankAccountName: "Onafhankelijk Steenwijkerland",
       manualPaymentAmount: 25.00,
       popupEnabled: true,
       popupDelaySeconds: 90,
@@ -4500,13 +4538,13 @@ async function startServer() {
       amount: settings.amount || 12.00,
       currency: settings.currency || "eur",
       interval: settings.interval || "year",
-      productName: settings.productName || "Lidmaatschap Lijst van Andel (1 jaar)",
+      productName: settings.productName || "Lidmaatschap Onafhankelijk Steenwijkerland (1 jaar)",
       description: settings.description || "Jaarlijkse contributie voor partijleden",
       requirePaymentAtRegistration: settings.requirePaymentAtRegistration !== false,
       isStripeConfigured: Boolean(process.env.STRIPE_SECRET_KEY),
       // Bank transfer & Help Pop-up settings (dynamically managed)
       bankIban: settings.bankIban || "NL91 RBRB 0823 4192 11",
-      bankAccountName: settings.bankAccountName || "Lijst van Andel",
+      bankAccountName: settings.bankAccountName || "Onafhankelijk Steenwijkerland",
       manualPaymentAmount: settings.manualPaymentAmount !== undefined ? Number(settings.manualPaymentAmount) : 25.00,
       popupEnabled: settings.popupEnabled !== false,
       popupDelaySeconds: settings.popupDelaySeconds !== undefined ? Number(settings.popupDelaySeconds) : 90,
@@ -4523,11 +4561,11 @@ async function startServer() {
       amount: 12.00,
       currency: "eur",
       interval: "year",
-      productName: "Lidmaatschap Lijst van Andel (1 jaar)",
-      description: "Jaarlijkse partijcontributie voor leden van Lijst van Andel",
+      productName: "Lidmaatschap Onafhankelijk Steenwijkerland (1 jaar)",
+      description: "Jaarlijkse partijcontributie voor leden van Onafhankelijk Steenwijkerland (OSL)",
       requirePaymentAtRegistration: true,
       bankIban: "NL91 RBRB 0823 4192 11",
-      bankAccountName: "Lijst van Andel",
+      bankAccountName: "Onafhankelijk Steenwijkerland",
       manualPaymentAmount: 25.00,
       popupEnabled: true,
       popupDelaySeconds: 90,
@@ -4974,7 +5012,7 @@ async function startServer() {
 
     const csvContent = [headers.join(","), ...rows].join("\n");
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="giftenregister_lijstvanandel_${new Date().toISOString().split("T")[0]}.csv"`);
+    res.setHeader("Content-Disposition", `attachment; filename="giftenregister_osl_${new Date().toISOString().split("T")[0]}.csv"`);
     res.send(csvContent);
   });
 
@@ -5000,7 +5038,7 @@ async function startServer() {
 
     const csvContent = [headers.join(","), ...rows].join("\n");
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="contributielijst_lijstvanandel_${new Date().toISOString().split("T")[0]}.csv"`);
+    res.setHeader("Content-Disposition", `attachment; filename="contributielijst_osl_${new Date().toISOString().split("T")[0]}.csv"`);
     res.send(csvContent);
   });
 
@@ -5262,7 +5300,7 @@ async function startServer() {
     const belafspraken = db.belafspraken || [];
     const fractieleden = db.fractieleden || [];
     const dailyBoard = db.chairmanDailyBoard || {
-      partyName: "Lijst van Andel",
+      partyName: "Onafhankelijk Steenwijkerland",
       boardTitle: "Bestuur",
       boardSubtitle: "Statutaire taakverdeling en wisselwerking binnen het dagelijks bestuur conform verenigingsrecht en de WBTR.",
       status: "Bestuur Compleet & Operationeel",
@@ -5270,7 +5308,7 @@ async function startServer() {
         roleTitle: "Partijvoorzitter",
         name: "Sammy van Andel",
         description: "Leidt ALV en bestuursvergaderingen, bewaakt fractierelatie via 5 instrumenten, stuurt commissies aan en is het gezicht naar buiten.",
-        email: "voorzitter@lijstvanandel.nl",
+        email: "voorzitter@onafhankelijksteenwijkerland.nl",
         phone: "",
         panelNote: "U bevindt zich in het Voorzitterpaneel"
       },
@@ -5278,7 +5316,7 @@ async function startServer() {
         roleTitle: "Secretaris",
         name: "Anja ter Horst",
         description: "Verantwoordelijk voor correspondentie, notulering ALV, ledenadministratie, KvK/WBTR-formaliteiten en het partijarchief.",
-        email: "secretariaat@lijstvanandel.nl",
+        email: "secretariaat@onafhankelijksteenwijkerland.nl",
         phone: "",
         panelNote: "Eigen beveiligd Secretarispaneel"
       },
@@ -5286,7 +5324,7 @@ async function startServer() {
         roleTitle: "Penningmeester",
         name: "Stef Mars",
         description: "Beheert begroting, kasboek, contributie-inning via Stripe/SEPA, giftenregister en verantwoording naar de kascommissie.",
-        email: "penningmeester@lijstvanandel.nl",
+        email: "penningmeester@onafhankelijksteenwijkerland.nl",
         phone: "",
         panelNote: "Eigen beveiligd Penningmeesterpaneel"
       },
@@ -5329,7 +5367,7 @@ async function startServer() {
   app.get("/api/public/bestuur", (req: any, res: any) => {
     const db = getDb();
     const board = db.chairmanDailyBoard || {};
-    if (!board.boardTitle || board.boardTitle === "Dagelijks Bestuur Lijst van Andel") {
+    if (!board.boardTitle || board.boardTitle === "Dagelijks Bestuur Lijst van Andel" || board.boardTitle === "Dagelijks Bestuur Onafhankelijk Steenwijkerland") {
       board.boardTitle = "Bestuur";
     }
     if (board.organisatieDocs && Array.isArray(board.organisatieDocs)) {
@@ -5350,7 +5388,7 @@ async function startServer() {
   app.get("/api/bestuur", (req: any, res: any) => {
     const db = getDb();
     const board = db.chairmanDailyBoard || {};
-    if (!board.boardTitle || board.boardTitle === "Dagelijks Bestuur Lijst van Andel") {
+    if (!board.boardTitle || board.boardTitle === "Dagelijks Bestuur Lijst van Andel" || board.boardTitle === "Dagelijks Bestuur Onafhankelijk Steenwijkerland") {
       board.boardTitle = "Bestuur";
     }
     if (board.organisatieDocs && Array.isArray(board.organisatieDocs)) {
@@ -6048,8 +6086,8 @@ async function startServer() {
       enabled: true,
       amount: 12.00,
       currency: "eur",
-      productName: "Lidmaatschap Lijst van Andel (1 jaar)",
-      description: "Jaarlijkse partijcontributie voor leden van Lijst van Andel",
+      productName: "Lidmaatschap Onafhankelijk Steenwijkerland (1 jaar)",
+      description: "Jaarlijkse partijcontributie voor leden van Onafhankelijk Steenwijkerland (OSL)",
     };
 
     const stripe = getStripe();
@@ -6063,7 +6101,7 @@ async function startServer() {
               price_data: {
                 currency: (settings.currency || "eur").toLowerCase(),
                 product_data: {
-                  name: settings.productName || "Lidmaatschap Lijst van Andel (1 jaar)",
+                  name: settings.productName || "Lidmaatschap Onafhankelijk Steenwijkerland (1 jaar)",
                   description: settings.description || `Jaarlijkse contributie voor ${user.fullName || user.username}`,
                 },
                 unit_amount: Math.round((Number(settings.amount) || 12) * 100),
@@ -6261,7 +6299,7 @@ async function startServer() {
 
     if (format === "txt") {
       const emails = subscribers
-        .map((u: any) => (u.email && u.email.trim()) || (u.username?.includes("@") ? u.username : `${u.username}@leden.lijstvanandel.nl`))
+        .map((u: any) => (u.email && u.email.trim()) || (u.username?.includes("@") ? u.username : `${u.username}@leden.onafhankelijksteenwijkerland.nl`))
         .filter(Boolean);
 
       res.setHeader("Content-Type", "text/plain; charset=utf-8");
@@ -6274,7 +6312,7 @@ async function startServer() {
     const escapeCsv = (str: any) => `"${String(str || "").replace(/"/g, '""')}"`;
     
     const csvRows = subscribers.map((u: any) => {
-      const email = (u.email && u.email.trim()) || (u.username?.includes("@") ? u.username : `${u.username}@leden.lijstvanandel.nl`);
+      const email = (u.email && u.email.trim()) || (u.username?.includes("@") ? u.username : `${u.username}@leden.onafhankelijksteenwijkerland.nl`);
       return [
         escapeCsv(u.fullName || ""),
         escapeCsv(u.salutation || ""),
@@ -6387,7 +6425,7 @@ async function startServer() {
     return res.json({
       success: true,
       isNew,
-      message: "Hartelijk dank! U bent succesvol aangemeld voor de nieuwsbrief van Lijst van Andel."
+      message: "Hartelijk dank! U bent succesvol aangemeld voor de nieuwsbrief van Onafhankelijk Steenwijkerland (OSL)."
     });
   });
 
@@ -6450,7 +6488,7 @@ async function startServer() {
 
     return res.json({
       success: true,
-      message: "U bent succesvol afgemeld voor de nieuwsbrief van Lijst van Andel."
+      message: "U bent succesvol afgemeld voor de nieuwsbrief van Onafhankelijk Steenwijkerland (OSL)."
     });
   });
 
@@ -6577,7 +6615,7 @@ async function startServer() {
       introText: introText || "",
       ctaButtonText: ctaButtonText || "",
       ctaButtonUrl: ctaButtonUrl || "",
-      ctaButtonColor: ctaButtonColor || "#c6a858",
+      ctaButtonColor: ctaButtonColor || "#EAB308",
       items: Array.isArray(items) ? items : [],
       status: "draft",
       createdAt: new Date().toISOString(),
@@ -6619,7 +6657,7 @@ async function startServer() {
     const protocol = isLocal ? "http" : "https";
     const baseUrl = `${protocol}://${host}`;
 
-    const previewEmail = req.user.email || req.user.username || "lezer@lijstvanandel.nl";
+    const previewEmail = req.user.email || req.user.username || "lezer@onafhankelijksteenwijkerland.nl";
     const token = getUnsubscribeToken(previewEmail);
     const html = generateNewsletterHtml(newsletter, previewEmail, baseUrl, token);
     const text = generateNewsletterText(newsletter, previewEmail, baseUrl, token);
@@ -6671,7 +6709,7 @@ async function startServer() {
       if (!dispatchResult.success) {
         return res.status(500).json({
           error: dispatchResult.simulated
-            ? "SMTP-configuratie ontbreekt op deze server. Voeg SMTP_HOST, SMTP_USER en SMTP_PASS toe aan het .env bestand (/var/www/lijst-van-andel/.env) en herstart de server."
+            ? "SMTP-configuratie ontbreekt op deze server. Voeg SMTP_HOST, SMTP_USER en SMTP_PASS toe aan het .env bestand (/var/www/onafhankelijksteenwijkerland/.env) en herstart de server."
             : `Fout bij verzenden via SMTP-server (${process.env.SMTP_HOST || 'onbekend'}): ${dispatchResult.error}`
         });
       }
@@ -7113,7 +7151,7 @@ async function startServer() {
         return res.status(401).json({
           error: "Inloggen vereist",
           code: "AUTH_REQUIRED",
-          message: "Log in met een account van Lijst van Andel om mee te doen aan peilingen, of scan een QR-code op locatie."
+          message: "Log in met een account van Onafhankelijk Steenwijkerland (OSL) om mee te doen aan peilingen, of scan een QR-code op locatie."
         });
       }
 
@@ -7142,7 +7180,7 @@ async function startServer() {
         return res.status(403).json({
           error: "Exclusief voor contributiebetalende leden",
           code: "MEMBERSHIP_DUES_REQUIRED",
-          message: "Deze peilingen zijn exclusief voor leden van Lijst van Andel waarvan de contributie is voldaan."
+          message: "Deze peilingen zijn exclusief voor leden van Onafhankelijk Steenwijkerland (OSL) waarvan de contributie is voldaan."
         });
       }
     }
@@ -8182,6 +8220,11 @@ async function startServer() {
           const aName = (n.authorName || n.author || "").toLowerCase().trim();
           const genericUnlinkedAuthors = [
             "",
+            "onafhankelijk steenwijkerland",
+            "fractie onafhankelijk steenwijkerland",
+            "redactie onafhankelijk steenwijkerland",
+            "osl",
+            "fractie osl",
             "lijst van andel",
             "fractie lijst van andel",
             "fractie",
@@ -8778,7 +8821,7 @@ async function startServer() {
         audioUrl: finalAudio,
         duration: (duration || "").trim(),
         date: date || new Date().toISOString().split("T")[0],
-        author: (author || "Lijst van Andel").trim(),
+        author: (author || "Onafhankelijk Steenwijkerland").trim(),
         authorId: (authorId || "").trim(),
         spotifyUrl: (spotifyUrl || "").trim(),
         appleUrl: (appleUrl || "").trim(),
@@ -8918,7 +8961,7 @@ async function startServer() {
       db.externalNews = [
         {
           id: "ext-1",
-          title: "Lijst van Andel pleit voor meer betaalbare starterswoningen in Steenwijk",
+          title: "Onafhankelijk Steenwijkerland pleit voor meer betaalbare starterswoningen in Steenwijk",
           sourceName: "Steenwijker Courant",
           sourceLogo: "newspaper",
           url: "https://www.steenwijkercourant.nl",
@@ -9111,7 +9154,7 @@ async function startServer() {
       name: trimmedName,
       slug: cleanSlug || `cat-${Date.now()}`,
       description: description ? description.trim() : "",
-      color: color || "#c6a858",
+      color: color || "#EAB308",
       createdAt: new Date().toISOString()
     };
 
@@ -9142,7 +9185,7 @@ async function startServer() {
       name: name && name.trim() ? name.trim() : current.name,
       slug: cleanSlug,
       description: description !== undefined ? description.trim() : current.description,
-      color: color || current.color || "#c6a858",
+      color: color || current.color || "#EAB308",
       updatedAt: new Date().toISOString()
     };
 
@@ -9317,7 +9360,7 @@ async function startServer() {
           const timeout = setTimeout(() => controller.abort(), 4000);
           const response = await fetch(rawTarget, {
             signal: controller.signal,
-            headers: { "User-Agent": "LijstVanAndel-OGBot/1.0" },
+            headers: { "User-Agent": "OnafhankelijkSteenwijkerland-OGBot/1.0" },
           });
           clearTimeout(timeout);
           if (response.ok) {
@@ -9597,7 +9640,7 @@ async function startServer() {
 
       const geoRes = await fetch(nominatimUrl, {
         headers: {
-          "User-Agent": "LijstVanAndel-Portal/1.0 (info@lijstvanandel.nl)",
+          "User-Agent": "OnafhankelijkSteenwijkerland-Portal/1.0 (info@onafhankelijksteenwijkerland.nl)",
           "Accept-Language": "nl",
         },
       });
@@ -10551,7 +10594,7 @@ async function startServer() {
           ${ticket.price > 0 ? `<p style="color: #64748b; font-size: 12px; margin-top: 10px;"><em>Let op: conform de reserveringsvoorwaarden voor niet-leden geldt er geen cashback of restitutie.</em></p>` : ""}
           <p style="margin-top: 20px;">Dank voor het tijdig doorgeven. Wij hopen u bij een volgende bijeenkomst te mogen ontmoeten!</p>
           <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
-          <p style="font-size: 11px; color: #94a3b8;">Lijst van Andel Steenwijkerland &bull; info@lijstvanandel.nl</p>
+          <p style="font-size: 11px; color: #94a3b8;">Onafhankelijk Steenwijkerland (OSL) &bull; info@onafhankelijksteenwijkerland.nl</p>
         </div>
       `;
 
@@ -11075,7 +11118,7 @@ async function startServer() {
   app.post("/api/push/test", requireAuth, async (req: any, res: any) => {
     const db = getDb();
     const payload = {
-      title: "🔔 Test Notificatie — Lijst van Andel",
+      title: "🔔 Test Notificatie — Onafhankelijk Steenwijkerland (OSL)",
       body: `Hallo ${req.user.fullName || req.user.username}! Uw PWA push notificaties voor belafspraken werken perfect.`,
       url: "/dashboard",
       tag: "test-notification"
@@ -11506,7 +11549,7 @@ async function startServer() {
         wijkSlug: w.slug,
         gemeente: w.gemeente || (w.type === "Wijk" ? "Steenwijk" : "Steenwijkerland"),
         category: w.type === "Kern" ? "Kernvertegenwoordiger" : "Wijkvertegenwoordiger",
-        description: `Als vertegenwoordiger bent u de ogen en oren voor Lijst van Andel in ${w.naam}. U spreekt met bewoners, signaleert knelpunten rond leefbaarheid, woningbouw of verkeer, en brengt lokale signalen direct in bij onze raadsfractie.`,
+        description: `Als vertegenwoordiger bent u de ogen en oren voor Onafhankelijk Steenwijkerland (OSL) in ${w.naam}. U spreekt met bewoners, signaleert knelpunten rond leefbaarheid, woningbouw of verkeer, en brengt lokale signalen direct in bij onze raadsfractie.`,
         isOpen: true,
         isWijk: true
       });
@@ -11550,7 +11593,7 @@ async function startServer() {
       wijkNaam: wijkNaam || "Steenwijkerland",
       userId: user.id,
       applicantName: (applicantName && String(applicantName).trim()) || user.fullName || "Lid",
-      applicantEmail: (applicantEmail && String(applicantEmail).trim()) || user.email || (user.username?.includes("@") ? user.username : `${user.username}@leden.lijstvanandel.nl`),
+      applicantEmail: (applicantEmail && String(applicantEmail).trim()) || user.email || (user.username?.includes("@") ? user.username : `${user.username}@leden.onafhankelijksteenwijkerland.nl`),
       motivation: motivation.trim(),
       status: "nieuw", // nieuw | in_behandeling | gecontacteerd | afgerond
       adminNotes: "",
@@ -12127,7 +12170,7 @@ async function startServer() {
       const url = `https://api.github.com/repos/${repo}/commits?sha=${encodeURIComponent(branch)}&per_page=${perPage}`;
       const res = await fetch(url, {
         headers: {
-          "User-Agent": "LijstVanAndel-SystemUpdater",
+          "User-Agent": "OnafhankelijkSteenwijkerland-SystemUpdater",
           "Accept": "application/vnd.github.v3+json"
         }
       });
@@ -12663,7 +12706,7 @@ async function startServer() {
       setTimeout(async () => {
         try {
           console.log("[System] Herladen van PM2 proces na voltooide update...");
-          await runCmd("pm2 restart lijst-van-andel --update-env || pm2 restart all || pm2 reload all --update-env");
+          await runCmd("pm2 restart osl --update-env || pm2 restart lijst-van-andel --update-env || pm2 restart all || pm2 reload all --update-env");
         } catch (e) {
           console.error("Fout bij uitvoeren van pm2 reload:", e);
         }
@@ -12684,7 +12727,7 @@ async function startServer() {
         return res.status(404).json({ error: "database.sqlite bestand niet gevonden" });
       }
       const dateStr = new Date().toISOString().slice(0, 10);
-      res.setHeader("Content-Disposition", `attachment; filename="lijst-van-andel-db-${dateStr}.sqlite"`);
+      res.setHeader("Content-Disposition", `attachment; filename="osl-db-${dateStr}.sqlite"`);
       res.setHeader("Content-Type", "application/x-sqlite3");
       const fileStream = fs.createReadStream(sqlitePath);
       fileStream.pipe(res);
@@ -12700,7 +12743,7 @@ async function startServer() {
       const db = getDb();
       const dateStr = new Date().toISOString().slice(0, 10);
       const jsonContent = JSON.stringify(db, null, 2);
-      res.setHeader("Content-Disposition", `attachment; filename="lijst-van-andel-full-export-${dateStr}.json"`);
+      res.setHeader("Content-Disposition", `attachment; filename="osl-full-export-${dateStr}.json"`);
       res.setHeader("Content-Type", "application/json; charset=utf-8");
       res.send(jsonContent);
     } catch (err: any) {
@@ -12830,7 +12873,7 @@ async function startServer() {
   // Dynamic Sitemap generator for Google and other search engines
   app.get("/sitemap.xml", (req, res) => {
     try {
-      const host = req.get("host") || "lijstvanandel.nl";
+      const host = req.get("host") || "onafhankelijksteenwijkerland.nl";
       const protocol = host.includes("localhost") || host.includes("127.0.0.1") ? "http" : "https";
       const baseUrl = `${protocol}://${host}`;
       const db = getDb();
@@ -12913,7 +12956,7 @@ ${allUrls.map(u => `  <url>
 
   // Robots.txt generator
   app.get("/robots.txt", (req, res) => {
-    const host = req.get("host") || "lijstvanandel.nl";
+    const host = req.get("host") || "onafhankelijksteenwijkerland.nl";
     const protocol = host.includes("localhost") || host.includes("127.0.0.1") ? "http" : "https";
     const baseUrl = `${protocol}://${host}`;
 
@@ -14074,7 +14117,7 @@ Sitemap: ${baseUrl}/sitemap.xml
               const resp = await fetch(doc.url, {
                 signal: AbortSignal.timeout(20000),
                 headers: {
-                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/1.0",
+                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) OnafhankelijkSteenwijkerland/1.0",
                 },
               });
               if (resp.ok) {
@@ -14099,7 +14142,7 @@ Sitemap: ${baseUrl}/sitemap.xml
       // Add a handy Readme / Samenvatting index file inside the ZIP
       const summaryContent = [
         `=============================================================`,
-        `LIJST VAN ANDEL - RAADSSTUKKEN DOSSIER EXPORT`,
+        `ONAFHANKELIJK STEENWIJKERLAND (OSL) - RAADSSTUKKEN DOSSIER EXPORT`,
         `=============================================================`,
         ``,
         `Agendapunt:   ${topic.title}`,
@@ -14217,7 +14260,7 @@ Sitemap: ${baseUrl}/sitemap.xml
     }
 
     const now = new Date().toISOString();
-    const id = payload.id || `lva-sq-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const id = payload.id || `osl-sq-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
     const existingIdx = db.writtenQuestionDossiers.findIndex((d: any) => d.id === id);
 
@@ -14745,7 +14788,7 @@ Sitemap: ${baseUrl}/sitemap.xml
 
       const response = await fetch(targetUrl, {
         headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/1.0",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) OnafhankelijkSteenwijkerland/1.0",
           "Accept": "application/pdf,text/html,application/xhtml+xml,*/*",
         },
       });
@@ -14774,7 +14817,7 @@ Sitemap: ${baseUrl}/sitemap.xml
 
           const pdfResponse = await fetch(resolvedPdfUrl, {
             headers: {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/1.0",
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) OnafhankelijkSteenwijkerland/1.0",
               "Accept": "application/pdf,*/*",
             },
           });
@@ -15285,7 +15328,7 @@ Sitemap: ${baseUrl}/sitemap.xml
                 titel: d.title,
                 dossier: `Ondersteuningsdossier: ${matchingTopic.title}`,
                 datum: matchingTopic.meetingDate,
-                entiteiten: ["Gemeenteraad Steenwijkerland", "Lijst van Andel"],
+                entiteiten: ["Gemeenteraad Steenwijkerland", "Onafhankelijk Steenwijkerland (OSL)", "Lijst van Andel"],
                 relaties: `Raadsstuk bij vergadering ${matchingTopic.meetingTitle}`,
                 fileUrl: d.url,
                 fileExists: true,
@@ -17070,7 +17113,7 @@ Sitemap: ${baseUrl}/sitemap.xml
         text: String(item.text || ""),
         icon: String(item.icon || "CheckCircle2"),
         imageUrl: String(item.imageUrl || "/assets/markt-steenwijk.jpg"),
-        imageAlt: String(item.imageAlt || item.text || "Voordeel Lijst van Andel"),
+        imageAlt: String(item.imageAlt || item.text || "Voordeel Onafhankelijk Steenwijkerland"),
         order: idx + 1,
       }));
 
@@ -17185,7 +17228,7 @@ Sitemap: ${baseUrl}/sitemap.xml
           text: String(b.text || "").trim(),
           icon: String(b.icon || "CheckCircle2").trim(),
           imageUrl: String(b.imageUrl || "/assets/markt-steenwijk.jpg").trim(),
-          imageAlt: String(b.imageAlt || b.text || "Voordeel Lijst van Andel").trim(),
+          imageAlt: String(b.imageAlt || b.text || "Voordeel Onafhankelijk Steenwijkerland").trim(),
           order: typeof b.order === "number" ? b.order : index + 1,
         }));
         db.loginBenefits.sort((a: any, b: any) => (Number(a.order) || 0) - (Number(b.order) || 0));
@@ -17317,7 +17360,7 @@ Sitemap: ${baseUrl}/sitemap.xml
     try {
       const forwardedHost = req.get("x-forwarded-host");
       const reqHost = req.get("host");
-      const host = forwardedHost || reqHost || "lijstvanandel.nl";
+      const host = forwardedHost || reqHost || "onafhankelijksteenwijkerland.nl";
       const snap = getPublicSiteSnapshot(getDb);
       const urlKey = `${host}::${req.originalUrl || req.url}::${snap.version}`;
 
@@ -17468,7 +17511,7 @@ Sitemap: ${baseUrl}/sitemap.xml
           <html lang="nl">
           <head>
             <meta charset="utf-8">
-            <title>Lijst van Andel - Build vereist</title>
+            <title>Onafhankelijk Steenwijkerland (OSL) - Build vereist</title>
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <style>
               body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; padding: 40px 20px; display: flex; align-items: center; justify-content: center; min-height: 80vh; }

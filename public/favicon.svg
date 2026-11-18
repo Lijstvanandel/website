@@ -1,19 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
     <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000000" flood-opacity="0.15"/>
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000000" flood-opacity="0.22"/>
     </filter>
   </defs>
-  
-  <!-- Sage Green Circular Emblem -->
-  <circle cx="256" cy="256" r="236" fill="#9EBAA0" />
-  
-  <!-- Steenwijkerland Municipal Map Contour (Fully visible inside circle) -->
+
+  <!-- Diep Woudgroen Circular Emblem met Helder Amber rand -->
+  <circle cx="256" cy="256" r="236" fill="#143627" stroke="#EAB308" stroke-width="14" />
+
+  <!-- Steenwijkerland Municipal Map Contour -->
   <g filter="url(#softGlow)">
-    
-  <g transform="translate(256, 256) scale(0.68) translate(-274, -269)">
-    <path 
-      d="M 118 182
+    <g transform="translate(256, 256) scale(0.72) translate(-274, -269)">
+      <path
+        d="M 118 182
   L 128 172
   L 133 176
   L 142 192
@@ -48,14 +47,13 @@
   L 205 290
   L 175 245
   L 145 218
-  Z" 
-      fill="#FFFFFF" 
-      stroke="#18181B" 
-      stroke-width="11" 
-      stroke-linejoin="round" 
-      stroke-linecap="round"
-    />
-  </g>
-
+  Z"
+        fill="#FFFFFF"
+        stroke="#EAB308"
+        stroke-width="10"
+        stroke-linejoin="round"
+        stroke-linecap="round"
+      />
+    </g>
   </g>
 </svg>

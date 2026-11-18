@@ -80,7 +80,7 @@ export const LegalPageLayout: React.FC<LegalPageLayoutProps> = ({ slug, icon: Ic
     if (navigator.share) {
       try {
         await navigator.share({
-          title: `${doc.title} — Lijst van Andel`,
+          title: `${doc.title} — Onafhankelijk Steenwijkerland`,
           text: doc.description,
           url,
         });

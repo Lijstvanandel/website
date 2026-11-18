@@ -17,7 +17,7 @@ export function MembershipHelpModal({
   isOpen,
   onClose,
   bankIban = "NL91 RBRB 0823 4192 11",
-  bankAccountName = "Lijst van Andel",
+  bankAccountName = "Onafhankelijk Steenwijkerland",
   amount = 25.0,
   customTitle,
   customText,
@@ -189,7 +189,7 @@ export function MembershipHelpModal({
             <span className="text-muted-foreground">Liever direct contact?</span>
             <div className="flex items-center gap-2">
               <a
-                href="mailto:info@lijstvanandel.nl?subject=Lid%20worden%20Lijst%20van%20Andel"
+                href="mailto:info@onafhankelijksteenwijkerland.nl?subject=Lid%20worden%20Onafhankelijk%20Steenwijkerland"
                 className="text-primary hover:underline flex items-center gap-1 font-semibold"
               >
                 <Mail className="w-3.5 h-3.5" /> E-mail sturen

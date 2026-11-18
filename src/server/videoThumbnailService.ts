@@ -22,6 +22,24 @@ function ensureThumbnailDirs() {
     if (fs.existsSync(path.join(process.cwd(), "dist")) && !fs.existsSync(THUMBNAIL_DIST_DIR)) {
       fs.mkdirSync(THUMBNAIL_DIST_DIR, { recursive: true });
     }
+    // One-time cleanup of legacy Lijst van Andel pre-baked thumbnails so OSL thumbnails regenerate cleanly
+    const versionMarker = path.join(THUMBNAIL_PUBLIC_DIR, ".osl-thumb-v1");
+    if (!fs.existsSync(versionMarker)) {
+      for (const dir of [THUMBNAIL_PUBLIC_DIR, THUMBNAIL_DIST_DIR]) {
+        if (fs.existsSync(dir)) {
+          for (const entry of fs.readdirSync(dir)) {
+            if (entry.startsWith("video-")) {
+              try {
+                fs.unlinkSync(path.join(dir, entry));
+              } catch (_e) {
+                // ignore
+              }
+            }
+          }
+        }
+      }
+      fs.writeFileSync(versionMarker, new Date().toISOString(), "utf-8");
+    }
   } catch (_e) {
     // ignore mkdir errors
   }
@@ -228,7 +246,7 @@ function wrapThumbnailHeadline(text: string, maxCharsPerLine = 24, maxLines = 4)
   if (currentLine && lines.length < maxLines) {
     lines.push(currentLine);
   }
-  return lines.length > 0 ? lines : [text || "Lijst van Andel"];
+  return lines.length > 0 ? lines : [text || "Onafhankelijk Steenwijkerland"];
 }
 
 function renderHeadlineByOffset(
@@ -254,7 +272,7 @@ function renderHeadlineByOffset(
     for (let wIdx = 0; wIdx < words.length; wIdx++) {
       const word = words[wIdx];
       const isName = charOffset < nameLen;
-      const fill = isName ? "#f59e0b" : "#ffffff";
+      const fill = isName ? "#EAB308" : "#ffffff";
       const p = font.getPath(word, curX, y, fontSize);
       paths.push(`<path d="${p.toPathData(2)}" fill="${fill}" />`);
 
@@ -615,7 +633,7 @@ export async function generateVideoThumbnailBothFormats(
     foundMember = allMembers[0] || DEFAULT_FRACTIELEDEN[0];
   }
 
-  const memberName = foundMember ? foundMember.name : "Lijst van Andel";
+  const memberName = foundMember ? foundMember.name : "Onafhankelijk Steenwijkerland";
   const isBurger =
     foundMember?.type?.toLowerCase() === "burgerraadslid" ||
     foundMember?.role?.toLowerCase().includes("burgerraadslid");
@@ -686,7 +704,7 @@ export async function generateVideoThumbnailBothFormats(
 
   const effectiveBgUrl = wijkBackgroundUrl || "/assets/steenwijk-aerial.webp";
   const cacheKey = String(
-    `${video.id || "preview"}_${cutoutUrl}_${effectiveBgUrl}_${fullHeadline}`
+    `osl_v1_${video.id || "preview"}_${cutoutUrl}_${effectiveBgUrl}_${fullHeadline}`
   );
 
   const cached = thumbnailCache.get(cacheKey);
@@ -709,13 +727,13 @@ export async function generateVideoThumbnailBothFormats(
   // 7. Get fonts for vector rendering
   const { bold: boldFont, regular: regFont } = getThumbnailFonts();
 
-  // 8. Generate Vector SVG paths
-  const lvaTextWidth = measureTextWidth(boldFont, "LvA", 14);
-  const lvaX = 60 + (44 - lvaTextWidth) / 2;
+  // 8. Generate Vector SVG paths (Diep Woudgroen #143627 & Helder Amber #EAB308)
+  const oslTextWidth = measureTextWidth(boldFont, "OSL", 14);
+  const oslX = 60 + (48 - oslTextWidth) / 2;
   const partyBadgePaths = `
-    <rect x="60" y="48" width="44" height="28" rx="6" fill="#f59e0b"/>
-    ${textToVectorPath(boldFont, "LvA", lvaX, 48 + 19, 14, "#000000")}
-    ${textToVectorPath(boldFont, "LIJST VAN ANDEL", 60 + 56, 48 + 20, 16, "#ffffff")}
+    <rect x="60" y="48" width="48" height="28" rx="6" fill="#EAB308"/>
+    ${textToVectorPath(boldFont, "OSL", oslX, 48 + 19, 14, "#143627")}
+    ${textToVectorPath(boldFont, "ONAFHANKELIJK STEENWIJKERLAND", 60 + 60, 48 + 20, 15, "#ffffff")}
   `;
 
   let badgesContent = "";
@@ -728,9 +746,9 @@ export async function generateVideoThumbnailBothFormats(
 
     badgesContent = `
       <g>
-        <rect x="60" y="96" width="${wPillWidth}" height="32" rx="16" fill="rgba(245, 158, 11, 0.22)" stroke="#f59e0b" stroke-width="1.5"/>
-        <path d="M12 2C8.13 2 5 5.13 5 9c0 4.5 7 11 7 11s7-6.5 7-11c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z" fill="#f59e0b" transform="translate(68, 101) scale(0.85)"/>
-        ${textToVectorPath(boldFont, wijkNaam, 60 + 36, 96 + 21, 13, "#fcd34d")}
+        <rect x="60" y="96" width="${wPillWidth}" height="32" rx="16" fill="rgba(234, 179, 8, 0.22)" stroke="#EAB308" stroke-width="1.5"/>
+        <path d="M12 2C8.13 2 5 5.13 5 9c0 4.5 7 11 7 11s7-6.5 7-11c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z" fill="#EAB308" transform="translate(68, 101) scale(0.85)"/>
+        ${textToVectorPath(boldFont, wijkNaam, 60 + 36, 96 + 21, 13, "#fde047")}
       </g>
       <g>
         <rect x="${catX}" y="96" width="${cPillWidth}" height="32" rx="16" fill="rgba(255, 255, 255, 0.12)" stroke="rgba(255, 255, 255, 0.25)" stroke-width="1"/>
@@ -744,8 +762,8 @@ export async function generateVideoThumbnailBothFormats(
 
     badgesContent = `
       <g>
-        <rect x="60" y="96" width="${cPillWidth}" height="32" rx="16" fill="rgba(245, 158, 11, 0.18)" stroke="#f59e0b" stroke-width="1.5"/>
-        ${textToVectorPath(boldFont, category, 60 + 15, 96 + 21, 13, "#fcd34d")}
+        <rect x="60" y="96" width="${cPillWidth}" height="32" rx="16" fill="rgba(234, 179, 8, 0.20)" stroke="#EAB308" stroke-width="1.5"/>
+        ${textToVectorPath(boldFont, category, 60 + 15, 96 + 21, 13, "#fde047")}
       </g>
       <g>
         <rect x="${subX}" y="96" width="180" height="32" rx="16" fill="rgba(255, 255, 255, 0.10)" stroke="rgba(255, 255, 255, 0.20)" stroke-width="1"/>
@@ -764,25 +782,25 @@ export async function generateVideoThumbnailBothFormats(
     fontSize
   );
 
-  const partyPrefixWidth = measureTextWidth(boldFont, "LIJST VAN ANDEL", 20);
+  const partyPrefixWidth = measureTextWidth(boldFont, "ONAFHANKELIJK STEENWIJKERLAND", 17);
   const speakerPaths = `
-    ${textToVectorPath(boldFont, "LIJST VAN ANDEL", 60, 525, 20, "#f59e0b")}
-    ${textToVectorPath(regFont, ` • ${memberRole}`, 60 + partyPrefixWidth, 525, 18, "#cbd5e1")}
-    ${textToVectorPath(regFont, "Gemeenteraad Steenwijkerland", 60, 550, 14, "#94a3b8")}
+    ${textToVectorPath(boldFont, "ONAFHANKELIJK STEENWIJKERLAND", 60, 525, 17, "#EAB308")}
+    ${textToVectorPath(regFont, ` • ${memberRole}`, 60 + partyPrefixWidth, 525, 16, "#e2e8f0")}
+    ${textToVectorPath(regFont, "Gemeenteraad Steenwijkerland", 60, 550, 14, "#cbd5e1")}
   `;
 
   const bgGradSvg = Buffer.from(`
     <svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="bgLeftGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stop-color="#08101d" stop-opacity="0.96"/>
-          <stop offset="42%" stop-color="#08101d" stop-opacity="0.90"/>
-          <stop offset="65%" stop-color="#08101d" stop-opacity="0.45"/>
-          <stop offset="100%" stop-color="#08101d" stop-opacity="0.10"/>
+          <stop offset="0%" stop-color="#0b1f16" stop-opacity="0.97"/>
+          <stop offset="44%" stop-color="#143627" stop-opacity="0.91"/>
+          <stop offset="68%" stop-color="#143627" stop-opacity="0.48"/>
+          <stop offset="100%" stop-color="#143627" stop-opacity="0.12"/>
         </linearGradient>
         <linearGradient id="bgBottomGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="55%" stop-color="#08101d" stop-opacity="0.0"/>
-          <stop offset="100%" stop-color="#08101d" stop-opacity="0.85"/>
+          <stop offset="55%" stop-color="#0b1f16" stop-opacity="0.0"/>
+          <stop offset="100%" stop-color="#0b1f16" stop-opacity="0.88"/>
         </linearGradient>
       </defs>
       <rect width="1200" height="630" fill="url(#bgLeftGrad)"/>

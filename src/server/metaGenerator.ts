@@ -28,9 +28,9 @@ export interface PageMetadata {
 }
 
 const DEFAULT_IMAGE_PATH = "/assets/hero-banner.jpg";
-const DEFAULT_IMAGE = "https://lijstvanandel.nl/assets/hero-banner.jpg";
-const DEFAULT_TITLE = "Lijst van Andel | Lokale Politiek Steenwijkerland";
-const DEFAULT_DESC = "Officiële website en ledenportaal van politieke partij Lijst van Andel in Steenwijkerland met nieuws, fractieleden, agenda, standpunten en wijkpagina's.";
+const DEFAULT_IMAGE = "https://onafhankelijksteenwijkerland.nl/assets/hero-banner.jpg";
+const DEFAULT_TITLE = "Onafhankelijk Steenwijkerland (OSL) | Lokale Politiek Steenwijkerland";
+const DEFAULT_DESC = "Officiële website en ledenportaal van politieke partij Onafhankelijk Steenwijkerland (OSL) in Steenwijkerland met nieuws, fractieleden, agenda, standpunten en wijkpagina's.";
 
 function stripHtml(html?: string): string {
   if (!html) return "";
@@ -56,14 +56,14 @@ function resolveImageUrl(baseUrl: string, imgPath?: string): string {
     baseUrl.includes("localhost") ||
     baseUrl.includes("127.0.0.1") ||
     baseUrl.includes("0.0.0.0");
-  const effectiveBase = isLocalOnly ? "https://lijstvanandel.nl" : baseUrl;
+  const effectiveBase = isLocalOnly ? "https://onafhankelijksteenwijkerland.nl" : baseUrl;
 
   if (!imgPath) {
     return `${effectiveBase}${DEFAULT_IMAGE_PATH}`;
   }
 
   if (imgPath.startsWith("http://") || imgPath.startsWith("https://")) {
-    if (imgPath.endsWith(".webp") && imgPath.includes("lijstvanandel.nl")) {
+    if (imgPath.endsWith(".webp") && (imgPath.includes("onafhankelijksteenwijkerland.nl") || imgPath.includes("lijstvanandel.nl"))) {
       return imgPath.replace(/\.webp$/i, ".jpg");
     }
     return imgPath;
@@ -127,7 +127,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
   const isLocal = host.includes("localhost") || host.includes("127.0.0.1") || host.includes("0.0.0.0");
   const isPreview = host.includes("preview.ai-studio.app") || host.includes("web.app") || host.includes("lovable.app");
   // Social media crawlers (WhatsApp, Facebook, Twitter, LinkedIn) require canonical public URLs
-  const effectiveHost = (isLocal || isPreview) ? "lijstvanandel.nl" : (host || "lijstvanandel.nl");
+  const effectiveHost = (isLocal || isPreview) ? "onafhankelijksteenwijkerland.nl" : (host || "onafhankelijksteenwijkerland.nl");
   const baseUrl = `https://${effectiveHost}`;
   const pathParts = urlPath.split("?");
   const rawPath = pathParts[0].split("#")[0];
@@ -139,9 +139,9 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
   // 1. Home
   if (cleanPath === "/" || cleanPath === "") {
     return {
-      title: "Lijst van Andel | Voor de inwoners van Steenwijkerland",
-      description: "Lijst van Andel zet zich in voor nuchtere politiek, betaalbare woningbouw voor inwoners en behoud van dorpen en wijken in Steenwijkerland.",
-      ogTitle: "Lijst van Andel - Onafhankelijke Lokale Politiek in Steenwijkerland",
+      title: "Onafhankelijk Steenwijkerland (OSL) | Voor de inwoners van Steenwijkerland",
+      description: "Onafhankelijk Steenwijkerland (OSL) zet zich in voor nuchtere politiek, betaalbare woningbouw voor inwoners en behoud van dorpen en wijken in Steenwijkerland.",
+      ogTitle: "Onafhankelijk Steenwijkerland (OSL) - Onafhankelijke Lokale Politiek",
       ogDescription: "Voorrang voor lokale woningzoekenden, behoud van voorzieningen in onze dorpen en een direct aanspreekbare fractie.",
       ogImage: DEFAULT_IMAGE,
       preloadImage: "/assets/steenwijk-aerial.webp",
@@ -153,12 +153,12 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
           {
             "@type": "PoliticalParty",
             "@id": `${baseUrl}/#party`,
-            "name": "Lijst van Andel",
-            "alternateName": ["LvA", "Lijst van Andel Steenwijkerland"],
+            "name": "Onafhankelijk Steenwijkerland",
+            "alternateName": ["OSL", "Onafhankelijk Steenwijkerland (OSL)", "voorheen Lijst van Andel", "LvA"],
             "url": baseUrl,
             "logo": DEFAULT_IMAGE,
             "image": DEFAULT_IMAGE,
-            "description": "Onafhankelijke lokale politieke partij met twee zetels in de gemeenteraad van Steenwijkerland, opkomend voor lokale inwoners, betaalbare starterswoningen en leefbare kernen.",
+            "description": "Onafhankelijke lokale politieke partij in de gemeenteraad van Steenwijkerland, opkomend voor lokale inwoners, betaalbare starterswoningen en leefbare kernen.",
             "address": {
               "@type": "PostalAddress",
               "streetAddress": "Vendelweg 1",
@@ -175,7 +175,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
             "contactPoint": {
               "@type": "ContactPoint",
               "contactType": "fractiesecretariaat",
-              "email": "fractie@lijstvanandel.nl",
+              "email": "fractie@onafhankelijksteenwijkerland.nl",
               "availableLanguage": ["Dutch", "Nederlands"]
             },
             "member": [
@@ -191,15 +191,15 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
               }
             ],
             "sameAs": [
-              "https://www.facebook.com/lijstvanandel",
-              "https://www.instagram.com/lijstvanandel"
+              "https://www.facebook.com/onafhankelijksteenwijkerland",
+              "https://www.instagram.com/onafhankelijksteenwijkerland"
             ]
           },
           {
             "@type": "WebSite",
             "@id": `${baseUrl}/#website`,
             "url": baseUrl,
-            "name": "Lijst van Andel Steenwijkerland",
+            "name": "Onafhankelijk Steenwijkerland (OSL)",
             "description": DEFAULT_DESC,
             "publisher": {
               "@id": `${baseUrl}/#party`
@@ -224,7 +224,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
       const cleanDesc = truncate(stripHtml(article.excerpt || article.description || article.content || ""), 160);
       const rawImage = article.thumbnailUrl || article.headerUrl || article.image || article.imageUrl;
       const articleImage = resolveImageUrl(baseUrl, rawImage);
-      const title = `${article.title} | Lijst van Andel`;
+      const title = `${article.title} | Onafhankelijk Steenwijkerland`;
 
       return {
         title,
@@ -238,7 +238,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
         ogImageAlt: article.title,
         ogType: "article",
         canonicalUrl,
-        author: article.author || "Lijst van Andel",
+        author: article.author || "Onafhankelijk Steenwijkerland",
         publishedTime: article.createdAt || article.date,
         modifiedTime: article.updatedAt || article.createdAt || article.date,
         structuredData: {
@@ -254,12 +254,12 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
               "inLanguage": "nl-NL",
               "author": {
                 "@type": "Organization",
-                "name": article.author || "Lijst van Andel",
+                "name": article.author || "Onafhankelijk Steenwijkerland",
                 "url": baseUrl
               },
               "publisher": {
                 "@type": "PoliticalParty",
-                "name": "Lijst van Andel",
+                "name": "Onafhankelijk Steenwijkerland",
                 "logo": {
                   "@type": "ImageObject",
                   "url": DEFAULT_IMAGE
@@ -302,9 +302,9 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
   // 3. Nieuwsoverzicht: /nieuws
   if (cleanPath === "/nieuws") {
     return {
-      title: "Laatste Nieuws & Persberichten | Lijst van Andel",
+      title: "Laatste Nieuws & Persberichten | Onafhankelijk Steenwijkerland",
       description: "Blijf op de hoogte van moties, raadsvergaderingen, opinie en actueel politiek nieuws uit Steenwijk en alle omliggende kernen.",
-      ogTitle: "Nieuws & Actualiteiten | Lijst van Andel Steenwijkerland",
+      ogTitle: "Nieuws & Actualiteiten | Onafhankelijk Steenwijkerland (OSL)",
       ogDescription: "Actueel nieuws over lokale politiek, woningbouw, zorg en voorzieningen in de gemeente Steenwijkerland.",
       ogImage: DEFAULT_IMAGE,
       ogType: "website",
@@ -335,7 +335,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
       const preloadWijkBanner = (rawWijkImg.startsWith("/assets/") && !rawWijkImg.includes("/uploads/"))
         ? rawWijkImg.replace(/\.(jpg|jpeg|png)$/i, ".webp")
         : rawWijkImg;
-      const title = `${wijk.naam} (${wijk.type || 'Wijk/Kern'}) | Lijst van Andel`;
+      const title = `${wijk.naam} (${wijk.type || 'Wijk/Kern'}) | Onafhankelijk Steenwijkerland`;
 
       return {
         title,
@@ -398,9 +398,9 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
   // 5. Wijken overzicht: /wijken-en-kernen of /wijken-en/kernen
   if (cleanPath === "/wijken-en-kernen" || cleanPath === "/wijken-en/kernen") {
     return {
-      title: "Wijken en Kernen in Steenwijkerland | Lijst van Andel",
-      description: "Ontdek wat Lijst van Andel doet in jouw dorp, wijk of kern. Van Steenwijk en Tuk tot Oldemarkt, Blokzijl, Giethoorn en Vollenhove.",
-      ogTitle: "Wijken & Kernen van Steenwijkerland | Lijst van Andel",
+      title: "Wijken en Kernen in Steenwijkerland | Onafhankelijk Steenwijkerland",
+      description: "Ontdek wat Onafhankelijk Steenwijkerland (OSL) doet in jouw dorp, wijk of kern. Van Steenwijk en Tuk tot Oldemarkt, Blokzijl, Giethoorn en Vollenhove.",
+      ogTitle: "Wijken & Kernen van Steenwijkerland | Onafhankelijk Steenwijkerland",
       ogDescription: "Lokale speerpunten en dossiers voor alle 42 kernen en wijken in onze gemeente.",
       ogImage: DEFAULT_IMAGE,
       ogType: "website",
@@ -448,7 +448,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
         "/assets/markt-steenwijk.jpg";
       const eventImage = `${baseUrl}/api/events/${encodeURIComponent(String(event.id))}/og-image.jpg`;
       const resolvedFallbackImage = resolveImageUrl(baseUrl, rawImage);
-      const title = `${event.title} | Agenda Lijst van Andel`;
+      const title = `${event.title} | Agenda Onafhankelijk Steenwijkerland`;
 
       return {
         title,
@@ -494,7 +494,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
               "image": [eventImage, resolvedFallbackImage],
               "organizer": {
                 "@type": "PoliticalParty",
-                "name": "Lijst van Andel",
+                "name": "Onafhankelijk Steenwijkerland",
                 "url": baseUrl
               }
             },
@@ -530,9 +530,9 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
   // 7. Agenda overzicht: /agenda
   if (cleanPath === "/agenda") {
     return {
-      title: "Agenda & Inloopavonden | Lijst van Andel",
-      description: "Bekijk aankomende bijeenkomsten, openbare fractievergaderingen, ideeëncafés en inloopavonden van Lijst van Andel in Steenwijkerland.",
-      ogTitle: "Agenda van Lijst van Andel | Kom in gesprek",
+      title: "Agenda & Inloopavonden | Onafhankelijk Steenwijkerland",
+      description: "Bekijk aankomende bijeenkomsten, openbare fractievergaderingen, ideeëncafés en inloopavonden van Onafhankelijk Steenwijkerland (OSL) in Steenwijkerland.",
+      ogTitle: "Agenda van Onafhankelijk Steenwijkerland | Kom in gesprek",
       ogDescription: "Data en locaties van openbare fractievergaderingen, inloopavonden en thema-bijeenkomsten.",
       ogImage: DEFAULT_IMAGE,
       ogType: "website",
@@ -561,9 +561,9 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
   // 8. Fractie / Raadsleden / Bestuur / Steunfractie
   if (cleanPath === "/fractie" || cleanPath === "/raadsleden") {
     return {
-      title: "Onze Fractie & Raadsleden | Lijst van Andel",
+      title: "Onze Fractie & Raadsleden | Onafhankelijk Steenwijkerland",
       description: "Maak kennis met onze fractieleden in de gemeenteraad van Steenwijkerland. Bekijk hun achtergrond, speerpunten en plan direct een belafspraak.",
-      ogTitle: "Fractie & Raadsleden | Lijst van Andel Steenwijkerland",
+      ogTitle: "Fractie & Raadsleden | Onafhankelijk Steenwijkerland (OSL)",
       ogDescription: "Direct aanspreekbare volksvertegenwoordigers met een nuchtere blik en hart voor de inwoners.",
       ogImage: DEFAULT_IMAGE,
       ogType: "website",
@@ -573,7 +573,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
         "@graph": [
           {
             "@type": "ItemList",
-            "name": "Fractie Lijst van Andel - Gemeenteraad Steenwijkerland",
+            "name": "Fractie Onafhankelijk Steenwijkerland - Gemeenteraad Steenwijkerland",
             "itemListElement": [
               {
                 "@type": "Person",
@@ -585,9 +585,9 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
                 },
                 "memberOf": {
                   "@type": "PoliticalParty",
-                  "name": "Lijst van Andel"
+                  "name": "Onafhankelijk Steenwijkerland"
                 },
-                "description": "Fractievoorzitter van Lijst van Andel in Steenwijkerland. Strijdt voor lokale woningzoekenden, behoud van de dorpen en een nuchter, transparant gemeentebestuur."
+                "description": "Fractievoorzitter van Onafhankelijk Steenwijkerland (OSL) in Steenwijkerland. Strijdt voor lokale woningzoekenden, behoud van de dorpen en een nuchter, transparant gemeentebestuur."
               },
               {
                 "@type": "Person",
@@ -599,9 +599,9 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
                 },
                 "memberOf": {
                   "@type": "PoliticalParty",
-                  "name": "Lijst van Andel"
+                  "name": "Onafhankelijk Steenwijkerland"
                 },
-                "description": "Gemeenteraadslid voor Lijst van Andel in Steenwijkerland, met focus op sociaal beleid, leefbaarheid en jeugd."
+                "description": "Gemeenteraadslid voor Onafhankelijk Steenwijkerland (OSL) in Steenwijkerland, met focus op sociaal beleid, leefbaarheid en jeugd."
               }
             ]
           },
@@ -629,10 +629,10 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
 
   if (cleanPath === "/bestuur") {
     return {
-      title: "Het Partijbestuur | Lijst van Andel",
-      description: "Het bestuur van Lijst van Andel bewaakt de koers van de vereniging en ondersteunt de fractie in Steenwijkerland.",
-      ogTitle: "Partijbestuur | Lijst van Andel",
-      ogDescription: "Informatie over de bestuursleden en de organisatie achter Lijst van Andel.",
+      title: "Het Partijbestuur | Onafhankelijk Steenwijkerland",
+      description: "Het bestuur van Onafhankelijk Steenwijkerland (OSL) bewaakt de koers van de vereniging en ondersteunt de fractie in Steenwijkerland.",
+      ogTitle: "Partijbestuur | Onafhankelijk Steenwijkerland",
+      ogDescription: "Informatie over de bestuursleden en de organisatie achter Onafhankelijk Steenwijkerland.",
       ogImage: DEFAULT_IMAGE,
       ogType: "website",
       canonicalUrl
@@ -641,9 +641,9 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
 
   if (cleanPath === "/steunfractie") {
     return {
-      title: "Steunfractie & Vrijwilligers | Lijst van Andel",
+      title: "Steunfractie & Vrijwilligers | Onafhankelijk Steenwijkerland",
       description: "Onze steunfractieleden verdiepen zich in dossiers, bereiden raadsvoorstellen voor en zijn de oren en ogen in de wijken.",
-      ogTitle: "Steunfractie | Lijst van Andel",
+      ogTitle: "Steunfractie | Onafhankelijk Steenwijkerland",
       ogDescription: "Meedenken en meedoen met onze lokale beweging in Steenwijkerland.",
       ogImage: DEFAULT_IMAGE,
       ogType: "website",
@@ -654,10 +654,10 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
   // 9. Standpunten & Programma met FAQPage Schema voor Google Rich Snippets
   if (cleanPath === "/standpunten") {
     return {
-      title: "Standpunten & Verkiezingsprogramma | Lijst van Andel Steenwijkerland",
-      description: "Bekijk de standpunten van Lijst van Andel: voorrang voor eigen inwoners bij woningtoewijzing, behoud van voorzieningen in de dorpen, lage lokale lasten en bescherming van de Weerribben-Wieden.",
-      ogTitle: "Onze Standpunten | Lijst van Andel Steenwijkerland",
-      ogDescription: "Duidelijke taal en gezond verstand: ontdek de visie van Lijst van Andel op Steenwijkerland.",
+      title: "Standpunten & Verkiezingsprogramma | Onafhankelijk Steenwijkerland (OSL)",
+      description: "Bekijk de standpunten van Onafhankelijk Steenwijkerland (OSL): voorrang voor eigen inwoners bij woningtoewijzing, behoud van voorzieningen in de dorpen, lage lokale lasten en bescherming van de Weerribben-Wieden.",
+      ogTitle: "Onze Standpunten | Onafhankelijk Steenwijkerland (OSL)",
+      ogDescription: "Duidelijke taal en gezond verstand: ontdek de visie van Onafhankelijk Steenwijkerland op Steenwijkerland.",
       ogImage: DEFAULT_IMAGE,
       ogType: "website",
       canonicalUrl,
@@ -669,23 +669,23 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
             "mainEntity": [
               {
                 "@type": "Question",
-                "name": "Wat is het standpunt van Lijst van Andel over woningbouw in Steenwijkerland?",
+                "name": "Wat is het standpunt van Onafhankelijk Steenwijkerland (OSL) over woningbouw in Steenwijkerland?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Lijst van Andel pleit voor maximale voorrang voor eigen lokale inwoners en starters op de woningmarkt in Steenwijkerland. Nieuwbouw moet aansluiten op de lokale behoefte met betaalbare koop- en huurwoningen, zonder dat jongeren worden weggepest naar andere gemeenten."
+                  "text": "Onafhankelijk Steenwijkerland (OSL) pleit voor maximale voorrang voor eigen lokale inwoners en starters op de woningmarkt in Steenwijkerland. Nieuwbouw moet aansluiten op de lokale behoefte met betaalbare koop- en huurwoningen, zonder dat jongeren worden weggepest naar andere gemeenten."
                 }
               },
               {
                 "@type": "Question",
-                "name": "Wat wil Lijst van Andel voor de dorpen en kernen in Steenwijkerland?",
+                "name": "Wat wil Onafhankelijk Steenwijkerland voor de dorpen en kernen in Steenwijkerland?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Lijst van Andel staat voor behoud van leefbaarheid en voorzieningen in alle 42 kernen en wijken: dorpshuizen, basisscholen, sportclubs en bereikbaarheid met openbaar vervoer en veilige fietspaden moeten gegarandeerd blijven."
+                  "text": "Onafhankelijk Steenwijkerland staat voor behoud van leefbaarheid en voorzieningen in alle 42 kernen en wijken: dorpshuizen, basisscholen, sportclubs en bereikbaarheid met openbaar vervoer en veilige fietspaden moeten gegarandeerd blijven."
                 }
               },
               {
                 "@type": "Question",
-                "name": "Hoe denkt Lijst van Andel over de bescherming van de Weerribben-Wieden?",
+                "name": "Hoe denkt Onafhankelijk Steenwijkerland over de bescherming van de Weerribben-Wieden?",
                 "acceptedAnswer": {
                   "@type": "Answer",
                   "text": "Nationaal Park Weerribben-Wieden is het unieke visitekaartje van onze gemeente. Wij zetten in op krachtige natuurbescherming in harmonieuze balans met leefbaarheid, agrarische familiebedrijven en respectvolle recreatie."
@@ -696,7 +696,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
                 "name": "Wat is de koers rond lokale lasten, OZB en gemeentelijke belastingen?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Lijst van Andel streeft naar lage lokale lasten voor inwoners en lokale ondernemers. De gemeente moet eerst kritisch naar haar eigen uitgaven en overhead kijken voordat belastingen zoals de OZB worden verhoogd."
+                  "text": "Onafhankelijk Steenwijkerland streeft naar lage lokale lasten voor inwoners en lokale ondernemers. De gemeente moet eerst kritisch naar haar eigen uitgaven en overhead kijken voordat belastingen zoals de OZB worden verhoogd."
                 }
               },
               {
@@ -704,7 +704,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
                 "name": "Hoe kunnen inwoners van Steenwijkerland direct contact opnemen met raadsleden?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Via de website van Lijst van Andel kunnen inwoners direct een persoonlijke belafspraak van 30 minuten inplannen met fractievoorzitter Sammy van Andel of raadslid Lisa Mars op woensdag, donderdag of vrijdag tussen 19:00 en 21:00 uur."
+                  "text": "Via de website van Onafhankelijk Steenwijkerland (OSL) kunnen inwoners direct een persoonlijke belafspraak van 30 minuten inplannen met fractievoorzitter Sammy van Andel of raadslid Lisa Mars op woensdag, donderdag of vrijdag tussen 19:00 en 21:00 uur."
                 }
               }
             ]
@@ -734,9 +734,9 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
   // 10. Contact
   if (cleanPath === "/contact") {
     return {
-      title: "Contact & Belafspraak | Lijst van Andel",
+      title: "Contact & Belafspraak | Onafhankelijk Steenwijkerland",
       description: "Heeft u een vraag of signaal voor de gemeenteraad? Neem contact met ons op of plan een 1-op-1 telefonische afspraak in met een fractielid.",
-      ogTitle: "Neem Contact op met Lijst van Andel",
+      ogTitle: "Neem Contact op met Onafhankelijk Steenwijkerland (OSL)",
       ogDescription: "Direct bereikbaar voor inwoners via contactformulier, telefoon of een persoonlijke belafspraak.",
       ogImage: DEFAULT_IMAGE,
       ogType: "website",
@@ -746,12 +746,12 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
         "@graph": [
           {
             "@type": "ContactPage",
-            "name": "Contact met Lijst van Andel",
-            "description": "Neem contact op met de raadsfractie van Lijst van Andel in Steenwijkerland.",
+            "name": "Contact met Onafhankelijk Steenwijkerland",
+            "description": "Neem contact op met de raadsfractie van Onafhankelijk Steenwijkerland (OSL) in Steenwijkerland.",
             "url": canonicalUrl,
             "mainEntity": {
               "@type": "PoliticalParty",
-              "name": "Lijst van Andel",
+              "name": "Onafhankelijk Steenwijkerland",
               "address": {
                 "@type": "PostalAddress",
                 "streetAddress": "Vendelweg 1",
@@ -760,7 +760,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
                 "postalCode": "8331 XE",
                 "addressCountry": "NL"
               },
-              "email": "fractie@lijstvanandel.nl"
+              "email": "fractie@onafhankelijksteenwijkerland.nl"
             }
           },
           {
@@ -843,7 +843,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
           videoImage = `${baseUrl}/api/videos/${targetVideo.id}/thumbnail.jpg`;
         }
 
-        const title = `${formattedHeadline} | Lijst van Andel`;
+        const title = `${formattedHeadline} | Onafhankelijk Steenwijkerland`;
         const specificCanonical = `${baseUrl}${cleanPath}?v=${targetVideo.id}`;
 
         return {
@@ -882,7 +882,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
       }
 
       const isBurger = member.type?.toLowerCase() === "burgerraadslid" || member.role?.toLowerCase().includes("burgerraadslid");
-      const title = `Video's & Bijdragen van ${member.name} (${isBurger ? "Burgerraadslid" : (member.role || "Raadslid")}) | Lijst van Andel`;
+      const title = `Video's & Bijdragen van ${member.name} (${isBurger ? "Burgerraadslid" : (member.role || "Raadslid")}) | Onafhankelijk Steenwijkerland`;
       const desc = videoCustomDesc || `Bekijk alle videobijdragen, raadsdebatten en toelichtingen van ${member.name} in de gemeenteraad van Steenwijkerland.`;
 
       return {
@@ -929,7 +929,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
             (m: any) => m.name && video.title.toLowerCase().includes(m.name.toLowerCase())
           ) || null;
       }
-      const speakerName = speaker?.name || "Lijst van Andel";
+      const speakerName = speaker?.name || "Onafhankelijk Steenwijkerland";
       const isBurger =
         speaker?.type?.toLowerCase() === "burgerraadslid" ||
         speaker?.role?.toLowerCase().includes("burgerraadslid");
@@ -1012,7 +1012,9 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
       const keywordsList = [
         cleanVTitle,
         speakerName,
-        "Lijst van Andel",
+        "Onafhankelijk Steenwijkerland",
+        "OSL",
+        "voorheen Lijst van Andel",
         "Steenwijkerland",
         "gemeenteraad Steenwijkerland",
         video.category,
@@ -1065,7 +1067,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
               "affiliation": {
                 "@type": "PoliticalParty",
                 "@id": `${baseUrl}/#party`,
-                "name": "Lijst van Andel",
+                "name": "Onafhankelijk Steenwijkerland",
               },
             },
             "creator": {
@@ -1076,7 +1078,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
             "publisher": {
               "@type": "PoliticalParty",
               "@id": `${baseUrl}/#party`,
-              "name": "Lijst van Andel",
+              "name": "Onafhankelijk Steenwijkerland",
               "url": baseUrl,
               "logo": {
                 "@type": "ImageObject",
@@ -1093,7 +1095,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
             "isPartOf": {
               "@type": "WebSite",
               "@id": `${baseUrl}/#website`,
-              "name": "Lijst van Andel Steenwijkerland",
+              "name": "Onafhankelijk Steenwijkerland (OSL)",
             },
             "mainEntityOfPage": {
               "@type": "WebPage",
@@ -1115,14 +1117,14 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
     <main class="sr-only" style="opacity:0.01;height:1px;overflow:hidden;position:absolute;pointer-events:none;">
       <article>
         <h2>${escapeHtml(formattedHeadline)}</h2>
-        <p><strong>Spreker:</strong> ${escapeHtml(speakerName)} (${escapeHtml(speakerRole)}, Lijst van Andel Steenwijkerland)</p>
+        <p><strong>Spreker:</strong> ${escapeHtml(speakerName)} (${escapeHtml(speakerRole)}, Onafhankelijk Steenwijkerland — OSL)</p>
         <p><strong>Onderwerp:</strong> ${escapeHtml(cleanVTitle)}${video.category ? ` • Categorie: ${escapeHtml(video.category)}` : ""}${linkedWijk ? ` • Wijk/Kern: ${escapeHtml(linkedWijk.naam)}` : ""}</p>
         <section>
           <h3>Toelichting &amp; Context</h3>
           <p>${escapeHtml(fullContextDesc || cleanDesc)}</p>
         </section>
         ${linkedHoofdstuk && linkedStandpunt ? `<section>
-          <h3>Gekoppeld Standpunt Lijst van Andel (H${linkedHoofdstuk.nr}.${linkedStandpunt.nr})</h3>
+          <h3>Gekoppeld Standpunt Onafhankelijk Steenwijkerland (H${linkedHoofdstuk.nr}.${linkedStandpunt.nr})</h3>
           <p><strong>${escapeHtml(linkedStandpunt.titel)}:</strong> ${escapeHtml(linkedStandpunt.standpunt)}</p>
         </section>` : ""}
         <nav aria-label="Hoofdmenu">
@@ -1136,7 +1138,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
       </article>
     </main>`;
 
-      const title = `${formattedHeadline} | Lijst van Andel`;
+      const title = `${formattedHeadline} | Onafhankelijk Steenwijkerland`;
 
       return {
         title,
@@ -1172,15 +1174,15 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
       }
     }
     return {
-      title: "Video's & Debatten | Lijst van Andel Steenwijkerland",
-      description: "Bekijk alle videobijdragen, raadstoespraken en debatten van de fractie Lijst van Andel in de gemeenteraad van Steenwijkerland.",
-      ogTitle: "Video's & Debatten - Lijst van Andel Steenwijkerland",
-      ogDescription: "Bekijk alle videobijdragen, debatten en toespraken van Lijst van Andel in de gemeenteraad van Steenwijkerland.",
+      title: "Video's & Debatten | Onafhankelijk Steenwijkerland (OSL)",
+      description: "Bekijk alle videobijdragen, raadstoespraken en debatten van de fractie Onafhankelijk Steenwijkerland (OSL) in de gemeenteraad van Steenwijkerland.",
+      ogTitle: "Video's & Debatten - Onafhankelijk Steenwijkerland (OSL)",
+      ogDescription: "Bekijk alle videobijdragen, debatten en toespraken van Onafhankelijk Steenwijkerland in de gemeenteraad van Steenwijkerland.",
       ogImage,
       ogImageType: ogImage.endsWith(".png") ? "image/png" : "image/jpeg",
       ogImageWidth: 1200,
       ogImageHeight: 630,
-      ogImageAlt: "Video's & Debatten Lijst van Andel",
+      ogImageAlt: "Video's & Debatten Onafhankelijk Steenwijkerland",
       ogType: "video.other",
       canonicalUrl: `${baseUrl}/videos`
     };
@@ -1189,9 +1191,9 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
   // 12. Doneren & Giftenreglement
   if (cleanPath === "/doneren" || cleanPath === "/doneer" || cleanPath.startsWith("/doneren/")) {
     return {
-      title: "Doneren aan Lijst van Andel | Steun de Lokale Politiek",
-      description: "Steun Lijst van Andel met een vrijwillige gift. Wij zijn een onafhankelijke lokale partij in Steenwijkerland. Transparantie conform ons Giftenreglement.",
-      ogTitle: "Doneren aan Lijst van Andel Steenwijkerland",
+      title: "Doneren aan Onafhankelijk Steenwijkerland | Steun de Lokale Politiek",
+      description: "Steun Onafhankelijk Steenwijkerland (OSL) met een vrijwillige gift. Wij zijn een onafhankelijke lokale partij in Steenwijkerland. Transparantie conform ons Giftenreglement.",
+      ogTitle: "Doneren aan Onafhankelijk Steenwijkerland (OSL)",
       ogDescription: "Help ons op te komen voor de belangen van alle inwoners in Steenwijkerland met een online donatie.",
       ogImage: DEFAULT_IMAGE,
       ogType: "website",
@@ -1202,9 +1204,9 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
   // 13. Login / Register / Reset Password / Dashboard / Admin (Noindex for private / auth pages)
   if (cleanPath === "/login" || cleanPath === "/registreren" || cleanPath === "/reset-wachtwoord" || cleanPath === "/dashboard" || cleanPath === "/admin") {
     return {
-      title: cleanPath === "/reset-wachtwoord" ? "Wachtwoord herstellen | Lijst van Andel" : "Ledenportaal & Beheer | Lijst van Andel",
-      description: "Inloggen en accountbeheer voor leden en fractieleden van politieke partij Lijst van Andel.",
-      ogTitle: "Ledenportaal | Lijst van Andel",
+      title: cleanPath === "/reset-wachtwoord" ? "Wachtwoord herstellen | Onafhankelijk Steenwijkerland" : "Ledenportaal & Beheer | Onafhankelijk Steenwijkerland",
+      description: "Inloggen en accountbeheer voor leden en fractieleden van politieke partij Onafhankelijk Steenwijkerland (OSL).",
+      ogTitle: "Ledenportaal | Onafhankelijk Steenwijkerland",
       ogDescription: "Toegang tot het interne ledenportaal en fractiedossiers.",
       ogImage: DEFAULT_IMAGE,
       ogType: "website",
@@ -1282,7 +1284,7 @@ export function injectMetadataIntoHtml(html: string, meta: PageMetadata): string
   // Type and URL
   setMetaProperty("og:type", meta.ogType);
   setMetaProperty("og:url", meta.canonicalUrl);
-  setMetaProperty("og:site_name", "Lijst van Andel");
+  setMetaProperty("og:site_name", "Onafhankelijk Steenwijkerland");
 
   // Twitter Card
   setMetaName("twitter:card", "summary_large_image");
@@ -1341,7 +1343,7 @@ export function injectMetadataIntoHtml(html: string, meta: PageMetadata): string
       <article>
         <h2>${escapeHtml(meta.ogTitle || meta.title)}</h2>
         <p>${escapeHtml(meta.ogDescription || meta.description)}</p>
-        <p>Officiële website van politieke partij Lijst van Andel in Steenwijkerland. Actief voor betaalbare starterswoningen, sterke dorpen en nuchtere lokale politiek.</p>
+        <p>Officiële website van politieke partij Onafhankelijk Steenwijkerland (OSL) in Steenwijkerland. Actief voor betaalbare starterswoningen, sterke dorpen en nuchtere lokale politiek.</p>
         <nav aria-label="Hoofdmenu">
           <a href="/standpunten">Standpunten</a> | 
           <a href="/raadsleden">Raadsleden</a> | 

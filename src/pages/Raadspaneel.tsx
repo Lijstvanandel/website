@@ -285,7 +285,7 @@ export default function Raadspaneel() {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.set("tab", tab);
-      const currentTopic = searchParams.get("topic") || localStorage.getItem(`lva_last_selected_topic_id_${activeMunicipality}`);
+      const currentTopic = searchParams.get("topic") || localStorage.getItem(`osl_last_selected_topic_id_${activeMunicipality}`) || localStorage.getItem(`lva_last_selected_topic_id_${activeMunicipality}`);
       if (tab === "agenda" && currentTopic) {
         next.set("topic", currentTopic);
       }
@@ -295,7 +295,11 @@ export default function Raadspaneel() {
 
   const [topics, setTopics] = useState<CouncilAgendaTopic[]>(() => {
     try {
-      const cached = safeSessionStorage.getItem(`lva_cached_topics_${activeMunicipality}`) || safeLocalStorage.getItem(`lva_cached_topics_${activeMunicipality}`);
+      const cached =
+        safeSessionStorage.getItem(`osl_cached_topics_${activeMunicipality}`) ||
+        safeLocalStorage.getItem(`osl_cached_topics_${activeMunicipality}`) ||
+        safeSessionStorage.getItem(`lva_cached_topics_${activeMunicipality}`) ||
+        safeLocalStorage.getItem(`lva_cached_topics_${activeMunicipality}`);
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
@@ -307,7 +311,11 @@ export default function Raadspaneel() {
   });
   const [summary, setSummary] = useState<CouncilMeetingScrapeSummary | null>(() => {
     try {
-      const cached = safeSessionStorage.getItem(`lva_cached_summary_${activeMunicipality}`) || safeLocalStorage.getItem(`lva_cached_summary_${activeMunicipality}`);
+      const cached =
+        safeSessionStorage.getItem(`osl_cached_summary_${activeMunicipality}`) ||
+        safeLocalStorage.getItem(`osl_cached_summary_${activeMunicipality}`) ||
+        safeSessionStorage.getItem(`lva_cached_summary_${activeMunicipality}`) ||
+        safeLocalStorage.getItem(`lva_cached_summary_${activeMunicipality}`);
       if (cached) return JSON.parse(cached);
     } catch {
       // ignore storage error
@@ -316,7 +324,11 @@ export default function Raadspaneel() {
   });
   const [councilMembers, setCouncilMembers] = useState<{ id: string; username: string; fullName: string; role?: string; municipality?: string }[]>(() => {
     try {
-      const cached = safeSessionStorage.getItem(`lva_cached_members_${activeMunicipality}`) || safeLocalStorage.getItem(`lva_cached_members_${activeMunicipality}`);
+      const cached =
+        safeSessionStorage.getItem(`osl_cached_members_${activeMunicipality}`) ||
+        safeLocalStorage.getItem(`osl_cached_members_${activeMunicipality}`) ||
+        safeSessionStorage.getItem(`lva_cached_members_${activeMunicipality}`) ||
+        safeLocalStorage.getItem(`lva_cached_members_${activeMunicipality}`);
       if (cached) return JSON.parse(cached);
     } catch {
       // ignore storage error
@@ -330,15 +342,21 @@ export default function Raadspaneel() {
     let isMounted = true;
     (async () => {
       try {
-        const idbTopics = await indexedDbStorage.getItem<CouncilAgendaTopic[]>(`lva_idb_topics_${activeMunicipality}`);
+        const idbTopics =
+          (await indexedDbStorage.getItem<CouncilAgendaTopic[]>(`osl_idb_topics_${activeMunicipality}`)) ||
+          (await indexedDbStorage.getItem<CouncilAgendaTopic[]>(`lva_idb_topics_${activeMunicipality}`));
         if (isMounted && Array.isArray(idbTopics) && idbTopics.length > 0) {
           setTopics((prev) => (prev.length === 0 ? idbTopics : prev));
         }
-        const idbMembers = await indexedDbStorage.getItem<any[]>(`lva_idb_members_${activeMunicipality}`);
+        const idbMembers =
+          (await indexedDbStorage.getItem<any[]>(`osl_idb_members_${activeMunicipality}`)) ||
+          (await indexedDbStorage.getItem<any[]>(`lva_idb_members_${activeMunicipality}`));
         if (isMounted && Array.isArray(idbMembers) && idbMembers.length > 0) {
           setCouncilMembers((prev) => (prev.length === 0 ? idbMembers : prev));
         }
-        const idbSummary = await indexedDbStorage.getItem<CouncilMeetingScrapeSummary>(`lva_idb_summary_${activeMunicipality}`);
+        const idbSummary =
+          (await indexedDbStorage.getItem<CouncilMeetingScrapeSummary>(`osl_idb_summary_${activeMunicipality}`)) ||
+          (await indexedDbStorage.getItem<CouncilMeetingScrapeSummary>(`lva_idb_summary_${activeMunicipality}`));
         if (isMounted && idbSummary) {
           setSummary((prev) => prev || idbSummary);
         }
@@ -467,7 +485,9 @@ export default function Raadspaneel() {
     try {
       const fromUrl = searchParams.get("topic");
       if (fromUrl) return fromUrl;
-      const fromStorage = localStorage.getItem(`lva_last_selected_topic_id_${activeMunicipality}`);
+      const fromStorage =
+        localStorage.getItem(`osl_last_selected_topic_id_${activeMunicipality}`) ||
+        localStorage.getItem(`lva_last_selected_topic_id_${activeMunicipality}`);
       if (fromStorage) return fromStorage;
     } catch (_e) {
       // ignore
@@ -478,7 +498,7 @@ export default function Raadspaneel() {
   const handleSelectTopic = useCallback((topicId: string) => {
     setSelectedTopicId(topicId);
     try {
-      localStorage.setItem(`lva_last_selected_topic_id_${activeMunicipality}`, topicId);
+      localStorage.setItem(`osl_last_selected_topic_id_${activeMunicipality}`, topicId);
       setSearchParams((prev) => {
         const next = new URLSearchParams(prev);
         next.set("topic", topicId);
@@ -493,9 +513,9 @@ export default function Raadspaneel() {
   const updateTopic = useCallback((updatedTopic: CouncilAgendaTopic) => {
     setTopics((prev) => {
       const next = prev.map((t) => (t.id === updatedTopic.id ? { ...t, ...updatedTopic } : t));
-      indexedDbStorage.setItem(`lva_idb_topics_${activeMunicipality}`, next);
+      indexedDbStorage.setItem(`osl_idb_topics_${activeMunicipality}`, next);
       try {
-        safeSessionStorage.setItem(`lva_cached_topics_${activeMunicipality}`, JSON.stringify(next));
+        safeSessionStorage.setItem(`osl_cached_topics_${activeMunicipality}`, JSON.stringify(next));
       } catch {
         // ignore storage error
       }
@@ -519,7 +539,10 @@ export default function Raadspaneel() {
     // Mirror to persistent browser vault cache if it has user contributions or is parked
     if (updatedTopic.isParked || updatedTopic.bijdragePolitiekeMarkt || updatedTopic.bijdrageRaadsvergadering || (updatedTopic.notes && updatedTopic.notes.length > 0) || updatedTopic.assignedTo) {
       try {
-        const raw = localStorage.getItem("lva_council_vault_contributions") || "[]";
+        const raw =
+          localStorage.getItem("osl_council_vault_contributions") ||
+          localStorage.getItem("lva_council_vault_contributions") ||
+          "[]";
         const list = JSON.parse(raw);
         const map = new Map(list.map((item: any) => [item.topicId, item]));
         map.set(updatedTopic.id, {
@@ -540,7 +563,7 @@ export default function Raadspaneel() {
           status: updatedTopic.status,
           updatedAt: new Date().toISOString()
         });
-        localStorage.setItem("lva_council_vault_contributions", JSON.stringify(Array.from(map.values())));
+        localStorage.setItem("osl_council_vault_contributions", JSON.stringify(Array.from(map.values())));
       } catch (_e) {
         // ignore
       }
@@ -554,13 +577,17 @@ export default function Raadspaneel() {
     if (!token || !Array.isArray(serverTopics) || serverTopics.length === 0) return;
 
     try {
-      const cachedVaultRaw = localStorage.getItem("lva_council_vault_contributions");
+      const legacyRaw = localStorage.getItem("lva_council_vault_contributions");
+      const oslRaw = localStorage.getItem("osl_council_vault_contributions");
       let cachedVault: any[] = [];
-      if (cachedVaultRaw) {
-        try {
-          cachedVault = JSON.parse(cachedVaultRaw);
-        } catch {
-          cachedVault = [];
+      for (const rawCandidate of [legacyRaw, oslRaw]) {
+        if (rawCandidate) {
+          try {
+            const parsed = JSON.parse(rawCandidate);
+            if (Array.isArray(parsed)) cachedVault = [...cachedVault, ...parsed];
+          } catch {
+            // ignore malformed vault JSON
+          }
         }
       }
 
@@ -622,7 +649,7 @@ export default function Raadspaneel() {
       for (const item of currentServerContribs) {
         if (item?.topicId) mergedMap.set(item.topicId, item);
       }
-      localStorage.setItem("lva_council_vault_contributions", JSON.stringify(Array.from(mergedMap.values())));
+      localStorage.setItem("osl_council_vault_contributions", JSON.stringify(Array.from(mergedMap.values())));
     } catch (vaultErr) {
       console.warn("[RAADSKLUIS AUTO-SYNC FOUT]:", vaultErr);
     }
@@ -688,7 +715,10 @@ export default function Raadspaneel() {
     if (!token) return;
     setIsSyncingVault(true);
     try {
-      const cachedVaultRaw = localStorage.getItem("lva_council_vault_contributions") || "[]";
+      const cachedVaultRaw =
+        localStorage.getItem("osl_council_vault_contributions") ||
+        localStorage.getItem("lva_council_vault_contributions") ||
+        "[]";
       const cachedVault = JSON.parse(cachedVaultRaw);
       const res = await fetch("/api/council/contributions/sync-from-client", {
         method: "POST",
@@ -762,9 +792,9 @@ export default function Raadspaneel() {
         const data = await res.json();
         if (Array.isArray(data.members) && data.members.length > 0) {
           setCouncilMembers(data.members);
-          indexedDbStorage.setItem(`lva_idb_members_${activeMunicipality}`, data.members);
+          indexedDbStorage.setItem(`osl_idb_members_${activeMunicipality}`, data.members);
           try {
-            safeSessionStorage.setItem(`lva_cached_members_${activeMunicipality}`, JSON.stringify(data.members));
+            safeSessionStorage.setItem(`osl_cached_members_${activeMunicipality}`, JSON.stringify(data.members));
           } catch {
             // ignore cache write error
           }
@@ -800,10 +830,10 @@ export default function Raadspaneel() {
       });
       if (scopedTopics.length > 0) {
         setTopics(scopedTopics);
-        indexedDbStorage.setItem(`lva_idb_topics_${activeMunicipality}`, scopedTopics);
+        indexedDbStorage.setItem(`osl_idb_topics_${activeMunicipality}`, scopedTopics);
         syncLocalVaultWithServer(scopedTopics);
         try {
-          safeSessionStorage.setItem(`lva_cached_topics_${activeMunicipality}`, JSON.stringify(scopedTopics));
+          safeSessionStorage.setItem(`osl_cached_topics_${activeMunicipality}`, JSON.stringify(scopedTopics));
         } catch {
           // ignore cache write error
         }
@@ -813,9 +843,9 @@ export default function Raadspaneel() {
 
       if (data.summary) {
         setSummary(data.summary);
-        indexedDbStorage.setItem(`lva_idb_summary_${activeMunicipality}`, data.summary);
+        indexedDbStorage.setItem(`osl_idb_summary_${activeMunicipality}`, data.summary);
         try {
-          safeSessionStorage.setItem(`lva_cached_summary_${activeMunicipality}`, JSON.stringify(data.summary));
+          safeSessionStorage.setItem(`osl_cached_summary_${activeMunicipality}`, JSON.stringify(data.summary));
         } catch {
           // ignore cache write error
         }
@@ -830,9 +860,9 @@ export default function Raadspaneel() {
       const membersToSet = scopedMembers.length > 0 ? scopedMembers : rawMembers;
       if (membersToSet.length > 0) {
         setCouncilMembers(membersToSet);
-        indexedDbStorage.setItem(`lva_idb_members_${activeMunicipality}`, membersToSet);
+        indexedDbStorage.setItem(`osl_idb_members_${activeMunicipality}`, membersToSet);
         try {
-          safeSessionStorage.setItem(`lva_cached_members_${activeMunicipality}`, JSON.stringify(membersToSet));
+          safeSessionStorage.setItem(`osl_cached_members_${activeMunicipality}`, JSON.stringify(membersToSet));
         } catch {
           // ignore cache write error
         }
@@ -840,7 +870,11 @@ export default function Raadspaneel() {
       
       // Auto-select topic: preserve current selection if valid for this municipality, or fallback to first bespreekstuk
       if (scopedTopics.length > 0) {
-        const preferredId = selectedTopicId || searchParams.get("topic") || localStorage.getItem(`lva_last_selected_topic_id_${activeMunicipality}`);
+        const preferredId =
+          selectedTopicId ||
+          searchParams.get("topic") ||
+          localStorage.getItem(`osl_last_selected_topic_id_${activeMunicipality}`) ||
+          localStorage.getItem(`lva_last_selected_topic_id_${activeMunicipality}`);
         const foundPreferred = preferredId ? scopedTopics.find((t: CouncilAgendaTopic) => t.id === preferredId) : null;
 
         if (foundPreferred) {
@@ -864,11 +898,17 @@ export default function Raadspaneel() {
       console.error(err);
       // Preserve cached data from IndexedDB / Storage if network times out or server is temporarily unreachable
       try {
-        const cachedIdbTopics = await indexedDbStorage.getItem<CouncilAgendaTopic[]>(`lva_idb_topics_${activeMunicipality}`);
+        const cachedIdbTopics =
+          (await indexedDbStorage.getItem<CouncilAgendaTopic[]>(`osl_idb_topics_${activeMunicipality}`)) ||
+          (await indexedDbStorage.getItem<CouncilAgendaTopic[]>(`lva_idb_topics_${activeMunicipality}`));
         if (Array.isArray(cachedIdbTopics) && cachedIdbTopics.length > 0) {
           setTopics((prev) => (prev.length === 0 ? cachedIdbTopics : prev));
         } else {
-          const cachedT = safeSessionStorage.getItem(`lva_cached_topics_${activeMunicipality}`) || safeLocalStorage.getItem(`lva_cached_topics_${activeMunicipality}`);
+          const cachedT =
+            safeSessionStorage.getItem(`osl_cached_topics_${activeMunicipality}`) ||
+            safeLocalStorage.getItem(`osl_cached_topics_${activeMunicipality}`) ||
+            safeSessionStorage.getItem(`lva_cached_topics_${activeMunicipality}`) ||
+            safeLocalStorage.getItem(`lva_cached_topics_${activeMunicipality}`);
           if (cachedT) {
             const parsedT = JSON.parse(cachedT);
             if (Array.isArray(parsedT) && parsedT.length > 0) {
@@ -877,22 +917,34 @@ export default function Raadspaneel() {
           }
         }
 
-        const cachedIdbSummary = await indexedDbStorage.getItem<CouncilMeetingScrapeSummary>(`lva_idb_summary_${activeMunicipality}`);
+        const cachedIdbSummary =
+          (await indexedDbStorage.getItem<CouncilMeetingScrapeSummary>(`osl_idb_summary_${activeMunicipality}`)) ||
+          (await indexedDbStorage.getItem<CouncilMeetingScrapeSummary>(`lva_idb_summary_${activeMunicipality}`));
         if (cachedIdbSummary) {
           setSummary((prev) => prev || cachedIdbSummary);
         } else {
-          const cachedS = safeSessionStorage.getItem(`lva_cached_summary_${activeMunicipality}`) || safeLocalStorage.getItem(`lva_cached_summary_${activeMunicipality}`);
+          const cachedS =
+            safeSessionStorage.getItem(`osl_cached_summary_${activeMunicipality}`) ||
+            safeLocalStorage.getItem(`osl_cached_summary_${activeMunicipality}`) ||
+            safeSessionStorage.getItem(`lva_cached_summary_${activeMunicipality}`) ||
+            safeLocalStorage.getItem(`lva_cached_summary_${activeMunicipality}`);
           if (cachedS) {
             const parsedS = JSON.parse(cachedS);
             if (parsedS) setSummary((prev) => prev || parsedS);
           }
         }
 
-        const cachedIdbMembers = await indexedDbStorage.getItem<any[]>(`lva_idb_members_${activeMunicipality}`);
+        const cachedIdbMembers =
+          (await indexedDbStorage.getItem<any[]>(`osl_idb_members_${activeMunicipality}`)) ||
+          (await indexedDbStorage.getItem<any[]>(`lva_idb_members_${activeMunicipality}`));
         if (Array.isArray(cachedIdbMembers) && cachedIdbMembers.length > 0) {
           setCouncilMembers((prev) => (prev.length === 0 ? cachedIdbMembers : prev));
         } else {
-          const cachedM = safeSessionStorage.getItem(`lva_cached_members_${activeMunicipality}`) || safeLocalStorage.getItem(`lva_cached_members_${activeMunicipality}`);
+          const cachedM =
+            safeSessionStorage.getItem(`osl_cached_members_${activeMunicipality}`) ||
+            safeLocalStorage.getItem(`osl_cached_members_${activeMunicipality}`) ||
+            safeSessionStorage.getItem(`lva_cached_members_${activeMunicipality}`) ||
+            safeLocalStorage.getItem(`lva_cached_members_${activeMunicipality}`);
           if (cachedM) {
             const parsedM = JSON.parse(cachedM);
             if (Array.isArray(parsedM) && parsedM.length > 0) {
@@ -1783,7 +1835,7 @@ export default function Raadspaneel() {
             </h1>
             <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
               {isCouncilOrAdmin
-                ? "Vergaderstukken, bespreekstukken en voorbereiding voor de fractie van Lijst van Andel (Steenwijkerland). Verdeel onderwerpen onder fractieleden, markeer gelezen documenten en deel interne notities."
+                ? "Vergaderstukken, bespreekstukken en voorbereiding voor de fractie van Onafhankelijk Steenwijkerland (OSL). Verdeel onderwerpen onder fractieleden, markeer gelezen documenten en deel interne notities."
                 : "Openbaar inzicht in alle gemeentelijke beleidsdossiers, raadsstukken en besluitvorming van Steenwijkerland en haar wijken en kernen."}
             </p>
           </div>
@@ -2468,7 +2520,7 @@ export default function Raadspaneel() {
                     ? "bg-rose-600 text-white shadow-2xs"
                     : "bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/30 hover:bg-rose-500/20"
                 }`}
-                title="Toon onderwerpen waar Lijst van Andel kritisch of negatief tegenover staat"
+                title="Toon onderwerpen waar Onafhankelijk Steenwijkerland kritisch of negatief tegenover staat"
               >
                 <ThumbsDown className="w-3 h-3" />
                 <span>Kritisch / Negatief ({standpuntStats.negatief})</span>
@@ -2482,7 +2534,7 @@ export default function Raadspaneel() {
                     ? "bg-emerald-600 text-white shadow-2xs"
                     : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20"
                 }`}
-                title="Toon onderwerpen waar Lijst van Andel positief of ondersteunend tegenover staat"
+                title="Toon onderwerpen waar Onafhankelijk Steenwijkerland positief of ondersteunend tegenover staat"
               >
                 <ThumbsUp className="w-3 h-3" />
                 <span>Positief / Voor ({standpuntStats.positief})</span>

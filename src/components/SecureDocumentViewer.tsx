@@ -80,7 +80,7 @@ export const SecureDocumentViewer: React.FC<SecureDocumentViewerProps> = ({
 
   const memberName = user?.fullName || user?.username || "Geregistreerd Lid";
   const userIdentifier = user?.email || user?.username || "Lid";
-  const watermarkText = `VERTROUWELIJK • LIJST VAN ANDEL • LID: ${memberName.toUpperCase()} (${userIdentifier}) • NIET VERSPREIDEN • EXCLUSIEF VOOR LEDEN`;
+  const watermarkText = `VERTROUWELIJK • ONAFHANKELIJK STEENWIJKERLAND • LID: ${memberName.toUpperCase()} (${userIdentifier}) • NIET VERSPREIDEN • EXCLUSIEF VOOR LEDEN`;
 
   // Trigger mask helper
   const triggerMask = useCallback((reason: string) => {
@@ -115,7 +115,7 @@ export const SecureDocumentViewer: React.FC<SecureDocumentViewerProps> = ({
     const handleCopy = (e: ClipboardEvent) => {
       e.preventDefault();
       if (e.clipboardData) {
-        e.clipboardData.setData("text/plain", "Inhoud beveiligd tegen kopiëren - Lijst van Andel");
+        e.clipboardData.setData("text/plain", "Inhoud beveiligd tegen kopiëren - Onafhankelijk Steenwijkerland");
       }
       toast.warning("Kopiëren van vertrouwelijke fractiestukken is niet toegestaan.");
     };
@@ -333,7 +333,7 @@ export const SecureDocumentViewer: React.FC<SecureDocumentViewerProps> = ({
             display: none !important;
           }
           body::after {
-            content: "VERTROUWELIJK DOCUMENT - AFDRUKKEN STRIKT VERBODEN VOOR DIT LID (LIJST VAN ANDEL)";
+            content: "VERTROUWELIJK DOCUMENT - AFDRUKKEN STRIKT VERBODEN VOOR DIT LID (ONAFHANKELIJK STEENWIJKERLAND)";
             visibility: visible !important;
             display: block !important;
             font-size: 24pt;
@@ -488,7 +488,7 @@ export const SecureDocumentViewer: React.FC<SecureDocumentViewerProps> = ({
                 {maskReason || "Schermopname, knipprogramma of vensterwisseling gedetecteerd."}
               </p>
               <p className="text-xs text-muted-foreground/80 max-w-sm mb-6">
-                Ter bescherming van vertrouwelijke partijdocumenten van Lijst van Andel wordt dit document direct afgeschermd zodra er opnamesoftware actief is of het venster focus verliest.
+                Ter bescherming van vertrouwelijke partijdocumenten van Onafhankelijk Steenwijkerland wordt dit document direct afgeschermd zodra er opnamesoftware actief is of het venster focus verliest.
               </p>
               <Button
                 onClick={handleUnmask}
@@ -552,7 +552,7 @@ export const SecureDocumentViewer: React.FC<SecureDocumentViewerProps> = ({
                   <div className="flex items-start justify-between border-b-2 border-accent/40 pb-5 mb-8">
                     <div>
                       <div className="text-xs font-black uppercase tracking-[0.25em] text-accent mb-1">
-                        Lijst van Andel • Gemeente Steenwijkerland
+                        Onafhankelijk Steenwijkerland • Gemeente Steenwijkerland
                       </div>
                       <h1 className="text-2xl sm:text-3xl font-display font-bold text-neutral-900 dark:text-foreground leading-tight">
                         {doc.title}
@@ -580,7 +580,7 @@ export const SecureDocumentViewer: React.FC<SecureDocumentViewerProps> = ({
                     </p>
                     <p>{doc.description}</p>
                     <div className="mt-2.5 pt-2 border-t border-neutral-200 dark:border-border/60 flex flex-wrap gap-4 text-[11px]">
-                      <span><strong>Auteur / Commissie:</strong> {doc.author || "Fractie Lijst van Andel"}</span>
+                      <span><strong>Auteur / Commissie:</strong> {doc.author || "Fractie Onafhankelijk Steenwijkerland"}</span>
                       <span><strong>Bestandsgrootte:</strong> {doc.fileSize || "1.4 MB"}</span>
                       <span><strong>Geautoriseerde lezer:</strong> {memberName}</span>
                     </div>
@@ -624,7 +624,7 @@ export const SecureDocumentViewer: React.FC<SecureDocumentViewerProps> = ({
                     ) : (
                       <div className="py-12 text-center text-muted-foreground">
                         <FileText className="w-12 h-12 text-accent/40 mx-auto mb-3" />
-                        <p className="text-sm font-semibold">Inhoud ter inzage voor de fractie en leden van Lijst van Andel.</p>
+                        <p className="text-sm font-semibold">Inhoud ter inzage voor de fractie en leden van Onafhankelijk Steenwijkerland.</p>
                         <p className="text-xs mt-1">Dit document is officieel geregistreerd in het beveiligde ledendossier.</p>
                       </div>
                     )}
@@ -635,7 +635,7 @@ export const SecureDocumentViewer: React.FC<SecureDocumentViewerProps> = ({
                 <div className="mt-12 pt-6 border-t border-neutral-200 dark:border-border flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-[11px] text-neutral-500 dark:text-muted-foreground">
                   <div className="flex items-center gap-2">
                     <ShieldCheck className="w-4 h-4 text-accent" />
-                    <span>Digitaal gewaarmerkt fractiedocument • Lijst van Andel</span>
+                    <span>Digitaal gewaarmerkt fractiedocument • Onafhankelijk Steenwijkerland</span>
                   </div>
                   <div className="font-mono">
                     Pagina {currentPage} van {totalPages}

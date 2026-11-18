@@ -239,8 +239,8 @@ export default function FractielidVideos() {
   const handleShareMemberPage = () => {
     const pageUrl = window.location.origin + window.location.pathname;
     setShareData({
-      title: `${member?.name || "Fractielid"} | Lijst van Andel`,
-      description: `Bekijk de debatten, videobijdragen en nieuwsberichten van ${member?.name || "Lijst van Andel"} in Steenwijkerland.`,
+      title: `${member?.name || "Fractielid"} | Onafhankelijk Steenwijkerland`,
+      description: `Bekijk de debatten, videobijdragen en nieuwsberichten van ${member?.name || "Onafhankelijk Steenwijkerland"} in Steenwijkerland.`,
       url: pageUrl,
       imageUrl: member?.imgUrl || "/assets/logo.png",
     });
@@ -249,15 +249,15 @@ export default function FractielidVideos() {
 
   const handleShareVideo = (video: VideoItem) => {
     let cleanVTitle = (video.burgerraadslidTitle || video.title || "").trim();
-    const nameOverRegex = new RegExp(`^${member?.name || "Lijst van Andel"}\\s+over\\s+`, "i");
+    const nameOverRegex = new RegExp(`^${member?.name || "Onafhankelijk Steenwijkerland"}\\s+over\\s+`, "i");
     cleanVTitle = cleanVTitle.replace(nameOverRegex, "");
     cleanVTitle = cleanVTitle.replace(/^(?:videobijdrage|video bijdrage|videobijdragen|video-bijdrage|tussenkomst|bijdrage|inbreng|toelichting)\s*(?:over\s*)?/i, "");
     cleanVTitle = cleanVTitle.replace(/^['"‘“](.*)['"’”]$/, "$1").trim() || "het raadsvoorstel";
-    const formattedTitle = `${member?.name || "Lijst van Andel"} over ‘${cleanVTitle}’`;
+    const formattedTitle = `${member?.name || "Onafhankelijk Steenwijkerland"} over ‘${cleanVTitle}’`;
     const videoUrl = `${window.location.origin}/video/${video.id}`;
     setShareData({
-      title: `${formattedTitle} | Lijst van Andel`,
-      description: video.description || `Bekijk hoe ${member?.name || "Lijst van Andel"} spreekt over ‘${cleanVTitle}’ in de gemeenteraad van Steenwijkerland.`,
+      title: `${formattedTitle} | Onafhankelijk Steenwijkerland`,
+      description: video.description || `Bekijk hoe ${member?.name || "Onafhankelijk Steenwijkerland"} spreekt over ‘${cleanVTitle}’ in de gemeenteraad van Steenwijkerland.`,
       url: videoUrl,
       imageUrl: video.thumbnailUrl || `/api/videos/${video.id}/thumbnail.jpg`,
     });
@@ -267,8 +267,8 @@ export default function FractielidVideos() {
   const handleShareArticle = (article: NewsItem) => {
     const articleUrl = `${window.location.origin}/nieuws/${article.id}`;
     setShareData({
-      title: `${article.title} - ${member?.name || "Lijst van Andel"}`,
-      description: article.excerpt || article.description || `Lees dit bericht van ${member?.name || "Lijst van Andel"}.`,
+      title: `${article.title} - ${member?.name || "Onafhankelijk Steenwijkerland"}`,
+      description: article.excerpt || article.description || `Lees dit bericht van ${member?.name || "Onafhankelijk Steenwijkerland"}.`,
       url: articleUrl,
       imageUrl: article.thumbnailUrl || article.headerUrl || member?.imgUrl || "/assets/logo.png",
     });
@@ -443,11 +443,11 @@ export default function FractielidVideos() {
               <div className={`grid grid-cols-1 ${paginatedVideos.length > 1 ? "sm:grid-cols-2" : "sm:grid-cols-1"} gap-5 pt-2`}>
                 {paginatedVideos.map((v, idx) => {
                   let cleanVideoTitle = (v.burgerraadslidTitle || v.title || "").trim();
-                  const nameOverRegex = new RegExp(`^${member?.name || "Lijst van Andel"}\\s+over\\s+`, "i");
+                  const nameOverRegex = new RegExp(`^${member?.name || "Onafhankelijk Steenwijkerland"}\\s+over\\s+`, "i");
                   cleanVideoTitle = cleanVideoTitle.replace(nameOverRegex, "");
                   cleanVideoTitle = cleanVideoTitle.replace(/^(?:videobijdrage|video bijdrage|videobijdragen|video-bijdrage|tussenkomst|bijdrage|inbreng|toelichting)\s*(?:over\s*)?/i, "");
                   cleanVideoTitle = cleanVideoTitle.replace(/^['"‘“](.*)['"’”]$/, "$1").trim() || "het raadsvoorstel";
-                  const displayTitle = `${member?.name || "Lijst van Andel"} over ‘${cleanVideoTitle}’`;
+                  const displayTitle = `${member?.name || "Onafhankelijk Steenwijkerland"} over ‘${cleanVideoTitle}’`;
                   const effectivePoster =
                     getVideoThumbnail(v.videoUrl, v.thumbnailUrl, v.id, member?.id) ||
                     `/uploads/thumbnails/video-${v.id}.webp`;

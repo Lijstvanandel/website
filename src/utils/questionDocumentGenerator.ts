@@ -6,7 +6,7 @@ import { FRAMING_DEFINITIONS } from "./questionWizardLogic";
 /**
  * Formatteert de schriftelijke vragen als formele platte tekst voor griffie-mail of klembord.
  */
-export function formatQuestionDossierAsPlainText(dossier: WrittenQuestionDossier, signerName: string = "Fractie Lijst van Andel"): string {
+export function formatQuestionDossierAsPlainText(dossier: WrittenQuestionDossier, signerName: string = "Onafhankelijk Steenwijkerland (OSL)"): string {
   const framingInfo = dossier.framing ? FRAMING_DEFINITIONS[dossier.framing] : null;
   const dateStr = new Date(dossier.updatedAt || dossier.createdAt || Date.now()).toLocaleDateString("nl-NL", {
     day: "numeric",
@@ -14,11 +14,11 @@ export function formatQuestionDossierAsPlainText(dossier: WrittenQuestionDossier
     year: "numeric",
   });
   const year = new Date().getFullYear();
-  const kenmerk = `LVA-SV-${year}-${(dossier.id || "001").slice(0, 6).toUpperCase()}`;
+  const kenmerk = `OSL-SV-${year}-${(dossier.id || "001").slice(0, 6).toUpperCase()}`;
 
   const lines: string[] = [];
 
-  lines.push("FRACTIE LIJST VAN ANDEL — GEMEENTERAAD STEENWIJKERLAND");
+  lines.push("FRACTIE ONAFHANKELIJK STEENWIJKERLAND (OSL) — GEMEENTERAAD STEENWIJKERLAND");
   lines.push("Postbus 162, 8330 AD Steenwijk | griffie@steenwijkerland.nl");
   lines.push("------------------------------------------------------------");
   lines.push(`Kenmerk:   ${kenmerk}`);
@@ -70,15 +70,15 @@ export function formatQuestionDossierAsPlainText(dossier: WrittenQuestionDossier
   lines.push("Hoogachtend,");
   lines.push("");
   lines.push(signerName);
-  lines.push("Fractie Lijst van Andel Steenwijkerland");
+  lines.push("Fractie Onafhankelijk Steenwijkerland (OSL)");
 
   return lines.join("\n");
 }
 
 /**
- * Genereert een officieel Microsoft Word (.docx) document in de huisstijl van Lijst van Andel.
+ * Genereert een officieel Microsoft Word (.docx) document in de huisstijl van Onafhankelijk Steenwijkerland (OSL).
  */
-export async function generateQuestionDossierDocx(dossier: WrittenQuestionDossier, signerName: string = "Fractie Lijst van Andel"): Promise<Blob> {
+export async function generateQuestionDossierDocx(dossier: WrittenQuestionDossier, signerName: string = "Onafhankelijk Steenwijkerland (OSL)"): Promise<Blob> {
   const framingInfo = dossier.framing ? FRAMING_DEFINITIONS[dossier.framing] : null;
   const dateStr = new Date(dossier.updatedAt || dossier.createdAt || Date.now()).toLocaleDateString("nl-NL", {
     day: "numeric",
@@ -86,7 +86,7 @@ export async function generateQuestionDossierDocx(dossier: WrittenQuestionDossie
     year: "numeric",
   });
   const year = new Date().getFullYear();
-  const kenmerk = `LVA-SV-${year}-${(dossier.id || "001").slice(0, 6).toUpperCase()}`;
+  const kenmerk = `OSL-SV-${year}-${(dossier.id || "001").slice(0, 6).toUpperCase()}`;
 
   const doc = new Document({
     sections: [
@@ -107,10 +107,10 @@ export async function generateQuestionDossierDocx(dossier: WrittenQuestionDossie
             alignment: AlignmentType.RIGHT,
             children: [
               new TextRun({
-                text: "FRACTIE LIJST VAN ANDEL",
+                text: "FRACTIE ONAFHANKELIJK STEENWIJKERLAND (OSL)",
                 bold: true,
                 size: 28,
-                color: "1B2A4A", // Navy
+                color: "143627", // Diep Woudgroen
               }),
             ],
           }),
@@ -244,7 +244,7 @@ export async function generateQuestionDossierDocx(dossier: WrittenQuestionDossie
                 text: "SCHRIFTELIJKE VRAGEN",
                 bold: true,
                 size: 26,
-                color: "1B2A4A",
+                color: "143627",
               }),
             ],
           }),
@@ -258,7 +258,7 @@ export async function generateQuestionDossierDocx(dossier: WrittenQuestionDossie
                     new TextRun({
                       text: `Aanvalshoek: ${framingInfo.title} (${framingInfo.legalBasis})`,
                       bold: true,
-                      color: "D4AF37",
+                      color: "EAB308",
                       size: 20,
                     }),
                   ],
@@ -288,7 +288,7 @@ export async function generateQuestionDossierDocx(dossier: WrittenQuestionDossie
                 text: "Considerans",
                 bold: true,
                 size: 22,
-                color: "1B2A4A",
+                color: "143627",
               }),
             ],
           }),
@@ -311,7 +311,7 @@ export async function generateQuestionDossierDocx(dossier: WrittenQuestionDossie
                 text: "Vragen aan het College",
                 bold: true,
                 size: 22,
-                color: "1B2A4A",
+                color: "143627",
               }),
             ],
           }),
@@ -325,7 +325,7 @@ export async function generateQuestionDossierDocx(dossier: WrittenQuestionDossie
                         text: `${idx + 1}. `,
                         bold: true,
                         size: 20,
-                        color: "1B2A4A",
+                        color: "143627",
                       }),
                       new TextRun({
                         text: q.text.trim(),
@@ -349,7 +349,7 @@ export async function generateQuestionDossierDocx(dossier: WrittenQuestionDossie
                 text: "Onderliggende Bronnen & Bewijslast",
                 bold: true,
                 size: 22,
-                color: "1B2A4A",
+                color: "143627",
               }),
             ],
           }),
@@ -380,7 +380,7 @@ export async function generateQuestionDossierDocx(dossier: WrittenQuestionDossie
             children: [new TextRun({ text: signerName, bold: true, size: 20 })],
           }),
           new Paragraph({
-            children: [new TextRun({ text: "Fractie Lijst van Andel Steenwijkerland", size: 18, color: "666666" })],
+            children: [new TextRun({ text: "Fractie Onafhankelijk Steenwijkerland (OSL)", size: 18, color: "666666" })],
           }),
         ],
       },
@@ -391,9 +391,9 @@ export async function generateQuestionDossierDocx(dossier: WrittenQuestionDossie
 }
 
 /**
- * Genereert een strakke officiële PDF met de huisstijl van Lijst van Andel.
+ * Genereert een strakke officiële PDF met de huisstijl van Onafhankelijk Steenwijkerland (OSL).
  */
-export async function generateQuestionDossierPdf(dossier: WrittenQuestionDossier, signerName: string = "Fractie Lijst van Andel"): Promise<Uint8Array> {
+export async function generateQuestionDossierPdf(dossier: WrittenQuestionDossier, signerName: string = "Fractie Onafhankelijk Steenwijkerland (OSL)"): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
   const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
@@ -405,8 +405,8 @@ export async function generateQuestionDossierPdf(dossier: WrittenQuestionDossier
   const contentWidth = width - margin * 2;
   let cursorY = height - margin;
 
-  const navy = rgb(0.106, 0.165, 0.29); // #1B2A4A
-  const gold = rgb(0.831, 0.686, 0.216); // #D4AF37
+  const navy = rgb(0.078, 0.212, 0.153); // #143627 Diep Woudgroen
+  const gold = rgb(0.918, 0.702, 0.031); // #EAB308 Helder Amber
   const gray = rgb(0.4, 0.4, 0.4);
   const black = rgb(0.1, 0.1, 0.1);
 
@@ -414,7 +414,7 @@ export async function generateQuestionDossierPdf(dossier: WrittenQuestionDossier
   const ensureSpace = (neededHeight: number) => {
     if (cursorY - neededHeight < margin + 40) {
       // Add footer on current page before moving
-      page.drawText("Fractie Lijst van Andel • Schriftelijke Vragen (Art. 41 RvO)", {
+      page.drawText("Fractie Onafhankelijk Steenwijkerland (OSL) • Schriftelijke Vragen (Art. 41 RvO)", {
         x: margin,
         y: margin - 15,
         size: 8,
@@ -481,10 +481,10 @@ export async function generateQuestionDossierPdf(dossier: WrittenQuestionDossier
   cursorY -= 20;
 
   // Header Title
-  page.drawText("LIJST VAN ANDEL", {
+  page.drawText("ONAFHANKELIJK STEENWIJKERLAND (OSL)", {
     x: margin,
     y: cursorY,
-    size: 18,
+    size: 16,
     font: helveticaBold,
     color: navy,
   });
@@ -499,7 +499,7 @@ export async function generateQuestionDossierPdf(dossier: WrittenQuestionDossier
 
   cursorY -= 14;
 
-  page.drawText("Fractie Steenwijkerland • Lokaal & Onafhankelijk", {
+  page.drawText("Fractie Onafhankelijk Steenwijkerland • Lokaal & Onafhankelijk", {
     x: margin,
     y: cursorY,
     size: 9,
@@ -521,7 +521,7 @@ export async function generateQuestionDossierPdf(dossier: WrittenQuestionDossier
 
   // Metadata block
   const year = new Date().getFullYear();
-  const kenmerk = `LVA-SV-${year}-${(dossier.id || "001").slice(0, 6).toUpperCase()}`;
+  const kenmerk = `OSL-SV-${year}-${(dossier.id || "001").slice(0, 6).toUpperCase()}`;
   const dateStr = new Date(dossier.updatedAt || dossier.createdAt || Date.now()).toLocaleDateString("nl-NL", {
     day: "numeric",
     month: "long",
@@ -658,10 +658,10 @@ export async function generateQuestionDossierPdf(dossier: WrittenQuestionDossier
   cursorY -= 14;
   page.drawText(signerName, { x: margin, y: cursorY, size: 9, font: helveticaBold, color: navy });
   cursorY -= 12;
-  page.drawText("Fractie Lijst van Andel Steenwijkerland", { x: margin, y: cursorY, size: 8, font: helvetica, color: gray });
+  page.drawText("Fractie Onafhankelijk Steenwijkerland (OSL)", { x: margin, y: cursorY, size: 8, font: helvetica, color: gray });
 
   // Add footer to last page
-  page.drawText("Fractie Lijst van Andel • Schriftelijke Vragen (Art. 41 RvO)", {
+  page.drawText("Fractie Onafhankelijk Steenwijkerland (OSL) • Schriftelijke Vragen (Art. 41 RvO)", {
     x: margin,
     y: margin - 15,
     size: 8,

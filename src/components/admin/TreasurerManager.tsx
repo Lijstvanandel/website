@@ -576,7 +576,7 @@ export function TreasurerManager(props?: TreasurerManagerProps) {
                   </span>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Integraal financieel beheer van Lijst van Andel: rekeningen, vierogenprincipe, contributies, giften en kascommissie.
+                  Integraal financieel beheer van Onafhankelijk Steenwijkerland: rekeningen, vierogenprincipe, contributies, giften en kascommissie.
                 </p>
               </div>
             </div>
@@ -1500,7 +1500,7 @@ export function TreasurerManager(props?: TreasurerManagerProps) {
               Afdrachtenregeling Politieke Ambtsdragers
             </h3>
             <p className="text-xs text-muted-foreground">
-              Conform het partijstatuut van Lijst van Andel dragen gekozen volksvertegenwoordigers een periodieke bijdrage af aan de partijkas
+              Conform het partijstatuut van Onafhankelijk Steenwijkerland dragen gekozen volksvertegenwoordigers een periodieke bijdrage af aan de partijkas
             </p>
           </div>
 

@@ -62,12 +62,12 @@ let isFetchIntercepted = false;
 export function getVisitorId(): string {
   if (typeof window === "undefined") return "server";
   try {
-    const key = "lva_vis_id";
-    let id = localStorage.getItem(key);
+    const key = "osl_vis_id";
+    let id = localStorage.getItem(key) || localStorage.getItem("lva_vis_id");
     if (!id || !id.startsWith("vis_")) {
       id = `vis_${Math.random().toString(36).substring(2, 10)}`;
-      localStorage.setItem(key, id);
     }
+    localStorage.setItem(key, id);
     return id;
   } catch {
     return "vis_anoniem";
@@ -80,12 +80,12 @@ export function getVisitorId(): string {
 export function getSessionId(): string {
   if (typeof window === "undefined") return "server";
   try {
-    const key = "lva_sess_id";
-    let id = sessionStorage.getItem(key);
+    const key = "osl_sess_id";
+    let id = sessionStorage.getItem(key) || sessionStorage.getItem("lva_sess_id");
     if (!id || !id.startsWith("sess_")) {
       id = `sess_${Math.random().toString(36).substring(2, 10)}`;
-      sessionStorage.setItem(key, id);
     }
+    sessionStorage.setItem(key, id);
     return id;
   } catch {
     return "sess_anoniem";

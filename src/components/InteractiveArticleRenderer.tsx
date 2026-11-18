@@ -301,7 +301,7 @@ export const InteractiveDataProductEmbed: React.FC<DataProductMeta> = ({
         <div className="bg-secondary/40 border-t border-border/60 px-4 py-2 flex flex-wrap items-center justify-between text-[11px] text-muted-foreground gap-2">
           <span className="flex items-center gap-1.5">
             <Database className="w-3.5 h-3.5 text-accent" />
-            <span>Dataset & analyse • Lijst van Andel Steenwijkerland</span>
+            <span>Dataset & analyse • Onafhankelijk Steenwijkerland</span>
           </span>
           <span className="text-muted-foreground/80">
             {isActivated

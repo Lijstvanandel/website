@@ -18,7 +18,7 @@ const steunfractie: Steunlid[] = [
     voornaam: "?",
     rol: "Steunfractielid",
     img: silhouette,
-    bio: "Lid van de steunfractie van Lijst van Andel. Ondersteunt de fractie inhoudelijk en helpt bij onderzoek, dossiers en contact met inwoners.",
+    bio: "Lid van de steunfractie van Onafhankelijk Steenwijkerland (OSL). Ondersteunt de fractie inhoudelijk en helpt bij onderzoek, dossiers en contact met inwoners.",
     socials: { instagram: "#", facebook: "#", linkedin: "#" },
   },
   {
@@ -27,7 +27,7 @@ const steunfractie: Steunlid[] = [
     voornaam: "?",
     rol: "Steunfractielid",
     img: silhouette,
-    bio: "Lid van de steunfractie van Lijst van Andel. Ondersteunt de fractie inhoudelijk en helpt bij onderzoek, dossiers en contact met inwoners.",
+    bio: "Lid van de steunfractie van Onafhankelijk Steenwijkerland (OSL). Ondersteunt de fractie inhoudelijk en helpt bij onderzoek, dossiers en contact met inwoners.",
     socials: { instagram: "#", facebook: "#", linkedin: "#" },
   },
   {
@@ -36,7 +36,7 @@ const steunfractie: Steunlid[] = [
     voornaam: "info",
     rol: "Steunfractielid",
     img: silhouette,
-    bio: "Lid van de steunfractie van Lijst van Andel. Ondersteunt de fractie inhoudelijk en helpt bij onderzoek, dossiers en contact met inwoners.",
+    bio: "Lid van de steunfractie van Onafhankelijk Steenwijkerland (OSL). Ondersteunt de fractie inhoudelijk en helpt bij onderzoek, dossiers en contact met inwoners.",
     socials: { instagram: "#", facebook: "#", linkedin: "#" },
   },
 ];
@@ -76,11 +76,11 @@ const Steunfractie = () => {
               <p className="text-sm text-muted-foreground leading-relaxed mb-4">{p.bio}</p>
 
               <a
-                href={`mailto:${p.voornaam}@lijstvanandel.nl`}
+                href={`mailto:${p.voornaam}@onafhankelijksteenwijkerland.nl`}
                 className="flex items-center gap-2 text-xs text-accent hover:text-accent/80 mb-3 break-all"
               >
                 <Mail className="w-3.5 h-3.5 shrink-0" />
-                {p.voornaam}@lijstvanandel.nl
+                {p.voornaam}@onafhankelijksteenwijkerland.nl
               </a>
 
               <div className="flex items-center gap-2 mt-auto">

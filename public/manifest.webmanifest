@@ -1,0 +1,32 @@
+{
+  "id": "/",
+  "name": "Onafhankelijk Steenwijkerland",
+  "short_name": "OSL",
+  "description": "Officiële website en ledenportaal van Onafhankelijk Steenwijkerland (OSL) met nieuws, fractieleden, standpunten, agenda en wijkpagina's.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#143627",
+  "background_color": "#143627",
+  "lang": "nl-NL",
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

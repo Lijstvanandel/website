@@ -147,7 +147,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ token, current
     setCategory("Partijprogramma");
     setConfidentiality("Vertrouwelijk - Alleen Leden");
     setDate(new Date().toISOString().split("T")[0]);
-    setAuthor(currentUser?.fullName || "Fractie Lijst van Andel");
+    setAuthor(currentUser?.fullName || "Fractie Onafhankelijk Steenwijkerland");
     setFileUrl("");
     setFileName("");
     setFileSize("1.2 MB");
@@ -885,7 +885,7 @@ export const DocumentManager: React.FC<DocumentManagerProps> = ({ token, current
         user={{
           fullName: currentUser?.fullName || "Beheerder",
           username: currentUser?.username || "admin",
-          email: currentUser?.email || "beheer@lijstvanandel.nl",
+          email: currentUser?.email || "beheer@onafhankelijksteenwijkerland.nl",
           role: "admin",
         }}
       />

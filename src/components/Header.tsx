@@ -153,26 +153,28 @@ export const Header = () => {
           
           {/* Left Side: Logo & Brand Name + Desktop Navigation */}
           <div className="flex items-center gap-2 sm:gap-3 xl:gap-4 2xl:gap-6 min-w-0 shrink">
-            {/* Full Party Website (Lijst van Andel Steenwijkerland) */}
+            {/* Full Party Website (Onafhankelijk Steenwijkerland) */}
             <Link
               to="/"
               className="flex items-center gap-2 sm:gap-2.5 group shrink-0 select-none max-w-fit"
             >
-              <img
-                src={logo}
-                alt="Lijst van Andel logo"
-                width="48"
-                height="48"
-                loading="eager"
-                decoding="async"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = "/assets/logo.png";
-                }}
-                className="w-9 h-9 sm:w-10 sm:h-10 xl:w-11 xl:h-11 2xl:w-12 2xl:h-12 rounded-full object-cover transition-transform duration-300 group-hover:scale-105 shrink-0 shadow-sm ring-1 ring-accent/30"
-              />
+              <div className="bg-white rounded-xl px-2 py-1 shadow-sm ring-1 ring-accent/40 transition-transform duration-300 group-hover:scale-105 shrink-0 flex items-center justify-center">
+                <img
+                  src={logo}
+                  alt="Onafhankelijk Steenwijkerland (OSL) logo"
+                  width="80"
+                  height="40"
+                  loading="eager"
+                  decoding="async"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = "/assets/logo.png";
+                  }}
+                  className="h-7 sm:h-8 xl:h-9 w-auto object-contain shrink-0"
+                />
+              </div>
               <div className="leading-tight flex-1 min-w-0">
                 <div className="font-display text-sm sm:text-base xl:text-lg 2xl:text-xl tracking-wide text-foreground whitespace-nowrap">
-                  Lijst van Andel
+                  Onafhankelijk Steenwijkerland
                 </div>
                 <div className="h-4 sm:h-4.5 overflow-visible flex items-center">
                   <AnimatePresence mode="wait" initial={false}>

@@ -1,5 +1,5 @@
 /**
- * Website configuration for Steenwijkerland (Lijst van Andel).
+ * Website configuration for Onafhankelijk Steenwijkerland (OSL).
  * Portal mode / external municipality multi-tenancy has been completely removed.
  */
 
@@ -18,9 +18,9 @@ export function getPortalConfig(_currentPathname?: string, _currentUser?: any): 
     isPortalMode: false,
     tenantId: "steenwijkerland",
     municipalityName: "Steenwijkerland",
-    portalTitle: "Lijst van Andel",
+    portalTitle: "Onafhankelijk Steenwijkerland",
     portalSubtitle: "Steenwijkerland",
-    shortCode: "swl",
+    shortCode: "osl",
     risSystemName: "iBabs",
   };
 }

@@ -287,7 +287,7 @@ export const StemgedragSection: React.FC = () => {
           Stemgedrag
         </h2>
         <p className="text-base md:text-lg text-muted-foreground leading-relaxed">
-          Lijst van Andel staat voor openheid en een duidelijke koers. Hieronder vindt u exact hoe 
+          Onafhankelijk Steenwijkerland staat voor openheid en een duidelijke koers. Hieronder vindt u exact hoe 
           onze fractie heeft gestemd over moties, voorstellen en amendementen in de gemeenteraad van Steenwijkerland, 
           inclusief de inhoudelijke toelichting waarom wij voor of tegen hebben gestemd of welke toezegging wij hebben binnengehaald.
         </p>
@@ -754,7 +754,7 @@ export const StemgedragSection: React.FC = () => {
                           <span>
                             {isIngetrokkenToezegging
                               ? "Ingetrokken door toezegging"
-                              : `Waarom heeft Lijst van Andel ${isVoor ? "voor" : "tegen"} gestemd?`}
+                              : `Waarom heeft Onafhankelijk Steenwijkerland ${isVoor ? "voor" : "tegen"} gestemd?`}
                           </span>
                         </div>
                         <div className="text-sm md:text-base text-foreground/95 leading-relaxed bg-muted/25 p-4 rounded-xl border border-border/60">

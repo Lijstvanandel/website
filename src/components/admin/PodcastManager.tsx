@@ -312,11 +312,11 @@ export function PodcastManager() {
               Podcast Beheer
             </div>
             <h2 className="text-2xl md:text-3xl font-display text-foreground">
-              Podcasts van Lijst van Andel
+              Podcasts van Onafhankelijk Steenwijkerland
             </h2>
             <p className="text-xs md:text-sm text-muted-foreground mt-1 max-w-2xl">
               Beheer hier zelfstandige podcastafleveringen. Afleveringen worden overzichtelijk gepresenteerd op{" "}
-              <strong className="text-foreground">/nieuws</strong> in het specifieke podcastvak onder 'Lijst van Andel in het nieuws'.
+              <strong className="text-foreground">/nieuws</strong> in het specifieke podcastvak onder 'Onafhankelijk Steenwijkerland in het nieuws'.
             </p>
           </div>
 
@@ -603,11 +603,11 @@ export function PodcastManager() {
                   setAuthorId(val);
                   const member = DEFAULT_FRACTIELEDEN.find((m) => String(m.id) === val);
                   if (member) setAuthor(member.name);
-                  else if (!val) setAuthor("Lijst van Andel");
+                  else if (!val) setAuthor("Onafhankelijk Steenwijkerland");
                 }}
                 className="w-full h-9 px-3 rounded-md border border-input bg-background text-xs mb-1.5"
               >
-                <option value="">Lijst van Andel (Algemeen)</option>
+                <option value="">Onafhankelijk Steenwijkerland (Algemeen)</option>
                 {DEFAULT_FRACTIELEDEN.map((m) => (
                   <option key={m.id} value={String(m.id)}>
                     {m.name} ({m.role || "Fractielid"})
@@ -790,7 +790,7 @@ export function PodcastManager() {
                             })}
                           </span>
                           <span>•</span>
-                          <span>{item.author || "Lijst van Andel"}</span>
+                          <span>{item.author || "Onafhankelijk Steenwijkerland"}</span>
                           <span>•</span>
                           <span className="flex items-center gap-1 font-mono font-medium text-foreground">
                             <Eye className="w-3 h-3 text-accent" />

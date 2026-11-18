@@ -62,7 +62,7 @@ export function ensureVapidKeys(db: any, saveDbCallback?: (db: any) => void): { 
   if (!vapidConfigured && publicKey && privateKey) {
     try {
       webpush.setVapidDetails(
-        process.env.VAPID_SUBJECT || "mailto:info@lijstvanandel.nl",
+        process.env.VAPID_SUBJECT || "mailto:info@onafhankelijksteenwijkerland.nl",
         publicKey,
         privateKey
       );
@@ -172,10 +172,10 @@ export async function sendPushNotificationToUser(
   const deadEndpoints: string[] = [];
 
   const messageString = JSON.stringify({
-    title: payload.title || "Lijst van Andel",
+    title: payload.title || "Onafhankelijk Steenwijkerland",
     body: payload.body || "Nieuw bericht",
     url: payload.url || "/dashboard",
-    tag: payload.tag || "lva-belafspraak",
+    tag: payload.tag || "osl-belafspraak",
     icon: payload.icon || "/pwa-192x192.png",
     badge: payload.badge || "/pwa-192x192.png",
   });

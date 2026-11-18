@@ -45,7 +45,7 @@ export function PWAInstallButton({ variant = "button", className = "" }: PWAInst
           size="sm"
           onClick={handleAction}
           className={`h-8 sm:h-9 gap-1.5 px-2.5 xl:px-2.5 2xl:px-3 rounded-full text-xs font-medium border-primary/30 hover:border-primary text-foreground bg-primary/5 hover:bg-primary/10 transition-all ${className}`}
-          title="Installeer Lijst van Andel als PWA App op uw apparaat"
+          title="Installeer Onafhankelijk Steenwijkerland (OSL) als PWA App op uw apparaat"
         >
           <Smartphone className="w-3.5 h-3.5 text-primary" />
           <span className="hidden 2xl:inline">App</span>
@@ -57,7 +57,7 @@ export function PWAInstallButton({ variant = "button", className = "" }: PWAInst
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-foreground font-display text-lg">
                 <Smartphone className="w-5 h-5 text-primary" />
-                Lijst van Andel App Installeren
+                Onafhankelijk Steenwijkerland App Installeren
               </DialogTitle>
               <DialogDescription className="text-muted-foreground text-sm">
                 Installeer onze PWA direct op het startscherm van uw telefoon of computer voor snellere toegang en notificaties.
@@ -118,7 +118,7 @@ export function PWAInstallButton({ variant = "button", className = "" }: PWAInst
           <div className="flex items-center gap-2">
             <Smartphone className="w-4 h-4 text-primary shrink-0" />
             <span>
-              <strong>Lijst van Andel App:</strong> Installeer voor snelle toegang en directe notificaties voor belafspraken.
+              <strong>Onafhankelijk Steenwijkerland (OSL) App:</strong> Installeer voor snelle toegang en directe notificaties voor belafspraken.
             </span>
           </div>
           <div className="flex items-center gap-2 shrink-0">

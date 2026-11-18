@@ -17,13 +17,26 @@ self.addEventListener("message", (event) => {
   }
 });
 
+// Clean up any legacy LvA caches on service worker activation
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches.keys().then((cacheNames) =>
+      Promise.all(
+        cacheNames
+          .filter((name) => name.toLowerCase().includes("lva"))
+          .map((name) => caches.delete(name))
+      )
+    )
+  );
+});
+
 // Web Push Notification Handler
 self.addEventListener("push", (event: PushEvent) => {
   let data = {
-    title: "Lijst van Andel",
+    title: "Onafhankelijk Steenwijkerland",
     body: "Nieuwe notificatie ontvangen",
     url: "/dashboard",
-    tag: "lva-belafspraak",
+    tag: "osl-belafspraak",
     icon: "/pwa-192x192.png",
     badge: "/pwa-192x192.png",
   };
@@ -43,7 +56,7 @@ self.addEventListener("push", (event: PushEvent) => {
     body: data.body,
     icon: data.icon || "/pwa-192x192.png",
     badge: data.badge || "/pwa-192x192.png",
-    tag: data.tag || "lva-belafspraak",
+    tag: data.tag || "osl-belafspraak",
     data: {
       url: data.url || "/dashboard",
       dateOfArrival: Date.now(),

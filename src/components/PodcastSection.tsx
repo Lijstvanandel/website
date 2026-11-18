@@ -233,10 +233,10 @@ export function PodcastSection() {
           Podcast & Audio
         </div>
         <h2 className="text-3xl md:text-4xl font-display text-zinc-950 dark:text-white mb-3">
-          Lijst van Andel Podcasts
+          Onafhankelijk Steenwijkerland Podcasts
         </h2>
         <p className="text-sm md:text-base text-muted-foreground max-w-2xl mx-auto">
-          Beluister gesprekken over actuele onderwerpen, interviews met inwoners en standpunten van Lijst van Andel in Steenwijkerland.
+          Beluister gesprekken over actuele onderwerpen, interviews met inwoners en standpunten van Onafhankelijk Steenwijkerland in Steenwijkerland.
         </p>
       </div>
 
@@ -280,7 +280,7 @@ export function PodcastSection() {
                   {activePodcast.title}
                 </h4>
                 <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
-                  <span>{activePodcast.author || "Lijst van Andel"}</span>
+                  <span>{activePodcast.author || "Onafhankelijk Steenwijkerland"}</span>
                   {activePodcast.wijkNaam && (
                     <span className="flex items-center gap-1 text-accent font-medium">
                       <MapPin className="w-3 h-3" /> {activePodcast.wijkNaam}
@@ -461,7 +461,7 @@ export function PodcastSection() {
                         })}
                       </span>
                       <span>•</span>
-                      <span>{podcast.author || "Lijst van Andel"}</span>
+                      <span>{podcast.author || "Onafhankelijk Steenwijkerland"}</span>
                     </div>
 
                     <h3 className="font-display text-lg text-foreground mb-2 leading-snug">

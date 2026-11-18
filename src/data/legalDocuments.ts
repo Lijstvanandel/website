@@ -22,27 +22,27 @@ export const LEGAL_DOCUMENTS: Record<string, LegalDocumentData> = {
     category: "Juridisch & Privacy",
     confidentiality: "Openbaar / Publiek",
     date: "2026-06-01",
-    author: "Bestuur Lijst van Andel Steenwijkerland",
+    author: "Bestuur Onafhankelijk Steenwijkerland",
     description: "Officieel privacybeleid en verantwoording conform de Algemene Verordening Gegevensbescherming (AVG / GDPR).",
-    fileUrl: "/uploads/documents/privacyverklaring_lijst_van_andel.pdf",
-    fileName: "privacyverklaring_lijst_van_andel.pdf",
+    fileUrl: "/uploads/documents/privacyverklaring_osl.pdf",
+    fileName: "privacyverklaring_osl.pdf",
     fileSize: "420 KB",
     pageCount: 4,
-    content: `# Privacyverklaring Lijst van Andel Steenwijkerland
+    content: `# Privacyverklaring Onafhankelijk Steenwijkerland
 
-*Vastgesteld door het Bestuur van Lijst van Andel*  
+*Vastgesteld door het Bestuur van Onafhankelijk Steenwijkerland*  
 *Status: Officieel AVG/GDPR Privacybeleid — Laatst bijgewerkt: 1 juni 2026*
 
-Lijst van Andel hecht de grootst mogelijke waarde aan het respecteren van uw privacy en de zorgvuldige, rechtmatige bescherming van uw persoonsgegevens. In deze privacyverklaring informeren wij u transparant over de wijze waarop wij met persoonsgegevens omgaan, voor welke doeleinden wij gegevens verwerken, hoe deze worden beveiligd en welke rechten u kunt uitoefenen.
+Onafhankelijk Steenwijkerland hecht de grootst mogelijke waarde aan het respecteren van uw privacy en de zorgvuldige, rechtmatige bescherming van uw persoonsgegevens. In deze privacyverklaring informeren wij u transparant over de wijze waarop wij met persoonsgegevens omgaan, voor welke doeleinden wij gegevens verwerken, hoe deze worden beveiligd en welke rechten u kunt uitoefenen.
 
 ---
 
 ### 1. Wie zijn wij? (Verwerkingsverantwoordelijke)
-De vereniging en politieke partij **Lijst van Andel**, actief in de gemeente Steenwijkerland, is de verwerkingsverantwoordelijke in de zin van de Algemene Verordening Gegevensbescherming (AVG).
+De vereniging en politieke partij **Onafhankelijk Steenwijkerland**, actief in de gemeente Steenwijkerland, is de verwerkingsverantwoordelijke in de zin van de Algemene Verordening Gegevensbescherming (AVG).
 
-- **Adres:** Vendelweg 1, 8331 XE Steenwijk (Fractiekamer Lijst van Andel)
-- **E-mailadres:** contact@lijstvanandel.nl / privacy@lijstvanandel.nl
-- **Website:** https://lijstvanandel.nl
+- **Adres:** Vendelweg 1, 8331 XE Steenwijk (Fractiekamer Onafhankelijk Steenwijkerland)
+- **E-mailadres:** contact@onafhankelijksteenwijkerland.nl / privacy@onafhankelijksteenwijkerland.nl
+- **Website:** https://onafhankelijksteenwijkerland.nl
 - **Kamer van Koophandel:** Ingeschreven in het verenigingenregister
 
 Voor privacygerelateerde vragen, inzageverzoeken of opmerkingen kunt u te allen tijde contact opnemen met onze secretaris of privacycoördinator.
@@ -52,7 +52,7 @@ Voor privacygerelateerde vragen, inzageverzoeken of opmerkingen kunt u te allen 
 ### 2. Welke persoonsgegevens verwerken wij en waarom?
 
 #### A. Ledenadministratie en Ledenportaal
-Wanneer u zich aanmeldt als lid van Lijst van Andel, verwerken wij:
+Wanneer u zich aanmeldt als lid van Onafhankelijk Steenwijkerland, verwerken wij:
 - Uw voor- en achternaam, aanhef en geslacht;
 - Uw adres, postcode en woonplaats (wijk of kern binnen Steenwijkerland);
 - Uw e-mailadres en telefoonnummer;
@@ -95,7 +95,7 @@ Onze website maakt uitsluitend gebruik van functionele en privacyvriendelijke an
 ---
 
 ### 3. Hoe beveiligen wij uw persoonsgegevens?
-Lijst van Andel hanteert strikte technische en organisatorische maatregelen om uw persoonsgegevens te beveiligen tegen verlies, misbruik of onbevoegde toegang:
+Onafhankelijk Steenwijkerland hanteert strikte technische en organisatorische maatregelen om uw persoonsgegevens te beveiligen tegen verlies, misbruik of onbevoegde toegang:
 - Alle dataverbindingen zijn versleuteld via moderne TLS 1.3 (HTTPS) protocollen.
 - Wachtwoorden worden cryptografisch gehasht en gezouten opgeslagen.
 - Toegang tot persoonsgegevens is strikt beperkt op basis van het *need-to-know* beginsel en Role-Based Access Control (RBAC).
@@ -114,7 +114,7 @@ Wij bewaren uw persoonsgegevens niet langer dan noodzakelijk voor de doeleinden 
 ---
 
 ### 5. Delen van gegevens met derden
-Lijst van Andel verkoopt of verhuurt uw gegevens **nooit** aan derden. Wij delen gegevens uitsluitend met betrouwbare verwerkers waarmee een AVG-verwerkersovereenkomst is afgesloten (zoals onze hostingprovider, e-maildienstverlener en betaalproviders), en uitsluitend voor zover noodzakelijk voor onze dienstverlening.
+Onafhankelijk Steenwijkerland verkoopt of verhuurt uw gegevens **nooit** aan derden. Wij delen gegevens uitsluitend met betrouwbare verwerkers waarmee een AVG-verwerkersovereenkomst is afgesloten (zoals onze hostingprovider, e-maildienstverlener en betaalproviders), en uitsluitend voor zover noodzakelijk voor onze dienstverlening.
 
 ---
 
@@ -127,7 +127,7 @@ Op grond van de Algemene Verordening Gegevensbescherming heeft u te allen tijde 
 5. **Recht op dataportabiliteit:** U kunt verzoeken uw gegevens in een gestructureerd en gangbaar machineleesbaar formaat te ontvangen.
 6. **Recht van bezwaar:** U kunt bezwaar maken tegen een gegevensverwerking op basis van ons gerechtvaardigd belang.
 
-U kunt uw verzoek indienen via **privacy@lijstvanandel.nl**. Wij reageren uiterlijk binnen vier weken op uw verzoek.
+U kunt uw verzoek indienen via **privacy@onafhankelijksteenwijkerland.nl**. Wij reageren uiterlijk binnen vier weken op uw verzoek.
 
 ---
 
@@ -137,7 +137,7 @@ Indien u van mening bent dat wij niet zorgvuldig omgaan met uw persoonsgegevens,
 ---
 
 ### 8. Wijzigingen in deze privacyverklaring
-Lijst van Andel behoudt zich het recht voor deze privacyverklaring aan te passen indien wetgeving of onze processen daartoe aanleiding geven. De meest recente versie is te allen tijde raadpleegbaar op onze website.`,
+Onafhankelijk Steenwijkerland behoudt zich het recht voor deze privacyverklaring aan te passen indien wetgeving of onze processen daartoe aanleiding geven. De meest recente versie is te allen tijde raadpleegbaar op onze website.`,
   },
 
   voorwaarden: {
@@ -147,39 +147,39 @@ Lijst van Andel behoudt zich het recht voor deze privacyverklaring aan te passen
     category: "Juridisch & Privacy",
     confidentiality: "Openbaar / Publiek",
     date: "2026-06-01",
-    author: "Bestuur Lijst van Andel Steenwijkerland",
-    description: "Voorwaarden betreffende lidmaatschap, donaties, evenementen en het gebruik van de digitale kanalen van Lijst van Andel.",
-    fileUrl: "/uploads/documents/algemene_voorwaarden_lijst_van_andel.pdf",
-    fileName: "algemene_voorwaarden_lijst_van_andel.pdf",
+    author: "Bestuur Onafhankelijk Steenwijkerland",
+    description: "Voorwaarden betreffende lidmaatschap, donaties, evenementen en het gebruik van de digitale kanalen van Onafhankelijk Steenwijkerland.",
+    fileUrl: "/uploads/documents/algemene_voorwaarden_osl.pdf",
+    fileName: "algemene_voorwaarden_osl.pdf",
     fileSize: "380 KB",
     pageCount: 3,
-    content: `# Algemene Voorwaarden Lijst van Andel Steenwijkerland
+    content: `# Algemene Voorwaarden Onafhankelijk Steenwijkerland
 
-*Vastgesteld door het Bestuur en de Algemene Ledenvergadering van Lijst van Andel*  
+*Vastgesteld door het Bestuur en de Algemene Ledenvergadering van Onafhankelijk Steenwijkerland*  
 *Versie: 2.1 — Laatst herzien: 1 juni 2026*
 
-Deze algemene voorwaarden zijn van toepassing op alle rechtsbetrekkingen tussen de politieke vereniging **Lijst van Andel** (gevestigd te Steenwijkerland) en haar leden, donateurs, vrijwilligers en bezoekers van haar websites en digitale portalen.
+Deze algemene voorwaarden zijn van toepassing op alle rechtsbetrekkingen tussen de politieke vereniging **Onafhankelijk Steenwijkerland** (gevestigd te Steenwijkerland) en haar leden, donateurs, vrijwilligers en bezoekers van haar websites en digitale portalen.
 
 ---
 
 ### Artikel 1: Begripsbepalingen
-1. **Lijst van Andel:** De politieke vereniging en raadsfractie Lijst van Andel in Steenwijkerland.
-2. **Lid:** De natuurlijke persoon die overeenkomstig de statuten is toegelaten als lid van Lijst van Andel.
-3. **Platform:** De officiële website (lijstvanandel.nl), het besloten Ledenportaal, de Progressive Web App (PWA) en daaraan gekoppelde digitale diensten.
+1. **Onafhankelijk Steenwijkerland:** De politieke vereniging en raadsfractie Onafhankelijk Steenwijkerland in Steenwijkerland.
+2. **Lid:** De natuurlijke persoon die overeenkomstig de statuten is toegelaten als lid van Onafhankelijk Steenwijkerland.
+3. **Platform:** De officiële website (onafhankelijksteenwijkerland.nl), het besloten Ledenportaal, de Progressive Web App (PWA) en daaraan gekoppelde digitale diensten.
 4. **Exclusieve Documenten:** Alle interne stukken, concept-verkiezingsprogramma's, fractiebijeenkomstverslagen en financiële kwartaalrapportages die uitsluitend toegankelijk zijn voor actieve leden.
 5. **ALV:** De Algemene Ledenvergadering van de vereniging.
 
 ---
 
 ### Artikel 2: Toepasselijkheid
-1. Deze voorwaarden zijn van toepassing op elk gebruik van het platform, elke aanmelding voor het lidmaatschap, elke donatie en elke deelname aan bijeenkomsten van Lijst van Andel.
+1. Deze voorwaarden zijn van toepassing op elk gebruik van het platform, elke aanmelding voor het lidmaatschap, elke donatie en elke deelname aan bijeenkomsten van Onafhankelijk Steenwijkerland.
 2. Afwijkingen van deze algemene voorwaarden zijn uitsluitend geldig indien deze uitdrukkelijk en schriftelijk door het partijbestuur zijn bevestigd.
 3. Door registratie als lid, het verrichten van een donatie of het inloggen op het ledenportaal stemt de gebruiker in met de toepasselijkheid van deze voorwaarden.
 
 ---
 
 ### Artikel 3: Lidmaatschap en Toelating
-1. Een ieder die de grondbeginselen, doelstellingen en lokale standpunten van Lijst van Andel onderschrijft, kan een aanvraag tot lidmaatschap indienen via het platform of het officiële aanmeldformulier.
+1. Een ieder die de grondbeginselen, doelstellingen en lokale standpunten van Onafhankelijk Steenwijkerland onderschrijft, kan een aanvraag tot lidmaatschap indienen via het platform of het officiële aanmeldformulier.
 2. Het lidmaatschap staat open voor natuurlijke personen vanaf 16 jaar. Stemgerechtigde leden op de Algemene Ledenvergadering dienen ten minste 18 jaar oud te zijn.
 3. Het lidmaatschap is strikt persoonlijk en niet overdraagbaar.
 4. Het bestuur beslist over de toelating van nieuwe leden. Bij afwijzing kan de betrokkene in beroep gaan bij de ALV.
@@ -195,7 +195,7 @@ Deze algemene voorwaarden zijn van toepassing op alle rechtsbetrekkingen tussen 
 ---
 
 ### Artikel 5: Donaties en Wet financiering politieke partijen (Wfpp)
-1. Financiële giften en donaties komen ten goede aan de partijactiviteiten, verkiezingscampagnes en fractieondersteuning van Lijst van Andel in Steenwijkerland.
+1. Financiële giften en donaties komen ten goede aan de partijactiviteiten, verkiezingscampagnes en fractieondersteuning van Onafhankelijk Steenwijkerland in Steenwijkerland.
 2. Alle donaties worden verwerkt in overeenstemming met de geldende *Wet financiering politieke partijen (Wfpp)*.
 3. Anonieme donaties boven het wettelijk toegestane maximum worden geweigerd of teruggestort. Donaties van meer dan € 4.500,- op jaarbasis worden met vermelding van naam en woonplaats openbaar gemaakt in het financieel jaarverslag conform wettelijk voorschrift.
 4. Donaties zijn definitief en worden niet gerestitueerd, behoudens aantoonbare technische storingen of administratieve vergissingen.
@@ -218,13 +218,13 @@ Deze algemene voorwaarden zijn van toepassing op alle rechtsbetrekkingen tussen 
 ---
 
 ### Artikel 8: Intellectueel Eigendom en Aansprakelijkheid
-1. Alle intellectuele eigendomsrechten op teksten, logo's, standpunten, datamodellen en media op de website en het ledenportaal berusten bij Lijst van Andel.
-2. Lijst van Andel spant zich in om correcte en actuele informatie te verstrekken, doch is niet aansprakelijk voor schade als gevolg van eventuele onjuistheden of tijdelijke technische onbeschikbaarheid van de servers.
+1. Alle intellectuele eigendomsrechten op teksten, logo's, standpunten, datamodellen en media op de website en het ledenportaal berusten bij Onafhankelijk Steenwijkerland.
+2. Onafhankelijk Steenwijkerland spant zich in om correcte en actuele informatie te verstrekken, doch is niet aansprakelijk voor schade als gevolg van eventuele onjuistheden of tijdelijke technische onbeschikbaarheid van de servers.
 
 ---
 
 ### Artikel 9: Toepasselijk Recht en Geschillen
-1. Op alle rechtsverhoudingen waarbij Lijst van Andel partij is, is uitsluitend **Nederlands recht** van toepassing.
+1. Op alle rechtsverhoudingen waarbij Onafhankelijk Steenwijkerland partij is, is uitsluitend **Nederlands recht** van toepassing.
 2. Geschillen die niet in onderling overleg kunnen worden opgelost, worden voorgelegd aan de bevoegde rechter in het arrondissement Overijssel.`,
   },
 
@@ -235,24 +235,24 @@ Deze algemene voorwaarden zijn van toepassing op alle rechtsbetrekkingen tussen 
     category: "Juridisch & Privacy",
     confidentiality: "Openbaar / Publiek",
     date: "2026-06-01",
-    author: "Bestuur & Privacycoördinator Lijst van Andel",
+    author: "Bestuur & Privacycoördinator Onafhankelijk Steenwijkerland",
     description: "Intern en extern reglement voor de rechtmatige verwerking en beveiliging van persoonsgegevens conform AVG en BIO.",
-    fileUrl: "/uploads/documents/verwerkingsreglement_lijst_van_andel.pdf",
-    fileName: "verwerkingsreglement_lijst_van_andel.pdf",
+    fileUrl: "/uploads/documents/verwerkingsreglement_osl.pdf",
+    fileName: "verwerkingsreglement_osl.pdf",
     fileSize: "450 KB",
     pageCount: 4,
-    content: `# Verwerkingsreglement Persoonsgegevens Lijst van Andel
+    content: `# Verwerkingsreglement Persoonsgegevens Onafhankelijk Steenwijkerland
 
-*Vastgesteld door het Bestuur van Lijst van Andel te Steenwijkerland*  
+*Vastgesteld door het Bestuur van Onafhankelijk Steenwijkerland te Steenwijkerland*  
 *Conform artikel 24, 30 en 32 van de Algemene Verordening Gegevensbescherming (AVG)*  
 *Laatste herziening: 1 juni 2026*
 
-Dit verwerkingsreglement legt de bindende interne en externe voorschriften vast voor de rechtmatige, transparante en veilige omgang met persoonsgegevens binnen de vereniging en de raadsfractie van Lijst van Andel.
+Dit verwerkingsreglement legt de bindende interne en externe voorschriften vast voor de rechtmatige, transparante en veilige omgang met persoonsgegevens binnen de vereniging en de raadsfractie van Onafhankelijk Steenwijkerland.
 
 ---
 
 ### 1. Doel en Reikwijdte
-1. Dit reglement is van toepassing op alle geautomatiseerde en niet-geautomatiseerde verwerkingen van persoonsgegevens die onder de verantwoordelijkheid van Lijst van Andel plaatsvinden.
+1. Dit reglement is van toepassing op alle geautomatiseerde en niet-geautomatiseerde verwerkingen van persoonsgegevens die onder de verantwoordelijkheid van Onafhankelijk Steenwijkerland plaatsvinden.
 2. Het reglement waarborgt dat gegevensverwerkingen plaatsvinden conform de eisen van de Algemene Verordening Gegevensbescherming (AVG), de Uitvoeringswet AVG (UAVG) en de van toepassing zijnde richtlijnen van de Baseline Informatiebeveiliging Overheid (BIO).
 
 ---
@@ -260,7 +260,7 @@ Dit verwerkingsreglement legt de bindende interne en externe voorschriften vast 
 ### 2. Verantwoordelijkheden en Rollen
 
 #### A. Het Partijbestuur
-Het bestuur van Lijst van Andel draagt de eindverantwoordelijkheid voor het privacy- en informatiebeveiligingsbeleid en zorgt voor de nodige technische en financiële middelen om veilige gegevensverwerking te borgen.
+Het bestuur van Onafhankelijk Steenwijkerland draagt de eindverantwoordelijkheid voor het privacy- en informatiebeveiligingsbeleid en zorgt voor de nodige technische en financiële middelen om veilige gegevensverwerking te borgen.
 
 #### B. De Secretaris / Privacycoördinator
 De secretaris is belast met de operationele coördinatie van privacyzaken:
@@ -278,7 +278,7 @@ Iedereen die uit hoofde van zijn of haar taak kennisneemt van persoonsgegevens i
 ---
 
 ### 3. Register van Verwerkingsactiviteiten (Art. 30 AVG)
-Lijst van Andel houdt een centraal verwerkingsregister bij waarin voor elke verwerking de volgende elementen worden vastgelegd:
+Onafhankelijk Steenwijkerland houdt een centraal verwerkingsregister bij waarin voor elke verwerking de volgende elementen worden vastgelegd:
 1. De doelen van de gegevensverwerking (ledenbeheer, nieuwsbrief, donaties, wijkvertegenwoordiging, belafspraken);
 2. De categorieën van betrokkenen en bijbehorende persoonsgegevens;
 3. De wettelijke grondslag voor de verwerking (toestemming, overeenkomst, wettelijke verplichting of gerechtvaardigd belang);
@@ -289,7 +289,7 @@ Lijst van Andel houdt een centraal verwerkingsregister bij waarin voor elke verw
 ---
 
 ### 4. Beveiligingsmaatregelen en Toegangscontrole
-Ter bescherming van persoonsgegevens hanteert Lijst van Andel de volgende strikte normen:
+Ter bescherming van persoonsgegevens hanteert Onafhankelijk Steenwijkerland de volgende strikte normen:
 1. **Rolgebaseerde Toegang (RBAC):** Toegang tot ledendata en interne stukken is uitsluitend voorbehouden aan geautoriseerde functionarissen op basis van gedefinieerde rollen (Admin, Secretaris, Penningmeester, Fractielid, Lid).
 2. **Versleuteling:** Alle gegevens tijdens transport (data-in-transit) zijn beveiligd met TLS 1.3 versleuteling. Gegevensopslag (data-at-rest) in de centrale database is versleuteld.
 3. **Wachtwoord- en 2FA-beleid:** Beheerdersaccounts zijn verplicht beveiligd met tweeledige authenticatie en sterke wachtwoordhashing.
@@ -308,14 +308,14 @@ Ter bescherming van persoonsgegevens hanteert Lijst van Andel de volgende strikt
 ---
 
 ### 6. Afhandeling van Verzoeken van Betrokkenen
-1. Betrokkenen kunnen hun rechten (inzage, rectificatie, verwijdering, bezwaar, beperking en gegevensoverdraagbaarheid) uitoefenen via **privacy@lijstvanandel.nl**.
+1. Betrokkenen kunnen hun rechten (inzage, rectificatie, verwijdering, bezwaar, beperking en gegevensoverdraagbaarheid) uitoefenen via **privacy@onafhankelijksteenwijkerland.nl**.
 2. Verzoeken worden binnen uiterlijk 30 kalenderdagen schriftelijk beantwoord door de secretaris.
 3. Bij twijfel over de identiteit van de verzoeker kan om nadere verificatie worden gevraagd ter bescherming van persoonsgegevens.
 
 ---
 
 ### 7. Verwerkersovereenkomsten met Leveranciers
-1. Met iedere externe leverancier die in opdracht van Lijst van Andel persoonsgegevens verwerkt (zoals IT-hostingbedrijven, administratiesoftware en nieuwsbriefplatformen), wordt vooraf een AVG-verwerkersovereenkomst gesloten.
+1. Met iedere externe leverancier die in opdracht van Onafhankelijk Steenwijkerland persoonsgegevens verwerkt (zoals IT-hostingbedrijven, administratiesoftware en nieuwsbriefplatformen), wordt vooraf een AVG-verwerkersovereenkomst gesloten.
 2. Daarin wordt contractueel vastgelegd dat gegevens uitsluitend binnen de Europese Economische Ruimte (EER) worden verwerkt en niet voor eigen doeleinden van de verwerker mogen worden aangewend.
 
 ---

@@ -21,10 +21,10 @@ export const DEFAULT_FRACTIELEDEN: DefaultFractielidData[] = [
     name: "Sammy van Andel",
     role: "Fractievoorzitter",
     type: "Raadslid",
-    bio: "Fractievoorzitter van Lijst van Andel in de gemeenteraad van Steenwijkerland. Zet zich met nuchter verstand in voor betaalbare starterswoningen, behoud van de dorpsvoorzieningen en lage lokale lasten.",
+    bio: "Fractievoorzitter van Onafhankelijk Steenwijkerland (OSL) in de gemeenteraad van Steenwijkerland. Zet zich met nuchter verstand in voor betaalbare starterswoningen, behoud van de dorpsvoorzieningen en lage lokale lasten.",
     imgUrl: "/assets/sammy.webp",
     cutoutImageUrl: "/assets/sammy.png",
-    email: "fractie@lijstvanandel.nl",
+    email: "fractie@onafhankelijksteenwijkerland.nl",
     speerpunten: [
       "Voorrang voor eigen inwoners bij woningtoewijzing",
       "Behoud van leefbaarheid en scholen in de dorpen",
@@ -39,10 +39,10 @@ export const DEFAULT_FRACTIELEDEN: DefaultFractielidData[] = [
     name: "Lisa Mars",
     role: "Raadslid",
     type: "Raadslid",
-    bio: "Raadslid voor Lijst van Andel in Steenwijkerland. Toegewijd aan zorg dichtbij, sterke jeugdhulp, kwalitatief onderwijs en een menselijke maat in het sociaal domein.",
+    bio: "Raadslid voor Onafhankelijk Steenwijkerland (OSL) in Steenwijkerland. Toegewijd aan zorg dichtbij, sterke jeugdhulp, kwalitatief onderwijs en een menselijke maat in het sociaal domein.",
     imgUrl: "/assets/lisa.webp",
     cutoutImageUrl: "/assets/lisa.png",
-    email: "lisa@lijstvanandel.nl",
+    email: "lisa@onafhankelijksteenwijkerland.nl",
     speerpunten: [
       "Zorg en ondersteuning dichtbij de inwoner",
       "Behoud van buurthuizen en ontmoetingsplekken",
@@ -54,7 +54,7 @@ export const DEFAULT_FRACTIELEDEN: DefaultFractielidData[] = [
     name: "Nathan ten Wolde",
     role: "Burgerraadslid",
     type: "Burgerraadslid",
-    bio: "Burgerraadslid voor Lijst van Andel in Steenwijkerland met focus op financiën, economie, ondernemersruimte en lokale werkgelegenheid.",
+    bio: "Burgerraadslid voor Onafhankelijk Steenwijkerland (OSL) in Steenwijkerland met focus op financiën, economie, ondernemersruimte en lokale werkgelegenheid.",
     imgUrl: "/assets/nathan.webp",
     cutoutImageUrl: "/assets/nathan.png",
     speerpunten: [
@@ -67,7 +67,7 @@ export const DEFAULT_FRACTIELEDEN: DefaultFractielidData[] = [
     name: "Chris van Andel",
     role: "Burgerraadslid",
     type: "Burgerraadslid",
-    bio: "Burgerraadslid voor Lijst van Andel in Steenwijkerland met focus op leefomgeving, agrarische sector, waterbeheer en buitengebied.",
+    bio: "Burgerraadslid voor Onafhankelijk Steenwijkerland (OSL) in Steenwijkerland met focus op leefomgeving, agrarische sector, waterbeheer en buitengebied.",
     imgUrl: "/assets/chris.webp",
     cutoutImageUrl: "/assets/silhouette.png",
     speerpunten: [

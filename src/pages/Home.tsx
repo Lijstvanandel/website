@@ -257,7 +257,7 @@ const Home = () => {
               <h1 className="font-display text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl leading-[0.93] tracking-tight">
                 <span className="block">Meer inspraak</span>
                 <span className="block text-gradient-gold">Meer vrijheid</span>
-                <span className="block text-primary">Lijst van Andel</span>
+                <span className="block text-primary">Onafhankelijk Steenwijkerland</span>
               </h1>
               <p className="text-sm sm:text-base md:text-lg text-foreground/85 max-w-xl leading-relaxed">
                 Met twee raadszetels zetten Sammy van Andel en Lisa Mars zich in voor een gemeente waar lokale binding

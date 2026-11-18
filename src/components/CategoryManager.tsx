@@ -23,8 +23,8 @@ interface CategoryManagerProps {
 }
 
 const COLOR_PRESETS = [
-  { label: "Goud (Partij)", hex: "#c6a858" },
-  { label: "Donkergroen", hex: "#2d6a4f" },
+  { label: "Helder Amber (Partij)", hex: "#EAB308" },
+  { label: "Diep Woudgroen", hex: "#143627" },
   { label: "Bosgroen", hex: "#40916c" },
   { label: "Steenblauw", hex: "#3d5a80" },
   { label: "Warm Terra", hex: "#d4a373" },
@@ -60,7 +60,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
-  const [color, setColor] = useState("#c6a858");
+  const [color, setColor] = useState("#EAB308");
   const [submitting, setSubmitting] = useState(false);
 
   // Edit state
@@ -68,7 +68,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({
   const [editName, setEditName] = useState("");
   const [editSlug, setEditSlug] = useState("");
   const [editDescription, setEditDescription] = useState("");
-  const [editColor, setEditColor] = useState("#c6a858");
+  const [editColor, setEditColor] = useState("#EAB308");
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -133,7 +133,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({
         setName("");
         setSlug("");
         setDescription("");
-        setColor("#c6a858");
+        setColor("#EAB308");
         await fetchCategories();
       } else {
         const err = await res.json().catch(() => ({}));
@@ -151,7 +151,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({
     setEditName(cat.name);
     setEditSlug(cat.slug);
     setEditDescription(cat.description || "");
-    setEditColor(cat.color || "#c6a858");
+    setEditColor(cat.color || "#EAB308");
   };
 
   const cancelEditing = () => {
@@ -294,7 +294,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({
                 type="text"
                 value={color}
                 onChange={(e) => setColor(e.target.value)}
-                placeholder="#c6a858"
+                placeholder="#EAB308"
                 className="text-xs font-mono h-8 bg-background"
               />
             </div>
@@ -433,7 +433,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({
                     <div className="flex items-start gap-3 min-w-0">
                       <span
                         className="w-3.5 h-3.5 rounded-full shrink-0 mt-1"
-                        style={{ backgroundColor: cat.color || "#c6a858" }}
+                        style={{ backgroundColor: cat.color || "#EAB308" }}
                       />
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">

@@ -108,14 +108,14 @@ export async function scanTopicDocumentsAndMatchStandpunten(
         )
         .join("\n");
 
-      const prompt = `Je bent de politiek strateeg en fractiespecialist van 'Lijst van Andel', een lokale politieke partij in de gemeenteraad van Steenwijkerland.
+      const prompt = `Je bent de politiek strateeg en fractiespecialist van 'Onafhankelijk Steenwijkerland (OSL)', een lokale politieke partij in de gemeenteraad van Steenwijkerland.
 
 OPDRACHT:
-1. Voer een INTEGRALE, ZEER KRITISCHE EN SECURE politieke analyse uit over het onderstaande raadsonderwerp en ALLE bijbehorende officiële raadsstukken en bijlagen. Koppel op basis van de inhoud van de stukken de relevante standpunten uit het verkiezingsprogramma van Lijst van Andel (10 hoofdstukken, 136 standpunten).
+1. Voer een INTEGRALE, ZEER KRITISCHE EN SECURE politieke analyse uit over het onderstaande raadsonderwerp en ALLE bijbehorende officiële raadsstukken en bijlagen. Koppel op basis van de inhoud van de stukken de relevante standpunten uit het verkiezingsprogramma van Onafhankelijk Steenwijkerland (10 hoofdstukken, 136 standpunten).
 2. Analyseer daarnaast voor ELK van de 8 andere raadsfracties (BGL, CDA, D66, CPB, VVD, CU, STEM, PRO) hoe zij op basis van hun officiële verkiezingsprogramma 2026-2030 tegenover dit onderwerp staan. Gebruik UITSLUITEND de hieronder aangeleverde passages uit hun verkiezingsprogramma's (kies per partij het best passende 'matchedPassageId', of zet 'stance' op "geen_standpunt" als het programma van die partij niets specifieks over dit onderwerp zegt. Verzin NOOIT zelf citaten!).
 
 CRUCIALE ANALYTISCHE DIRECTIEVEN:
-1. MEERDERE STANDPUNTEN LIJST VAN ANDEL VEREIST (GEMIDDELD 3 TOT 7 PER VOORSTEL):
+1. MEERDERE STANDPUNTEN ONAFHANKELIJK STEENWIJKERLAND (OSL) VEREIST (GEMIDDELD 3 TOT 7 PER VOORSTEL):
    - Beperk je NOOIT tot slechts 1 standpunt. Raadsvoorstellen hebben altijd meerdere dimensies en effecten.
    - Toets zowel op het DIRECTE hoofdonderwerp (bijv. Wonen, Verkeer, Zorg/WMO, Veiligheid, Natuur, Economie, Cultuur) als op KRUISVERBANDEN & RANDVOORWAARDEN.
 2. BRONVERMELDING & FEITELIJKE CITATEN:
@@ -136,7 +136,7 @@ GEGEVENS AGENDAPUNT:
 GESCANDE VERGADERSTUKKEN EN BIJLAGEN:
 ${docsFormatted.length > 0 ? docsFormatted : "(Geen documenttekst beschikbaar, beoordeel op basis van titel en context)"}
 
-OFFICIEEL VERKIEZINGSPROGRAMMA LIJST VAN ANDEL (10 HOOFDSTUKKEN):
+OFFICIEEL VERKIEZINGSPROGRAMMA ONAFHANKELIJK STEENWIJKERLAND (OSL - 10 HOOFDSTUKKEN):
 ${getProgrammaContext()}
 
 OFFICIËLE VERKIEZINGSPROGRAMMA'S 2026-2030 VAN DE 8 ANDERE RAADSPARTIJEN:
@@ -145,14 +145,14 @@ ${getOtherPartiesManifestoPromptContext()}
 ANTWOORD UITSLUITEND IN DIT VALIDE JSON FORMAAT (GEEN MARKDOWN BACKTICKS OF UITLEG):
 {
   "primaryStance": "positief" | "negatief" | "gemengd" | "neutraal",
-  "summaryText": "Beknopte politieke fractielijn (2-3 zinnen) voor dit raadsvoorstel vanuit Lijst van Andel.",
+  "summaryText": "Beknopte politieke fractielijn (2-3 zinnen) voor dit raadsvoorstel vanuit Onafhankelijk Steenwijkerland.",
   "standpunten": [
     {
       "hoofdstukNr": 1-10,
       "standpuntNr": 1-20,
       "standpuntTitel": "Exacte titel van het standpunt",
       "stance": "positief" | "negatief" | "genuanceerd",
-      "explanation": "Waarom Lijst van Andel deze positie inneemt op basis van de feiten in de gescande stukken.",
+      "explanation": "Waarom Onafhankelijk Steenwijkerland deze positie inneemt op basis van de feiten in de gescande stukken.",
       "relevanceScore": 65-100,
       "sourceDocumentTitles": ["Exacte titel van het document waarin dit naar voren komt"],
       "citedPassage": "Letterlijk citaat of feitelijke passage uit de gescande stukken",
@@ -243,7 +243,7 @@ ANTWOORD UITSLUITEND IN DIT VALIDE JSON FORMAAT (GEEN MARKDOWN BACKTICKS OF UITL
             primaryStance: stance,
             summaryText:
               parsed.summaryText ||
-              `Lijst van Andel heeft ${aiMatched.length} relevante partijstandpunten gekoppeld na het doorscannen van de raadsstukken.`,
+              `Onafhankelijk Steenwijkerland heeft ${aiMatched.length} relevante partijstandpunten gekoppeld na het doorscannen van de raadsstukken.`,
             keyArguments: aiMatched.map((m) => m.explanation),
           };
 
@@ -336,10 +336,10 @@ ANTWOORD UITSLUITEND IN DIT VALIDE JSON FORMAAT (GEEN MARKDOWN BACKTICKS OF UITL
   if (finalMatched.length > 0) {
     if (negatiefCount > 0 && positiefCount === 0) {
       primaryStance = "negatief";
-      summaryText = `Lijst van Andel staat KRITISCH / NEGATIEF t.a.v. dit onderwerp (${negatiefCount} ${negatiefCount === 1 ? "standpunt" : "standpunten"}).`;
+      summaryText = `Onafhankelijk Steenwijkerland staat KRITISCH / NEGATIEF t.a.v. dit onderwerp (${negatiefCount} ${negatiefCount === 1 ? "standpunt" : "standpunten"}).`;
     } else if (positiefCount > 0 && negatiefCount === 0) {
       primaryStance = "positief";
-      summaryText = `Lijst van Andel staat POSITIEF / VOOR t.a.v. dit onderwerp (${positiefCount} ${positiefCount === 1 ? "standpunt" : "standpunten"}).`;
+      summaryText = `Onafhankelijk Steenwijkerland staat POSITIEF / VOOR t.a.v. dit onderwerp (${positiefCount} ${positiefCount === 1 ? "standpunt" : "standpunten"}).`;
     } else if (positiefCount > 0 && negatiefCount > 0) {
       primaryStance = "gemengd";
       summaryText = `Gemengde stellingname: ${positiefCount} positief, ${negatiefCount} kritisch/negatief.`;

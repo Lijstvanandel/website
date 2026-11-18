@@ -69,7 +69,7 @@ export const HeroBuurtkaart: React.FC<HeroBuurtkaartProps> = ({ onWijkHover }) =
               preserveAspectRatio="xMidYMid meet"
               aria-label="Overzichtskaart van de wijken en dorpen in Gemeente Steenwijkerland"
             >
-              <title>Buurtkaart Gemeente Steenwijkerland - Lijst van Andel</title>
+              <title>Buurtkaart Gemeente Steenwijkerland - Onafhankelijk Steenwijkerland</title>
               <desc>
                 Kaart met alle 43 wijken en kernen van Steenwijkerland: Steenwijk, Blokzijl, Giethoorn, Vollenhove,
                 Oldemarkt, Tuk, Willemsoord, Kuinre, Wanneperveen, Sint Jansklooster en omgeving.
@@ -96,11 +96,11 @@ export const HeroBuurtkaart: React.FC<HeroBuurtkaartProps> = ({ onWijkHover }) =
                       key={buurt.id}
                       id={`wijk-${buurt.id}`}
                       d={buurt.d}
-                      stroke="#D4AF37"
+                      stroke="#EAB308"
                       strokeWidth={isCurrentHover ? 3 : buurt.weight}
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      fill="#D4AF37"
+                      fill="#EAB308"
                       fillOpacity={isCurrentHover ? 0.45 : buurt.opacity}
                       fillRule="evenodd"
                       className="leaflet-interactive transition-all duration-200 cursor-pointer"

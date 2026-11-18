@@ -316,7 +316,7 @@ const StandpuntCard = ({ hNr, s, dynamicVideos, fractieleden, newsItems, isSelec
                           const fl = v.fractieledenIds && v.fractieledenIds.length > 0
                             ? fractieleden.find((f) => String(f.id) === String(v.fractieledenIds[0]))
                             : null;
-                          const speakerName = fl?.name || "Lijst van Andel";
+                          const speakerName = fl?.name || "Onafhankelijk Steenwijkerland";
                           let cleanT = (v.title || "").trim();
                           const nameOverRegex = new RegExp(`^${speakerName}\\s+over\\s+`, "i");
                           cleanT = cleanT.replace(nameOverRegex, "");

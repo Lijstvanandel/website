@@ -477,7 +477,7 @@ export function SecretaryManager({
   // Handle Daily Board
   const handleOpenEditDailyBoard = () => {
     setDailyBoardForm(dailyBoard || {
-      partyName: "Lijst van Andel",
+      partyName: "Onafhankelijk Steenwijkerland",
       boardTitle: "Bestuur",
       boardSubtitle: "Statutaire taakverdeling en wisselwerking binnen het dagelijks bestuur conform verenigingsrecht en de WBTR.",
       status: "Bestuur Compleet & Operationeel",
@@ -568,7 +568,7 @@ export function SecretaryManager({
     setComplianceForm({
       kvk: {
         kvkNumber: compliance.kvk?.kvkNumber || "08194821",
-        associationName: compliance.kvk?.associationName || "Lijst van Andel",
+        associationName: compliance.kvk?.associationName || "Onafhankelijk Steenwijkerland",
         statutorySeat: compliance.kvk?.statutorySeat || "Steenwijkerland",
         lastMutationDate: compliance.kvk?.lastMutationDate || "2026-04-10",
         status: compliance.kvk?.status || "Actueel",
@@ -790,7 +790,7 @@ export function SecretaryManager({
               Secretarispaneel — Organisatie, Governance & Aanspreekpunt
             </h1>
             <p className="text-slate-300 text-sm md:text-base leading-relaxed">
-              Als secretaris vervul je de spilfunctie binnen Lijst van Andel Steenwijkerland. Je bewaakt de
+              Als secretaris vervul je de spilfunctie binnen Onafhankelijk Steenwijkerland. Je bewaakt de
               verenigingsdemocratie (ALV), de bestuurlijke 1-jaarcyclus, alle wettelijke compliance (KvK, WBTR, UBO,
               AVG), het partijarchief en de correspondentie met inwoners en leden.
             </p>
@@ -1927,7 +1927,7 @@ export function SecretaryManager({
                       <span className="text-muted-foreground">E-mailadres:</span>
                       <p className="font-bold text-foreground">
                         <a
-                          href={`mailto:${selectedMessage.email}?subject=Reactie Lijst van Andel: ${encodeURIComponent(
+                          href={`mailto:${selectedMessage.email}?subject=Reactie Onafhankelijk Steenwijkerland: ${encodeURIComponent(
                             selectedMessage.subject || ""
                           )}`}
                           className="text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
@@ -1992,7 +1992,7 @@ export function SecretaryManager({
                   {/* Quick Action Buttons */}
                   <div className="flex flex-wrap gap-2 pt-2 border-t border-border/80">
                     <a
-                      href={`mailto:${selectedMessage.email}?subject=Reactie Lijst van Andel: ${encodeURIComponent(
+                      href={`mailto:${selectedMessage.email}?subject=Reactie Onafhankelijk Steenwijkerland: ${encodeURIComponent(
                         selectedMessage.subject || "Uw bericht"
                       )}`}
                       className="inline-flex items-center px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"

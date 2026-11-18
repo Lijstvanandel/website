@@ -73,7 +73,11 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
 
   const [dossiers, setDossiers] = useState<Dossier[]>(() => {
     try {
-      const cached = safeSessionStorage.getItem(`lva_cached_dossiers_${effectiveMuni}`) || safeLocalStorage.getItem(`lva_cached_dossiers_${effectiveMuni}`);
+      const cached =
+        safeSessionStorage.getItem(`osl_cached_dossiers_${effectiveMuni}`) ||
+        safeLocalStorage.getItem(`osl_cached_dossiers_${effectiveMuni}`) ||
+        safeSessionStorage.getItem(`lva_cached_dossiers_${effectiveMuni}`) ||
+        safeLocalStorage.getItem(`lva_cached_dossiers_${effectiveMuni}`);
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
@@ -111,7 +115,11 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
     };
   }>(() => {
     try {
-      const cached = safeLocalStorage.getItem(`lva_dossier_stats_${effectiveMuni}`) || safeSessionStorage.getItem(`lva_dossier_stats_${effectiveMuni}`);
+      const cached =
+        safeLocalStorage.getItem(`osl_dossier_stats_${effectiveMuni}`) ||
+        safeSessionStorage.getItem(`osl_dossier_stats_${effectiveMuni}`) ||
+        safeLocalStorage.getItem(`lva_dossier_stats_${effectiveMuni}`) ||
+        safeSessionStorage.getItem(`lva_dossier_stats_${effectiveMuni}`);
       if (cached) {
         const parsed = JSON.parse(cached);
         if (parsed && typeof parsed.totalDossiers === "number" && parsed.totalDossiers > 0) return parsed;
@@ -222,14 +230,14 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
       if (data.stats) {
         setStats(data.stats);
         try {
-          safeLocalStorage.setItem(`lva_dossier_stats_${effectiveMuni}`, JSON.stringify(data.stats));
+          safeLocalStorage.setItem(`osl_dossier_stats_${effectiveMuni}`, JSON.stringify(data.stats));
         } catch {
           // ignore storage error
         }
       }
       try {
         if (received.length > 0) {
-          safeSessionStorage.setItem(`lva_cached_dossiers_${effectiveMuni}`, JSON.stringify(received));
+          safeSessionStorage.setItem(`osl_cached_dossiers_${effectiveMuni}`, JSON.stringify(received));
         }
       } catch {
         // ignore storage error
@@ -239,8 +247,12 @@ export const DossierOverview: React.FC<DossierOverviewProps> = ({
       console.error(err);
       // Seamless fallback to cached data so numbers never revert to 0
       try {
-        const cached = safeSessionStorage.getItem(`lva_cached_dossiers_${effectiveMuni}`);
-        const cachedStats = safeLocalStorage.getItem(`lva_dossier_stats_${effectiveMuni}`);
+        const cached =
+          safeSessionStorage.getItem(`osl_cached_dossiers_${effectiveMuni}`) ||
+          safeSessionStorage.getItem(`lva_cached_dossiers_${effectiveMuni}`);
+        const cachedStats =
+          safeLocalStorage.getItem(`osl_dossier_stats_${effectiveMuni}`) ||
+          safeLocalStorage.getItem(`lva_dossier_stats_${effectiveMuni}`);
         if (cached) {
           const parsed = JSON.parse(cached);
           if (Array.isArray(parsed) && parsed.length > 0 && dossiers.length === 0) {

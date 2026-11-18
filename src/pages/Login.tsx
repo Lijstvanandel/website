@@ -217,7 +217,7 @@ export default function Login() {
           Inloggen Ledenportaal
         </h1>
         <p className="text-foreground/80 max-w-lg mx-auto text-base">
-          Welkom terug bij Lijst van Andel. Log in met uw account om toegang te krijgen tot uw persoonlijke omgeving.
+          Welkom terug bij Onafhankelijk Steenwijkerland. Log in met uw account om toegang te krijgen tot uw persoonlijke omgeving.
         </p>
       </div>
 
@@ -383,7 +383,7 @@ export default function Login() {
 
             <p className="text-sm text-foreground/80 mb-5 leading-relaxed">
               {loginSettings.sectionSubtitle ||
-                "Als lid van Lijst van Andel staat u dicht bij de lokale politiek van Steenwijkerland en bouwt u actief mee aan een betrokken en sterke gemeenschap."}
+                "Als lid van Onafhankelijk Steenwijkerland staat u dicht bij de lokale politiek van Steenwijkerland en bouwt u actief mee aan een betrokken en sterke gemeenschap."}
             </p>
 
             {/* Automatisch scrollend carrousel van voordelen */}

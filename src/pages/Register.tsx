@@ -197,12 +197,12 @@ export default function Register() {
           amount: 12.0,
           currency: "eur",
           interval: "year",
-          productName: "Lidmaatschap Lijst van Andel (1 jaar)",
+          productName: "Lidmaatschap Onafhankelijk Steenwijkerland (1 jaar)",
           description: "Jaarlijkse contributie voor partijleden",
           requirePaymentAtRegistration: true,
           isStripeConfigured: false,
           bankIban: "NL91 RBRB 0823 4192 11",
-          bankAccountName: "Lijst van Andel",
+          bankAccountName: "Onafhankelijk Steenwijkerland",
           manualPaymentAmount: 25.0,
           popupEnabled: true,
           popupDelaySeconds: 90,
@@ -461,7 +461,7 @@ export default function Register() {
                 <h2 className="text-3xl font-display font-bold text-foreground">Hartelijk welkom als lid!</h2>
                 <p className="text-muted-foreground mt-2 max-w-md mx-auto">
                   Uw lidmaatschapscontributie van €
-                  {membershipConfig ? membershipConfig.amount.toFixed(2) : "12.00"} voor Lijst van Andel is succesvol voldaan.
+                  {membershipConfig ? membershipConfig.amount.toFixed(2) : "12.00"} voor Onafhankelijk Steenwijkerland is succesvol voldaan.
                 </p>
               </div>
 
@@ -528,7 +528,7 @@ export default function Register() {
           Word lid
         </h1>
         <p className="text-foreground/80">
-          Registreer u bij Lijst van Andel en steun onze lokale beweging
+          Registreer u bij Onafhankelijk Steenwijkerland en steun onze lokale beweging
         </p>
       </div>
 
@@ -882,7 +882,7 @@ export default function Register() {
                   </FormControl>
                   <div className="space-y-1 leading-none">
                     <FormLabel className="cursor-pointer font-medium text-foreground">
-                      Ontvang de periodieke Lijst van Andel Nieuwsbrief
+                      Ontvang de periodieke Onafhankelijk Steenwijkerland (OSL) Nieuwsbrief
                     </FormLabel>
                     <FormDescription>
                       Blijf op de hoogte van actuele standpunten, fractieverslagen en bijeenkomsten in Steenwijkerland.
@@ -959,7 +959,7 @@ export default function Register() {
             </div>
 
             <div className="mt-4 text-center text-xs text-muted-foreground">
-              Al lid van Lijst van Andel?{" "}
+              Al lid van Onafhankelijk Steenwijkerland?{" "}
               <Link
                 to={redirectUrl ? `/login?redirect=${encodeURIComponent(redirectUrl)}` : "/login"}
                 className="text-primary hover:underline font-semibold"

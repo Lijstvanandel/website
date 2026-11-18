@@ -370,7 +370,7 @@ export async function classificeerProvinciaalDocument(
     };
   }
 
-  const prompt = `Je bent een strenge data-classificeerder voor de lokale politieke partij 'Lijst van Andel' in Steenwijkerland.
+  const prompt = `Je bent een strenge data-classificeerder voor de lokale politieke partij 'Onafhankelijk Steenwijkerland (OSL)' in Steenwijkerland.
 Analyseer deze inleiding/samenvatting van een provinciaal document uit Overijssel:
 Titel: "${notubizItem.title}"
 

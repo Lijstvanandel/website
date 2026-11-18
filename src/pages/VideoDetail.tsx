@@ -160,14 +160,14 @@ export default function VideoDetail() {
       currentVideo.fractieledenIds && currentVideo.fractieledenIds.length > 0
         ? fractieleden.find((m) => String(m.id).toLowerCase() === String(currentVideo.fractieledenIds![0]).toLowerCase())
         : null;
-    const spName = matchedSpeaker?.name || "Lijst van Andel";
+    const spName = matchedSpeaker?.name || "Onafhankelijk Steenwijkerland";
     let cleanTitle = (currentVideo.burgerraadslidTitle || currentVideo.title || "").trim();
     cleanTitle = cleanTitle.replace(new RegExp(`^${spName}\\s+over\\s+`, "i"), "");
     cleanTitle = cleanTitle.replace(/^(?:videobijdrage|video bijdrage|videobijdragen|video-bijdrage|tussenkomst|bijdrage|inbreng|toelichting)\s*(?:over\s*)?/i, "");
     cleanTitle = cleanTitle.replace(/^['"‘“](.*)['"’”]$/, "$1").trim() || "het raadsvoorstel";
     const formatted = `${spName} over ‘${cleanTitle}’`;
 
-    document.title = `${formatted} | Lijst van Andel`;
+    document.title = `${formatted} | Onafhankelijk Steenwijkerland`;
 
     const fullDesc = (currentVideo.description || "").trim();
     const shortDesc =
@@ -214,12 +214,14 @@ export default function VideoDetail() {
         "name": spName,
         "affiliation": {
           "@type": "PoliticalParty",
-          "name": "Lijst van Andel",
+          "name": "Onafhankelijk Steenwijkerland",
+          "alternateName": ["OSL", "Onafhankelijk Steenwijkerland", "voorheen Lijst van Andel"],
         },
       },
       "publisher": {
         "@type": "PoliticalParty",
-        "name": "Lijst van Andel",
+        "name": "Onafhankelijk Steenwijkerland",
+        "alternateName": ["OSL", "Onafhankelijk Steenwijkerland", "voorheen Lijst van Andel"],
         "url": origin,
       },
       "contentLocation": {
@@ -361,7 +363,7 @@ export default function VideoDetail() {
     );
   }
 
-  const speakerName = speaker?.name || "Lijst van Andel";
+  const speakerName = speaker?.name || "Onafhankelijk Steenwijkerland";
   let cleanVideoTitle = (currentVideo.burgerraadslidTitle || currentVideo.title || "").trim();
   const nameOverRegex = new RegExp(`^${speakerName}\\s+over\\s+`, "i");
   cleanVideoTitle = cleanVideoTitle.replace(nameOverRegex, "");
@@ -562,7 +564,7 @@ export default function VideoDetail() {
                         {isBurger ? "Burgerraadslid" : (speaker.role || "Gemeenteraadslid")}
                       </span>
                       <span>•</span>
-                      <span>Lijst van Andel Steenwijkerland</span>
+                      <span>Onafhankelijk Steenwijkerland (OSL)</span>
                     </p>
                   </div>
                 </div>
@@ -719,7 +721,7 @@ export default function VideoDetail() {
                 >
                   {visibleCarouselVideos.map((v) => {
                     const vSpeaker = getSpeakerForVideo(v);
-                    const vSpeakerName = vSpeaker?.name || "Lijst van Andel";
+                    const vSpeakerName = vSpeaker?.name || "Onafhankelijk Steenwijkerland";
                     let cleanVTitle = (v.burgerraadslidTitle || v.title || "").trim();
                     const nameOverRegex = new RegExp(`^${vSpeakerName}\\s+over\\s+`, "i");
                     cleanVTitle = cleanVTitle.replace(nameOverRegex, "");
@@ -830,8 +832,8 @@ export default function VideoDetail() {
       <ShareDialog
         open={shareDialogOpen}
         onOpenChange={setShareDialogOpen}
-        title={`${displayTitle} | Lijst van Andel`}
-        description={currentVideo.description || `Bekijk hoe ${speaker?.name || "Lijst van Andel"} spreekt over ‘${cleanVideoTitle}’ in de gemeenteraad van Steenwijkerland.`}
+        title={`${displayTitle} | Onafhankelijk Steenwijkerland`}
+        description={currentVideo.description || `Bekijk hoe ${speaker?.name || "Onafhankelijk Steenwijkerland"} spreekt over ‘${cleanVideoTitle}’ in de gemeenteraad van Steenwijkerland.`}
         url={shareUrl}
         imageUrl={effectivePoster}
       />

@@ -307,10 +307,10 @@ const Contact = () => {
                     E-mailadres
                   </div>
                   <a
-                    href="mailto:info@lijstvanandel.nl"
+                    href="mailto:info@onafhankelijksteenwijkerland.nl"
                     className="text-sm text-foreground/85 font-medium hover:text-accent transition-colors"
                   >
-                    info@lijstvanandel.nl
+                    info@onafhankelijksteenwijkerland.nl
                   </a>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     Reactie doorgaans binnen 1 tot 2 werkdagen

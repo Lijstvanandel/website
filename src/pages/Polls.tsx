@@ -401,7 +401,7 @@ export default function Polls() {
               <Sparkles className="w-3.5 h-3.5 text-accent" /> Waarom deze stellingen?
             </p>
             <p>
-              Als betalend partijlid heeft u direct invloed op het standpunt van Lijst van Andel in de gemeenteraad van Steenwijkerland.
+              Als betalend partijlid heeft u direct invloed op het standpunt van Onafhankelijk Steenwijkerland in de gemeenteraad van Steenwijkerland.
             </p>
           </div>
 
@@ -536,7 +536,7 @@ export default function Polls() {
               "{activeQrLocation.stickerText}"
             </p>
             <span className="inline-block mt-1 text-[11px] text-muted-foreground">
-              Anonieme peiling voor fractie Lijst van Andel
+              Anonieme peiling voor fractie Onafhankelijk Steenwijkerland (OSL)
             </span>
           </div>
         )}

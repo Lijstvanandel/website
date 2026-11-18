@@ -110,9 +110,9 @@ export function useChromecast(): UseChromecastReturn {
 
             const mediaInfo = new window.chrome.cast.media.MediaInfo(fullUrl, "audio/mp3");
             mediaInfo.metadata = new window.chrome.cast.media.MusicTrackMediaMetadata();
-            mediaInfo.metadata.title = mediaTitle || "Lijst van Andel Podcast";
-            mediaInfo.metadata.artist = "Lijst van Andel • Lokale Politiek Steenwijkerland";
-            mediaInfo.metadata.albumName = "Lijst van Andel Podcast";
+            mediaInfo.metadata.title = mediaTitle || "Onafhankelijk Steenwijkerland Podcast";
+            mediaInfo.metadata.artist = "Onafhankelijk Steenwijkerland (OSL) • Lokale Politiek Steenwijkerland";
+            mediaInfo.metadata.albumName = "Onafhankelijk Steenwijkerland Podcast";
             mediaInfo.metadata.images = [
               { url: `${window.location.origin}/apple-touch-icon.png` },
             ];

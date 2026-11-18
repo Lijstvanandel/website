@@ -88,7 +88,7 @@ const DEFAULT_DOSSIERS = [
 ];
 
 const DEFAULT_CIJFERS = [
-  { label: "Woningmarkt", waarde: "Lokale voorrang", gemeente: "Speerpunt", nederland: "Lijst van Andel" },
+  { label: "Woningmarkt", waarde: "Lokale voorrang", gemeente: "Speerpunt", nederland: "OSL" },
   { label: "Groenvoorziening", waarde: "Kwaliteit & rust", gemeente: "Behoud", nederland: "Natuur" },
   { label: "Bereikbaarheid", waarde: "Fiets & OV", gemeente: "Prioriteit", nederland: "Veilig" },
   { label: "Inspraak", waarde: "Direct contact", gemeente: "Wijkgericht", nederland: "Inwoner eerst" },
@@ -166,7 +166,7 @@ const WijkDetail = () => {
     if (initialWijk) {
       setWijk((prev) => prev || initialWijk);
       setLoading(false);
-      document.title = `${initialWijk.naam} (${initialWijk.type || 'Wijk/Kern'}) | Lijst van Andel`;
+      document.title = `${initialWijk.naam} (${initialWijk.type || 'Wijk/Kern'}) | Onafhankelijk Steenwijkerland`;
     } else {
       setLoading(true);
     }
@@ -184,7 +184,7 @@ const WijkDetail = () => {
       .then((data: WijkItem | null) => {
         if (!data) return;
         setWijk(data);
-        document.title = `${data.naam} (${data.type || 'Wijk/Kern'}) | Lijst van Andel`;
+        document.title = `${data.naam} (${data.type || 'Wijk/Kern'}) | Onafhankelijk Steenwijkerland`;
         setLoading(false);
       })
       .catch((err) => {
@@ -375,7 +375,7 @@ const WijkDetail = () => {
               </div>
               <p className="text-sm md:text-base text-white/90 leading-relaxed">
                 {wijk.beschrijving ||
-                  `${wijk.naam} is een belangrijk onderdeel van Steenwijkerland. Lijst van Andel zet zich actief in voor de leefbaarheid, veiligheid en het behoud van voorzieningen.`}
+                  `${wijk.naam} is een belangrijk onderdeel van Steenwijkerland. Onafhankelijk Steenwijkerland zet zich actief in voor de leefbaarheid, veiligheid en het behoud van voorzieningen.`}
               </p>
             </div>
           </div>
@@ -547,7 +547,7 @@ const WijkDetail = () => {
                 <h2 className="font-display text-3xl mb-3">Aanspreekpunt gezocht</h2>
                 <p className="text-sm text-muted-foreground leading-relaxed mb-6">
                   Voor {wijk.naam} is er momenteel nog geen vaste vertegenwoordiger geregistreerd.
-                  Woont u hier en wilt u meedenken met Lijst van Andel, of heeft u een actuele
+                  Woont u hier en wilt u meedenken met Onafhankelijk Steenwijkerland, of heeft u een actuele
                   kwestie die u wilt aankaarten?
                 </p>
               </div>
@@ -602,7 +602,7 @@ const WijkDetail = () => {
 
             <div className="pt-4 border-t border-border flex items-center justify-between">
               <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
-                Lijst van Andel — Steenwijkerland
+                Onafhankelijk Steenwijkerland (OSL) — Steenwijkerland
               </span>
               <Link
                 to="/standpunten"
@@ -1483,7 +1483,7 @@ const WijkDetail = () => {
         defaultRaadslid={
           repFullName
             ? `${repFullName} — ${repRole} ${wijk.naam}`
-            : `Sammy van Andel — Fractievoorzitter Lijst van Andel`
+            : `Sammy van Andel — Fractievoorzitter Onafhankelijk Steenwijkerland`
         }
       />
     </div>

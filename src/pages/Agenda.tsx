@@ -127,7 +127,7 @@ export default function Agenda() {
     const url = `${window.location.origin}/agenda/${event.id}`;
     const cleanDesc = event.shortDescription || (event.description ? event.description.replace(/<[^>]*>/g, '').slice(0, 160) : "");
     setShareData({
-      title: `${event.title} | Agenda Lijst van Andel`,
+      title: `${event.title} | Agenda Onafhankelijk Steenwijkerland`,
       description: cleanDesc,
       url,
       imageUrl: event.thumbnailUrl || event.backgroundUrl || event.headerUrl || event.image,

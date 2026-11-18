@@ -49,21 +49,23 @@ export const Footer = () => {
       <div className="container py-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
         <div>
           <div className="flex items-center gap-3 mb-4">
-            <img
-              src={logo}
-              alt="Lijst van Andel logo"
-              width="44"
-              height="44"
-              loading="lazy"
-              decoding="async"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = "/assets/logo.png";
-              }}
-              className="w-11 h-11 rounded-full object-cover"
-            />
+            <div className="bg-white rounded-xl px-2.5 py-1.5 shadow-sm ring-1 ring-accent/40 shrink-0 flex items-center justify-center">
+              <img
+                src={logo}
+                alt="Onafhankelijk Steenwijkerland (OSL) logo"
+                width="84"
+                height="42"
+                loading="lazy"
+                decoding="async"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = "/assets/logo.png";
+                }}
+                className="h-9 w-auto object-contain"
+              />
+            </div>
             <div>
-              <div className="font-display text-lg">Lijst van Andel</div>
-              <div className="text-[10px] uppercase tracking-widest text-accent">Steenwijkerland</div>
+              <div className="font-display text-lg">Onafhankelijk Steenwijkerland</div>
+              <div className="text-[10px] uppercase tracking-widest text-accent">OSL • Steenwijkerland</div>
             </div>
           </div>
           <p className="text-sm text-muted-foreground leading-relaxed">
@@ -109,7 +111,7 @@ export const Footer = () => {
             Gemeente Steenwijkerland<br />
             Vendelweg 1<br />
             8331 XE Steenwijk<br />
-            <span className="text-xs text-muted-foreground/80">Fractiekamer Lijst van Andel</span>
+            <span className="text-xs text-muted-foreground/80">Fractiekamer Onafhankelijk Steenwijkerland</span>
           </p>
 
           <div className="pt-2 border-t border-accent/20">
@@ -178,7 +180,7 @@ export const Footer = () => {
       </div>
       <div className="border-t border-accent/10">
         <div className="container py-5 flex flex-col md:flex-row justify-between items-center gap-3 text-xs text-muted-foreground">
-          <p>© {new Date().getFullYear()} Lijst van Andel — Lokale partij Steenwijkerland.</p>
+          <p>© {new Date().getFullYear()} Onafhankelijk Steenwijkerland (OSL) — Lokale partij Steenwijkerland.</p>
 
           <div className="flex flex-wrap items-center justify-center gap-4 text-xs font-medium">
             <Link to="/privacyverklaring" className="hover:text-accent transition-colors">

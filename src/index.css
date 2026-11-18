@@ -2,91 +2,91 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Lijst van Andel — Premium Dark Design System (overgenomen template) */
+/* Onafhankelijk Steenwijkerland (OSL) — Diep Woudgroen (#143627) & Helder Amber (#EAB308) */
 @layer base {
   :root {
-    --background: 150 25% 6%;
-    --foreground: 40 30% 94%;
+    --background: 153 45% 8%;
+    --foreground: 45 25% 95%;
 
-    --card: 150 22% 9%;
-    --card-foreground: 40 30% 94%;
+    --card: 153 46% 12%;
+    --card-foreground: 45 25% 95%;
 
-    --popover: 150 25% 7%;
-    --popover-foreground: 40 30% 94%;
+    --popover: 153 46% 10%;
+    --popover-foreground: 45 25% 95%;
 
-    --primary: 150 35% 42%;
-    --primary-foreground: 40 30% 96%;
+    --primary: 153 46% 24%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 150 22% 12%;
-    --secondary-foreground: 40 30% 94%;
+    --secondary: 153 46% 15%;
+    --secondary-foreground: 45 25% 95%;
 
-    --muted: 150 15% 14%;
-    --muted-foreground: 40 15% 70%;
+    --muted: 153 32% 16%;
+    --muted-foreground: 145 14% 72%;
 
-    --accent: 43 50% 60%;
-    --accent-foreground: 150 25% 6%;
+    --accent: 45 93% 47%;
+    --accent-foreground: 153 46% 12%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 40 30% 98%;
 
-    --border: 43 30% 25%;
-    --input: 150 15% 16%;
-    --ring: 43 50% 60%;
+    --border: 153 32% 24%;
+    --input: 153 32% 17%;
+    --ring: 45 93% 47%;
 
     --radius: 0.25rem;
 
-    --twente-red: 150 35% 42%;
-    --twente-red-deep: 150 40% 16%;
-    --twente-black: 150 25% 6%;
-    --twente-gold: 43 50% 60%;
-    --twente-gold-bright: 43 70% 70%;
+    --twente-red: 153 46% 24%;
+    --twente-red-deep: 153 46% 15%;
+    --twente-black: 153 46% 10%;
+    --twente-gold: 45 93% 47%;
+    --twente-gold-bright: 45 96% 58%;
 
-    --gradient-hero: linear-gradient(135deg, hsl(150 25% 6% / 0.85), hsl(150 40% 16% / 0.7));
-    --gradient-gold: linear-gradient(135deg, hsl(43 50% 60%), hsl(43 70% 70%));
-    --gradient-red: linear-gradient(135deg, hsl(150 35% 42%), hsl(150 40% 22%));
+    --gradient-hero: linear-gradient(135deg, hsl(153 46% 8% / 0.88), hsl(153 46% 15% / 0.78));
+    --gradient-gold: linear-gradient(135deg, hsl(45 93% 47%), hsl(45 96% 60%));
+    --gradient-red: linear-gradient(135deg, hsl(153 46% 24%), hsl(153 46% 15%));
 
-    --shadow-gold: 0 10px 40px -10px hsl(43 50% 60% / 0.4);
-    --shadow-red: 0 20px 60px -20px hsl(150 35% 42% / 0.5);
+    --shadow-gold: 0 10px 40px -10px hsl(45 93% 47% / 0.38);
+    --shadow-red: 0 20px 60px -20px hsl(153 46% 15% / 0.65);
     --shadow-deep: 0 30px 80px -20px hsl(0 0% 0% / 0.6);
 
     --transition-smooth: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .light {
-    --background: 140 25% 96%;
-    --foreground: 150 30% 10%;
+    --background: 145 20% 97%;
+    --foreground: 153 46% 15%;
 
     --card: 0 0% 100%;
-    --card-foreground: 150 30% 10%;
+    --card-foreground: 153 46% 15%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 150 30% 10%;
+    --popover-foreground: 153 46% 15%;
 
-    --primary: 150 30% 10%;
-    --primary-foreground: 40 30% 98%;
+    --primary: 153 46% 15%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 140 20% 92%;
-    --secondary-foreground: 150 30% 10%;
+    --secondary: 145 20% 92%;
+    --secondary-foreground: 153 46% 15%;
 
-    --muted: 140 15% 90%;
-    --muted-foreground: 150 15% 35%;
+    --muted: 145 14% 91%;
+    --muted-foreground: 153 20% 35%;
 
-    --accent: 38 65% 42%;
-    --accent-foreground: 40 30% 98%;
+    --accent: 43 92% 40%;
+    --accent-foreground: 153 46% 12%;
 
-    --border: 140 20% 80%;
-    --input: 140 15% 90%;
-    --ring: 38 65% 42%;
+    --border: 148 18% 82%;
+    --input: 145 16% 91%;
+    --ring: 45 93% 47%;
 
-    --twente-red: 150 40% 32%;
-    --twente-red-deep: 140 30% 88%;
-    --twente-black: 140 25% 96%;
-    --twente-gold: 38 65% 42%;
-    --twente-gold-bright: 38 75% 50%;
+    --twente-red: 153 46% 15%;
+    --twente-red-deep: 148 26% 88%;
+    --twente-black: 145 20% 96%;
+    --twente-gold: 45 93% 47%;
+    --twente-gold-bright: 45 96% 56%;
 
-    --gradient-hero: linear-gradient(135deg, hsl(140 25% 96% / 0.85), hsl(140 30% 88% / 0.7));
-    --gradient-gold: linear-gradient(135deg, hsl(38 65% 42%), hsl(38 75% 50%));
-    --gradient-red: linear-gradient(135deg, hsl(150 40% 32%), hsl(150 40% 22%));
+    --gradient-hero: linear-gradient(135deg, hsl(145 20% 97% / 0.88), hsl(148 26% 88% / 0.72));
+    --gradient-gold: linear-gradient(135deg, hsl(43 92% 40%), hsl(45 93% 47%));
+    --gradient-red: linear-gradient(135deg, hsl(153 46% 20%), hsl(153 46% 15%));
   }
 }
 
@@ -108,7 +108,7 @@
 
   select option,
   select optgroup {
-    background-color: #0b1812 !important;
+    background-color: #143627 !important;
     color: #f6f3eb !important;
     padding: 6px 12px;
   }
@@ -116,7 +116,7 @@
   .light select option,
   .light select optgroup {
     background-color: #ffffff !important;
-    color: #09090b !important;
+    color: #143627 !important;
     padding: 6px 12px;
   }
 
@@ -126,7 +126,7 @@
     color: #ffffff;
   }
   .light h1, .light h2, .light h3, .light h4, .light .font-display {
-    color: #09090b;
+    color: #143627;
   }
 }
 
@@ -151,8 +151,8 @@
   .dark .stadium-bg,
   html.dark .stadium-bg {
     background:
-      radial-gradient(ellipse at top, hsl(150 35% 42% / 0.15), transparent 60%),
-      radial-gradient(ellipse at bottom, hsl(43 50% 60% / 0.08), transparent 60%),
+      radial-gradient(ellipse at top, hsl(153 46% 24% / 0.22), transparent 60%),
+      radial-gradient(ellipse at bottom, hsl(45 93% 47% / 0.08), transparent 60%),
       hsl(var(--background));
   }
   .light .stadium-bg,
@@ -167,19 +167,19 @@
 
   /* Leaflet custom map theme */
   .leaflet-popup-content-wrapper {
-    background: #0d1e15 !important;
+    background: #143627 !important;
     color: #f6f3eb !important;
-    border: 1px solid rgba(223, 190, 111, 0.45) !important;
+    border: 1px solid rgba(234, 179, 8, 0.5) !important;
     border-radius: 8px !important;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6) !important;
     padding: 2px !important;
   }
   .leaflet-popup-tip {
-    background: #0d1e15 !important;
-    border: 1px solid rgba(223, 190, 111, 0.45) !important;
+    background: #143627 !important;
+    border: 1px solid rgba(234, 179, 8, 0.5) !important;
   }
   .leaflet-popup-close-button {
-    color: #dfbe6f !important;
+    color: #EAB308 !important;
   }
   .leaflet-container {
     font-family: 'Inter', sans-serif !important;
@@ -202,16 +202,16 @@ html.contrast-high:not(.light) {
   --card-foreground: 45 100% 98% !important;
   --popover: 0 0% 2% !important;
   --popover-foreground: 45 100% 98% !important;
-  --primary: 150 80% 45% !important;
-  --primary-foreground: 0 0% 0% !important;
+  --primary: 153 75% 38% !important;
+  --primary-foreground: 0 0% 100% !important;
   --secondary: 0 0% 12% !important;
   --secondary-foreground: 45 100% 98% !important;
   --muted: 0 0% 16% !important;
   --muted-foreground: 45 60% 92% !important;
-  --accent: 45 100% 55% !important;
-  --accent-foreground: 0 0% 0% !important;
-  --border: 45 90% 55% !important;
-  --ring: 45 100% 60% !important;
+  --accent: 45 93% 50% !important;
+  --accent-foreground: 153 46% 10% !important;
+  --border: 45 93% 50% !important;
+  --ring: 45 96% 56% !important;
 }
 
 /* Hoog Contrast (Light Theme) */
@@ -222,16 +222,16 @@ html.contrast-high.light {
   --card-foreground: 0 0% 0% !important;
   --popover: 0 0% 100% !important;
   --popover-foreground: 0 0% 0% !important;
-  --primary: 150 90% 22% !important;
+  --primary: 153 70% 16% !important;
   --primary-foreground: 0 0% 100% !important;
   --secondary: 0 0% 92% !important;
   --secondary-foreground: 0 0% 0% !important;
   --muted: 0 0% 88% !important;
   --muted-foreground: 0 0% 15% !important;
-  --accent: 38 100% 30% !important;
+  --accent: 41 100% 30% !important;
   --accent-foreground: 0 0% 100% !important;
   --border: 0 0% 0% !important;
-  --ring: 38 100% 35% !important;
+  --ring: 45 93% 47% !important;
 }
 
 /* Hoog Contrast algemene styling versterking */
@@ -253,7 +253,7 @@ html.contrast-high textarea {
 
 html.contrast-high button:focus-visible,
 html.contrast-high a:focus-visible {
-  outline: 3px solid #ffcc00 !important;
+  outline: 3px solid #EAB308 !important;
   outline-offset: 3px !important;
 }
 

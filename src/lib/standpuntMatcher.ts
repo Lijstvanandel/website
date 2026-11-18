@@ -12,7 +12,7 @@ import type {
   FactionControlQuestion,
 } from "../types/council.js";
 
-// Pre-indexed rules and themes connecting council topics & documents to Lijst van Andel standpoints
+// Pre-indexed rules and themes connecting council topics & documents to Onafhankelijk Steenwijkerland (OSL) standpoints
 interface PolicyRule {
   id: string;
   hoofdstukNr: number;
@@ -32,7 +32,7 @@ const POLICY_RULES: PolicyRule[] = [
     standpuntNr: 1,
     stance: "positief",
     keywords: ["referendum", "volksraadpleging", "stembusuitspraak", "burgerraadpleging", "referenda"],
-    explanation: "Lijst van Andel is voorstander van bindende lokale referenda zodat inwoners zelf direct beslissen over ingrijpende kwesties.",
+    explanation: "Onafhankelijk Steenwijkerland (OSL) is voorstander van bindende lokale referenda zodat inwoners zelf direct beslissen over ingrijpende kwesties.",
     weight: 10,
   },
   {
@@ -44,7 +44,7 @@ const POLICY_RULES: PolicyRule[] = [
       "burgerparticipatie", "inwonersparticipatie", "inspraak", "dorpsraad", "wijkraad",
       "dorpsraden", "inloopavond", "omwonendenberaad", "samenspraak", "zienswijzen"
     ],
-    explanation: "Lijst van Andel eist echte burgerparticipatie vooraf en versterking van wijk- en dorpsraden in plaats van schijninspraak achteraf.",
+    explanation: "Onafhankelijk Steenwijkerland (OSL) eist echte burgerparticipatie vooraf en versterking van wijk- en dorpsraden in plaats van schijninspraak achteraf.",
     weight: 8,
   },
   {
@@ -65,7 +65,7 @@ const POLICY_RULES: PolicyRule[] = [
       "herindeling", "dwangmaatregel", "spreidingswet", "asielquotum", "dwang van rijkswege",
       "opgelegd door rijk", "provinciale dwang", "bovenlokaal dictaat"
     ],
-    explanation: "Lijst van Andel wijst externe dwangmaatregelen en inbreuk op de lokale autonomie van Steenwijkerland resoluut af.",
+    explanation: "Onafhankelijk Steenwijkerland (OSL) wijst externe dwangmaatregelen en inbreuk op de lokale autonomie van Steenwijkerland resoluut af.",
     weight: 10,
   },
   {
@@ -78,7 +78,7 @@ const POLICY_RULES: PolicyRule[] = [
       "bovenlokaal overleg", "ggd ijsselland", "omgevingsdienst ijsselland", "veiligheidsregio ijsselland"
     ],
     docKeywords: ["regiovisie", "regionaal beleid", "begroting regio", "ontwerpbegroting 2027"],
-    explanation: "Lijst van Andel waakt voor uitholling van de gemeenteraad door ondoorzichtige regionale samenwerkingsverbanden waar de kiezer geen grip op heeft.",
+    explanation: "Onafhankelijk Steenwijkerland (OSL) waakt voor uitholling van de gemeenteraad door ondoorzichtige regionale samenwerkingsverbanden waar de kiezer geen grip op heeft.",
     weight: 7,
   },
   {
@@ -101,7 +101,7 @@ const POLICY_RULES: PolicyRule[] = [
       "handhaving", "boa", "politie", "stationsgebied", "fietsenstalling", "toezicht en handhaving",
       "veiligheid op straat", "veiligheidsregio", "brandweer", "blauwe lampen", "wijkagent"
     ],
-    explanation: "Lijst van Andel steunt meer zichtbare handhaving en toezicht op straat, zoals rondom het station en in de dorpscentra.",
+    explanation: "Onafhankelijk Steenwijkerland (OSL) steunt meer zichtbare handhaving en toezicht op straat, zoals rondom het station en in de dorpscentra.",
     weight: 9,
   },
   {
@@ -113,7 +113,7 @@ const POLICY_RULES: PolicyRule[] = [
       "overlast", "jeugdoverlast", "vuurwerkoverlast", "hangjongeren", "bedelgedrag",
       "participatiewet handhaving", "fraude", "veiligheidsplan"
     ],
-    explanation: "Lijst van Andel staat voor een daadkrachtige aanpak van overlast en lik-op-stuk beleid tegen intimidatie en verloedering.",
+    explanation: "Onafhankelijk Steenwijkerland (OSL) staat voor een daadkrachtige aanpak van overlast en lik-op-stuk beleid tegen intimidatie en verloedering.",
     weight: 8,
   },
   {
@@ -133,7 +133,7 @@ const POLICY_RULES: PolicyRule[] = [
     standpuntNr: 1,
     stance: "negatief",
     keywords: ["azc", "asielopvang", "asielzoekerscentrum", "noodopvang", "crisisnoodopvang", "opvanglocatie", "vluchtelingenopvang"],
-    explanation: "Lijst van Andel verzet zich tegen nieuwe AZC's of noodopvanglocaties in Steenwijkerland om rust en draagkracht te behouden.",
+    explanation: "Onafhankelijk Steenwijkerland (OSL) verzet zich tegen nieuwe AZC's of noodopvanglocaties in Steenwijkerland om rust en draagkracht te behouden.",
     weight: 12,
   },
   {
@@ -142,7 +142,7 @@ const POLICY_RULES: PolicyRule[] = [
     standpuntNr: 2,
     stance: "negatief",
     keywords: ["broekslagen", "groot verlaat", "tijdelijke opvang broekslagen", "verlenging opvang"],
-    explanation: "Lijst van Andel wil definitieve sluiting van de opvang aan de Broekslagen en geen stilzwijgende verlengingen.",
+    explanation: "Onafhankelijk Steenwijkerland (OSL) wil definitieve sluiting van de opvang aan de Broekslagen en geen stilzwijgende verlengingen.",
     weight: 12,
   },
   {
@@ -151,7 +151,7 @@ const POLICY_RULES: PolicyRule[] = [
     standpuntNr: 3,
     stance: "negatief",
     keywords: ["spreidingswet", "dwangwet", "asielquotum", "verplichte opvang", "taakstelling asiel"],
-    explanation: "Lijst van Andel weigert medewerking aan de Haagse dwang van de Spreidingswet.",
+    explanation: "Onafhankelijk Steenwijkerland (OSL) weigert medewerking aan de Haagse dwang van de Spreidingswet.",
     weight: 12,
   },
 
@@ -171,7 +171,7 @@ const POLICY_RULES: PolicyRule[] = [
     standpuntNr: 2,
     stance: "positief",
     keywords: ["lokale omroep", "publieke omroep", "rtv sl", "media aanwijzing", "lokale media", "zendgemachtigde"],
-    explanation: "Lijst van Andel stimuleert een lokale omroep met een sterke binding met Steenwijkerland en transparante verslaggeving van raadsbesluiten.",
+    explanation: "Onafhankelijk Steenwijkerland (OSL) stimuleert een lokale omroep met een sterke binding met Steenwijkerland en transparante verslaggeving van raadsbesluiten.",
     weight: 8,
   },
   {
@@ -228,7 +228,7 @@ const POLICY_RULES: PolicyRule[] = [
       "statushouders", "taakstelling statushouders", "taakstelling", "aandachtsgroepen statushouders"
     ],
     docKeywords: ["statushouders", "taakstelling", "vergunninghouders"],
-    explanation: "Lijst van Andel verwerpt automatische voorrang voor statushouders zolang eigen inwoners jarenlang op een wachtlijst staan.",
+    explanation: "Onafhankelijk Steenwijkerland (OSL) verwerpt automatische voorrang voor statushouders zolang eigen inwoners jarenlang op een wachtlijst staan.",
     weight: 9,
   },
   {
@@ -242,7 +242,7 @@ const POLICY_RULES: PolicyRule[] = [
       "goedkope koop", "betaalbaar segment", "middeninkomens", "volkshuisvestingsprogramma", "volkshuisvesting"
     ],
     docKeywords: ["starters", "starterslening", "betaalbare koop", "middeninkomens", "koopwoningen"],
-    explanation: "Lijst van Andel stimuleert actieve bouw van betaalbare koopwoningen voor starters en gezinnen in Steenwijkerland.",
+    explanation: "Onafhankelijk Steenwijkerland (OSL) stimuleert actieve bouw van betaalbare koopwoningen voor starters en gezinnen in Steenwijkerland.",
     weight: 9,
   },
   {
@@ -255,7 +255,7 @@ const POLICY_RULES: PolicyRule[] = [
       "prestatieafspraken", "huurdersverenigingen", "volkshuisvestingsprogramma"
     ],
     docKeywords: ["middenhuur", "sociale huur", "corporaties", "prestatieafspraken"],
-    explanation: "Lijst van Andel wil een gezonde en evenwichtige huurmarkt met ruimte voor middenhuur en particuliere initiatieven.",
+    explanation: "Onafhankelijk Steenwijkerland (OSL) wil een gezonde en evenwichtige huurmarkt met ruimte voor middenhuur en particuliere initiatieven.",
     weight: 8,
   },
   {
@@ -268,7 +268,7 @@ const POLICY_RULES: PolicyRule[] = [
       "vrijkomende agrarische bebouwing", "herbestemming", "inbreiding"
     ],
     docKeywords: ["leegstaand vastgoed", "transformatie", "agrarische bebouwing", "vab"],
-    explanation: "Lijst van Andel stimuleert de transformatie van leegstaande gebouwen en agrarische opstallen naar woningen voor inwoners.",
+    explanation: "Onafhankelijk Steenwijkerland (OSL) stimuleert de transformatie van leegstaande gebouwen en agrarische opstallen naar woningen voor inwoners.",
     weight: 8,
   },
   {
@@ -294,7 +294,7 @@ const POLICY_RULES: PolicyRule[] = [
       "laagbouw", "dorpskarakter"
     ],
     docKeywords: ["hoogbouw", "gestapelde woonvormen", "kaders voor hoogbouw"],
-    explanation: "Lijst van Andel waakt voor het landelijke dorpsprofiel en wijst onevenredige hoogbouw die het karakter aantast af.",
+    explanation: "Onafhankelijk Steenwijkerland (OSL) waakt voor het landelijke dorpsprofiel en wijst onevenredige hoogbouw die het karakter aantast af.",
     weight: 8,
   },
   {
@@ -357,7 +357,7 @@ const POLICY_RULES: PolicyRule[] = [
     standpuntNr: 1,
     stance: "positief",
     keywords: ["randweg", "randweg blokzijl", "tracekeuze", "ontlastingsweg", "doorstroming", "verkeersveiligheid"],
-    explanation: "Lijst van Andel steunt een randweg bij Blokzijl om het historische stadje te ontlasten van zwaar doorgaand verkeer.",
+    explanation: "Onafhankelijk Steenwijkerland (OSL) steunt een randweg bij Blokzijl om het historische stadje te ontlasten van zwaar doorgaand verkeer.",
     weight: 10,
   },
   {
@@ -369,7 +369,7 @@ const POLICY_RULES: PolicyRule[] = [
       "onttrekken aan het openbaar verkeer", "onttrekken aan openbaar verkeer",
       "onttrekken openbaar verkeer", "tussenbroekweg", "steenwijkerdiep", "afsluiten weg", "wegonttrekking"
     ],
-    explanation: "Lijst van Andel is kritisch op het zomaar onttrekken of afsluiten van openbare wegen of vaarwegen ten nadele van bereikbaarheid van aanwonenden.",
+    explanation: "Onafhankelijk Steenwijkerland (OSL) is kritisch op het zomaar onttrekken of afsluiten van openbare wegen of vaarwegen ten nadele van bereikbaarheid van aanwonenden.",
     weight: 9,
   },
   {
@@ -378,7 +378,7 @@ const POLICY_RULES: PolicyRule[] = [
     standpuntNr: 3,
     stance: "negatief",
     keywords: ["parkeerregulering", "parkeertarieven", "betaald parkeren", "parkeerheffing", "verordening parkeerregulering"],
-    explanation: "Lijst van Andel verzet zich tegen het uitbreiden van betaald parkeren en tariefsverhogingen; parkeren moet toegankelijk en betaalbaar blijven.",
+    explanation: "Onafhankelijk Steenwijkerland (OSL) verzet zich tegen het uitbreiden van betaald parkeren en tariefsverhogingen; parkeren moet toegankelijk en betaalbaar blijven.",
     weight: 9,
   },
   {
@@ -407,7 +407,7 @@ const POLICY_RULES: PolicyRule[] = [
     standpuntNr: 1,
     stance: "positief",
     keywords: ["ozb", "onroerendezaakbelasting", "lastenverlichting", "belastingverlaging", "geen nieuwe lasten"],
-    explanation: "Lijst van Andel pleit voor lagere gemeentelijke belastingen (OZB) en blokkeert lastenverzwaringen voor inwoners en MKB.",
+    explanation: "Onafhankelijk Steenwijkerland (OSL) pleit voor lagere gemeentelijke belastingen (OZB) en blokkeert lastenverzwaringen voor inwoners en MKB.",
     weight: 9,
   },
   {
@@ -416,7 +416,7 @@ const POLICY_RULES: PolicyRule[] = [
     standpuntNr: 2,
     stance: "negatief",
     keywords: ["heffingen", "tariefsverhoging", "milieutoeslag", "legesverhoging", "bouwleges"],
-    explanation: "Lijst van Andel stemt tegen nieuwe heffingen en tegen verhoging van gemeentelijke leges en lasten.",
+    explanation: "Onafhankelijk Steenwijkerland (OSL) stemt tegen nieuwe heffingen en tegen verhoging van gemeentelijke leges en lasten.",
     weight: 8,
   },
   {
@@ -466,7 +466,7 @@ const POLICY_RULES: PolicyRule[] = [
     standpuntNr: 11,
     stance: "positief",
     keywords: ["fc oldemarkt", "veldverlichting", "sport", "sportvereniging", "subsidie veldverlichting", "kindcentrum"],
-    explanation: "Lijst van Andel steunt investeringen in dorpssportverenigingen en voorzieningen zoals veldverlichting voor FC Oldemarkt.",
+    explanation: "Onafhankelijk Steenwijkerland (OSL) steunt investeringen in dorpssportverenigingen en voorzieningen zoals veldverlichting voor FC Oldemarkt.",
     weight: 10,
   },
 
@@ -480,7 +480,7 @@ const POLICY_RULES: PolicyRule[] = [
       "windenergie", "windmolen", "windmolens", "windturbines", "windpark", "locaties voor windenergie",
       "megawindturbines", "zoekgebied wind", "res zoekgebied"
     ],
-    explanation: "Lijst van Andel is faliekant TEGEN megawindturbines in Steenwijkerland. Geen horizonvervuiling, slagschaduw of aantasting van onze leefomgeving.",
+    explanation: "Onafhankelijk Steenwijkerland (OSL) is faliekant TEGEN megawindturbines in Steenwijkerland. Geen horizonvervuiling, slagschaduw of aantasting van onze leefomgeving.",
     weight: 15,
   },
   {
@@ -498,7 +498,7 @@ const POLICY_RULES: PolicyRule[] = [
     standpuntNr: 4,
     stance: "positief",
     keywords: ["zonnecarport", "zonnecarport vendelweg", "zon op dak", "zonnepanelen op dak", "industrieterrein zon"],
-    explanation: "Lijst van Andel steunt zonne-energie op carports, daken en industrieterreinen; zo blijft ons landschap en agrarische grond beschermd!",
+    explanation: "Onafhankelijk Steenwijkerland (OSL) steunt zonne-energie op carports, daken en industrieterreinen; zo blijft ons landschap en agrarische grond beschermd!",
     weight: 12,
   },
   {
@@ -527,7 +527,7 @@ const POLICY_RULES: PolicyRule[] = [
     standpuntNr: 8,
     stance: "positief",
     keywords: ["informatiebeveiliging", "rekenkameronderzoek informatiebeveiliging", "privacy", "cybersecurity", "datalek", "persoonsgegevens"],
-    explanation: "Lijst van Andel eist strikte bescherming van burgerdata, privacy by design en scherpe informatiebeveiliging door de gemeente.",
+    explanation: "Onafhankelijk Steenwijkerland (OSL) eist strikte bescherming van burgerdata, privacy by design en scherpe informatiebeveiliging door de gemeente.",
     weight: 10,
   },
 ];
@@ -688,7 +688,7 @@ export function matchStandpuntenForTopic(topic: CouncilAgendaTopic): {
           standpuntNr: s.nr,
           stance: dynamicStance,
           keywords: dynMatchedKw,
-          explanation: `Lijst van Andel toetst dit raadsvoorstel aan Hoofdstuk ${h.nr} (${h.titel}): ${s.titel}. Standpunt: "${s.standpunt.slice(0, 160)}..."`,
+          explanation: `Onafhankelijk Steenwijkerland (OSL) toetst dit raadsvoorstel aan Hoofdstuk ${h.nr} (${h.titel}): ${s.titel}. Standpunt: "${s.standpunt.slice(0, 160)}..."`,
           weight: 10,
         };
 
@@ -725,7 +725,7 @@ export function matchStandpuntenForTopic(topic: CouncilAgendaTopic): {
         standpuntNr: 12,
         stance: "genuanceerd",
         keywords: ["financiële discipline", "investeringen", "begrotingskader"],
-        explanation: "Lijst van Andel hanteert strikte financiële discipline: belastinggeld van inwoners mag alleen doelmatig en zonder verspilling worden ingezet.",
+        explanation: "Onafhankelijk Steenwijkerland (OSL) hanteert strikte financiële discipline: belastinggeld van inwoners mag alleen doelmatig en zonder verspilling worden ingezet.",
       },
       score: 72,
       matchedKeywords: ["financiële toetsing", "begroting"],
@@ -752,7 +752,7 @@ export function matchStandpuntenForTopic(topic: CouncilAgendaTopic): {
         standpuntNr: 3,
         stance: "positief",
         keywords: ["burgerparticipatie", "dorpsraden", "omwonenden"],
-        explanation: "Lijst van Andel eist dat omwonenden en de betrokken dorps- of wijkraden vroegtijdig en volwaardig worden betrokken bij de besluitvorming.",
+        explanation: "Onafhankelijk Steenwijkerland (OSL) eist dat omwonenden en de betrokken dorps- of wijkraden vroegtijdig en volwaardig worden betrokken bij de besluitvorming.",
       },
       score: 75,
       matchedKeywords: ["inwonersparticipatie", "dorpsraden"],
@@ -777,7 +777,7 @@ export function matchStandpuntenForTopic(topic: CouncilAgendaTopic): {
         standpuntNr: 3,
         stance: "positief",
         keywords: ["deregulering", "minder regeldruk", "bureaucratie"],
-        explanation: "Lijst van Andel pleit voor minder regeldruk en het schrappen van overbodige bureaucratie voor inwoners en lokale ondernemers.",
+        explanation: "Onafhankelijk Steenwijkerland (OSL) pleit voor minder regeldruk en het schrappen van overbodige bureaucratie voor inwoners en lokale ondernemers.",
       },
       score: 70,
       matchedKeywords: ["minder regeldruk", "deregulering"],
@@ -830,10 +830,10 @@ export function matchStandpuntenForTopic(topic: CouncilAgendaTopic): {
   if (total > 0) {
     if (negatiefCount > 0 && positiefCount === 0) {
       primaryStance = "negatief";
-      summaryText = `Lijst van Andel staat KRITISCH / NEGATIEF t.a.v. dit onderwerp (${negatiefCount} ${negatiefCount === 1 ? "standpunt" : "standpunten"}).`;
+      summaryText = `Onafhankelijk Steenwijkerland (OSL) staat KRITISCH / NEGATIEF t.a.v. dit onderwerp (${negatiefCount} ${negatiefCount === 1 ? "standpunt" : "standpunten"}).`;
     } else if (positiefCount > 0 && negatiefCount === 0) {
       primaryStance = "positief";
-      summaryText = `Lijst van Andel staat POSITIEF / VOOR t.a.v. dit onderwerp (${positiefCount} ${positiefCount === 1 ? "standpunt" : "standpunten"}).`;
+      summaryText = `Onafhankelijk Steenwijkerland (OSL) staat POSITIEF / VOOR t.a.v. dit onderwerp (${positiefCount} ${positiefCount === 1 ? "standpunt" : "standpunten"}).`;
     } else if (positiefCount > 0 && negatiefCount > 0) {
       primaryStance = "gemengd";
       summaryText = `Gemengde stellingname: ${positiefCount} positief, ${negatiefCount} kritisch/negatief.`;
@@ -1181,10 +1181,10 @@ export function enrichTopicWithStandpunten(topic: CouncilAgendaTopic): CouncilAg
   if (combinedMatched.length > 0) {
     if (negatiefCount > 0 && positiefCount === 0) {
       primaryStance = "negatief";
-      summaryText = `Lijst van Andel staat KRITISCH / NEGATIEF t.a.v. dit onderwerp (${negatiefCount} ${negatiefCount === 1 ? "standpunt" : "standpunten"}).`;
+      summaryText = `Onafhankelijk Steenwijkerland (OSL) staat KRITISCH / NEGATIEF t.a.v. dit onderwerp (${negatiefCount} ${negatiefCount === 1 ? "standpunt" : "standpunten"}).`;
     } else if (positiefCount > 0 && negatiefCount === 0) {
       primaryStance = "positief";
-      summaryText = `Lijst van Andel staat POSITIEF / VOOR t.a.v. dit onderwerp (${positiefCount} ${positiefCount === 1 ? "standpunt" : "standpunten"}).`;
+      summaryText = `Onafhankelijk Steenwijkerland (OSL) staat POSITIEF / VOOR t.a.v. dit onderwerp (${positiefCount} ${positiefCount === 1 ? "standpunt" : "standpunten"}).`;
     } else if (positiefCount > 0 && negatiefCount > 0) {
       primaryStance = "gemengd";
       summaryText = `Gemengde stellingname: ${positiefCount} positief, ${negatiefCount} kritisch/negatief.`;

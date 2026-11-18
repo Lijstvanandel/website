@@ -193,7 +193,7 @@ export default function Nieuws() {
                 >
                   <span
                     className="w-2 h-2 rounded-full"
-                    style={{ backgroundColor: cat.color || "#c6a858" }}
+                    style={{ backgroundColor: cat.color || "#EAB308" }}
                   />
                   {cat.name} ({count})
                 </button>
@@ -294,7 +294,7 @@ export default function Nieuws() {
                   <FormattedMathText text={item.description || item.excerpt || ""} />
                 </p>
 
-                {(item.authorName || (item.author && item.author !== "Redactie" && item.author !== "Lijst van Andel")) && (
+                {(item.authorName || (item.author && item.author !== "Redactie" && item.author !== "Lijst van Andel" && item.author !== "Onafhankelijk Steenwijkerland")) && (
                   <div className="pt-2 border-t border-border/60 flex items-center justify-between gap-3 text-xs mb-3">
                     <div className="flex items-center gap-2 min-w-0">
                       <div className="w-7 h-7 rounded-full overflow-hidden bg-muted shrink-0 border border-accent/30">
@@ -406,7 +406,7 @@ export default function Nieuws() {
               In de Media
             </div>
             <h2 className="text-3xl md:text-4xl font-display text-zinc-950 dark:text-white mb-3">
-              Lijst van Andel in het Nieuws
+              Onafhankelijk Steenwijkerland in het Nieuws
             </h2>
             <p className="text-sm md:text-base text-muted-foreground max-w-2xl mx-auto">
               Wat landelijke, regionale en lokale media schrijven over onze partij en initiatieven in Steenwijkerland.
@@ -481,14 +481,14 @@ export default function Nieuws() {
           )}
         </div>
 
-        {/* Sectie: Podcasts (Nieuw vak onder 'Lijst van Andel in het nieuws') */}
+        {/* Sectie: Podcasts (Nieuw vak onder 'Onafhankelijk Steenwijkerland in het nieuws') */}
         <PodcastSection />
       </div>
 
       <ShareDialog
         open={shareDialogOpen}
         onOpenChange={setShareDialogOpen}
-        title={shareArticle?.title || "Lijst van Andel Nieuws"}
+        title={shareArticle?.title || "Onafhankelijk Steenwijkerland Nieuws"}
         description={shareArticle?.description || shareArticle?.excerpt}
         url={shareArticle ? `${window.location.origin}/nieuws/${shareArticle.id}` : undefined}
         imageUrl={shareArticle?.thumbnailUrl || shareArticle?.headerUrl || shareArticle?.image}

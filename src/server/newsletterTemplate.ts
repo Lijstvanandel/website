@@ -78,7 +78,7 @@ export function generateNewsletterHtml(
   const resolvedBannerUrl = options?.imageCids?.["banner"]
     ? `cid:${options.imageCids["banner"]}`
     : resolveUrl(banner, cleanBase);
-  const goldColor = "#c6a858";
+  const goldColor = "#EAB308";
   const primaryCtaColor = newsletter.ctaButtonColor || goldColor;
 
   return `<!DOCTYPE HTML PUBLIC "-//W3C//DTD XHTML 1.0 Transitional //EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
@@ -90,10 +90,10 @@ export function generateNewsletterHtml(
   <!--[if !mso]><!--><meta http-equiv="X-UA-Compatible" content="IE=edge"><!--<![endif]-->
   <title>${escapeHtml(newsletter.subject)}</title>
   <style type="text/css">
-    body { margin: 0; padding: 0; -webkit-text-size-adjust: 100%; background-color: #09110c; color: #f3efe6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+    body { margin: 0; padding: 0; -webkit-text-size-adjust: 100%; background-color: #0b1f16; color: #f3efe6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
     table, td, tr { border-collapse: collapse; vertical-align: top; }
     p { margin: 0 0 12px 0; }
-    a { color: #c6a858; text-decoration: underline; }
+    a { color: #EAB308; text-decoration: underline; }
     @media only screen and (max-width: 600px) {
       .email-container { width: 100% !important; max-width: 100% !important; }
       .content-padding { padding: 18px 16px !important; }
@@ -102,32 +102,32 @@ export function generateNewsletterHtml(
     }
   </style>
 </head>
-<body style="margin: 0; padding: 0; background-color: #09110c; color: #f3efe6;">
+<body style="margin: 0; padding: 0; background-color: #0b1f16; color: #f3efe6;">
   <!-- Preheader snippet for email client preview -->
-  <div style="display: none !important; visibility: hidden; mso-hide: all; font-size: 1px; color: #09110c; line-height: 1px; max-height: 0px; max-width: 0px; opacity: 0; overflow: hidden;">
+  <div style="display: none !important; visibility: hidden; mso-hide: all; font-size: 1px; color: #0b1f16; line-height: 1px; max-height: 0px; max-width: 0px; opacity: 0; overflow: hidden;">
     ${escapeHtml(newsletter.preheader || newsletter.subject)}
   </div>
 
-  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #09110c; margin: 0 auto; table-layout: fixed;">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #0b1f16; margin: 0 auto; table-layout: fixed;">
     <tbody>
       <tr>
         <td align="center" style="padding: 20px 10px 40px 10px;">
-          <!-- Main Card Container (max 580px, in signature website dark forest green #112017) -->
-          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" class="email-container" style="max-width: 580px; background-color: #112017; border-radius: 8px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid #273b2d;">
+          <!-- Main Card Container (max 580px, in signature website Diep Woudgroen #143627) -->
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" class="email-container" style="max-width: 580px; background-color: #143627; border-radius: 8px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid #23503c;">
             <tbody>
 
-              <!-- Header Bar with Gold Accent (Website theme) -->
+              <!-- Header Bar with Amber Accent (Website theme) -->
               <tr>
-                <td style="background-color: #0c1711; padding: 14px 24px; border-bottom: 2px solid ${goldColor};">
+                <td style="background-color: #0e281d; padding: 14px 24px; border-bottom: 2px solid ${goldColor};">
                   <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
                     <tr>
                       <td style="color: #ffffff; font-family: Georgia, serif; font-size: 20px; font-weight: bold; letter-spacing: 0.5px;">
                         <a href="${cleanBase}" target="_blank" style="color: #ffffff; text-decoration: none;">
-                          Lijst van Andel
+                          Onafhankelijk Steenwijkerland
                         </a>
                       </td>
                       <td align="right" style="color: ${goldColor}; font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: bold; vertical-align: middle;">
-                        Steenwijkerland
+                        OSL
                       </td>
                     </tr>
                   </table>
@@ -136,16 +136,16 @@ export function generateNewsletterHtml(
 
               <!-- Header Hero Banner -->
               <tr>
-                <td style="padding: 0; background-color: #0c1711; text-align: center;">
+                <td style="padding: 0; background-color: #0e281d; text-align: center;">
                   <a href="${cleanBase}" target="_blank" style="display: block; text-decoration: none;">
-                    <img src="${resolvedBannerUrl}" alt="Lijst van Andel Steenwijkerland" style="display: block; width: 100%; max-width: 580px; height: auto; border: 0; margin: 0 auto;" />
+                    <img src="${resolvedBannerUrl}" alt="Onafhankelijk Steenwijkerland (OSL)" style="display: block; width: 100%; max-width: 580px; height: auto; border: 0; margin: 0 auto;" />
                   </a>
                 </td>
               </tr>
 
               <!-- Intro Section -->
               <tr>
-                <td class="content-padding" style="padding: 28px 24px 24px 24px; background-color: #112017;">
+                <td class="content-padding" style="padding: 28px 24px 24px 24px; background-color: #143627;">
                   ${newsletter.introTitle ? `
                     <h1 style="margin: 0 0 16px 0; font-family: Georgia, serif; font-size: 23px; font-weight: bold; color: #ffffff; line-height: 130%;">
                       ${escapeHtml(newsletter.introTitle)}
@@ -194,11 +194,11 @@ export function generateNewsletterHtml(
                   badgeBorder = "#4d3e1b";
                 }
 
-                // Default button styling matching the website: warm gold or deep green with gold border
-                const isGoldBtn = !item.buttonColor || item.buttonColor === "#c6a858" || item.buttonColor.includes("gold");
+                // Default button styling matching the website: warm amber or deep forest green with amber border
+                const isGoldBtn = !item.buttonColor || item.buttonColor === "#c6a858" || item.buttonColor === "#EAB308" || item.buttonColor.includes("gold");
                 const btnBgStyle = isGoldBtn
-                  ? `background-color: ${goldColor}; color: #09110c; border: 1px solid ${goldColor};`
-                  : `background-color: #1c3826; color: #f5f3ec; border: 1px solid ${goldColor};`;
+                  ? `background-color: ${goldColor}; color: #143627; border: 1px solid ${goldColor};`
+                  : `background-color: #1c3d2d; color: #f5f3ec; border: 1px solid ${goldColor};`;
 
                 return `
                   <!-- Item Divider -->
@@ -258,11 +258,11 @@ export function generateNewsletterHtml(
 
               <!-- Social Media & Website Navigation -->
               <tr>
-                <td style="background-color: #0c1711; padding: 26px 24px; text-align: center; border-top: 1px solid #233527;">
+                <td style="background-color: #0e281d; padding: 26px 24px; text-align: center; border-top: 1px solid #23503c;">
                   <div style="font-family: Georgia, serif; font-size: 17px; color: #ffffff; margin-bottom: 4px; font-weight: bold;">
-                    Lijst van Andel Steenwijkerland
+                    Onafhankelijk Steenwijkerland (OSL)
                   </div>
-                  <div style="font-size: 12px; color: #8fa195; margin-bottom: 18px;">
+                  <div style="font-size: 12px; color: #9ec0b0; margin-bottom: 18px;">
                     Dichtbij de inwoner van Steenwijkerland
                   </div>
 
@@ -270,22 +270,22 @@ export function generateNewsletterHtml(
                   <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin: 0 auto 18px auto;">
                     <tr>
                       <td style="padding: 0 5px;">
-                        <a href="${cleanBase}" target="_blank" style="display: inline-block; background-color: #17291d; color: #e2ede6; border: 1px solid #283e2e; padding: 7px 14px; border-radius: 4px; font-size: 12px; text-decoration: none; font-weight: 600;">
+                        <a href="${cleanBase}" target="_blank" style="display: inline-block; background-color: #194230; color: #e2ede6; border: 1px solid #285b43; padding: 7px 14px; border-radius: 4px; font-size: 12px; text-decoration: none; font-weight: 600;">
                           Website
                         </a>
                       </td>
                       <td style="padding: 0 5px;">
-                        <a href="${cleanBase}/nieuws" target="_blank" style="display: inline-block; background-color: #17291d; color: #e2ede6; border: 1px solid #283e2e; padding: 7px 14px; border-radius: 4px; font-size: 12px; text-decoration: none; font-weight: 600;">
+                        <a href="${cleanBase}/nieuws" target="_blank" style="display: inline-block; background-color: #194230; color: #e2ede6; border: 1px solid #285b43; padding: 7px 14px; border-radius: 4px; font-size: 12px; text-decoration: none; font-weight: 600;">
                           Nieuws
                         </a>
                       </td>
                       <td style="padding: 0 5px;">
-                        <a href="${cleanBase}/agenda" target="_blank" style="display: inline-block; background-color: #17291d; color: #e2ede6; border: 1px solid #283e2e; padding: 7px 14px; border-radius: 4px; font-size: 12px; text-decoration: none; font-weight: 600;">
+                        <a href="${cleanBase}/agenda" target="_blank" style="display: inline-block; background-color: #194230; color: #e2ede6; border: 1px solid #285b43; padding: 7px 14px; border-radius: 4px; font-size: 12px; text-decoration: none; font-weight: 600;">
                           Agenda
                         </a>
                       </td>
                       <td style="padding: 0 5px;">
-                        <a href="${cleanBase}/doneren" target="_blank" style="display: inline-block; background-color: ${goldColor}; color: #09110c; border: 1px solid ${goldColor}; padding: 7px 14px; border-radius: 4px; font-size: 12px; text-decoration: none; font-weight: bold;">
+                        <a href="${cleanBase}/doneren" target="_blank" style="display: inline-block; background-color: ${goldColor}; color: #143627; border: 1px solid ${goldColor}; padding: 7px 14px; border-radius: 4px; font-size: 12px; text-decoration: none; font-weight: bold;">
                           Doneren
                         </a>
                       </td>
@@ -293,11 +293,11 @@ export function generateNewsletterHtml(
                   </table>
 
                   <!-- Footer divider -->
-                  <div style="border-top: 1px solid #1f3123; margin: 18px auto; max-width: 480px;"></div>
+                  <div style="border-top: 1px solid #1e4735; margin: 18px auto; max-width: 480px;"></div>
 
                   <!-- Unsubscribe and Legal Text -->
-                  <p style="font-size: 11px; line-height: 150%; color: #8fa195; margin: 0 0 10px 0;">
-                    U ontvangt deze e-mail op <strong>${escapeHtml(recipientEmail)}</strong> als abonnee van Lijst van Andel Steenwijkerland.
+                  <p style="font-size: 11px; line-height: 150%; color: #9ec0b0; margin: 0 0 10px 0;">
+                    U ontvangt deze e-mail op <strong>${escapeHtml(recipientEmail)}</strong> als abonnee van Onafhankelijk Steenwijkerland (OSL).
                   </p>
 
                   <p style="font-size: 12px; margin: 0; color: #c5d2c8;">
@@ -329,7 +329,7 @@ export function generateNewsletterText(
   const cleanBase = baseUrl.replace(/\/+$/, "");
   const unsubscribeUrl = `${cleanBase}/nieuwsbrief/afmelden?email=${encodeURIComponent(recipientEmail)}&token=${encodeURIComponent(unsubscribeToken)}`;
 
-  let text = `LIJST VAN ANDEL STEENWIJKERLAND\n`;
+  let text = `ONAFHANKELIJK STEENWIJKERLAND (OSL)\n`;
   text += `${newsletter.subject}\n`;
   text += `===============================================\n\n`;
 
@@ -358,9 +358,9 @@ export function generateNewsletterText(
   }
 
   text += `===============================================\n`;
-  text += `U ontvangt deze e-mail (${recipientEmail}) als abonnee van Lijst van Andel.\n`;
+  text += `U ontvangt deze e-mail (${recipientEmail}) als abonnee van Onafhankelijk Steenwijkerland (OSL).\n`;
   text += `Afmelden kan direct via deze link:\n${unsubscribeUrl}\n\n`;
-  text += `Lijst van Andel Steenwijkerland - Vendelweg 1, 8331 XE Steenwijk\n`;
+  text += `Onafhankelijk Steenwijkerland - Vendelweg 1, 8331 XE Steenwijk\n`;
 
   return text;
 }
@@ -414,7 +414,7 @@ export function prepareNewsletterForDispatch(
   const bannerRaw = newsletter.bannerUrl || "/assets/hero-banner.jpg";
   const bannerLocal = resolveLocalFile(bannerRaw) || path.join(publicDir, "assets", "hero-banner.jpg");
   if (bannerLocal && fs.existsSync(bannerLocal)) {
-    const bannerCid = "banner_header@lijstvanandel.nl";
+    const bannerCid = "banner_header@onafhankelijksteenwijkerland.nl";
     attachments.push({
       filename: path.basename(bannerLocal),
       path: bannerLocal,
@@ -422,7 +422,7 @@ export function prepareNewsletterForDispatch(
     });
     imageCids["banner"] = bannerCid;
   } else if (bannerRaw.startsWith("http://") || bannerRaw.startsWith("https://")) {
-    const bannerCid = "banner_header@lijstvanandel.nl";
+    const bannerCid = "banner_header@onafhankelijksteenwijkerland.nl";
     attachments.push({
       filename: "hero-banner.jpg",
       path: bannerRaw,
@@ -435,7 +435,7 @@ export function prepareNewsletterForDispatch(
   if (newsletter.items && newsletter.items.length > 0) {
     newsletter.items.forEach((item, index) => {
       if (!item.imageUrl) return;
-      const cid = `item_${index}_thumb@lijstvanandel.nl`;
+      const cid = `item_${index}_thumb@onafhankelijksteenwijkerland.nl`;
       const localPath = resolveLocalFile(item.imageUrl);
       if (localPath && fs.existsSync(localPath)) {
         attachments.push({

@@ -122,7 +122,7 @@ export default function AgendaDetail() {
       .then((data: EventDetailItem | null) => {
         if (data && data.title) {
           setEvent(data);
-          document.title = `${data.title} | Agenda Lijst van Andel`;
+          document.title = `${data.title} | Agenda Onafhankelijk Steenwijkerland`;
           if (data.isAttending || (user?.id && data.attendees?.includes(user.id))) {
             setIsAttending(true);
           }
@@ -641,7 +641,7 @@ export default function AgendaDetail() {
                   </div>
                   <h3 className="font-display text-2xl text-foreground">Aanwezig zijn bij deze bijeenkomst?</h3>
                   <p className="text-sm text-muted-foreground mt-1 max-w-lg">
-                    Als lid van Lijst van Andel heeft u altijd kosteloos toegang. Meld u met één klik aan, 
+                    Als lid van Onafhankelijk Steenwijkerland heeft u altijd kosteloos toegang. Meld u met één klik aan, 
                     zodat wij uw plaats kunnen reserveren en u uw digitale ticket met QR-code ontvangt.
                   </p>
                 </div>
@@ -673,7 +673,7 @@ export default function AgendaDetail() {
                 </div>
                 <h3 className="font-display text-2xl mb-2">Besloten Bijeenkomst voor Leden</h3>
                 <p className="text-sm text-muted-foreground mb-6">
-                  Dit evenement is uitsluitend toegankelijk voor ingeschreven leden van Lijst van Andel. 
+                  Dit evenement is uitsluitend toegankelijk voor ingeschreven leden van Onafhankelijk Steenwijkerland. 
                   Log in met uw account of meld u aan als lid om deel te nemen.
                 </p>
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -687,7 +687,7 @@ export default function AgendaDetail() {
                     to="/register"
                     className="inline-flex items-center justify-center px-6 py-2.5 rounded-full border border-border text-foreground hover:bg-secondary font-semibold text-sm transition-colors w-full sm:w-auto"
                   >
-                    Lid worden van Lijst van Andel
+                    Lid worden van Onafhankelijk Steenwijkerland
                   </Link>
                 </div>
               </div>
@@ -964,7 +964,7 @@ export default function AgendaDetail() {
       <ShareDialog
         open={shareDialogOpen}
         onOpenChange={setShareDialogOpen}
-        title={`${event.title} | Agenda Lijst van Andel`}
+        title={`${event.title} | Agenda Onafhankelijk Steenwijkerland`}
         description={event.shortDescription || (event.description ? event.description.replace(/<[^>]*>/g, '').slice(0, 160) : "")}
         url={currentUrl}
         imageUrl={event.thumbnailUrl || event.backgroundUrl || event.headerUrl || event.image}

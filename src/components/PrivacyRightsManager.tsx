@@ -311,7 +311,7 @@ export function PrivacyRightsManager({ onClose, initialTab = "rectificatie" }: P
     const jsonStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dataToExport, null, 2));
     const downloadAnchor = document.createElement("a");
     downloadAnchor.setAttribute("href", jsonStr);
-    downloadAnchor.setAttribute("download", `lijstvanandel-avg-export-${user?.username || "lid"}.json`);
+    downloadAnchor.setAttribute("download", `osl-avg-export-${user?.username || "lid"}.json`);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();

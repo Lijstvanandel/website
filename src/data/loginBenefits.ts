@@ -27,7 +27,7 @@ export interface LoginPageSettings {
 export const DEFAULT_LOGIN_SETTINGS: LoginPageSettings = {
   sectionTitle: "Voordelen als lid",
   sectionSubtitle:
-    "Als lid van Lijst van Andel staat u dicht bij de lokale politiek van Steenwijkerland en bouwt u actief mee aan een betrokken en sterke gemeenschap.",
+    "Als lid van Onafhankelijk Steenwijkerland staat u dicht bij de lokale politiek van Steenwijkerland en bouwt u actief mee aan een betrokken en sterke gemeenschap.",
   footerText: "Samen bereiken we meer voor Steenwijk en alle kernen.",
   ctaButtonText: "Sluit u vandaag nog aan",
   autoPlay: true,
@@ -38,9 +38,9 @@ export const DEFAULT_LOGIN_BENEFITS: LoginBenefitItem[] = [
   {
     id: "benefit-1",
     icon: "Users",
-    text: "Ontmoet u andere LVA'ers die de gemeente een warm hart toedragen",
+    text: "Ontmoet u andere OSL'ers die de gemeente een warm hart toedragen",
     imageUrl: "/assets/markt-steenwijk.jpg",
-    imageAlt: "Ontmoet andere LVA'ers in Steenwijkerland",
+    imageAlt: "Ontmoet andere OSL'ers in Steenwijkerland",
     order: 1,
   },
   {
@@ -127,7 +127,7 @@ export const PRESET_LOGIN_IMAGES: LoginImageOption[] = [
   {
     id: "preset-hero",
     url: "/assets/hero-banner.jpg",
-    label: "Lijst van Andel Sfeerbeeld",
+    label: "Onafhankelijk Steenwijkerland Sfeerbeeld",
     isPreset: true,
   },
 ];

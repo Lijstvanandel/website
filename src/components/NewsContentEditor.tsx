@@ -584,12 +584,12 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
   };
 
   // Handle importing a .html file directly into the content (either as text or dataproduct prompt)
-  // Helper to check if an uploaded .html file is accidentally a saved Lijst van Andel webpage dump
+  // Helper to check if an uploaded .html file is accidentally a saved Onafhankelijk Steenwijkerland webpage dump
   const isSavedWebsitePageDump = (html: string, filename: string): boolean => {
     if (
       (html.includes('id="root"') && (html.includes("stadium-bg") || html.includes("lva-svg-colorblind-filters"))) ||
-      /saved from url=.*(?:scientiarum\.nl|lijstvanandel\.nl)/i.test(html) ||
-      /Lijst van Andel\.html$/i.test(filename.trim())
+      /saved from url=.*(?:scientiarum\.nl|lijstvanandel\.nl|onafhankelijksteenwijkerland\.nl)/i.test(html) ||
+      /(?:Lijst van Andel|Onafhankelijk Steenwijkerland)\.html$/i.test(filename.trim())
     ) {
       return true;
     }
@@ -614,7 +614,7 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
 
       if (isSavedWebsitePageDump(fullHtml, file.name)) {
         toast.error(
-          `Let op: '${file.name}' is een opgeslagen webpagina van de Lijst van Andel-website zelf (inclusief website-menu en footer). Kies het originele losse bronbestand (bijv. onder_de_graszoden_van_eesveen_forensisch_dossier.html).`,
+          `Let op: '${file.name}' is een opgeslagen webpagina van de Onafhankelijk Steenwijkerland-website zelf (inclusief website-menu en footer). Kies het originele losse bronbestand (bijv. onder_de_graszoden_van_eesveen_forensisch_dossier.html).`,
           { duration: 9000 }
         );
         if (fileInputRef.current) fileInputRef.current.value = "";
@@ -1353,7 +1353,7 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
                       const txt = (ev.target?.result as string) || "";
                       if (isSavedWebsitePageDump(txt, f.name)) {
                         toast.error(
-                          `Let op: '${f.name}' is een opgeslagen webpagina van de Lijst van Andel-website zelf (inclusief website-menu en footer). Kies het originele losse bronbestand (bijv. onder_de_graszoden_van_eesveen_forensisch_dossier.html).`,
+                          `Let op: '${f.name}' is een opgeslagen webpagina van de Onafhankelijk Steenwijkerland-website zelf (inclusief website-menu en footer). Kies het originele losse bronbestand (bijv. onder_de_graszoden_van_eesveen_forensisch_dossier.html).`,
                           { duration: 9000 }
                         );
                         e.target.value = "";
@@ -1373,7 +1373,7 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
                         setDpType("article");
                         setDpHoverActivate(false);
                         setDpHeight("850");
-                        if (!dpTitle || dpTitle.includes("Lijst van Andel")) {
+                        if (!dpTitle || dpTitle.includes("Lijst van Andel") || dpTitle.includes("Onafhankelijk Steenwijkerland")) {
                           setDpTitle("Interactief Onderzoeksdossier");
                         }
                         if (!dpCaption) {

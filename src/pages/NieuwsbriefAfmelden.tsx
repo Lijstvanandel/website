@@ -97,7 +97,7 @@ export default function NieuwsbriefAfmelden() {
           </CardTitle>
           <CardDescription className="text-sm">
             {isUnsubscribed
-              ? "U ontvangt voortaan geen algemene nieuwsbrieven meer van Lijst van Andel."
+              ? "U ontvangt voortaan geen algemene nieuwsbrieven meer van Onafhankelijk Steenwijkerland (OSL)."
               : resubscribed
               ? "Fijn dat u verbonden blijft! U ontvangt voortaan weer onze periodieke updates."
               : "Vul uw e-mailadres in om uw uitschrijving direct te bevestigen."}

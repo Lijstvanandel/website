@@ -399,7 +399,7 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
         ctx.lineTo(target.x, target.y);
 
         if (isHighlighted) {
-          ctx.strokeStyle = "#c6a858"; // gold accent for active document connection
+          ctx.strokeStyle = "#EAB308"; // amber accent for active document connection
           ctx.lineWidth = 3;
           ctx.globalAlpha = 0.95;
         } else if (activeHighlightId) {
@@ -437,7 +437,7 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
           }
           ctx.fill();
 
-          ctx.strokeStyle = "#c6a858";
+          ctx.strokeStyle = "#EAB308";
           ctx.lineWidth = 1;
           if (ctx.roundRect) {
             ctx.roundRect(midX - badgeW / 2, midY - badgeH / 2, badgeW, badgeH, 6);
@@ -495,7 +495,7 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
 
         // Fill color for document node
         if (isSelected) {
-          ctx.fillStyle = "#c6a858"; // Gold selected
+          ctx.fillStyle = "#EAB308"; // Amber selected
         } else if (isHovered) {
           ctx.fillStyle = "#38bdf8"; // Bright sky blue hover
         } else if (isWijkHighlighted) {
@@ -519,7 +519,7 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
           : isHovered
           ? "#fef08a"
           : isWijkHighlighted
-          ? "#fbbf24"
+          ? "#EAB308"
           : isConnectedToActive
           ? "#7dd3fc"
           : "rgba(255,255,255,0.85)";
@@ -528,7 +528,7 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
         // Inner document icon mark (mini document outline)
         ctx.fillStyle = isSelected ? "#0f172a" : "#ffffff";
         ctx.fillRect(node.x - 4, node.y - 5.5, 8, 11);
-        ctx.fillStyle = isSelected ? "#c6a858" : isWijkHighlighted ? "#d97706" : "#1e40af";
+        ctx.fillStyle = isSelected ? "#EAB308" : isWijkHighlighted ? "#d97706" : "#1e40af";
         ctx.fillRect(node.x - 2.5, node.y - 3.5, 5, 1.4);
         ctx.fillRect(node.x - 2.5, node.y - 1, 5, 1.4);
         ctx.fillRect(node.x - 2.5, node.y + 1.5, 3, 1.4);
@@ -552,7 +552,7 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
           }
           ctx.fill();
 
-          ctx.strokeStyle = "#c6a858";
+          ctx.strokeStyle = "#EAB308";
           ctx.lineWidth = 1.2;
           if (ctx.roundRect) {
             ctx.roundRect(node.x - badgeW / 2, badgeY - badgeH / 2, badgeW, badgeH, 5);
@@ -593,7 +593,7 @@ export const DossierNetworkGraph: React.FC<DossierNetworkGraphProps> = ({
 
         ctx.strokeStyle =
           isHovered || isSelected
-            ? "#c6a858"
+            ? "#EAB308"
             : "rgba(148, 163, 184, 0.4)";
         ctx.lineWidth = 1;
         if (ctx.roundRect) {

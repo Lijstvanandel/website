@@ -37,7 +37,7 @@ export const BUURTKAART_WIJKEN: DefaultWijkData[] = [
     is_grouped: false,
     bannerUrl: "/assets/markt-steenwijk.webp",
     heroBannerUrl: "/assets/markt-steenwijk.webp",
-    beschrijving: "Het historische hart van Steenwijk met de Markt, winkels, horeca en cultuur. Lijst van Andel zet zich in voor een bruisend centrum met minder leegstand en goede bereikbaarheid.",
+    beschrijving: "Het historische hart van Steenwijk met de Markt, winkels, horeca en cultuur. Onafhankelijk Steenwijkerland zet zich in voor een bruisend centrum met minder leegstand en goede bereikbaarheid.",
     vertegenwoordiger: null,
   },
   {
@@ -110,7 +110,7 @@ export const BUURTKAART_WIJKEN: DefaultWijkData[] = [
       fotoUrl: "/assets/stef-mars.webp",
       rol: "Wijkvertegenwoordiger Oostermeenthe",
       beschrijving: "Stef is uw aanspreekpunt in Oostermeenthe. Hij verzamelt signalen uit de wijk en brengt deze onder de aandacht van de fractie.",
-      email: "stef@lijstvanandel.nl",
+      email: "stef@onafhankelijksteenwijkerland.nl",
       socials: {
         facebook: "https://facebook.com",
         instagram: "https://instagram.com",
@@ -151,7 +151,7 @@ export const BUURTKAART_WIJKEN: DefaultWijkData[] = [
     is_grouped: false,
     bannerUrl: "/assets/steenwijk-aerial.webp",
     heroBannerUrl: "/assets/steenwijk-aerial.webp",
-    beschrijving: "Een veelzijdige wijk met sterke sociale samenhang en hechte buurten, waar Lijst van Andel inzet op leefbaarheid en buurtinitiatieven.",
+    beschrijving: "Een veelzijdige wijk met sterke sociale samenhang en hechte buurten, waar Onafhankelijk Steenwijkerland inzet op leefbaarheid en buurtinitiatieven.",
     vertegenwoordiger: null,
   },
   {

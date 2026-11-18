@@ -22,14 +22,17 @@ export interface AccessibilityContextType {
 export const AccessibilityContext = createContext<AccessibilityContextType | undefined>(undefined);
 
 const FONT_SIZE_STEPS = [85, 100, 115, 130, 145];
-const STORAGE_KEY_FONT_SIZE = "lva-text-size";
-const STORAGE_KEY_CONTRAST = "lva-contrast-mode";
-const STORAGE_KEY_COLORBLIND = "lva-colorblind-mode";
+const STORAGE_KEY_FONT_SIZE = "osl-text-size";
+const STORAGE_KEY_CONTRAST = "osl-contrast-mode";
+const STORAGE_KEY_COLORBLIND = "osl-colorblind-mode";
+const LEGACY_KEY_FONT_SIZE = "lva-text-size";
+const LEGACY_KEY_CONTRAST = "lva-contrast-mode";
+const LEGACY_KEY_COLORBLIND = "lva-colorblind-mode";
 
 export const AccessibilityProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [fontSize, setFontSizeState] = useState<number>(() => {
     if (typeof window === "undefined") return 100;
-    const stored = safeLocalStorage.getItem(STORAGE_KEY_FONT_SIZE);
+    const stored = safeLocalStorage.getItem(STORAGE_KEY_FONT_SIZE) || safeLocalStorage.getItem(LEGACY_KEY_FONT_SIZE);
     if (stored) {
       const parsed = parseInt(stored, 10);
       if (!isNaN(parsed) && parsed >= 70 && parsed <= 160) {
@@ -41,13 +44,13 @@ export const AccessibilityProvider: React.FC<{ children: ReactNode }> = ({ child
 
   const [contrastMode, setContrastModeState] = useState<ContrastMode>(() => {
     if (typeof window === "undefined") return "normal";
-    const stored = safeLocalStorage.getItem(STORAGE_KEY_CONTRAST);
+    const stored = safeLocalStorage.getItem(STORAGE_KEY_CONTRAST) || safeLocalStorage.getItem(LEGACY_KEY_CONTRAST);
     return stored === "high" ? "high" : "normal";
   });
 
   const [colorBlindMode, setColorBlindModeState] = useState<ColorBlindMode>(() => {
     if (typeof window === "undefined") return "none";
-    const stored = safeLocalStorage.getItem(STORAGE_KEY_COLORBLIND);
+    const stored = safeLocalStorage.getItem(STORAGE_KEY_COLORBLIND) || safeLocalStorage.getItem(LEGACY_KEY_COLORBLIND);
     if (
       stored === "deuteranopia" ||
       stored === "protanopia" ||

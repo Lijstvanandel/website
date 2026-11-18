@@ -513,7 +513,7 @@ export async function matchToezeggingWithStandpunten(item: ToezeggingItem): Prom
 
   try {
     const activeChapters = hoofdstukken;
-    const partyName = "Lijst van Andel";
+    const partyName = "Onafhankelijk Steenwijkerland";
     const municipalityName = "Steenwijkerland";
 
     const programmaLines = [];

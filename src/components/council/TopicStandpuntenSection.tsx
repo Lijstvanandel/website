@@ -184,7 +184,7 @@ export function TopicStandpuntenSection({
         stance: newStance,
         explanation:
           customExplanation.trim() ||
-          `Lijst van Andel neemt een ${newStance} standpunt in conform ${h?.titel} - Standpunt ${selectedStandpuntNr}.`,
+          `Onafhankelijk Steenwijkerland neemt een ${newStance} standpunt in conform ${h?.titel} - Standpunt ${selectedStandpuntNr}.`,
         relevanceScore: 100,
         matchedKeywords: ["Handmatig gekoppeld"],
         manuallyAdjusted: true,
@@ -308,7 +308,7 @@ export function TopicStandpuntenSection({
             </h3>
           </div>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Direct inzicht in welke standpunten van <strong className="font-medium text-foreground">Lijst van Andel</strong> positief, negatief of genuanceerd aansluiten op dit onderwerp en de vergaderstukken.
+            Direct inzicht in welke standpunten van <strong className="font-medium text-foreground">Onafhankelijk Steenwijkerland</strong> positief, negatief of genuanceerd aansluiten op dit onderwerp en de vergaderstukken.
           </p>
         </div>
 
@@ -321,7 +321,7 @@ export function TopicStandpuntenSection({
             onClick={handleRunAiAnalysis}
             disabled={isAiAnalyzing}
             className="h-8 text-xs px-2.5 border-accent/40 text-accent hover:bg-accent/10 rounded-lg gap-1.5"
-            title="Scan alle raadsstukken en koppel alle relevante standpunten van Lijst van Andel (meerdere standpunten tegelijk via Gemini)"
+            title="Scan alle raadsstukken en koppel alle relevante standpunten van Onafhankelijk Steenwijkerland (meerdere standpunten tegelijk via Gemini)"
           >
             {isAiAnalyzing ? (
               <RefreshCw className="w-3 h-3 animate-spin" />
@@ -350,7 +350,7 @@ export function TopicStandpuntenSection({
             asChild
             className="h-8 text-xs px-2.5 text-muted-foreground hover:text-foreground rounded-lg border border-border/50 hover:bg-muted/60 gap-1.5"
           >
-            <Link to="/standpunten" target="_blank" title="Bekijk het volledige verkiezingsprogramma van Lijst van Andel">
+            <Link to="/standpunten" target="_blank" title="Bekijk het volledige verkiezingsprogramma van Onafhankelijk Steenwijkerland">
               <BookOpen className="w-3.5 h-3.5 text-accent" />
               <span>Standpunten</span>
               <ExternalLink className="w-3 h-3 opacity-60" />
@@ -437,7 +437,7 @@ export function TopicStandpuntenSection({
             <div className="space-y-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-bold text-xs uppercase tracking-wider">
-                  Lijst van Andel Stellingname:
+                  Onafhankelijk Steenwijkerland Stellingname:
                 </span>
                 <span
                   className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase ${
@@ -463,11 +463,11 @@ export function TopicStandpuntenSection({
               <p className="text-xs sm:text-sm font-medium leading-relaxed opacity-90">
                 {summary.summaryText || (
                   summary.primaryStance === "negatief"
-                    ? `Lijst van Andel staat kritisch of afwijzend tegenover dit voorstel op basis van ${summary.negatiefCount} partijstandpunt(en).`
+                    ? `Onafhankelijk Steenwijkerland staat kritisch of afwijzend tegenover dit voorstel op basis van ${summary.negatiefCount} partijstandpunt(en).`
                     : summary.primaryStance === "positief"
-                    ? `Lijst van Andel ondersteunt dit initiatief op basis van ${summary.positiefCount} partijstandpunt(en).`
+                    ? `Onafhankelijk Steenwijkerland ondersteunt dit initiatief op basis van ${summary.positiefCount} partijstandpunt(en).`
                     : summary.primaryStance === "gemengd"
-                    ? `Lijst van Andel herkent zowel positieve elementen (${summary.positiefCount}) als kritische aandachtspunten (${summary.negatiefCount}) in dit voorstel.`
+                    ? `Onafhankelijk Steenwijkerland herkent zowel positieve elementen (${summary.positiefCount}) als kritische aandachtspunten (${summary.negatiefCount}) in dit voorstel.`
                     : "Er is nog geen directe match met het partijprogramma gevonden. Klik op 'AI Analyse' om de inhoud diep te toetsen."
                 )}
               </p>
@@ -653,7 +653,7 @@ export function TopicStandpuntenSection({
                   </div>
                 </div>
 
-                {/* Explanation: Lijst van Andel's direct position on this agenda topic */}
+                {/* Explanation: Onafhankelijk Steenwijkerland's direct position on this agenda topic */}
                 <div className="text-xs text-foreground/90 font-medium leading-relaxed bg-background/80 p-3 rounded-lg border border-border/70 mb-2">
                   <div className="flex items-start gap-2">
                     <span className="text-accent font-bold shrink-0">Fractielijn:</span>
@@ -934,7 +934,7 @@ export function TopicStandpuntenSection({
               <span>Standpunt Koppelen aan Agendapunt</span>
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Koppel een officieel standpunt uit het verkiezingsprogramma aan dit raadsvoorstel en geef aan of Lijst van Andel positief, negatief of genuanceerd staat.
+              Koppel een officieel standpunt uit het verkiezingsprogramma aan dit raadsvoorstel en geef aan of Onafhankelijk Steenwijkerland positief, negatief of genuanceerd staat.
             </DialogDescription>
           </DialogHeader>
 

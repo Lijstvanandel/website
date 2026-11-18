@@ -13,8 +13,8 @@ const searchedAddressIcon = L.divIcon({
   className: "custom-searched-marker",
   html: `
     <div style="transform: translate(-50%, -100%); display: flex; flex-direction: column; align-items: center;">
-      <div style="background: linear-gradient(135deg, #e6c875, #c6a858); width: 38px; height: 38px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 2px solid #ffffff; box-shadow: 0 4px 14px rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center;">
-        <div style="transform: rotate(45deg); color: #0c1c14; font-size: 16px; font-weight: 800; line-height: 1;">📍</div>
+      <div style="background: linear-gradient(135deg, #fde047, #EAB308); width: 38px; height: 38px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 2px solid #ffffff; box-shadow: 0 4px 14px rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center;">
+        <div style="transform: rotate(45deg); color: #143627; font-size: 16px; font-weight: 800; line-height: 1;">📍</div>
       </div>
       <div style="width: 12px; height: 5px; background: rgba(0,0,0,0.45); border-radius: 50%; margin-top: 3px; filter: blur(1px);"></div>
     </div>
@@ -29,8 +29,8 @@ const eventMarkerIcon = L.divIcon({
   className: "custom-event-marker",
   html: `
     <div style="transform: translate(-50%, -100%); display: flex; flex-direction: column; align-items: center;">
-      <div style="background: linear-gradient(135deg, #2d6a4f, #1e4533); width: 34px; height: 34px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 2px solid #c6a858; box-shadow: 0 4px 12px rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center;">
-        <div style="transform: rotate(45deg); color: #e6c875; font-size: 14px; font-weight: bold; line-height: 1;">📅</div>
+      <div style="background: linear-gradient(135deg, #1e4d38, #143627); width: 34px; height: 34px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 2px solid #EAB308; box-shadow: 0 4px 12px rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center;">
+        <div style="transform: rotate(45deg); color: #EAB308; font-size: 14px; font-weight: bold; line-height: 1;">📅</div>
       </div>
       <div style="width: 10px; height: 4px; background: rgba(0,0,0,0.4); border-radius: 50%; margin-top: 2px; filter: blur(1px);"></div>
     </div>
@@ -387,7 +387,7 @@ export const AgendaMap: React.FC<AgendaMapProps> = ({
       <div className="px-6 py-3 bg-secondary/30 border-t border-border flex flex-wrap items-center justify-between gap-4 text-xs text-muted-foreground">
         <div className="flex items-center gap-4">
           <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-[#2d6a4f] inline-block border border-accent" /> Bijeenkomsten & evenementen
+            <span className="w-3 h-3 rounded-full bg-[#143627] inline-block border border-accent" /> Bijeenkomsten & evenementen
           </span>
         </div>
         <div>Gemeente Steenwijkerland • OpenStreetMap</div>

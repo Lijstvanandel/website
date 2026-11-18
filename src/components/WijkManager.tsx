@@ -1008,7 +1008,7 @@ export const WijkManager: React.FC<WijkManagerProps> = ({ token }) => {
                         type="email"
                         value={repEmail}
                         onChange={(e) => setRepEmail(e.target.value)}
-                        placeholder="bijv. naam@lijstvanandel.nl"
+                        placeholder="bijv. naam@onafhankelijksteenwijkerland.nl"
                         className="text-xs pl-8"
                       />
                     </div>

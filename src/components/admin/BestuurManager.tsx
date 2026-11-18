@@ -104,17 +104,17 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ token: propToken
 
   // Form State
   const [formData, setFormData] = useState<BestuurFormData>({
-    partyName: "Lijst van Andel",
+    partyName: "Onafhankelijk Steenwijkerland",
     boardTitle: "Bestuur",
-    boardSubtitle: "Het bestuur bewaakt de koers van Lijst van Andel, zorgt voor een gezonde organisatie en vormt de schakel tussen leden, fractie en samenleving.",
-    pageIntro: "Het bestuur bewaakt de koers van Lijst van Andel, zorgt voor een gezonde organisatie en vormt de schakel tussen leden, fractie en samenleving.",
+    boardSubtitle: "Het bestuur bewaakt de koers van Onafhankelijk Steenwijkerland, zorgt voor een gezonde organisatie en vormt de schakel tussen leden, fractie en samenleving.",
+    pageIntro: "Het bestuur bewaakt de koers van Onafhankelijk Steenwijkerland, zorgt voor een gezonde organisatie en vormt de schakel tussen leden, fractie en samenleving.",
     status: "Bestuur Compleet & Operationeel",
     chairman: {
       roleTitle: "Partijvoorzitter",
       name: "Sammy van Andel",
       description: "Leidt ALV en bestuursvergaderingen, bewaakt fractierelatie via 5 instrumenten, stuurt commissies aan en is het gezicht naar buiten.",
-      bio: "Voorzitter van het bestuur van Lijst van Andel. Bewaakt koers, samenhang en verbinding tussen bestuur en fractie.",
-      email: "voorzitter@lijstvanandel.nl",
+      bio: "Voorzitter van het bestuur van Onafhankelijk Steenwijkerland. Bewaakt koers, samenhang en verbinding tussen bestuur en fractie.",
+      email: "voorzitter@onafhankelijksteenwijkerland.nl",
       phone: "",
       img: "",
       socials: { instagram: "", facebook: "", linkedin: "" },
@@ -124,8 +124,8 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ token: propToken
       roleTitle: "Secretaris",
       name: "Anja ter Horst",
       description: "Verantwoordelijk voor correspondentie, notulering ALV, ledenadministratie, KvK/WBTR-formaliteiten en het partijarchief.",
-      bio: "Bestuurslid van Lijst van Andel. Betrokken bij organisatie, leden en lokale verankering van de partij.",
-      email: "secretariaat@lijstvanandel.nl",
+      bio: "Bestuurslid van Onafhankelijk Steenwijkerland. Betrokken bij organisatie, leden en lokale verankering van de partij.",
+      email: "secretariaat@onafhankelijksteenwijkerland.nl",
       phone: "",
       img: "",
       socials: { instagram: "", facebook: "", linkedin: "" },
@@ -135,8 +135,8 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ token: propToken
       roleTitle: "Penningmeester",
       name: "Stef Mars",
       description: "Beheert begroting, kasboek, contributie-inning via Stripe/SEPA, giftenregister en verantwoording naar de kascommissie.",
-      bio: "Bestuurslid van Lijst van Andel. Met een nuchtere blik en oog voor detail draagt hij bij aan een gezonde partijorganisatie.",
-      email: "penningmeester@lijstvanandel.nl",
+      bio: "Bestuurslid van Onafhankelijk Steenwijkerland. Met een nuchtere blik en oog voor detail draagt hij bij aan een gezonde partijorganisatie.",
+      email: "penningmeester@onafhankelijksteenwijkerland.nl",
       phone: "",
       img: "",
       socials: { instagram: "", facebook: "", linkedin: "" },
@@ -171,17 +171,17 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ token: propToken
         const data = await safeJson(res, null);
         if (data) {
           setFormData({
-            partyName: data.partyName || "Lijst van Andel",
+            partyName: data.partyName || "Onafhankelijk Steenwijkerland",
             boardTitle: data.boardTitle || "Bestuur",
-            boardSubtitle: data.boardSubtitle || "Het bestuur bewaakt de koers van Lijst van Andel, zorgt voor een gezonde organisatie en vormt de schakel tussen leden, fractie en samenleving.",
-            pageIntro: data.pageIntro || data.boardSubtitle || "Het bestuur bewaakt de koers van Lijst van Andel, zorgt voor een gezonde organisatie en vormt de schakel tussen leden, fractie en samenleving.",
+            boardSubtitle: data.boardSubtitle || "Het bestuur bewaakt de koers van Onafhankelijk Steenwijkerland, zorgt voor een gezonde organisatie en vormt de schakel tussen leden, fractie en samenleving.",
+            pageIntro: data.pageIntro || data.boardSubtitle || "Het bestuur bewaakt de koers van Onafhankelijk Steenwijkerland, zorgt voor een gezonde organisatie en vormt de schakel tussen leden, fractie en samenleving.",
             status: data.status || "Bestuur Compleet & Operationeel",
             chairman: {
               roleTitle: data.chairman?.roleTitle || "Partijvoorzitter",
               name: data.chairman?.name || "Sammy van Andel",
               description: data.chairman?.description || "Leidt ALV en bestuursvergaderingen, bewaakt fractierelatie via 5 instrumenten, stuurt commissies aan en is het gezicht naar buiten.",
-              bio: data.chairman?.bio || data.chairman?.description || "Voorzitter van het bestuur van Lijst van Andel. Bewaakt koers, samenhang en verbinding tussen bestuur en fractie.",
-              email: data.chairman?.email || "voorzitter@lijstvanandel.nl",
+              bio: data.chairman?.bio || data.chairman?.description || "Voorzitter van het bestuur van Onafhankelijk Steenwijkerland. Bewaakt koers, samenhang en verbinding tussen bestuur en fractie.",
+              email: data.chairman?.email || "voorzitter@onafhankelijksteenwijkerland.nl",
               phone: data.chairman?.phone || "",
               img: data.chairman?.img || "",
               socials: data.chairman?.socials || { instagram: "", facebook: "", linkedin: "" },
@@ -191,8 +191,8 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ token: propToken
               roleTitle: data.secretary?.roleTitle || "Secretaris",
               name: data.secretary?.name || "Anja ter Horst",
               description: data.secretary?.description || "Verantwoordelijk voor correspondentie, notulering ALV, ledenadministratie, KvK/WBTR-formaliteiten en het partijarchief.",
-              bio: data.secretary?.bio || data.secretary?.description || "Bestuurslid van Lijst van Andel. Betrokken bij organisatie, leden en lokale verankering van de partij.",
-              email: data.secretary?.email || "secretariaat@lijstvanandel.nl",
+              bio: data.secretary?.bio || data.secretary?.description || "Bestuurslid van Onafhankelijk Steenwijkerland. Betrokken bij organisatie, leden en lokale verankering van de partij.",
+              email: data.secretary?.email || "secretariaat@onafhankelijksteenwijkerland.nl",
               phone: data.secretary?.phone || "",
               img: data.secretary?.img || "",
               socials: data.secretary?.socials || { instagram: "", facebook: "", linkedin: "" },
@@ -202,8 +202,8 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ token: propToken
               roleTitle: data.treasurer?.roleTitle || "Penningmeester",
               name: data.treasurer?.name || "Stef Mars",
               description: data.treasurer?.description || "Beheert begroting, kasboek, contributie-inning via Stripe/SEPA, giftenregister en verantwoording naar de kascommissie.",
-              bio: data.treasurer?.bio || data.treasurer?.description || "Bestuurslid van Lijst van Andel. Met een nuchtere blik en oog voor detail draagt hij bij aan een gezonde partijorganisatie.",
-              email: data.treasurer?.email || "penningmeester@lijstvanandel.nl",
+              bio: data.treasurer?.bio || data.treasurer?.description || "Bestuurslid van Onafhankelijk Steenwijkerland. Met een nuchtere blik en oog voor detail draagt hij bij aan een gezonde partijorganisatie.",
+              email: data.treasurer?.email || "penningmeester@onafhankelijksteenwijkerland.nl",
               phone: data.treasurer?.phone || "",
               img: data.treasurer?.img || "",
               socials: data.treasurer?.socials || { instagram: "", facebook: "", linkedin: "" },
@@ -320,7 +320,7 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ token: propToken
       name: "",
       description: "Ondersteunt verenigingsprojecten, wijkcontacten en organisatie.",
       bio: "Betrokken bij lokale initiatieven en versterking van de dorpskernen in Steenwijkerland.",
-      email: "bestuur@lijstvanandel.nl",
+      email: "bestuur@onafhankelijksteenwijkerland.nl",
       phone: "",
       img: "",
       socials: { instagram: "", facebook: "", linkedin: "" }
@@ -553,7 +553,7 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ token: propToken
               <Input
                 value={formData.partyName}
                 onChange={(e) => setFormData({ ...formData, partyName: e.target.value })}
-                placeholder="Lijst van Andel"
+                placeholder="Onafhankelijk Steenwijkerland"
                 required
               />
             </div>
@@ -587,7 +587,7 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ token: propToken
               rows={2}
               value={formData.pageIntro}
               onChange={(e) => setFormData({ ...formData, pageIntro: e.target.value, boardSubtitle: e.target.value })}
-              placeholder="Het bestuur bewaakt de koers van Lijst van Andel, zorgt voor een gezonde organisatie en vormt de schakel tussen leden, fractie en samenleving."
+              placeholder="Het bestuur bewaakt de koers van Onafhankelijk Steenwijkerland, zorgt voor een gezonde organisatie en vormt de schakel tussen leden, fractie en samenleving."
               required
             />
           </div>
@@ -695,7 +695,7 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ token: propToken
                           chairman: { ...formData.chairman, email: e.target.value }
                         })
                       }
-                      placeholder="voorzitter@lijstvanandel.nl"
+                      placeholder="voorzitter@onafhankelijksteenwijkerland.nl"
                     />
                   </div>
                   <div>
@@ -870,7 +870,7 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ token: propToken
                           secretary: { ...formData.secretary, email: e.target.value }
                         })
                       }
-                      placeholder="secretariaat@lijstvanandel.nl"
+                      placeholder="secretariaat@onafhankelijksteenwijkerland.nl"
                     />
                   </div>
                   <div>
@@ -1045,7 +1045,7 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ token: propToken
                           treasurer: { ...formData.treasurer, email: e.target.value }
                         })
                       }
-                      placeholder="penningmeester@lijstvanandel.nl"
+                      placeholder="penningmeester@onafhankelijksteenwijkerland.nl"
                     />
                   </div>
                   <div>
@@ -1261,7 +1261,7 @@ export const BestuurManager: React.FC<BestuurManagerProps> = ({ token: propToken
                           updated[index].email = e.target.value;
                           setFormData({ ...formData, additionalMembers: updated });
                         }}
-                        placeholder="bestuur@lijstvanandel.nl"
+                        placeholder="bestuur@onafhankelijksteenwijkerland.nl"
                       />
                     </div>
                     <div>

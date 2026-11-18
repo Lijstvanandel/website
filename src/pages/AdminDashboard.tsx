@@ -633,12 +633,12 @@ export default function AdminDashboard() {
   const [settingsAmount, setSettingsAmount] = useState("12.00");
   const [settingsEnabled, setSettingsEnabled] = useState(true);
   const [settingsRequirePayment, setSettingsRequirePayment] = useState(true);
-  const [settingsProductName, setSettingsProductName] = useState("Lidmaatschap Lijst van Andel (1 jaar)");
+  const [settingsProductName, setSettingsProductName] = useState("Lidmaatschap Onafhankelijk Steenwijkerland (1 jaar)");
   const [settingsDescription, setSettingsDescription] = useState("Jaarlijkse contributie voor partijleden");
 
   // Dynamic Word Lid Pop-up & Bank transfer settings
   const [settingsBankIban, setSettingsBankIban] = useState("NL91 RBRB 0823 4192 11");
-  const [settingsBankAccountName, setSettingsBankAccountName] = useState("Lijst van Andel");
+  const [settingsBankAccountName, setSettingsBankAccountName] = useState("Onafhankelijk Steenwijkerland");
   const [settingsManualPaymentAmount, setSettingsManualPaymentAmount] = useState("25.00");
   const [settingsPopupEnabled, setSettingsPopupEnabled] = useState(true);
   const [settingsPopupDelaySeconds, setSettingsPopupDelaySeconds] = useState("90");
@@ -657,7 +657,7 @@ export default function AdminDashboard() {
             setSettingsAmount(String(data.settings.amount ?? 12.00));
             setSettingsEnabled(data.settings.enabled !== false);
             setSettingsRequirePayment(data.settings.requirePaymentAtRegistration !== false);
-            setSettingsProductName(data.settings.productName || "Lidmaatschap Lijst van Andel (1 jaar)");
+            setSettingsProductName(data.settings.productName || "Lidmaatschap Onafhankelijk Steenwijkerland (1 jaar)");
             setSettingsDescription(data.settings.description || "Jaarlijkse contributie voor partijleden");
             
             // Populate bank & popup settings
@@ -1215,7 +1215,7 @@ export default function AdminDashboard() {
     const escapeCsv = (str: string | undefined | null) => `"${String(str || "").replace(/"/g, '""')}"`;
     
     const csvRows = subscribers.map((u) => {
-      const email = (u.email && u.email.trim()) || (u.username?.includes("@") ? u.username : `${u.username}@leden.lijstvanandel.nl`);
+      const email = (u.email && u.email.trim()) || (u.username?.includes("@") ? u.username : `${u.username}@leden.onafhankelijksteenwijkerland.nl`);
       return [
         escapeCsv(u.fullName || ""),
         escapeCsv(u.salutation || ""),
@@ -1244,7 +1244,7 @@ export default function AdminDashboard() {
   const copyNewsletterEmails = async () => {
     const subscribers = users.filter((u) => u.newsletterSubscribed !== false && u.isActive !== false);
     const emails = subscribers
-      .map((u) => (u.email && u.email.trim()) || (u.username?.includes("@") ? u.username : `${u.username}@leden.lijstvanandel.nl`))
+      .map((u) => (u.email && u.email.trim()) || (u.username?.includes("@") ? u.username : `${u.username}@leden.onafhankelijksteenwijkerland.nl`))
       .filter(Boolean);
 
     if (emails.length === 0) {
@@ -2505,7 +2505,7 @@ export default function AdminDashboard() {
                 </thead>
                 <tbody>
                   {users.map((u) => {
-                    const resolvedEmail = (u.email && u.email.trim()) || (u.username.includes("@") ? u.username : `${u.username.toLowerCase()}@leden.lijstvanandel.nl`);
+                    const resolvedEmail = (u.email && u.email.trim()) || (u.username.includes("@") ? u.username : `${u.username.toLowerCase()}@leden.onafhankelijksteenwijkerland.nl`);
                     const isSubscribed = u.newsletterSubscribed !== false;
 
                     return (
@@ -2721,7 +2721,7 @@ export default function AdminDashboard() {
                       className="text-xs h-9 font-mono"
                     />
                     <span className="text-[11px] text-muted-foreground block">
-                      Het officiële partijrekeningnummer van Lijst van Andel.
+                      Het officiële partijrekeningnummer van Onafhankelijk Steenwijkerland.
                     </span>
                   </div>
 
@@ -2732,7 +2732,7 @@ export default function AdminDashboard() {
                     <Input
                       value={settingsBankAccountName}
                       onChange={(e) => setSettingsBankAccountName(e.target.value)}
-                      placeholder="Lijst van Andel"
+                      placeholder="Onafhankelijk Steenwijkerland"
                       className="text-xs h-9"
                     />
                   </div>
@@ -3776,7 +3776,7 @@ export default function AdminDashboard() {
                   const linkedMember = v.fractieledenIds && v.fractieledenIds.length > 0
                     ? availableFractieleden.find((f) => String(f.id) === String(v.fractieledenIds[0]))
                     : null;
-                  const speakerName = linkedMember ? linkedMember.name : "Lijst van Andel";
+                  const speakerName = linkedMember ? linkedMember.name : "Onafhankelijk Steenwijkerland";
                   let cleanVTitle = (v.burgerraadslidTitle || v.title || "").trim();
                   const nameOverRegex = new RegExp(`^${speakerName}\\s+over\\s+`, "i");
                   cleanVTitle = cleanVTitle.replace(nameOverRegex, "");
@@ -4058,7 +4058,7 @@ export default function AdminDashboard() {
                     required
                     value={nTitle}
                     onChange={(e) => setNTitle(e.target.value)}
-                    placeholder="Bijv. Lijst van Andel pleit voor nieuwe impulsen..."
+                    placeholder="Bijv. Onafhankelijk Steenwijkerland pleit voor nieuwe impulsen..."
                   />
                 </div>
 
@@ -4179,7 +4179,7 @@ export default function AdminDashboard() {
                     value={nAuthorId}
                     onChange={(e) => setNAuthorId(e.target.value)}
                   >
-                    <option value="">Geen specifieke auteur (Lijst van Andel)</option>
+                    <option value="">Geen specifieke auteur (Onafhankelijk Steenwijkerland)</option>
                     <optgroup label="(Burger)raadsleden & Fractieleden">
                       {fractieleden.map((f) => (
                         <option key={f.id} value={f.id}>
@@ -4855,7 +4855,7 @@ export default function AdminDashboard() {
                     {editingExtId ? "Extern Nieuws Bewerken" : "Nieuws Extern Toevoegen"}
                   </h2>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Beheer artikelen en publicaties van kranten & media over Lijst van Andel.
+                    Beheer artikelen en publicaties van kranten & media over Onafhankelijk Steenwijkerland (OSL).
                   </p>
                 </div>
                 {editingExtId && (
@@ -4889,7 +4889,7 @@ export default function AdminDashboard() {
                     required
                     value={extTitle}
                     onChange={(e) => setExtTitle(e.target.value)}
-                    placeholder="bijv. Lijst van Andel pleit voor meer starterswoningen..."
+                    placeholder="bijv. Onafhankelijk Steenwijkerland pleit voor meer starterswoningen..."
                   />
                 </div>
 
@@ -6001,7 +6001,7 @@ export default function AdminDashboard() {
                       </div>
                       <a
                         href={`mailto:${selectedMsg.email}?subject=${encodeURIComponent(
-                          `Re: ${selectedMsg.subject || "Uw bericht aan Lijst van Andel"}`
+                          `Re: ${selectedMsg.subject || "Uw bericht aan Onafhankelijk Steenwijkerland"}`
                         )}`}
                         className="text-sm text-accent hover:underline flex items-center gap-1 font-medium truncate"
                         title="Klik om e-mail te sturen"
@@ -6051,7 +6051,7 @@ export default function AdminDashboard() {
                       >
                         <a
                           href={`mailto:${selectedMsg.email}?subject=${encodeURIComponent(
-                            `Re: ${selectedMsg.subject || "Uw bericht aan Lijst van Andel"}`
+                            `Re: ${selectedMsg.subject || "Uw bericht aan Onafhankelijk Steenwijkerland"}`
                           )}`}
                         >
                           <Send className="w-3.5 h-3.5 mr-1.5" />

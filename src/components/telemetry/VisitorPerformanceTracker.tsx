@@ -11,21 +11,21 @@ import {
 } from "@/utils/performanceMonitor";
 function resolvePageTitle(path: string, currentDocTitle?: string): string {
   const p = path.split("?")[0].toLowerCase();
-  if (p === "/" || p === "") return "Home | Lijst van Andel";
-  if (p === "/admin") return "Beheer & Administratie | Lijst van Andel";
-  if (p === "/dashboard") return "Mijn Dashboard | Lijst van Andel";
-  if (p === "/fractie" || p === "/raadsleden") return "Fractieleden | Lijst van Andel";
-  if (p.startsWith("/fractie/") && p.includes("video")) return "Fractielid Video's | Lijst van Andel";
-  if (p === "/standpunten") return "Standpunten | Lijst van Andel";
-  if (p === "/agenda") return "Agenda & Activiteiten | Lijst van Andel";
-  if (p === "/nieuws") return "Nieuws & Actualiteiten | Lijst van Andel";
-  if (p === "/wijken-en-kernen" || p === "/wijken") return "Wijken en Kernen | Lijst van Andel";
+  if (p === "/" || p === "") return "Home | Onafhankelijk Steenwijkerland";
+  if (p === "/admin") return "Beheer & Administratie | Onafhankelijk Steenwijkerland";
+  if (p === "/dashboard") return "Mijn Dashboard | Onafhankelijk Steenwijkerland";
+  if (p === "/fractie" || p === "/raadsleden") return "Fractieleden | Onafhankelijk Steenwijkerland";
+  if (p.startsWith("/fractie/") && p.includes("video")) return "Fractielid Video's | Onafhankelijk Steenwijkerland";
+  if (p === "/standpunten") return "Standpunten | Onafhankelijk Steenwijkerland";
+  if (p === "/agenda") return "Agenda & Activiteiten | Onafhankelijk Steenwijkerland";
+  if (p === "/nieuws") return "Nieuws & Actualiteiten | Onafhankelijk Steenwijkerland";
+  if (p === "/wijken-en-kernen" || p === "/wijken") return "Wijken en Kernen | Onafhankelijk Steenwijkerland";
   if (p.startsWith("/wijken-en-kernen/")) {
     const slug = p.replace("/wijken-en-kernen/", "").replace(/-/g, " ");
-    return `${slug.charAt(0).toUpperCase() + slug.slice(1)} (Wijk/Kern) | Lijst van Andel`;
+    return `${slug.charAt(0).toUpperCase() + slug.slice(1)} (Wijk/Kern) | Onafhankelijk Steenwijkerland`;
   }
-  if (p === "/contact") return "Contact | Lijst van Andel";
-  return currentDocTitle || "Lijst van Andel";
+  if (p === "/contact") return "Contact | Onafhankelijk Steenwijkerland";
+  return currentDocTitle || "Onafhankelijk Steenwijkerland";
 }
 
 function isTelemetryEnabled(): boolean {

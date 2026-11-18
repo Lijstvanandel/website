@@ -82,14 +82,14 @@ export default function NewsletterManager({ token: propToken }: NewsletterManage
 
   // Newsletter Draft State
   const [newsletter, setNewsletter] = useState<NewsletterData>({
-    subject: "Fractie-update Lijst van Andel: Belangrijke besluiten Steenwijkerland",
+    subject: "Fractie-update Onafhankelijk Steenwijkerland: Belangrijke besluiten Steenwijkerland",
     preheader: "Lees het laatste nieuws, onze nieuwste video's en komende fractiebijeenkomsten.",
     bannerUrl: DEFAULT_BANNER,
     introTitle: "Beste inwoner van Steenwijkerland,",
-    introText: "Hierbij ontvangt u onze nieuwste nieuwsbrief. Als Lijst van Andel blijven we ons onvermoeibaar inzetten voor nuchter lokaal bestuur, betaalbare starterswoningen, en het behoud van onze prachtige dorpskernen en natuur. Hieronder vindt u een overzicht van onze recente activiteiten en standpunten.",
+    introText: "Hierbij ontvangt u onze nieuwste nieuwsbrief. Als Onafhankelijk Steenwijkerland blijven we ons onvermoeibaar inzetten voor nuchter lokaal bestuur, betaalbare starterswoningen, en het behoud van onze prachtige dorpskernen en natuur. Hieronder vindt u een overzicht van onze recente activiteiten en standpunten.",
     ctaButtonText: "Steun onze fractie met een donatie",
     ctaButtonUrl: "/doneren",
-    ctaButtonColor: "#c6a858",
+    ctaButtonColor: "#EAB308",
     items: [],
   });
 
@@ -217,7 +217,7 @@ export default function NewsletterManager({ token: propToken }: NewsletterManage
       imageUrl: thumb,
       buttonText: "Lees het hele artikel",
       buttonUrl: `/nieuws/${news.slug || news.id}`,
-      buttonColor: "#c6a858",
+      buttonColor: "#EAB308",
     };
     setNewsletter((prev) => ({ ...prev, items: [...prev.items, newItem] }));
     setIsAddItemOpen(false);
@@ -241,7 +241,7 @@ export default function NewsletterManager({ token: propToken }: NewsletterManage
       imageUrl: thumb,
       buttonText: "Bekijk video",
       buttonUrl: video.youtubeUrl || `/video/${video.id}`,
-      buttonColor: "#1c3826",
+      buttonColor: "#143627",
     };
     setNewsletter((prev) => ({ ...prev, items: [...prev.items, newItem] }));
     setIsAddItemOpen(false);
@@ -262,11 +262,11 @@ export default function NewsletterManager({ token: propToken }: NewsletterManage
       title: event.title || "Bijeenkomst",
       subtitle: dateLabel,
       dateLabel,
-      text: event.shortDescription || (event.description ? event.description.replace(/<[^>]*>/g, "").slice(0, 220) + "..." : "Kom naar onze bijeenkomst van Lijst van Andel."),
+      text: event.shortDescription || (event.description ? event.description.replace(/<[^>]*>/g, "").slice(0, 220) + "..." : "Kom naar onze bijeenkomst van Onafhankelijk Steenwijkerland."),
       imageUrl: thumb,
       buttonText: "Bekijk evenement & Aanmelden",
       buttonUrl: `/agenda/${event.id}`,
-      buttonColor: "#c6a858",
+      buttonColor: "#EAB308",
     };
     setNewsletter((prev) => ({ ...prev, items: [...prev.items, newItem] }));
     setIsAddItemOpen(false);
@@ -283,7 +283,7 @@ export default function NewsletterManager({ token: propToken }: NewsletterManage
       imageUrl: "/assets/hero-banner.jpg",
       buttonText: "Lees meer",
       buttonUrl: "/",
-      buttonColor: "#c6a858",
+      buttonColor: "#EAB308",
     };
     setNewsletter((prev) => ({ ...prev, items: [...prev.items, newItem] }));
     setIsAddItemOpen(false);
@@ -352,7 +352,7 @@ export default function NewsletterManager({ token: propToken }: NewsletterManage
       introText: item.introText || "",
       ctaButtonText: item.ctaButtonText || "",
       ctaButtonUrl: item.ctaButtonUrl || "",
-      ctaButtonColor: item.ctaButtonColor || "#c6a858",
+      ctaButtonColor: item.ctaButtonColor || "#EAB308",
       items: Array.isArray(item.items) ? item.items : [],
     });
     setActiveTab("compose");
@@ -643,7 +643,7 @@ export default function NewsletterManager({ token: propToken }: NewsletterManage
                     <Input
                       value={newsletter.subject}
                       onChange={(e) => setNewsletter({ ...newsletter, subject: e.target.value })}
-                      placeholder="bijv. Fractie-update Lijst van Andel: Maandoverzicht"
+                      placeholder="bijv. Fractie-update Onafhankelijk Steenwijkerland: Maandoverzicht"
                       className="text-xs"
                     />
                   </div>
@@ -1193,7 +1193,7 @@ export default function NewsletterManager({ token: propToken }: NewsletterManage
                         <div>
                           <div className="font-semibold text-xs text-foreground line-clamp-1">{video.title}</div>
                           <div className="text-[11px] text-muted-foreground line-clamp-1">
-                            {video.description || "Video van Lijst van Andel"}
+                            {video.description || "Video van Onafhankelijk Steenwijkerland"}
                           </div>
                         </div>
                       </div>

@@ -529,7 +529,7 @@ export function VacancyManager() {
                     <a
                       href={`mailto:${app.applicantEmail}?subject=Reactie op uw aanmelding voor ${encodeURIComponent(
                         app.vacancyTitle
-                      )} - Lijst van Andel`}
+                      )} - Onafhankelijk Steenwijkerland`}
                       className="px-3 py-1.5 rounded-lg text-xs font-medium bg-muted text-foreground hover:bg-muted/80 border border-border flex items-center gap-1.5 transition-colors"
                     >
                       <Mail className="w-3.5 h-3.5 text-accent" />

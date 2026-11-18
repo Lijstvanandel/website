@@ -103,8 +103,8 @@ const defaultDocs: OrganisatieDoc[] = [
     titel: "Statuten", 
     beschrijving: "Officiële verenigingsstatuten conform de Wet bestuur en toezicht rechtspersonen (WBTR).",
     category: "Statutair",
-    fileName: "statuten_lijstvanandel.pdf",
-    fileUrl: "/api/document/view?file=statuten_lijstvanandel.pdf",
+    fileName: "statuten_osl.pdf",
+    fileUrl: "/api/document/view?file=statuten_osl.pdf",
     fileSize: "1.2 MB",
     datum: "2026-01-15"
   },
@@ -123,8 +123,8 @@ const defaultDocs: OrganisatieDoc[] = [
     titel: "Integriteitscode", 
     beschrijving: "Gedragscode en integriteitsprotocol voor bestuursleden, fractieleden en kandidaten.",
     category: "Integriteit",
-    fileName: "integriteitscode_lijstvanandel.pdf",
-    fileUrl: "/api/document/view?file=integriteitscode_lijstvanandel.pdf",
+    fileName: "integriteitscode_osl.pdf",
+    fileUrl: "/api/document/view?file=integriteitscode_osl.pdf",
     fileSize: "420 KB",
     datum: "2026-02-20"
   },
@@ -234,8 +234,8 @@ const Bestuur = () => {
       voornaam: c.name?.split(" ")[0] || "Sammy",
       rol: c.roleTitle || "Partijvoorzitter",
       img: c.img || sammyImg,
-      bio: c.bio || c.description || "Voorzitter van het bestuur van Lijst van Andel. Bewaakt koers, samenhang en verbinding tussen bestuur en fractie.",
-      email: c.email || "voorzitter@lijstvanandel.nl",
+      bio: c.bio || c.description || "Voorzitter van het bestuur van Onafhankelijk Steenwijkerland (OSL). Bewaakt koers, samenhang en verbinding tussen bestuur en fractie.",
+      email: c.email || "voorzitter@onafhankelijksteenwijkerland.nl",
       socials: c.socials || { instagram: "", facebook: "", linkedin: "" }
     });
   } else {
@@ -245,8 +245,8 @@ const Bestuur = () => {
       voornaam: "Sammy",
       rol: "Partijvoorzitter",
       img: sammyImg,
-      bio: "Voorzitter van het bestuur van Lijst van Andel. Bewaakt koers, samenhang en verbinding tussen bestuur en fractie.",
-      email: "voorzitter@lijstvanandel.nl",
+      bio: "Voorzitter van het bestuur van Onafhankelijk Steenwijkerland (OSL). Bewaakt koers, samenhang en verbinding tussen bestuur en fractie.",
+      email: "voorzitter@onafhankelijksteenwijkerland.nl",
       socials: { instagram: "#", facebook: "#", linkedin: "#" }
     });
   }
@@ -260,8 +260,8 @@ const Bestuur = () => {
       voornaam: s.name?.split(" ")[0] || "Anja",
       rol: s.roleTitle || "Secretaris",
       img: s.img || placeholder,
-      bio: s.bio || s.description || "Bestuurslid van Lijst van Andel. Betrokken bij organisatie, leden en lokale verankering van de partij.",
-      email: s.email || "secretariaat@lijstvanandel.nl",
+      bio: s.bio || s.description || "Bestuurslid van Onafhankelijk Steenwijkerland (OSL). Betrokken bij organisatie, leden en lokale verankering van de partij.",
+      email: s.email || "secretariaat@onafhankelijksteenwijkerland.nl",
       socials: s.socials || { instagram: "", facebook: "", linkedin: "" }
     });
   } else {
@@ -271,8 +271,8 @@ const Bestuur = () => {
       voornaam: "Anja",
       rol: "Secretaris",
       img: placeholder,
-      bio: "Bestuurslid van Lijst van Andel. Betrokken bij organisatie, leden en lokale verankering van de partij.",
-      email: "secretariaat@lijstvanandel.nl",
+      bio: "Bestuurslid van Onafhankelijk Steenwijkerland (OSL). Betrokken bij organisatie, leden en lokale verankering van de partij.",
+      email: "secretariaat@onafhankelijksteenwijkerland.nl",
       socials: { instagram: "#", facebook: "#", linkedin: "#" }
     });
   }
@@ -286,8 +286,8 @@ const Bestuur = () => {
       voornaam: t.name?.split(" ")[0] || "Stef",
       rol: t.roleTitle || "Penningmeester",
       img: t.img || stefImg,
-      bio: t.bio || t.description || "Bestuurslid van Lijst van Andel. Met een nuchtere blik en oog voor detail draagt hij bij aan een gezonde partijorganisatie.",
-      email: t.email || "penningmeester@lijstvanandel.nl",
+      bio: t.bio || t.description || "Bestuurslid van Onafhankelijk Steenwijkerland (OSL). Met een nuchtere blik en oog voor detail draagt hij bij aan een gezonde partijorganisatie.",
+      email: t.email || "penningmeester@onafhankelijksteenwijkerland.nl",
       socials: t.socials || { instagram: "", facebook: "", linkedin: "" }
     });
   } else {
@@ -297,8 +297,8 @@ const Bestuur = () => {
       voornaam: "Stef",
       rol: "Penningmeester",
       img: stefImg,
-      bio: "Bestuurslid van Lijst van Andel. Met een nuchtere blik en oog voor detail draagt hij bij aan een gezonde partijorganisatie.",
-      email: "penningmeester@lijstvanandel.nl",
+      bio: "Bestuurslid van Onafhankelijk Steenwijkerland (OSL). Met een nuchtere blik en oog voor detail draagt hij bij aan een gezonde partijorganisatie.",
+      email: "penningmeester@onafhankelijksteenwijkerland.nl",
       socials: { instagram: "#", facebook: "#", linkedin: "#" }
     });
   }
@@ -313,7 +313,7 @@ const Bestuur = () => {
         rol: m.roleTitle || "Algemeen bestuurslid",
         img: m.img || placeholder,
         bio: m.bio || m.description || "Betrokken bij verenigingszaken, communicatie en het contact met inwoners in Steenwijkerland.",
-        email: m.email || "bestuur@lijstvanandel.nl",
+        email: m.email || "bestuur@onafhankelijksteenwijkerland.nl",
         socials: m.socials || { instagram: "", facebook: "", linkedin: "" }
       });
     });
@@ -324,7 +324,7 @@ const Bestuur = () => {
     : defaultDocs;
 
   const pageTitle = boardData?.boardTitle || "Bestuur";
-  const pageIntro = boardData?.pageIntro || boardData?.boardSubtitle || "Het bestuur bewaakt de koers van Lijst van Andel, zorgt voor een gezonde organisatie en vormt de schakel tussen leden, fractie en samenleving.";
+  const pageIntro = boardData?.pageIntro || boardData?.boardSubtitle || "Het bestuur bewaakt de koers van Onafhankelijk Steenwijkerland (OSL), zorgt voor een gezonde organisatie en vormt de schakel tussen leden, fractie en samenleving.";
 
   return (
     <div className="container py-16 md:py-24">
@@ -402,19 +402,19 @@ const Bestuur = () => {
                   </a>
                 ) : p.voornaam && p.voornaam !== "?" ? (
                   <a
-                    href={`mailto:${p.voornaam.toLowerCase()}@lijstvanandel.nl`}
+                    href={`mailto:${p.voornaam.toLowerCase()}@onafhankelijksteenwijkerland.nl`}
                     className="flex items-center gap-2 text-xs text-accent hover:text-accent/80 mb-4 break-all font-medium transition-colors"
                   >
                     <Mail className="w-3.5 h-3.5 shrink-0" />
-                    {p.voornaam.toLowerCase()}@lijstvanandel.nl
+                    {p.voornaam.toLowerCase()}@onafhankelijksteenwijkerland.nl
                   </a>
                 ) : (
                   <a
-                    href="mailto:bestuur@lijstvanandel.nl"
+                    href="mailto:bestuur@onafhankelijksteenwijkerland.nl"
                     className="flex items-center gap-2 text-xs text-accent hover:text-accent/80 mb-4 break-all font-medium transition-colors"
                   >
                     <Mail className="w-3.5 h-3.5 shrink-0" />
-                    bestuur@lijstvanandel.nl
+                    bestuur@onafhankelijksteenwijkerland.nl
                   </a>
                 )}
 
@@ -454,7 +454,7 @@ const Bestuur = () => {
                     </a>
                   ) : null}
                   <span className="text-[11px] text-muted-foreground ml-auto flex items-center gap-1">
-                    <FileCheck2 className="w-3 h-3 text-accent" /> Lijst van Andel
+                    <FileCheck2 className="w-3 h-3 text-accent" /> Onafhankelijk Steenwijkerland
                   </span>
                 </div>
               </div>
@@ -468,7 +468,7 @@ const Bestuur = () => {
             <div className="text-[10px] uppercase tracking-[0.3em] text-accent mb-2 font-semibold">Documenten</div>
             <h2 className="font-display text-2xl border-gold-line pb-3">Organisatie-informatie</h2>
             <p className="text-xs text-muted-foreground mt-2">
-              Statutaire kaders, verenigingsreglementen en gedragscodes van Lijst van Andel.
+              Statutaire kaders, verenigingsreglementen en gedragscodes van Onafhankelijk Steenwijkerland (OSL).
             </p>
           </div>
 

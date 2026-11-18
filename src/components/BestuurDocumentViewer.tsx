@@ -229,7 +229,7 @@ export const BestuurDocumentViewer: React.FC<BestuurDocumentViewerProps> = ({
               <div className="p-3 rounded-lg bg-accent/5 border border-accent/20 flex items-start gap-2 text-[11px] text-muted-foreground">
                 <ShieldCheck className="w-4 h-4 text-accent shrink-0 mt-0.5" />
                 <span>
-                  Officieel partijdocument van Lijst van Andel conform verenigingsstatuten.
+                  Officieel partijdocument van Onafhankelijk Steenwijkerland conform verenigingsstatuten.
                 </span>
               </div>
             </div>

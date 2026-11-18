@@ -245,7 +245,7 @@ export async function scrapeCouncilAgendas(
         const res = await fetch(url, {
           signal: AbortSignal.timeout(15000),
           headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/1.0",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) OnafhankelijkSteenwijkerland/1.0",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
           },
         });
@@ -325,7 +325,7 @@ export async function scrapeCouncilAgendas(
           const res = await fetch(meeting.url, {
             signal: AbortSignal.timeout(15000),
             headers: {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LijstVanAndel/1.0",
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) OnafhankelijkSteenwijkerland/1.0",
               "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             },
           });

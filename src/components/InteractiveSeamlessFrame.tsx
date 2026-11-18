@@ -16,14 +16,14 @@ interface InteractiveSeamlessFrameProps {
 function sanitizeDossierHtml(rawHtml: string): string {
   let cleaned = rawHtml;
 
-  // 0. Detect if the uploaded file is accidentally a Ctrl+S "Save Page As" dump of the Lijst van Andel website itself
+  // 0. Detect if the uploaded file is accidentally a Ctrl+S "Save Page As" dump of the Onafhankelijk Steenwijkerland website itself
   const isSavedSiteDump =
     (cleaned.includes('id="root"') &&
       (cleaned.includes("stadium-bg") || cleaned.includes("lva-svg-colorblind-filters"))) ||
-    /saved from url=.*(?:scientiarum\.nl|lijstvanandel\.nl)/i.test(cleaned);
+    /saved from url=.*(?:scientiarum\.nl|lijstvanandel\.nl|onafhankelijksteenwijkerland\.nl)/i.test(cleaned);
 
   if (isSavedSiteDump) {
-    // Strip the outer Lijst van Andel website shell (header, hero, nav, footer, scripts) so it doesn't render the site inside itself
+    // Strip the outer Onafhankelijk Steenwijkerland website shell (header, hero, nav, footer, scripts) so it doesn't render the site inside itself
     cleaned = cleaned
       .replace(/<script\b[^>]*src=["'][^"']*\/assets\/index-[^"']*["'][^>]*><\/script>/gi, "")
       .replace(/<header\b[^>]*class=["'][^"']*sticky top-0[^"']*["'][^>]*>[\s\S]*?<\/header>/gi, "")
@@ -35,7 +35,7 @@ function sanitizeDossierHtml(rawHtml: string): string {
           ⚠️ Verkeerd .html-bestand gekoppeld (opgeslagen webpagina i.p.v. bronbestand)
         </strong>
         <span style="font-size: 13.5px;">
-          In dit artikel is per ongeluk de <strong>opgeslagen webpagina van Lijst van Andel zelf</strong> (<code>... _ Lijst van Andel.html</code>, gemaakt met <em>Pagina opslaan als</em>) geüpload in plaats van het originele losse bronbestand (bijv. <code>onder_de_graszoden_van_eesveen_forensisch_dossier (1).html</code>). In die opgeslagen webpagina waren de interactieve <code>&lt;script&gt;</code>-grafieken en tabellen al verwijderd.<br/>
+          In dit artikel is per ongeluk de <strong>opgeslagen webpagina van Onafhankelijk Steenwijkerland zelf</strong> (<code>... _ Onafhankelijk Steenwijkerland.html</code>, gemaakt met <em>Pagina opslaan als</em>) geüpload in plaats van het originele losse bronbestand (bijv. <code>onder_de_graszoden_van_eesveen_forensisch_dossier (1).html</code>). In die opgeslagen webpagina waren de interactieve <code>&lt;script&gt;</code>-grafieken en tabellen al verwijderd.<br/>
           <strong>Oplossing:</strong> Open dit bericht in <code>/admin</code>, verwijder dit blok en kies bij <em>📊 Dataproduct / Kaart (.html) &rarr; Interactief Artikel (.html)</em> het originele bestand <code>onder_de_graszoden_van_eesveen_forensisch_dossier (1).html</code>.
         </span>
       </div>

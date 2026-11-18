@@ -510,7 +510,7 @@ export function StructuredContributionModal({
                     rows={3}
                     value={eis}
                     onChange={(e) => setEis(e.target.value)}
-                    placeholder="Onder welke voorwaarden kan Lijst van Andel instemmen? Bijv. '1. Een harde dekkingsbron binnen de begroting; 2. Een bindend referendum onder omwonenden; 3. Geen extra OZB-verhoging'..."
+                    placeholder="Onder welke voorwaarden kan Onafhankelijk Steenwijkerland instemmen? Bijv. '1. Een harde dekkingsbron binnen de begroting; 2. Een bindend referendum onder omwonenden; 3. Geen extra OZB-verhoging'..."
                     className="text-xs bg-background resize-y"
                   />
                 </div>

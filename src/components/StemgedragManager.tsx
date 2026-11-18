@@ -522,7 +522,7 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
               </div>
               <p className="text-[11px] text-muted-foreground mt-1">
                 {motionType === "eigen"
-                  ? "Eigen indiening: zelf geschreven en ingediend door Lijst van Andel."
+                  ? "Eigen indiening: zelf geschreven en ingediend door Onafhankelijk Steenwijkerland."
                   : motionType === "mede-indiener"
                   ? "Mede-indiener: samen met een andere partij ingediend."
                   : "Regulier: ingediend door een andere partij of college."}
@@ -532,7 +532,7 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
             {/* 2. Onze Stem / Afdoening: VOOR, TEGEN of INGETROKKEN DOOR TOEZEGGING */}
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                Stemkeuze / Afdoening Lijst van Andel
+                Stemkeuze / Afdoening Onafhankelijk Steenwijkerland
               </label>
               <div className="space-y-1.5 bg-background p-1.5 rounded-lg border border-border">
                 <div className="grid grid-cols-2 gap-1.5">
@@ -661,7 +661,7 @@ export const StemgedragManager: React.FC<StemgedragManagerProps> = ({ token }) =
               placeholder={
                 vote === "ingetrokken-toezegging"
                   ? "Geef een heldere toelichting welke toezegging de wethouder heeft gedaan waardoor deze eigen motie of dit eigen amendement is ingetrokken..."
-                  : "Geef een heldere toelichting waarom Lijst van Andel vóór of tegen dit voorstel heeft gestemd..."
+                  : "Geef een heldere toelichting waarom Onafhankelijk Steenwijkerland vóór of tegen dit voorstel heeft gestemd..."
               }
               value={description}
               onChange={(e) => setDescription(e.target.value)}

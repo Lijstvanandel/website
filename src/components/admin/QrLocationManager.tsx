@@ -487,10 +487,10 @@ export function QrLocationManager({ token }: QrLocationManagerProps) {
               >
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-white font-black text-xs">
-                    LVA
+                    OSL
                   </div>
                   <span className="font-display font-black text-sm tracking-wider uppercase text-slate-900">
-                    Lijst van Andel
+                    Onafhankelijk Steenwijkerland
                   </span>
                 </div>
 

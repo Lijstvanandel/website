@@ -213,7 +213,7 @@ export function buildTicketEmailHtml(params: {
 
   const ticketNoteSection = event.ticketNotes
     ? `<p style="font-size: 14px; line-height: 140%;"><strong>Ticket:</strong> ${event.ticketNotes}</p>`
-    : `<p style="font-size: 14px; line-height: 140%;"><strong>Ticket:</strong> Toegangsbewijs voor bijeenkomst Lijst van Andel</p>`;
+    : `<p style="font-size: 14px; line-height: 140%;"><strong>Ticket:</strong> Toegangsbewijs voor bijeenkomst Onafhankelijk Steenwijkerland (OSL)</p>`;
 
   const priceNote = ticket.price && ticket.price > 0
     ? `<p style="font-size: 12px; color: #64748b; margin-top: 4px;">Toegangsprijs niet-lid: €${ticket.price.toFixed(2)} (voldaan via iDEAL/kaart, geen cashback bij afmelding)</p>`
@@ -240,7 +240,7 @@ export function buildTicketEmailHtml(params: {
     body { margin: 0; padding: 0; font-family: verdana, geneva, sans-serif; background-color: #e7e7e7; color: #000000; }
     table, tr, td { vertical-align: top; border-collapse: collapse; }
     p { margin: 0; margin-bottom: 8px; }
-    a { color: #0d9488; text-decoration: underline; }
+    a { color: #143627; text-decoration: underline; }
   </style>
 </head>
 <body class="clean-body u_body" style="margin: 0; padding: 0; background-color: #e7e7e7; color: #000000">
@@ -258,7 +258,7 @@ export function buildTicketEmailHtml(params: {
             <!-- Hero banner afbeelding -->
             <table width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr>
-                <td align="center" style="background-color: #0f172a;">
+                <td align="center" style="background-color: #143627; border-bottom: 3px solid #EAB308;">
                   <a href="${ticketUrl}" target="_blank">
                     <img src="${bannerImg}" alt="${event.title}" style="width: 100%; max-width: 500px; height: auto; display: block; border: 0;" />
                   </a>
@@ -285,13 +285,13 @@ export function buildTicketEmailHtml(params: {
 
               <!-- Ticket Code & QR Sectie -->
               <div style="margin-top: 20px; padding-top: 16px; border-top: 2px dashed #e2e8f0; text-align: center;">
-                <p style="font-size: 15px; line-height: 140%; color: #0f172a; margin-bottom: 14px;">
+                <p style="font-size: 15px; line-height: 140%; color: #143627; margin-bottom: 14px;">
                   <strong>Uw toegangscode voor het event</strong>
                 </p>
 
                 <div style="display: inline-block; padding: 12px; background: #ffffff; border: 2px solid #e2e8f0; border-radius: 12px;">
                   <img src="${qrCodeCidOrDataUrl}" alt="QR Ticket Code #${ticket.ticketCode}" width="320" style="max-width: 100%; width: 280px; height: auto; display: block; margin: 0 auto;" />
-                  <div style="margin-top: 10px; font-family: monospace; font-size: 16px; font-weight: bold; color: #0f172a; letter-spacing: 2px;">
+                  <div style="margin-top: 10px; font-family: monospace; font-size: 16px; font-weight: bold; color: #143627; letter-spacing: 2px;">
                     #${ticket.ticketCode}
                   </div>
                 </div>
@@ -303,7 +303,7 @@ export function buildTicketEmailHtml(params: {
 
               <!-- Actieknoppen -->
               <div style="margin-top: 24px; padding-top: 18px; border-top: 1px solid #f1f5f9; text-align: center;">
-                <a href="${ticketUrl}" style="display: inline-block; background-color: #0d9488; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 9999px; font-weight: bold; font-size: 13px;">
+                <a href="${ticketUrl}" style="display: inline-block; background-color: #143627; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 9999px; font-weight: bold; font-size: 13px; border: 2px solid #EAB308;">
                   Bekijk Live Ticket & Exacte Locatie
                 </a>
 
@@ -318,8 +318,8 @@ export function buildTicketEmailHtml(params: {
             </div>
 
             <!-- Footer -->
-            <div style="padding: 16px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; text-align: center; font-size: 11px; color: #94a3b8;">
-              Lijst van Andel Steenwijkerland &bull; info@lijstvanandel.nl &bull; www.lijstvanandel.nl
+            <div style="padding: 16px; background-color: #143627; border-top: 2px solid #EAB308; text-align: center; font-size: 11px; color: #e2e8f0;">
+              Onafhankelijk Steenwijkerland (OSL) &bull; info@onafhankelijksteenwijkerland.nl &bull; www.onafhankelijksteenwijkerland.nl
             </div>
 
           </div>

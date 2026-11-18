@@ -201,15 +201,16 @@ export default function TicketView() {
     .ticket-card {
       max-width: 620px;
       margin: 0 auto;
-      border: 2px solid #0f172a;
+      border: 2px solid #143627;
       border-radius: 16px;
       overflow: hidden;
       background: #ffffff;
     }
     .ticket-header {
-      background: #0f172a;
+      background: #143627;
       color: #ffffff;
       padding: 24px 28px;
+      border-bottom: 4px solid #EAB308;
     }
     .badge-row {
       display: flex;
@@ -219,8 +220,8 @@ export default function TicketView() {
     }
     .badge {
       display: inline-block;
-      background: rgba(245, 158, 11, 0.25);
-      color: #fbbf24;
+      background: rgba(234, 179, 8, 0.22);
+      color: #EAB308;
       font-size: 11px;
       font-weight: 700;
       text-transform: uppercase;
@@ -232,7 +233,7 @@ export default function TicketView() {
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size: 18px;
       font-weight: bold;
-      color: #fbbf24;
+      color: #EAB308;
       letter-spacing: 1px;
     }
     h1 {
@@ -333,9 +334,9 @@ export default function TicketView() {
       margin-bottom: 16px;
     }
     .print-btn {
-      background: #0f172a;
-      color: white;
-      border: none;
+      background: #143627;
+      color: #EAB308;
+      border: 1px solid #EAB308;
       padding: 10px 24px;
       border-radius: 9999px;
       font-size: 14px;
@@ -388,7 +389,7 @@ export default function TicketView() {
         </div>
       </div>
       <div class="footer">
-        Politieke Partij Lijst van Andel &bull; Steenwijkerland
+        Politieke Vereniging Onafhankelijk Steenwijkerland (OSL) &bull; Steenwijkerland
       </div>
     </div>
   </div>
@@ -519,7 +520,7 @@ export default function TicketView() {
         {/* Main Ticket Card */}
         <div className="ticket-card-print printable-ticket-card bg-card rounded-2xl border border-border shadow-md overflow-hidden">
           {/* Header Banner */}
-          <div className="bg-slate-900 text-white p-6 sm:p-8 relative overflow-hidden">
+          <div className="bg-[#143627] text-white p-6 sm:p-8 relative overflow-hidden border-b-4 border-[#EAB308]">
             <div className="relative z-10">
               <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                 <span className="text-[11px] font-semibold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-accent/30 text-accent border border-accent/40">

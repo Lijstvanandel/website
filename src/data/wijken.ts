@@ -18,7 +18,7 @@ export const WIJKEN_EN_KERNEN: WijkOfKern[] = [
     type: "Wijk",
     gemeente: "Steenwijk",
     isGrouped: false,
-    beschrijving: "Het historische hart van Steenwijk met de Markt, winkels, horeca en cultuur. Lijst van Andel zet zich in voor een bruisend centrum met minder leegstand en goede bereikbaarheid.",
+    beschrijving: "Het historische hart van Steenwijk met de Markt, winkels, horeca en cultuur. Onafhankelijk Steenwijkerland zet zich in voor een bruisend centrum met minder leegstand en goede bereikbaarheid.",
   },
   {
     slug: "clingenborgh",
@@ -91,7 +91,7 @@ export const WIJKEN_EN_KERNEN: WijkOfKern[] = [
     type: "Wijk",
     gemeente: "Steenwijk",
     isGrouped: false,
-    beschrijving: "Een veelzijdige wijk met sterke sociale samenhang en hechte buurten, waar Lijst van Andel inzet op leefbaarheid en buurtinitiatieven.",
+    beschrijving: "Een veelzijdige wijk met sterke sociale samenhang en hechte buurten, waar Onafhankelijk Steenwijkerland inzet op leefbaarheid en buurtinitiatieven.",
   },
   {
     slug: "steenwijkerdiep",

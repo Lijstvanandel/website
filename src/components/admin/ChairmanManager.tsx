@@ -353,7 +353,7 @@ export function ChairmanManager({ token, currentUser, headers }: Props) {
 
   const [isDailyBoardModalOpen, setIsDailyBoardModalOpen] = useState(false);
   const [dailyBoardForm, setDailyBoardForm] = useState<ChairmanDailyBoard>({
-    partyName: "Lijst van Andel",
+    partyName: "Onafhankelijk Steenwijkerland",
     boardTitle: "Bestuur",
     boardSubtitle: "Statutaire taakverdeling en wisselwerking binnen het dagelijks bestuur conform verenigingsrecht en de WBTR.",
     status: "Bestuur Compleet & Operationeel",
@@ -361,21 +361,21 @@ export function ChairmanManager({ token, currentUser, headers }: Props) {
       roleTitle: "Partijvoorzitter",
       name: "Sammy van Andel",
       description: "Leidt ALV en bestuursvergaderingen, bewaakt fractierelatie via 5 instrumenten, stuurt commissies aan en is het gezicht naar buiten.",
-      email: "voorzitter@lijstvanandel.nl",
+      email: "voorzitter@onafhankelijksteenwijkerland.nl",
       panelNote: "U bevindt zich in het Voorzitterpaneel"
     },
     secretary: {
       roleTitle: "Secretaris",
       name: "Anja ter Horst",
       description: "Verantwoordelijk voor correspondentie, notulering ALV, ledenadministratie, KvK/WBTR-formaliteiten en het partijarchief.",
-      email: "secretariaat@lijstvanandel.nl",
+      email: "secretariaat@onafhankelijksteenwijkerland.nl",
       panelNote: "Eigen beveiligd Secretarispaneel"
     },
     treasurer: {
       roleTitle: "Penningmeester",
       name: "Stef Mars",
       description: "Beheert begroting, kasboek, contributie-inning via Stripe/SEPA, giftenregister en verantwoording naar de kascommissie.",
-      email: "penningmeester@lijstvanandel.nl",
+      email: "penningmeester@onafhankelijksteenwijkerland.nl",
       panelNote: "Eigen beveiligd Penningmeesterpaneel"
     },
     additionalMembers: []
@@ -1014,7 +1014,7 @@ export function ChairmanManager({ token, currentUser, headers }: Props) {
   const handleOpenEditDailyBoard = () => {
     if (dailyBoard) {
       setDailyBoardForm({
-        partyName: dailyBoard.partyName || "Lijst van Andel",
+        partyName: dailyBoard.partyName || "Onafhankelijk Steenwijkerland",
         boardTitle: dailyBoard.boardTitle || "Bestuur",
         boardSubtitle: dailyBoard.boardSubtitle || "Statutaire taakverdeling en wisselwerking binnen het dagelijks bestuur conform verenigingsrecht en de WBTR.",
         status: dailyBoard.status || "Bestuur Compleet & Operationeel",
@@ -1022,7 +1022,7 @@ export function ChairmanManager({ token, currentUser, headers }: Props) {
           roleTitle: dailyBoard.chairman?.roleTitle || "Partijvoorzitter",
           name: dailyBoard.chairman?.name || "Sammy van Andel",
           description: dailyBoard.chairman?.description || "Leidt ALV en bestuursvergaderingen, bewaakt fractierelatie via 5 instrumenten, stuurt commissies aan en is het gezicht naar buiten.",
-          email: dailyBoard.chairman?.email || "voorzitter@lijstvanandel.nl",
+          email: dailyBoard.chairman?.email || "voorzitter@onafhankelijksteenwijkerland.nl",
           phone: dailyBoard.chairman?.phone || "",
           panelNote: dailyBoard.chairman?.panelNote || "U bevindt zich in het Voorzitterpaneel"
         },
@@ -1030,7 +1030,7 @@ export function ChairmanManager({ token, currentUser, headers }: Props) {
           roleTitle: dailyBoard.secretary?.roleTitle || "Secretaris",
           name: dailyBoard.secretary?.name || "Anja ter Horst",
           description: dailyBoard.secretary?.description || "Verantwoordelijk voor correspondentie, notulering ALV, ledenadministratie, KvK/WBTR-formaliteiten en het partijarchief.",
-          email: dailyBoard.secretary?.email || "secretariaat@lijstvanandel.nl",
+          email: dailyBoard.secretary?.email || "secretariaat@onafhankelijksteenwijkerland.nl",
           phone: dailyBoard.secretary?.phone || "",
           panelNote: dailyBoard.secretary?.panelNote || "Eigen beveiligd Secretarispaneel"
         },
@@ -1038,7 +1038,7 @@ export function ChairmanManager({ token, currentUser, headers }: Props) {
           roleTitle: dailyBoard.treasurer?.roleTitle || "Penningmeester",
           name: dailyBoard.treasurer?.name || "Stef Mars",
           description: dailyBoard.treasurer?.description || "Beheert begroting, kasboek, contributie-inning via Stripe/SEPA, giftenregister en verantwoording naar de kascommissie.",
-          email: dailyBoard.treasurer?.email || "penningmeester@lijstvanandel.nl",
+          email: dailyBoard.treasurer?.email || "penningmeester@onafhankelijksteenwijkerland.nl",
           phone: dailyBoard.treasurer?.phone || "",
           panelNote: dailyBoard.treasurer?.panelNote || "Eigen beveiligd Penningmeesterpaneel"
         },

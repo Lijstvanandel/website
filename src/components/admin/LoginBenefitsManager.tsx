@@ -249,10 +249,10 @@ export function LoginBenefitsManager({ headers }: LoginBenefitsManagerProps) {
   const handleAddBenefit = () => {
     const newItem: LoginBenefitItem = {
       id: `benefit-${Date.now()}`,
-      text: "Nieuw voordeel voor leden van Lijst van Andel",
+      text: "Nieuw voordeel voor leden van Onafhankelijk Steenwijkerland",
       icon: "CheckCircle2",
       imageUrl: allAvailableImages[0]?.url || "/assets/markt-steenwijk.jpg",
-      imageAlt: "Voordeel Lijst van Andel",
+      imageAlt: "Voordeel Onafhankelijk Steenwijkerland",
       order: benefits.length + 1,
     };
     const next = [...benefits, newItem];
@@ -408,7 +408,7 @@ export function LoginBenefitsManager({ headers }: LoginBenefitsManagerProps) {
             Beheer /login Afbeeldingen, Voordelen &amp; Carrousel
           </h2>
           <p className="text-xs text-muted-foreground mt-1 max-w-2xl">
-            Pas hier de voordelen op <strong>/login</strong> aan (zoals <em>&ldquo;Ontmoet u andere LVA&apos;ers die de gemeente een warm hart toedragen&rdquo;</em>), kies per voordeel een icoon en een gekoppelde afbeelding die boven het balkje wordt getoond, en bepaal de volgorde van het automatisch scrollende carrousel.
+            Pas hier de voordelen op <strong>/login</strong> aan (zoals <em>&ldquo;Ontmoet u andere OSL&apos;ers die de gemeente een warm hart toedragen&rdquo;</em>), kies per voordeel een icoon en een gekoppelde afbeelding die boven het balkje wordt getoond, en bepaal de volgorde van het automatisch scrollende carrousel.
           </p>
         </div>
 
@@ -630,7 +630,7 @@ export function LoginBenefitsManager({ headers }: LoginBenefitsManagerProps) {
                   onChange={(e) =>
                     handleUpdateBenefitField(selectedBenefitIndex, "text", e.target.value)
                   }
-                  placeholder="Bijv. Ontmoet u andere LVA'ers die de gemeente een warm hart toedragen"
+                  placeholder="Bijv. Ontmoet u andere OSL'ers die de gemeente een warm hart toedragen"
                   className="text-sm font-medium"
                 />
               </div>
@@ -1077,7 +1077,7 @@ export function LoginBenefitsManager({ headers }: LoginBenefitsManagerProps) {
               </div>
             ) : (
               <p className="text-xs text-muted-foreground italic">
-                Nog geen eigen foto&apos;s geüpload. U kunt hierboven een eigen foto uploaden of kiezen uit de {presetImages.length} standaard Steenwijkerland/LVA afbeeldingen.
+                Nog geen eigen foto&apos;s geüpload. U kunt hierboven een eigen foto uploaden of kiezen uit de {presetImages.length} standaard Steenwijkerland/OSL afbeeldingen.
               </p>
             )}
           </div>

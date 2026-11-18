@@ -27,130 +27,81 @@ interface DefaultDocTemplate {
   artikelen: { nr: string; kop: string; tekst: string }[];
 }
 
+const STATUTEN_TEMPLATE_BASE: Omit<DefaultDocTemplate, "filename"> = {
+  titel: "Officiële Verenigingsstatuten",
+  subtitel: "Statutair kader Politieke Vereniging Onafhankelijk Steenwijkerland — OSL (WBTR-conform)",
+  category: "Statutair",
+  datum: "15 januari 2026",
+  inleiding:
+    "Statuten van de politieke vereniging Onafhankelijk Steenwijkerland (OSL), gevestigd in de gemeente Steenwijkerland. Vastgesteld door de Algemene Ledenvergadering conform de eisen van het Burgerlijk Wetboek en de Wet bestuur en toezicht rechtspersonen (WBTR).",
+  artikelen: [
+    {
+      nr: "Artikel 1",
+      kop: "Naam, Zetel en Rechtsvorm",
+      tekst:
+        "De vereniging draagt de naam 'Onafhankelijk Steenwijkerland', afgekort 'OSL' (voorheen 'Lijst van Andel'). Zij heeft haar statutaire zetel in de gemeente Steenwijkerland. De vereniging bezit volledige rechtsbevoegdheid en is ingeschreven in het verenigingenregister van de Kamer van Koophandel."
+    },
+    {
+      nr: "Artikel 2",
+      kop: "Doelstelling en Grondslagen",
+      tekst:
+        "De vereniging stelt zich ten doel: het behartigen van de belangen van de inwoners van Steenwijkerland, het bevorderen van transparant, betrouwbaar en dorpsgericht lokaal bestuur, en het deelnemen aan gemeenteraadsverkiezingen met een herkenbare, onafhankelijke lijst."
+    },
+    {
+      nr: "Artikel 3",
+      kop: "Lidmaatschap en Toelating",
+      tekst:
+        "Lid kunnen worden natuurlijke personen die de grondbeginselen van de partij onderschrijven. Het bestuur beslist over toelating. Leden hebben spreek- en stemrecht op de Algemene Ledenvergadering en kunnen zich kandidaat stellen voor partijfuncties."
+    },
+    {
+      nr: "Artikel 4",
+      kop: "Het Bestuur en Vertegenwoordiging",
+      tekst:
+        "Het bestuur bestaat uit ten minste een voorzitter, secretaris en penningmeester. Bestuursleden worden benoemd door de Algemene Ledenvergadering voor een periode van vier jaar. De vereniging wordt in en buiten rechte vertegenwoordigd door het voltallige bestuur of twee gezamenlijk handelende bestuursleden."
+    },
+    {
+      nr: "Artikel 5",
+      kop: "WBTR-bepalingen en Toezicht",
+      tekst:
+        "Conform de Wet bestuur en toezicht rechtspersonen (WBTR) onthoudt een bestuurslid zich van beraadslaging en besluitvorming indien sprake is van een direct of indirect persoonlijk belang dat tegenstrijdig is met het belang van de vereniging."
+    }
+  ]
+};
+
+const INTEGRITEIT_TEMPLATE_BASE: Omit<DefaultDocTemplate, "filename"> = {
+  titel: "Integriteitscode & Gedragsprotocol",
+  subtitel: "Gedragscode voor bestuursleden, fractieleden en kandidaten",
+  category: "Integriteit",
+  datum: "20 februari 2026",
+  inleiding:
+    "Integriteit, transparantie en onafhankelijkheid vormen het fundament van Onafhankelijk Steenwijkerland (OSL). Deze code stelt heldere normen voor handelen in het publieke belang.",
+  artikelen: [
+    {
+      nr: "Artikel 1",
+      kop: "Dienstbaarheid aan het Algemeen Belang",
+      tekst:
+        "Vertegenwoordigers en functionarissen van Onafhankelijk Steenwijkerland laten zich uitsluitend leiden door het publiek belang van Steenwijkerland en haar inwoners. Persoonlijke begunstiging is ten strengste verboden."
+    },
+    {
+      nr: "Artikel 2",
+      kop: "Openbaarheid van Nevenfuncties en Belangen",
+      tekst:
+        "Raadsleden, commissieleden en bestuursleden registreren al hun relevante nevenfuncties, zakelijke belangen en bestuursfuncties in een openbaar partijregister."
+    },
+    {
+      nr: "Artikel 3",
+      kop: "Vertrouwenspersoon en Melding",
+      tekst:
+        "De vereniging stelt een onafhankelijke vertrouwenspersoon aan tot wie leden en bestuurders zich vertrouwelijk kunnen wenden bij integriteitsvragen of signalen van niet-integer handelen."
+    }
+  ]
+};
+
 const OFFICIAL_DOC_TEMPLATES: Record<string, DefaultDocTemplate> = {
-  "statuten_lijstvanandel.pdf": {
-    filename: "statuten_lijstvanandel.pdf",
-    titel: "Officiële Verenigingsstatuten",
-    subtitel: "Statutair kader Politieke Vereniging Lijst van Andel (WBTR-conform)",
-    category: "Statutair",
-    datum: "15 januari 2026",
-    inleiding:
-      "Statuten van de politieke vereniging Lijst van Andel, gevestigd in de gemeente Steenwijkerland. Vastgesteld door de Algemene Ledenvergadering conform de eisen van het Burgerlijk Wetboek en de Wet bestuur en toezicht rechtspersonen (WBTR).",
-    artikelen: [
-      {
-        nr: "Artikel 1",
-        kop: "Naam, Zetel en Rechtsvorm",
-        tekst:
-          "De vereniging draagt de naam 'Lijst van Andel'. Zij heeft haar statutaire zetel in de gemeente Steenwijkerland. De vereniging bezit volledige rechtsbevoegdheid en is ingeschreven in het verenigingenregister van de Kamer van Koophandel."
-      },
-      {
-        nr: "Artikel 2",
-        kop: "Doelstelling en Grondslagen",
-        tekst:
-          "De vereniging stelt zich ten doel: het behartigen van de belangen van de inwoners van Steenwijkerland, het bevorderen van transparant, betrouwbaar en dorpsgericht lokaal bestuur, en het deelnemen aan gemeenteraadsverkiezingen met een herkenbare, onafhankelijke lijst."
-      },
-      {
-        nr: "Artikel 3",
-        kop: "Lidmaatschap en Toelating",
-        tekst:
-          "Lid kunnen worden natuurlijke personen die de grondbeginselen van de partij onderschrijven. Het bestuur beslist over toelating. Leden hebben spreek- en stemrecht op de Algemene Ledenvergadering en kunnen zich kandidaat stellen voor partijfuncties."
-      },
-      {
-        nr: "Artikel 4",
-        kop: "Het Bestuur en Vertegenwoordiging",
-        tekst:
-          "Het bestuur bestaat uit ten minste een voorzitter, secretaris en penningmeester. Bestuursleden worden benoemd door de Algemene Ledenvergadering voor een periode van vier jaar. De vereniging wordt in en buiten rechte vertegenwoordigd door het voltallige bestuur of twee gezamenlijk handelende bestuursleden."
-      },
-      {
-        nr: "Artikel 5",
-        kop: "WBTR-bepalingen en Toezicht",
-        tekst:
-          "Conform de Wet bestuur en toezicht rechtspersonen (WBTR) onthoudt een bestuurslid zich van beraadslaging en besluitvorming indien sprake is van een direct of indirect persoonlijk belang dat tegenstrijdig is met het belang van de vereniging."
-      }
-    ]
-  },
-  "statuten.pdf": {
-    filename: "statuten.pdf",
-    titel: "Officiële Verenigingsstatuten",
-    subtitel: "Statutair kader Politieke Vereniging Lijst van Andel (WBTR-conform)",
-    category: "Statutair",
-    datum: "15 januari 2026",
-    inleiding:
-      "Statuten van de politieke vereniging Lijst van Andel, gevestigd in de gemeente Steenwijkerland. Vastgesteld door de Algemene Ledenvergadering conform de eisen van het Burgerlijk Wetboek en de Wet bestuur en toezicht rechtspersonen (WBTR).",
-    artikelen: [
-      {
-        nr: "Artikel 1",
-        kop: "Naam, Zetel en Rechtsvorm",
-        tekst:
-          "De vereniging draagt de naam 'Lijst van Andel'. Zij heeft haar statutaire zetel in de gemeente Steenwijkerland. De vereniging bezit volledige rechtsbevoegdheid en is ingeschreven in het verenigingenregister van de Kamer van Koophandel."
-      },
-      {
-        nr: "Artikel 2",
-        kop: "Doelstelling en Grondslagen",
-        tekst:
-          "De vereniging stelt zich ten doel: het behartigen van de belangen van de inwoners van Steenwijkerland, het bevorderen van transparant, betrouwbaar en dorpsgericht lokaal bestuur, en het deelnemen aan gemeenteraadsverkiezingen met een herkenbare, onafhankelijke lijst."
-      },
-      {
-        nr: "Artikel 3",
-        kop: "Lidmaatschap en Toelating",
-        tekst:
-          "Lid kunnen worden natuurlijke personen die de grondbeginselen van de partij onderschrijven. Het bestuur beslist over toelating. Leden hebben spreek- en stemrecht op de Algemene Ledenvergadering en kunnen zich kandidaat stellen voor partijfuncties."
-      },
-      {
-        nr: "Artikel 4",
-        kop: "Het Bestuur en Vertegenwoordiging",
-        tekst:
-          "Het bestuur bestaat uit ten minste een voorzitter, secretaris en penningmeester. Bestuursleden worden benoemd door de Algemene Ledenvergadering voor een periode van vier jaar. De vereniging wordt in en buiten rechte vertegenwoordigd door het voltallige bestuur of twee gezamenlijk handelende bestuursleden."
-      },
-      {
-        nr: "Artikel 5",
-        kop: "WBTR-bepalingen en Toezicht",
-        tekst:
-          "Conform de Wet bestuur en toezicht rechtspersonen (WBTR) onthoudt een bestuurslid zich van beraadslaging en besluitvorming indien sprake is van een direct of indirect persoonlijk belang dat tegenstrijdig is met het belang van de vereniging."
-      }
-    ]
-  },
-  "statuten_lijst_van_andel.pdf": {
-    filename: "statuten_lijst_van_andel.pdf",
-    titel: "Officiële Verenigingsstatuten",
-    subtitel: "Statutair kader Politieke Vereniging Lijst van Andel (WBTR-conform)",
-    category: "Statutair",
-    datum: "15 januari 2026",
-    inleiding:
-      "Statuten van de politieke vereniging Lijst van Andel, gevestigd in de gemeente Steenwijkerland. Vastgesteld door de Algemene Ledenvergadering conform de eisen van het Burgerlijk Wetboek en de Wet bestuur en toezicht rechtspersonen (WBTR).",
-    artikelen: [
-      {
-        nr: "Artikel 1",
-        kop: "Naam, Zetel en Rechtsvorm",
-        tekst:
-          "De vereniging draagt de naam 'Lijst van Andel'. Zij heeft haar statutaire zetel in de gemeente Steenwijkerland. De vereniging bezit volledige rechtsbevoegdheid en is ingeschreven in het verenigingenregister van de Kamer van Koophandel."
-      },
-      {
-        nr: "Artikel 2",
-        kop: "Doelstelling en Grondslagen",
-        tekst:
-          "De vereniging stelt zich ten doel: het behartigen van de belangen van de inwoners van Steenwijkerland, het bevorderen van transparant, betrouwbaar en dorpsgericht lokaal bestuur, en het deelnemen aan gemeenteraadsverkiezingen met een herkenbare, onafhankelijke lijst."
-      },
-      {
-        nr: "Artikel 3",
-        kop: "Lidmaatschap en Toelating",
-        tekst:
-          "Lid kunnen worden natuurlijke personen die de grondbeginselen van de partij onderschrijven. Het bestuur beslist over toelating. Leden hebben spreek- en stemrecht op de Algemene Ledenvergadering en kunnen zich kandidaat stellen voor partijfuncties."
-      },
-      {
-        nr: "Artikel 4",
-        kop: "Het Bestuur en Vertegenwoordiging",
-        tekst:
-          "Het bestuur bestaat uit ten minste een voorzitter, secretaris en penningmeester. Bestuursleden worden benoemd door de Algemene Ledenvergadering voor een periode van vier jaar. De vereniging wordt in en buiten rechte vertegenwoordigd door het voltallige bestuur of twee gezamenlijk handelende bestuursleden."
-      },
-      {
-        nr: "Artikel 5",
-        kop: "WBTR-bepalingen en Toezicht",
-        tekst:
-          "Conform de Wet bestuur en toezicht rechtspersonen (WBTR) onthoudt een bestuurslid zich van beraadslaging en besluitvorming indien sprake is van een direct of indirect persoonlijk belang dat tegenstrijdig is met het belang van de vereniging."
-      }
-    ]
-  },
+  "statuten_osl.pdf": { filename: "statuten_osl.pdf", ...STATUTEN_TEMPLATE_BASE },
+  "statuten_lijstvanandel.pdf": { filename: "statuten_lijstvanandel.pdf", ...STATUTEN_TEMPLATE_BASE },
+  "statuten.pdf": { filename: "statuten.pdf", ...STATUTEN_TEMPLATE_BASE },
+  "statuten_lijst_van_andel.pdf": { filename: "statuten_lijst_van_andel.pdf", ...STATUTEN_TEMPLATE_BASE },
   "huishoudelijk_reglement.pdf": {
     filename: "huishoudelijk_reglement.pdf",
     titel: "Huishoudelijk Reglement",
@@ -158,7 +109,7 @@ const OFFICIAL_DOC_TEMPLATES: Record<string, DefaultDocTemplate> = {
     category: "Reglement",
     datum: "1 februari 2026",
     inleiding:
-      "Dit Huishoudelijk Reglement bevat een nadere uitwerking van de statuten van Lijst van Andel en regelt de dagelijkse gang van zaken binnen de vereniging, fractie en commissies.",
+      "Dit Huishoudelijk Reglement bevat een nadere uitwerking van de statuten van Onafhankelijk Steenwijkerland (OSL) en regelt de dagelijkse gang van zaken binnen de vereniging, fractie en commissies.",
     artikelen: [
       {
         nr: "Artikel 1",
@@ -180,35 +131,8 @@ const OFFICIAL_DOC_TEMPLATES: Record<string, DefaultDocTemplate> = {
       }
     ]
   },
-  "integriteitscode_lijstvanandel.pdf": {
-    filename: "integriteitscode_lijstvanandel.pdf",
-    titel: "Integriteitscode & Gedragsprotocol",
-    subtitel: "Gedragscode voor bestuursleden, fractieleden en kandidaten",
-    category: "Integriteit",
-    datum: "20 februari 2026",
-    inleiding:
-      "Integriteit, transparantie en onafhankelijkheid vormen het fundament van Lijst van Andel. Deze code stelt heldere normen voor handelen in het publieke belang.",
-    artikelen: [
-      {
-        nr: "Artikel 1",
-        kop: "Dienstbaarheid aan het Algemeen Belang",
-        tekst:
-          "Vertegenwoordigers en functionarissen van Lijst van Andel laten zich uitsluitend leiden door het publiek belang van Steenwijkerland en haar inwoners. Persoonlijke begunstiging is ten strengste verboden."
-      },
-      {
-        nr: "Artikel 2",
-        kop: "Openbaarheid van Nevenfuncties en Belangen",
-        tekst:
-          "Raadsleden, commissieleden en bestuursleden registreren al hun relevante nevenfuncties, zakelijke belangen en bestuursfuncties in een openbaar partijregister."
-      },
-      {
-        nr: "Artikel 3",
-        kop: "Vertrouwenspersoon en Melding",
-        tekst:
-          "De vereniging stelt een onafhankelijke vertrouwenspersoon aan tot wie leden en bestuurders zich vertrouwelijk kunnen wenden bij integriteitsvragen of signalen van niet-integer handelen."
-      }
-    ]
-  },
+  "integriteitscode_osl.pdf": { filename: "integriteitscode_osl.pdf", ...INTEGRITEIT_TEMPLATE_BASE },
+  "integriteitscode_lijstvanandel.pdf": { filename: "integriteitscode_lijstvanandel.pdf", ...INTEGRITEIT_TEMPLATE_BASE },
   "bestuursreglement.pdf": {
     filename: "bestuursreglement.pdf",
     titel: "Bestuursreglement",
@@ -296,12 +220,12 @@ export async function ensureBestuurDocumentPdf(
     const lower = safeFilename.toLowerCase();
     let template = OFFICIAL_DOC_TEMPLATES[lower];
     if (!template) {
-      if (lower === "statuten_lijstvanandel.pdf" || lower === "statuten.pdf") {
-        template = OFFICIAL_DOC_TEMPLATES["statuten_lijstvanandel.pdf"];
+      if (lower === "statuten_osl.pdf" || lower === "statuten_lijstvanandel.pdf" || lower === "statuten.pdf") {
+        template = OFFICIAL_DOC_TEMPLATES["statuten_osl.pdf"];
       } else if (lower === "huishoudelijk_reglement.pdf" || lower === "huishoudelijk.pdf") {
         template = OFFICIAL_DOC_TEMPLATES["huishoudelijk_reglement.pdf"];
-      } else if (lower === "integriteitscode_lijstvanandel.pdf" || lower === "integriteitscode.pdf" || lower === "integriteit.pdf") {
-        template = OFFICIAL_DOC_TEMPLATES["integriteitscode_lijstvanandel.pdf"];
+      } else if (lower === "integriteitscode_osl.pdf" || lower === "integriteitscode_lijstvanandel.pdf" || lower === "integriteitscode.pdf" || lower === "integriteit.pdf") {
+        template = OFFICIAL_DOC_TEMPLATES["integriteitscode_osl.pdf"];
       } else if (lower === "bestuursreglement.pdf") {
         template = OFFICIAL_DOC_TEMPLATES["bestuursreglement.pdf"];
       } else if (lower === "kandidaatstellingsreglement.pdf") {
@@ -313,24 +237,24 @@ export async function ensureBestuurDocumentPdf(
       template = {
         filename: safeFilename,
         titel: docMeta?.titel || safeFilename.replace(/\.pdf$/i, "").replace(/[_-]/g, " "),
-        subtitel: docMeta?.beschrijving || "Officieel partij- en bestuursdocument Lijst van Andel",
+        subtitel: docMeta?.beschrijving || "Officieel partij- en bestuursdocument Onafhankelijk Steenwijkerland (OSL)",
         category: docMeta?.category || "Organisatie",
         datum: docMeta?.datum || new Date().toISOString().split("T")[0],
         inleiding:
           docMeta?.beschrijving ||
-          "Dit document maakt deel uit van de formele partijorganisatie en bestuurlijke kaders van Lijst van Andel te Steenwijkerland.",
+          "Dit document maakt deel uit van de formele partijorganisatie en bestuurlijke kaders van Onafhankelijk Steenwijkerland (OSL) te Steenwijkerland.",
         artikelen: [
           {
             nr: "Status & Toepasselijkheid",
             kop: "Formeel Bestuursdocument",
             tekst:
-              "Dit document is vastgesteld conform de geldende verenigingsstatuten en reglementen van Lijst van Andel. Het document is bindend voor alle betrokken geledingen van de partij."
+              "Dit document is vastgesteld conform de geldende verenigingsstatuten en reglementen van Onafhankelijk Steenwijkerland (OSL). Het document is bindend voor alle betrokken geledingen van de partij."
           },
           {
             nr: "Inzage & Archivering",
             kop: "Openbaarheid & Toegankelijkheid",
             tekst:
-              "Leden van Lijst van Andel en inwoners van Steenwijkerland hebben het recht kennis te nemen van de vigerende partijkaders via de officiële kanalen van de vereniging."
+              "Leden van Onafhankelijk Steenwijkerland en inwoners van Steenwijkerland hebben het recht kennis te nemen van de vigerende partijkaders via de officiële kanalen van de vereniging."
           }
         ]
       };
@@ -344,31 +268,31 @@ export async function ensureBestuurDocumentPdf(
     const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     const fontOblique = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
 
-    // Header bar (dark navy & gold accent)
+    // Header bar (Diep Woudgroen #143627 & Helder Amber #EAB308 accent)
     page.drawRectangle({
       x: 0,
       y: height - 110,
       width: width,
       height: 110,
-      color: rgb(0.08, 0.12, 0.20), // #141f33
+      color: rgb(0.08, 0.21, 0.15), // #143627
     });
 
-    // Gold decorative stripe
+    // Helder Amber decorative stripe
     page.drawRectangle({
       x: 0,
       y: height - 114,
       width: width,
       height: 4,
-      color: rgb(0.85, 0.65, 0.2), // Gold
+      color: rgb(0.92, 0.70, 0.03), // #EAB308
     });
 
     // Header text
-    page.drawText("POLITIEKE VERENIGING LIJST VAN ANDEL", {
+    page.drawText("POLITIEKE VERENIGING ONAFHANKELIJK STEENWIJKERLAND (OSL)", {
       x: 45,
       y: height - 42,
-      size: 11,
+      size: 10.5,
       font: fontBold,
-      color: rgb(0.85, 0.65, 0.2),
+      color: rgb(0.92, 0.70, 0.03),
     });
 
     page.drawText("GEMEENTERAAD & BESTUUR STEENWIJKERLAND", {
@@ -376,7 +300,7 @@ export async function ensureBestuurDocumentPdf(
       y: height - 58,
       size: 8.5,
       font: fontRegular,
-      color: rgb(0.8, 0.85, 0.9),
+      color: rgb(0.84, 0.90, 0.87),
     });
 
     page.drawText(`CATEGORIE: ${template.category.toUpperCase()}`, {
@@ -392,7 +316,7 @@ export async function ensureBestuurDocumentPdf(
       y: height - 58,
       size: 8.5,
       font: fontRegular,
-      color: rgb(0.8, 0.85, 0.9),
+      color: rgb(0.84, 0.90, 0.87),
     });
 
     // Document Title
@@ -402,7 +326,7 @@ export async function ensureBestuurDocumentPdf(
       y: curY,
       size: 20,
       font: fontBold,
-      color: rgb(0.08, 0.12, 0.20),
+      color: rgb(0.08, 0.21, 0.15),
     });
 
     curY -= 20;
@@ -496,16 +420,16 @@ export async function ensureBestuurDocumentPdf(
       borderWidth: 1,
     });
 
-    page.drawText("GEWAARMERKT BESTUURSDOCUMENT • POLITIEKE VERENIGING LIJST VAN ANDEL", {
+    page.drawText("GEWAARMERKT BESTUURSDOCUMENT • ONAFHANKELIJK STEENWIJKERLAND (OSL)", {
       x: 55,
       y: 96,
       size: 8,
       font: fontBold,
-      color: rgb(0.65, 0.4, 0.05),
+      color: rgb(0.08, 0.21, 0.15),
     });
 
     page.drawText(
-      "Geregistreerd in het partijarchief. Digitaal beschikbaar gesteld via lijstvanandel.nl/bestuur.",
+      "Geregistreerd in het partijarchief. Digitaal beschikbaar gesteld via onafhankelijksteenwijkerland.nl/bestuur.",
       {
         x: 55,
         y: 82,
@@ -525,11 +449,11 @@ export async function ensureBestuurDocumentPdf(
 
     // Footer
     page.drawText(
-      "© Politieke Vereniging Lijst van Andel • Steenwijkerland • www.lijstvanandel.nl • info@lijstvanandel.nl",
+      "© Politieke Vereniging Onafhankelijk Steenwijkerland (OSL) • www.onafhankelijksteenwijkerland.nl • info@onafhankelijksteenwijkerland.nl",
       {
         x: 45,
         y: 35,
-        size: 8,
+        size: 7.5,
         font: fontRegular,
         color: rgb(0.55, 0.6, 0.65),
       }

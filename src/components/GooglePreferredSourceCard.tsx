@@ -6,7 +6,8 @@ interface GooglePreferredSourceCardProps {
   onStateChange?: (isVisible: boolean) => void;
 }
 
-const STORAGE_KEY = "lvandel_google_preferred_source_selected";
+const STORAGE_KEY = "osl_google_preferred_source_selected";
+const LEGACY_STORAGE_KEY = "lvandel_google_preferred_source_selected";
 
 export function GooglePreferredSourceCard({
   className = "",
@@ -16,7 +17,7 @@ export function GooglePreferredSourceCard({
 
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
+      const stored = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
       const isSelected = stored === "true";
       setIsDismissed(isSelected);
       onStateChange?.(!isSelected);
@@ -55,8 +56,8 @@ export function GooglePreferredSourceCard({
             rel="noopener noreferrer"
             onClick={handleClick}
             className="p-2 rounded-xl bg-background border border-border/80 shadow-xs hover:scale-105 hover:border-accent/50 transition-all flex-shrink-0 group/icon"
-            title="Open Google bronvoorkeuren voor Lijst van Andel"
-            aria-label="Open Google bronvoorkeuren voor Lijst van Andel"
+            title="Open Google bronvoorkeuren voor Onafhankelijk Steenwijkerland"
+            aria-label="Open Google bronvoorkeuren voor Onafhankelijk Steenwijkerland"
           >
             <svg
               className="w-6 h-6 transition-transform group-hover/icon:scale-110"
@@ -84,7 +85,7 @@ export function GooglePreferredSourceCard({
 
           <div className="flex-1 min-w-0">
             <h3 className="font-display font-bold text-base sm:text-lg text-foreground leading-snug">
-              Maak Lijst van Andel jouw voorkeursbron in Google
+              Maak Onafhankelijk Steenwijkerland jouw voorkeursbron in Google
             </h3>
             <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent mt-0.5 uppercase tracking-wider">
               <Star className="w-3 h-3 fill-accent" /> Nieuwe Google functie
@@ -93,7 +94,7 @@ export function GooglePreferredSourceCard({
         </div>
 
         <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed mt-2">
-          Met een nieuwe functie van Google bepaal je voortaan zelf welke bronnen je als eerste ziet wanneer je zoekt. Zo mis je nooit meer de laatste berichten van Lijst van Andel.
+          Met een nieuwe functie van Google bepaal je voortaan zelf welke bronnen je als eerste ziet wanneer je zoekt. Zo mis je nooit meer de laatste berichten van Onafhankelijk Steenwijkerland.
         </p>
       </div>
 
