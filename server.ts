@@ -84,6 +84,20 @@ import {
   notifyMemberFeedbackSubmitted,
 } from "./src/server/pushService.js";
 import {
+  initSsoService,
+  getIssuerBaseUrl,
+  getJwksResponse,
+  isAllowedSsoOrigin,
+  isAllowedRedirectUri,
+  resolveSsoClientInfo,
+  createAuthorizationCode,
+  consumeAuthorizationCode,
+  issueTokensForUser,
+  verifyRefreshToken,
+  revokeRefreshToken,
+  verifySsoOrPortalAccessToken,
+} from "./src/server/ssoService.js";
+import {
   initDatabase,
   getDbFromSqlite,
   saveDbToSqlite,
@@ -2361,6 +2375,12 @@ async function startServer() {
   console.log("[STORAGE] SQLite database geïnitialiseerd (WAL & atomic persistence geactiveerd).");
 
   try {
+    initSsoService();
+  } catch (ssoErr) {
+    console.warn("[SSO] Kon RS256 sleutelpaar niet vooraf initialiseren:", ssoErr);
+  }
+
+  try {
     await initDefaultOrganizationDocs();
     console.log("[DOCUMENTS] Bestuurs- en organisatiedocumenten geverifieerd op schijf.");
   } catch (initDocErr) {
@@ -3789,6 +3809,265 @@ async function startServer() {
 
   app.post("/api/login", loginLimiter, handleLoginLogic);
   app.post("/api/auth/login", loginLimiter, handleLoginLogic);
+
+  // ==========================================
+  // CENTRALE OSL SSO / IDENTITY PROVIDER API
+  // ==========================================
+  const applySsoCors = (req: any, res: any, allowWildcard = false) => {
+    const reqOrigin = req.headers.origin;
+    if (reqOrigin && isAllowedSsoOrigin(reqOrigin)) {
+      res.setHeader("Access-Control-Allow-Origin", reqOrigin);
+      res.setHeader("Vary", "Origin");
+    } else if (allowWildcard) {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+    }
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  };
+
+  app.options(
+    [
+      "/.well-known/jwks.json",
+      "/.well-known/openid-configuration",
+      "/api/auth/token",
+      "/api/auth/verify",
+      "/api/auth/userinfo",
+      "/api/auth/logout",
+    ],
+    (req: any, res: any) => {
+      applySsoCors(req, res, true);
+      return res.status(204).end();
+    }
+  );
+
+  // Publieke RS256 sleutel voor offline JWT-verificatie door gekoppelde dashboards
+  app.get("/.well-known/jwks.json", (_req: any, res: any) => {
+    applySsoCors(_req, res, true);
+    res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=3600");
+    return res.json(getJwksResponse());
+  });
+
+  // OpenID Connect Discovery metadata
+  app.get("/.well-known/openid-configuration", (req: any, res: any) => {
+    applySsoCors(req, res, true);
+    const iss = getIssuerBaseUrl();
+    return res.json({
+      issuer: iss,
+      authorization_endpoint: `${iss}/authorize`,
+      token_endpoint: `${iss}/api/auth/token`,
+      userinfo_endpoint: `${iss}/api/auth/userinfo`,
+      jwks_uri: `${iss}/.well-known/jwks.json`,
+      end_session_endpoint: `${iss}/sso/logout`,
+      response_types_supported: ["code"],
+      grant_types_supported: ["authorization_code", "refresh_token"],
+      subject_types_supported: ["public"],
+      id_token_signing_alg_values_supported: ["RS256"],
+      code_challenge_methods_supported: ["S256", "plain"],
+      scopes_supported: ["openid", "profile", "email", "export:csv", "export:json"],
+      token_endpoint_auth_methods_supported: ["none", "client_secret_post"],
+    });
+  });
+
+  // Valideer client_id & redirect_uri voor het /authorize scherm (en /sso/logout)
+  app.get("/api/sso/client-info", (req: any, res: any) => {
+    const clientId = typeof req.query.client_id === "string" ? req.query.client_id : "";
+    const redirectUri = typeof req.query.redirect_uri === "string" ? req.query.redirect_uri : "";
+    const allowed = isAllowedRedirectUri(redirectUri);
+    const info = resolveSsoClientInfo(clientId, redirectUri);
+    if (!allowed) {
+      return res.status(400).json({
+        allowed: false,
+        ...info,
+        error: "Ongeldige of niet-toegestane redirect_uri voor OSL SSO.",
+      });
+    }
+    return res.json({
+      allowed: true,
+      ...info,
+    });
+  });
+
+  // Geef een eenmalige autorisatiecode (+ optionele PKCE challenge) af voor de ingelogde gebruiker
+  app.post("/api/sso/authorize", requireAuth, (req: any, res: any) => {
+    const {
+      client_id,
+      redirect_uri,
+      state,
+      code_challenge,
+      code_challenge_method,
+      scope,
+      nonce,
+    } = req.body || {};
+
+    if (!redirect_uri || typeof redirect_uri !== "string" || !isAllowedRedirectUri(redirect_uri)) {
+      return res.status(400).json({ error: "Ongeldige of niet-toegestane redirect_uri." });
+    }
+
+    const user = req.user;
+    const isPrivileged = user.role === "admin" || user.role === "key-user" || user.role === "voorzitter";
+    if (user.portalApproved === false && !isPrivileged) {
+      return res.status(403).json({ error: "Account wacht nog op goedkeuring van een beheerder." });
+    }
+
+    const effectiveClientId = String(client_id || "osl-dataproduct").trim() || "osl-dataproduct";
+    const code = createAuthorizationCode({
+      userId: String(user.id),
+      clientId: effectiveClientId,
+      redirectUri: redirect_uri,
+      codeChallenge: typeof code_challenge === "string" ? code_challenge : undefined,
+      codeChallengeMethod: typeof code_challenge_method === "string" ? code_challenge_method : undefined,
+      scope: typeof scope === "string" ? scope : undefined,
+      nonce: typeof nonce === "string" ? nonce : undefined,
+    });
+
+    const targetUrl = new URL(redirect_uri);
+    targetUrl.searchParams.set("code", code);
+    if (typeof state === "string" && state.length > 0) {
+      targetUrl.searchParams.set("state", state);
+    }
+    targetUrl.searchParams.set("iss", getIssuerBaseUrl());
+
+    return res.json({
+      code,
+      state: state || "",
+      redirectTo: targetUrl.toString(),
+    });
+  });
+
+  // Wissel autorisatiecode (+ code_verifier) of refresh_token om voor RS256 JWT access_token
+  app.post(
+    "/api/auth/token",
+    express.urlencoded({ extended: false }),
+    loginLimiter,
+    (req: any, res: any) => {
+      applySsoCors(req, res, true);
+      const body = req.body || {};
+      const grantType = String(body.grant_type || (body.refresh_token ? "refresh_token" : "authorization_code"));
+      const db = getDb();
+
+      if (grantType === "refresh_token") {
+        const refreshToken = body.refresh_token;
+        if (!refreshToken || typeof refreshToken !== "string") {
+          return res.status(400).json({ error: "invalid_request", error_description: "refresh_token ontbreekt." });
+        }
+        const verified = verifyRefreshToken(refreshToken);
+        if (!verified.ok) {
+          return res.status(401).json({ error: "invalid_grant", error_description: verified.error });
+        }
+        const user = db.users.find((u: any) => String(u.id) === String(verified.payload.sub));
+        if (!user) {
+          return res.status(401).json({ error: "invalid_grant", error_description: "Gebruiker niet gevonden." });
+        }
+        const safeUser = getSafeUserWithMembership(user);
+        const tokens = issueTokensForUser({
+          user,
+          safeUser,
+          clientId: String(body.client_id || verified.payload.client_id || "osl-dataproduct"),
+          scope: verified.payload.scope,
+        });
+        return res.json(tokens);
+      }
+
+      if (grantType !== "authorization_code") {
+        return res.status(400).json({
+          error: "unsupported_grant_type",
+          error_description: "Ondersteunde grant_types zijn authorization_code en refresh_token.",
+        });
+      }
+
+      const code = body.code;
+      if (!code || typeof code !== "string") {
+        return res.status(400).json({ error: "invalid_request", error_description: "Autorisatiecode ontbreekt." });
+      }
+
+      const consumed = consumeAuthorizationCode({
+        code,
+        redirectUri: typeof body.redirect_uri === "string" ? body.redirect_uri : undefined,
+        clientId: typeof body.client_id === "string" ? body.client_id : undefined,
+        codeVerifier: typeof body.code_verifier === "string" ? body.code_verifier : undefined,
+      });
+
+      if (!consumed.ok) {
+        return res.status(consumed.status).json({
+          error: "invalid_grant",
+          error_description: consumed.error,
+        });
+      }
+
+      const user = db.users.find((u: any) => String(u.id) === String(consumed.entry.userId));
+      if (!user) {
+        return res.status(401).json({ error: "invalid_grant", error_description: "Gebruiker niet gevonden." });
+      }
+
+      const safeUser = getSafeUserWithMembership(user);
+      const tokens = issueTokensForUser({
+        user,
+        safeUser,
+        clientId: consumed.entry.clientId,
+        scope: consumed.entry.scope,
+        nonce: consumed.entry.nonce,
+      });
+      return res.json(tokens);
+    }
+  );
+
+  const handleSsoVerify = (req: any, res: any) => {
+    applySsoCors(req, res, true);
+    const authHeader = String(req.headers.authorization || "");
+    const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+    const token = bearerToken || (typeof req.body?.token === "string" ? req.body.token.trim() : "");
+
+    if (!token) {
+      return res.status(401).json({
+        active: false,
+        valid: false,
+        error: "Geen Bearer token meegegeven.",
+      });
+    }
+
+    const db = getDb();
+    const result = verifySsoOrPortalAccessToken(token, JWT_SECRET, db.users || [], getSafeUserWithMembership);
+    if (!result.valid) {
+      return res.status(401).json({
+        active: false,
+        valid: false,
+        error: result.error,
+      });
+    }
+
+    return res.json({
+      active: true,
+      valid: true,
+      ...result.claims,
+      user: result.user,
+    });
+  };
+
+  // Live verificatie en gebruikersinfo voor gekoppelde dashboard-backends of SPAs
+  app.get("/api/auth/verify", handleSsoVerify);
+  app.post("/api/auth/verify", handleSsoVerify);
+
+  app.get("/api/auth/userinfo", (req: any, res: any) => {
+    applySsoCors(req, res, true);
+    const authHeader = String(req.headers.authorization || "");
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+    if (!token) {
+      return res.status(401).json({ error: "Geen Bearer token meegegeven." });
+    }
+    const db = getDb();
+    const result = verifySsoOrPortalAccessToken(token, JWT_SECRET, db.users || [], getSafeUserWithMembership);
+    if (!result.valid) {
+      return res.status(401).json({ error: result.error });
+    }
+    return res.json(result.claims);
+  });
+
+  app.post("/api/auth/logout", (req: any, res: any) => {
+    applySsoCors(req, res, true);
+    const refreshToken = req.body?.refresh_token;
+    const revoked = revokeRefreshToken(typeof refreshToken === "string" ? refreshToken : null);
+    return res.json({ success: true, revoked });
+  });
 
   // User Approval Routes (Key-Users & Admins)
   app.get("/api/portal/pending-users", requireAuth, requireKeyUserOrAdmin, (_req: any, res: any) => {

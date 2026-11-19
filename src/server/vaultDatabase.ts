@@ -621,6 +621,48 @@ export function bulkAnonymizeOldBelafsprakenInVault(retentionDays = 30): { anony
   return { anonymizedCount: count };
 }
 
+/**
+ * Load encrypted key-value entry from vault_kv table
+ */
+export function loadVaultKv<T = any>(key: string): T | null {
+  if (!vaultSqliteDb || !key) return null;
+  try {
+    const stmt = vaultSqliteDb.prepare(`SELECT ciphertext, iv, authTag FROM vault_kv WHERE key = ? LIMIT 1`);
+    stmt.bind([String(key)]);
+    if (stmt.step()) {
+      const row = stmt.getAsObject();
+      stmt.free();
+      return decryptVaultPayload({ ciphertext: row.ciphertext, iv: row.iv, authTag: row.authTag }) as T;
+    }
+    stmt.free();
+  } catch (err) {
+    console.error(`[CRM-VAULT KV LOAD FOUT] voor '${key}':`, err);
+  }
+  return null;
+}
+
+/**
+ * Save encrypted key-value entry into vault_kv table and persist immediately
+ */
+export function saveVaultKv(key: string, value: any) {
+  if (!vaultSqliteDb || !key) return;
+  try {
+    if (value === null || value === undefined) {
+      vaultSqliteDb.run(`DELETE FROM vault_kv WHERE key = ?`, [String(key)]);
+    } else {
+      const encrypted = encryptVaultPayload(value);
+      const nowIso = new Date().toISOString();
+      vaultSqliteDb.run(
+        `INSERT OR REPLACE INTO vault_kv (key, ciphertext, iv, authTag, updatedAt) VALUES (?, ?, ?, ?, ?)`,
+        [String(key), encrypted.ciphertext, encrypted.iv, encrypted.authTag, nowIso]
+      );
+    }
+    persistVaultSqlite();
+  } catch (err) {
+    console.error(`[CRM-VAULT KV SAVE FOUT] voor '${key}':`, err);
+  }
+}
+
 export function getVaultFilePath(): string {
   return VAULT_SQLITE_FILE;
 }

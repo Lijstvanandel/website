@@ -78,6 +78,8 @@ const Polls = safeLazy(() => import("./pages/Polls"));
 const Privacyverklaring = safeLazy(() => import("./pages/Privacyverklaring"));
 const AlgemeneVoorwaarden = safeLazy(() => import("./pages/AlgemeneVoorwaarden"));
 const Verwerkingsreglement = safeLazy(() => import("./pages/Verwerkingsreglement"));
+const SsoAuthorize = safeLazy(() => import("./pages/SsoAuthorize"));
+const SsoLogout = safeLazy(() => import("./pages/SsoLogout"));
 
 const queryClient = new QueryClient();
 
@@ -145,6 +147,9 @@ const AppRoutes = () => {
           <Route path="/voorwaarden" element={<AlgemeneVoorwaarden />} />
           <Route path="/verwerkingsreglement" element={<Verwerkingsreglement />} />
         </Route>
+        <Route path="/authorize" element={<SsoAuthorize />} />
+        <Route path="/sso/login" element={<SsoAuthorize />} />
+        <Route path="/sso/logout" element={<SsoLogout />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Suspense>

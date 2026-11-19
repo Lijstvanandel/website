@@ -1214,13 +1214,27 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
     };
   }
 
-  // 13. Login / Register / Reset Password / Dashboard / Admin (Noindex for private / auth pages)
-  if (cleanPath === "/login" || cleanPath === "/registreren" || cleanPath === "/reset-wachtwoord" || cleanPath === "/dashboard" || cleanPath === "/admin") {
+  // 13. Login / Register / Reset Password / Dashboard / Admin / SSO (Noindex for private / auth pages)
+  if (
+    cleanPath === "/login" ||
+    cleanPath === "/registreren" ||
+    cleanPath === "/reset-wachtwoord" ||
+    cleanPath === "/dashboard" ||
+    cleanPath === "/admin" ||
+    cleanPath === "/authorize" ||
+    cleanPath === "/sso/login" ||
+    cleanPath === "/sso/logout"
+  ) {
     return {
-      title: cleanPath === "/reset-wachtwoord" ? "Wachtwoord herstellen | Onafhankelijk Steenwijkerland" : "Ledenportaal & Beheer | Onafhankelijk Steenwijkerland",
-      description: "Inloggen en accountbeheer voor leden en fractieleden van politieke partij Onafhankelijk Steenwijkerland (OSL).",
-      ogTitle: "Ledenportaal | Onafhankelijk Steenwijkerland",
-      ogDescription: "Toegang tot het interne ledenportaal en fractiedossiers.",
+      title:
+        cleanPath === "/authorize" || cleanPath === "/sso/login"
+          ? "Centrale Login (SSO) | Onafhankelijk Steenwijkerland"
+          : cleanPath === "/reset-wachtwoord"
+          ? "Wachtwoord herstellen | Onafhankelijk Steenwijkerland"
+          : "Ledenportaal & Beheer | Onafhankelijk Steenwijkerland",
+      description: "Inloggen en accountbeheer voor leden en gekoppelde dataproducten van Onafhankelijk Steenwijkerland (OSL).",
+      ogTitle: "Ledenportaal & SSO | Onafhankelijk Steenwijkerland",
+      ogDescription: "Centrale authenticatie voor het ledenportaal en gekoppelde OSL-dataproducten.",
       ogImage: DEFAULT_IMAGE,
       ogType: "website",
       canonicalUrl,
