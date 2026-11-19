@@ -5,49 +5,49 @@
 /* Onafhankelijk Steenwijkerland (OSL) — Diep Woudgroen (#143627) & Helder Amber (#EAB308) */
 @layer base {
   :root {
-    --background: 153 45% 8%;
-    --foreground: 45 25% 95%;
+    --background: 0 0% 6%;
+    --foreground: 40 25% 95%;
 
-    --card: 153 46% 12%;
-    --card-foreground: 45 25% 95%;
+    --card: 0 0% 9%;
+    --card-foreground: 40 25% 95%;
 
-    --popover: 153 46% 10%;
-    --popover-foreground: 45 25% 95%;
+    --popover: 0 0% 8%;
+    --popover-foreground: 40 25% 95%;
 
-    --primary: 153 46% 24%;
+    --primary: 153 46% 20%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 153 46% 15%;
-    --secondary-foreground: 45 25% 95%;
+    --secondary: 0 0% 14%;
+    --secondary-foreground: 40 25% 95%;
 
-    --muted: 153 32% 16%;
-    --muted-foreground: 145 14% 72%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 40 8% 64%;
 
     --accent: 45 93% 47%;
-    --accent-foreground: 153 46% 12%;
+    --accent-foreground: 0 0% 8%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 40 30% 98%;
 
-    --border: 153 32% 24%;
-    --input: 153 32% 17%;
+    --border: 0 0% 18%;
+    --input: 0 0% 14%;
     --ring: 45 93% 47%;
 
     --radius: 0.25rem;
 
-    --twente-red: 153 46% 24%;
-    --twente-red-deep: 153 46% 15%;
-    --twente-black: 153 46% 10%;
+    --twente-red: 153 46% 20%;
+    --twente-red-deep: 153 38% 12%;
+    --twente-black: 0 0% 4%;
     --twente-gold: 45 93% 47%;
     --twente-gold-bright: 45 96% 58%;
 
-    --gradient-hero: linear-gradient(135deg, hsl(153 46% 8% / 0.88), hsl(153 46% 15% / 0.78));
+    --gradient-hero: linear-gradient(135deg, hsl(0 0% 5% / 0.90), hsl(153 38% 12% / 0.72));
     --gradient-gold: linear-gradient(135deg, hsl(45 93% 47%), hsl(45 96% 60%));
-    --gradient-red: linear-gradient(135deg, hsl(153 46% 24%), hsl(153 46% 15%));
+    --gradient-red: linear-gradient(135deg, hsl(153 46% 20%), hsl(153 38% 12%));
 
-    --shadow-gold: 0 10px 40px -10px hsl(45 93% 47% / 0.38);
-    --shadow-red: 0 20px 60px -20px hsl(153 46% 15% / 0.65);
-    --shadow-deep: 0 30px 80px -20px hsl(0 0% 0% / 0.6);
+    --shadow-gold: 0 10px 40px -10px hsl(45 93% 47% / 0.35);
+    --shadow-red: 0 20px 60px -20px hsl(153 46% 15% / 0.55);
+    --shadow-deep: 0 30px 80px -20px hsl(0 0% 0% / 0.65);
 
     --transition-smooth: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   }
@@ -108,7 +108,7 @@
 
   select option,
   select optgroup {
-    background-color: #143627 !important;
+    background-color: #171717 !important;
     color: #f6f3eb !important;
     padding: 6px 12px;
   }
@@ -151,8 +151,8 @@
   .dark .stadium-bg,
   html.dark .stadium-bg {
     background:
-      radial-gradient(ellipse at top, hsl(153 46% 24% / 0.22), transparent 60%),
-      radial-gradient(ellipse at bottom, hsl(45 93% 47% / 0.08), transparent 60%),
+      radial-gradient(ellipse at top, hsl(45 93% 47% / 0.05), transparent 58%),
+      radial-gradient(ellipse at bottom, hsl(153 46% 18% / 0.08), transparent 60%),
       hsl(var(--background));
   }
   .light .stadium-bg,
@@ -167,15 +167,15 @@
 
   /* Leaflet custom map theme */
   .leaflet-popup-content-wrapper {
-    background: #143627 !important;
+    background: #171717 !important;
     color: #f6f3eb !important;
     border: 1px solid rgba(234, 179, 8, 0.5) !important;
     border-radius: 8px !important;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6) !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.65) !important;
     padding: 2px !important;
   }
   .leaflet-popup-tip {
-    background: #143627 !important;
+    background: #171717 !important;
     border: 1px solid rgba(234, 179, 8, 0.5) !important;
   }
   .leaflet-popup-close-button {

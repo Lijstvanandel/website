@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Facebook, Instagram, Linkedin, Twitter, Mail, CheckCircle2, ArrowRight, Heart } from "lucide-react";
-const logo = "/assets/osl-logo.webp?v=osl2";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -49,20 +48,38 @@ export const Footer = () => {
       <div className="container py-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
         <div>
           <div className="flex items-center gap-3 mb-4">
-            <div className="bg-white rounded-xl px-2.5 py-1.5 shadow-sm ring-1 ring-accent/40 shrink-0 flex items-center justify-center">
-              <img
-                src={logo}
-                alt="Onafhankelijk Steenwijkerland (OSL) logo"
-                width="84"
-                height="42"
-                loading="lazy"
-                decoding="async"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = "/assets/osl-logo.png?v=osl2";
-                }}
-                className="h-9 w-auto object-contain"
-              />
-            </div>
+            <img
+              src="/assets/osl-logo-light.webp?v=osl4"
+              alt="Onafhankelijk Steenwijkerland (OSL) logo"
+              width="96"
+              height="52"
+              loading="lazy"
+              decoding="async"
+              onError={(e) => {
+                const img = e.target as HTMLImageElement;
+                if (!img.dataset.fallback) {
+                  img.dataset.fallback = "1";
+                  img.src = "/assets/osl-logo-light.png?v=osl4";
+                }
+              }}
+              className="block dark:hidden h-10 sm:h-11 w-auto object-contain shrink-0"
+            />
+            <img
+              src="/assets/osl-logo-dark.webp?v=osl4"
+              alt="Onafhankelijk Steenwijkerland (OSL) logo"
+              width="96"
+              height="52"
+              loading="lazy"
+              decoding="async"
+              onError={(e) => {
+                const img = e.target as HTMLImageElement;
+                if (!img.dataset.fallback) {
+                  img.dataset.fallback = "1";
+                  img.src = "/assets/osl-logo-dark.png?v=osl4";
+                }
+              }}
+              className="hidden dark:block h-10 sm:h-11 w-auto object-contain shrink-0"
+            />
             <div>
               <div className="font-display text-lg">Onafhankelijk Steenwijkerland</div>
               <div className="text-[10px] uppercase tracking-widest text-accent">OSL • Steenwijkerland</div>

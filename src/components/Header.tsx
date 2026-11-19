@@ -32,7 +32,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-const logo = "/assets/osl-logo.webp?v=osl2";
 import { BUURTKAART_43_WIJKEN, LEGACY_SLUG_MAP } from "@/data/defaultWijken";
 
 const navItems = [
@@ -156,22 +155,40 @@ export const Header = () => {
             {/* Full Party Website (Onafhankelijk Steenwijkerland) */}
             <Link
               to="/"
-              className="flex items-center gap-2 sm:gap-2.5 group shrink-0 select-none max-w-fit"
+              className="flex items-center gap-2.5 sm:gap-3 group shrink-0 select-none max-w-fit"
             >
-              <div className="bg-white rounded-xl px-2 py-1 shadow-sm ring-1 ring-accent/40 transition-transform duration-300 group-hover:scale-105 shrink-0 flex items-center justify-center">
-                <img
-                  src={logo}
-                  alt="Onafhankelijk Steenwijkerland (OSL) logo"
-                  width="80"
-                  height="40"
-                  loading="eager"
-                  decoding="async"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = "/assets/osl-logo.png?v=osl2";
-                  }}
-                  className="h-7 sm:h-8 xl:h-9 w-auto object-contain shrink-0"
-                />
-              </div>
+              <img
+                src="/assets/osl-logo-light.webp?v=osl4"
+                alt="Onafhankelijk Steenwijkerland (OSL) logo"
+                width="92"
+                height="48"
+                loading="eager"
+                decoding="async"
+                onError={(e) => {
+                  const img = e.target as HTMLImageElement;
+                  if (!img.dataset.fallback) {
+                    img.dataset.fallback = "1";
+                    img.src = "/assets/osl-logo-light.png?v=osl4";
+                  }
+                }}
+                className="block dark:hidden h-9 sm:h-10 xl:h-11 w-auto object-contain shrink-0 transition-transform duration-300 group-hover:scale-105"
+              />
+              <img
+                src="/assets/osl-logo-dark.webp?v=osl4"
+                alt="Onafhankelijk Steenwijkerland (OSL) logo"
+                width="92"
+                height="48"
+                loading="eager"
+                decoding="async"
+                onError={(e) => {
+                  const img = e.target as HTMLImageElement;
+                  if (!img.dataset.fallback) {
+                    img.dataset.fallback = "1";
+                    img.src = "/assets/osl-logo-dark.png?v=osl4";
+                  }
+                }}
+                className="hidden dark:block h-9 sm:h-10 xl:h-11 w-auto object-contain shrink-0 transition-transform duration-300 group-hover:scale-105"
+              />
               <div className="leading-tight flex-1 min-w-0">
                 <div className="font-display text-sm sm:text-base xl:text-lg 2xl:text-xl tracking-wide text-foreground whitespace-nowrap">
                   Onafhankelijk Steenwijkerland
