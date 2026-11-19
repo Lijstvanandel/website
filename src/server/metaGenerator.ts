@@ -124,10 +124,23 @@ function toIsoDateString(rawDate?: string): string {
 }
 
 export function getPageMetadata(urlPath: string, host: string, db: Record<string, any>): PageMetadata {
-  const isLocal = host.includes("localhost") || host.includes("127.0.0.1") || host.includes("0.0.0.0");
-  const isPreview = host.includes("preview.ai-studio.app") || host.includes("web.app") || host.includes("lovable.app");
-  // Social media crawlers (WhatsApp, Facebook, Twitter, LinkedIn) require canonical public URLs
-  const effectiveHost = (isLocal || isPreview) ? "onafhankelijksteenwijkerland.nl" : (host || "onafhankelijksteenwijkerland.nl");
+  const cleanHost = (host || "").split(",")[0].trim().split(":")[0].toLowerCase();
+  const primaryDomain = (process.env.PRIMARY_DOMAIN || "onafhankelijksteenwijkerland.nl")
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/+$/, "")
+    .toLowerCase();
+  const isLocal = cleanHost.includes("localhost") || cleanHost.includes("127.0.0.1") || cleanHost.includes("0.0.0.0");
+  const isPreview =
+    cleanHost.includes("preview.ai-studio.app") ||
+    cleanHost.includes("web.app") ||
+    cleanHost.includes("lovable.app") ||
+    cleanHost.includes("run.app");
+  const isAliasDomain =
+    cleanHost === `www.${primaryDomain}` ||
+    cleanHost.includes("scientiarum.nl") ||
+    cleanHost.includes("lijstvanandel.nl");
+  // Zorg dat zoekmachines en social crawlers altijd onafhankelijksteenwijkerland.nl als leidend canoniek domein zien
+  const effectiveHost = (isLocal || isPreview || isAliasDomain || !cleanHost) ? primaryDomain : cleanHost;
   const baseUrl = `https://${effectiveHost}`;
   const pathParts = urlPath.split("?");
   const rawPath = pathParts[0].split("#")[0];

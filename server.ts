@@ -12873,8 +12873,15 @@ async function startServer() {
   // Dynamic Sitemap generator for Google and other search engines
   app.get("/sitemap.xml", (req, res) => {
     try {
-      const host = req.get("host") || "onafhankelijksteenwijkerland.nl";
-      const protocol = host.includes("localhost") || host.includes("127.0.0.1") ? "http" : "https";
+      const primaryDomain = (process.env.PRIMARY_DOMAIN || "onafhankelijksteenwijkerland.nl")
+        .replace(/^https?:\/\//i, "")
+        .replace(/\/+$/, "")
+        .toLowerCase();
+      const rawHost = String(req.headers["x-forwarded-host"] || req.get("host") || primaryDomain).split(",")[0].trim().toLowerCase();
+      const isLocal = rawHost.includes("localhost") || rawHost.includes("127.0.0.1");
+      const isAlias = rawHost === `www.${primaryDomain}` || rawHost.includes("scientiarum.nl") || rawHost.includes("lijstvanandel.nl");
+      const host = isAlias ? primaryDomain : rawHost;
+      const protocol = isLocal ? "http" : "https";
       const baseUrl = `${protocol}://${host}`;
       const db = getDb();
 
@@ -12956,8 +12963,15 @@ ${allUrls.map(u => `  <url>
 
   // Robots.txt generator
   app.get("/robots.txt", (req, res) => {
-    const host = req.get("host") || "onafhankelijksteenwijkerland.nl";
-    const protocol = host.includes("localhost") || host.includes("127.0.0.1") ? "http" : "https";
+    const primaryDomain = (process.env.PRIMARY_DOMAIN || "onafhankelijksteenwijkerland.nl")
+      .replace(/^https?:\/\//i, "")
+      .replace(/\/+$/, "")
+      .toLowerCase();
+    const rawHost = String(req.headers["x-forwarded-host"] || req.get("host") || primaryDomain).split(",")[0].trim().toLowerCase();
+    const isLocal = rawHost.includes("localhost") || rawHost.includes("127.0.0.1");
+    const isAlias = rawHost === `www.${primaryDomain}` || rawHost.includes("scientiarum.nl") || rawHost.includes("lijstvanandel.nl");
+    const host = isAlias ? primaryDomain : rawHost;
+    const protocol = isLocal ? "http" : "https";
     const baseUrl = `${protocol}://${host}`;
 
     const txt = `User-agent: *
