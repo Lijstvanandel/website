@@ -22,8 +22,8 @@ function ensureThumbnailDirs() {
     if (fs.existsSync(path.join(process.cwd(), "dist")) && !fs.existsSync(THUMBNAIL_DIST_DIR)) {
       fs.mkdirSync(THUMBNAIL_DIST_DIR, { recursive: true });
     }
-    // One-time cleanup of legacy Lijst van Andel pre-baked thumbnails so OSL thumbnails regenerate cleanly
-    const versionMarker = path.join(THUMBNAIL_PUBLIC_DIR, ".osl-thumb-v1");
+    // One-time cleanup of previous pre-baked thumbnails so updated OSL logo thumbnails regenerate cleanly
+    const versionMarker = path.join(THUMBNAIL_PUBLIC_DIR, ".osl-thumb-v2");
     if (!fs.existsSync(versionMarker)) {
       for (const dir of [THUMBNAIL_PUBLIC_DIR, THUMBNAIL_DIST_DIR]) {
         if (fs.existsSync(dir)) {
@@ -50,6 +50,7 @@ ensureThumbnailDirs();
 const thumbnailCache = new Map<string, { jpgBuffer: Buffer; webpBuffer: Buffer; expiresAt: number }>();
 const personCutoutMemoryCache = new Map<string, { buffer: Buffer; width: number; height: number }>();
 const bgResizeMemoryCache = new Map<string, Buffer>();
+let brandLogoOverlayCache: Buffer | null = null;
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days in-memory TTL
 
 let cachedBoldFont: any = null;
@@ -453,6 +454,36 @@ async function loadResizedBackgroundBuffer(effectiveBgUrl: string): Promise<Buff
   return resized;
 }
 
+async function loadBrandLogoOverlayBuffer(targetHeight = 78): Promise<Buffer | null> {
+  if (brandLogoOverlayCache) return brandLogoOverlayCache;
+
+  const logoCandidates = [
+    path.join(process.cwd(), "public/assets/osl-logo-dark.png"),
+    path.join(process.cwd(), "dist/assets/osl-logo-dark.png"),
+    path.join(process.cwd(), "public/assets/osl-logo-dark.webp"),
+    path.join(process.cwd(), "dist/assets/osl-logo-dark.webp"),
+    path.join(process.cwd(), "public/assets/osl-source-logo.webp"),
+    path.join(process.cwd(), "dist/assets/osl-source-logo.webp"),
+  ];
+
+  for (const candidate of logoCandidates) {
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      try {
+        const rawLogo = fs.readFileSync(candidate);
+        const resizedLogo = await sharp(rawLogo)
+          .resize({ height: targetHeight, fit: "inside", withoutEnlargement: false })
+          .png()
+          .toBuffer();
+        brandLogoOverlayCache = resizedLogo;
+        return resizedLogo;
+      } catch (err) {
+        console.warn("[VIDEO THUMBNAIL] Kon OSL logo overlay niet laden:", candidate, err);
+      }
+    }
+  }
+  return null;
+}
+
 async function loadPersonCutoutBuffer(
   cutoutSource?: string
 ): Promise<{ buffer: Buffer; width: number; height: number } | null> {
@@ -704,7 +735,7 @@ export async function generateVideoThumbnailBothFormats(
 
   const effectiveBgUrl = wijkBackgroundUrl || "/assets/steenwijk-aerial.webp";
   const cacheKey = String(
-    `osl_v1_${video.id || "preview"}_${cutoutUrl}_${effectiveBgUrl}_${fullHeadline}`
+    `osl_v2_${video.id || "preview"}_${cutoutUrl}_${effectiveBgUrl}_${fullHeadline}`
   );
 
   const cached = thumbnailCache.get(cacheKey);
@@ -712,30 +743,24 @@ export async function generateVideoThumbnailBothFormats(
     return { jpgBuffer: cached.jpgBuffer, webpBuffer: cached.webpBuffer };
   }
 
-  // 4. Load Resized Background Image (cached in RAM)
-  const bgBuffer = await loadResizedBackgroundBuffer(effectiveBgUrl);
+  // 4. Load Resized Background Image (cached in RAM) & OSL Brand Logo
+  const [bgBuffer, brandLogoBuf, personRes] = await Promise.all([
+    loadResizedBackgroundBuffer(effectiveBgUrl),
+    loadBrandLogoOverlayBuffer(78),
+    loadPersonCutoutBuffer(cutoutUrl),
+  ]);
 
-  // 5. Load Person Cutout Image (cached on disk & RAM)
-  const personRes = await loadPersonCutoutBuffer(cutoutUrl);
-
-  // 6. Wrap Headline Text
+  // 5. Wrap Headline Text
   const titleLines = wrapThumbnailHeadline(fullHeadline, 24, 4);
   const fontSize = titleLines.length >= 4 ? 33 : titleLines.length === 3 ? 38 : 44;
-  const lineHeight = titleLines.length >= 4 ? 42 : titleLines.length === 3 ? 48 : 54;
-  const titleStartY = titleLines.length >= 4 ? 180 : titleLines.length === 3 ? 205 : 240;
+  const lineHeight = titleLines.length >= 4 ? 41 : titleLines.length === 3 ? 47 : 54;
+  const titleStartY = titleLines.length >= 4 ? 196 : titleLines.length === 3 ? 218 : 246;
 
-  // 7. Get fonts for vector rendering
+  // 6. Get fonts for vector rendering
   const { bold: boldFont, regular: regFont } = getThumbnailFonts();
 
-  // 8. Generate Vector SVG paths (Diep Woudgroen #143627 & Helder Amber #EAB308)
-  const oslTextWidth = measureTextWidth(boldFont, "OSL", 14);
-  const oslX = 60 + (48 - oslTextWidth) / 2;
-  const partyBadgePaths = `
-    <rect x="60" y="48" width="48" height="28" rx="6" fill="#EAB308"/>
-    ${textToVectorPath(boldFont, "OSL", oslX, 48 + 19, 14, "#143627")}
-    ${textToVectorPath(boldFont, "ONAFHANKELIJK STEENWIJKERLAND", 60 + 60, 48 + 20, 15, "#ffffff")}
-  `;
-
+  // 7. Generate Vector SVG paths (Diep Woudgroen #143627 & Helder Amber #EAB308)
+  const badgesY = 122;
   let badgesContent = "";
   if (wijkNaam) {
     const wTextWidth = measureTextWidth(boldFont, wijkNaam, 13);
@@ -746,13 +771,13 @@ export async function generateVideoThumbnailBothFormats(
 
     badgesContent = `
       <g>
-        <rect x="60" y="96" width="${wPillWidth}" height="32" rx="16" fill="rgba(234, 179, 8, 0.22)" stroke="#EAB308" stroke-width="1.5"/>
-        <path d="M12 2C8.13 2 5 5.13 5 9c0 4.5 7 11 7 11s7-6.5 7-11c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z" fill="#EAB308" transform="translate(68, 101) scale(0.85)"/>
-        ${textToVectorPath(boldFont, wijkNaam, 60 + 36, 96 + 21, 13, "#fde047")}
+        <rect x="60" y="${badgesY}" width="${wPillWidth}" height="32" rx="16" fill="rgba(234, 179, 8, 0.22)" stroke="#EAB308" stroke-width="1.5"/>
+        <path d="M12 2C8.13 2 5 5.13 5 9c0 4.5 7 11 7 11s7-6.5 7-11c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z" fill="#EAB308" transform="translate(68, ${badgesY + 5}) scale(0.85)"/>
+        ${textToVectorPath(boldFont, wijkNaam, 60 + 36, badgesY + 21, 13, "#fde047")}
       </g>
       <g>
-        <rect x="${catX}" y="96" width="${cPillWidth}" height="32" rx="16" fill="rgba(255, 255, 255, 0.12)" stroke="rgba(255, 255, 255, 0.25)" stroke-width="1"/>
-        ${textToVectorPath(regFont, category, catX + 15, 96 + 21, 13, "#e2e8f0")}
+        <rect x="${catX}" y="${badgesY}" width="${cPillWidth}" height="32" rx="16" fill="rgba(255, 255, 255, 0.12)" stroke="rgba(255, 255, 255, 0.25)" stroke-width="1"/>
+        ${textToVectorPath(regFont, category, catX + 15, badgesY + 21, 13, "#e2e8f0")}
       </g>
     `;
   } else {
@@ -762,12 +787,12 @@ export async function generateVideoThumbnailBothFormats(
 
     badgesContent = `
       <g>
-        <rect x="60" y="96" width="${cPillWidth}" height="32" rx="16" fill="rgba(234, 179, 8, 0.20)" stroke="#EAB308" stroke-width="1.5"/>
-        ${textToVectorPath(boldFont, category, 60 + 15, 96 + 21, 13, "#fde047")}
+        <rect x="60" y="${badgesY}" width="${cPillWidth}" height="32" rx="16" fill="rgba(234, 179, 8, 0.20)" stroke="#EAB308" stroke-width="1.5"/>
+        ${textToVectorPath(boldFont, category, 60 + 15, badgesY + 21, 13, "#fde047")}
       </g>
       <g>
-        <rect x="${subX}" y="96" width="180" height="32" rx="16" fill="rgba(255, 255, 255, 0.10)" stroke="rgba(255, 255, 255, 0.20)" stroke-width="1"/>
-        ${textToVectorPath(regFont, "Steenwijkerland", subX + 40, 96 + 21, 12, "#cbd5e1")}
+        <rect x="${subX}" y="${badgesY}" width="180" height="32" rx="16" fill="rgba(255, 255, 255, 0.10)" stroke="rgba(255, 255, 255, 0.20)" stroke-width="1"/>
+        ${textToVectorPath(regFont, "Steenwijkerland", subX + 40, badgesY + 21, 12, "#cbd5e1")}
       </g>
     `;
   }
@@ -808,6 +833,14 @@ export async function generateVideoThumbnailBothFormats(
     </svg>
   `);
 
+  const fallbackLogoSvg = !brandLogoBuf
+    ? `<g filter="url(#textDrop)">
+        <rect x="60" y="48" width="48" height="28" rx="6" fill="#EAB308"/>
+        ${textToVectorPath(boldFont, "OSL", 60 + (48 - measureTextWidth(boldFont, "OSL", 14)) / 2, 48 + 19, 14, "#143627")}
+        ${textToVectorPath(boldFont, "ONAFHANKELIJK STEENWIJKERLAND", 60 + 60, 48 + 20, 15, "#ffffff")}
+      </g>`
+    : "";
+
   const fgSvg = Buffer.from(`
     <svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
       <defs>
@@ -815,9 +848,7 @@ export async function generateVideoThumbnailBothFormats(
           <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000000" flood-opacity="0.8"/>
         </filter>
       </defs>
-      <g filter="url(#textDrop)">
-        ${partyBadgePaths}
-      </g>
+      ${fallbackLogoSvg}
       <g filter="url(#textDrop)">
         ${badgesContent}
       </g>
@@ -847,6 +878,14 @@ export async function generateVideoThumbnailBothFormats(
   }
 
   compositeLayers.push({ input: fgSvg, top: 0, left: 0 });
+
+  if (brandLogoBuf) {
+    compositeLayers.push({
+      input: brandLogoBuf,
+      top: 28,
+      left: 60,
+    });
+  }
 
   const composed = sharp(bgBuffer).composite(compositeLayers);
   const [jpgBuffer, webpBuffer] = await Promise.all([

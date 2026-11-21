@@ -39,6 +39,7 @@ import { Button } from "@/components/ui/button";
 import { hoofdstukken, Hoofdstuk, Standpunt } from "@/data/partijprogramma";
 import { mathToSpeechText, FormattedMathText } from "@/utils/mathRenderer";
 import { GooglePreferredSourceCard } from "@/components/GooglePreferredSourceCard";
+import { buildCanonicalUrl, stripHtmlForMeta, updateClientSeoHead } from "@/lib/seoHead";
 
 export default function NieuwsDetail() {
   const { id } = useParams<{ id: string }>();
@@ -215,7 +216,27 @@ export default function NieuwsDetail() {
             setActiveRetentionTab("podcast");
           }
 
-          document.title = `${data.title} | Onafhankelijk Steenwijkerland`;
+          const cleanDesc =
+            stripHtmlForMeta(data.excerpt || data.description || data.content || "", 160) ||
+            `${data.title} — Nieuws en onderzoek van Onafhankelijk Steenwijkerland (OSL).`;
+          const rawAuthor = String(data.authorName || data.author || "").trim();
+          const safeAuthor =
+            !rawAuthor || rawAuthor.toLowerCase().startsWith("tempadmin")
+              ? "Onafhankelijk Steenwijkerland"
+              : rawAuthor;
+          updateClientSeoHead({
+            title: `${data.title} | Onafhankelijk Steenwijkerland`,
+            description: cleanDesc,
+            ogTitle: data.title,
+            ogDescription: cleanDesc,
+            ogImage: data.thumbnailUrl || data.headerUrl || data.image,
+            ogImageAlt: data.title,
+            ogType: "article",
+            canonicalUrl: buildCanonicalUrl(location.pathname || `/nieuws/${data.slug || data.id}`),
+            author: safeAuthor,
+            publishedTime: data.createdAt || data.date,
+            modifiedTime: data.updatedAt || data.createdAt || data.date,
+          });
         } else {
           setNotFound(true);
         }

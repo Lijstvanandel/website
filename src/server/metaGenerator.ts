@@ -32,9 +32,24 @@ const DEFAULT_IMAGE = "https://onafhankelijksteenwijkerland.nl/assets/hero-banne
 const DEFAULT_TITLE = "Onafhankelijk Steenwijkerland (OSL) | Lokale Politiek Steenwijkerland";
 const DEFAULT_DESC = "Officiële website en ledenportaal van politieke partij Onafhankelijk Steenwijkerland (OSL) in Steenwijkerland met nieuws, fractieleden, agenda, standpunten en wijkpagina's.";
 
+function slugifySeo(text?: string): string {
+  if (!text || typeof text !== "string") return "";
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 function stripHtml(html?: string): string {
   if (!html) return "";
   return html
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<head[\s\S]*?<\/head>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
     .replace(/<[^>]*>/g, " ")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
@@ -224,20 +239,33 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
     };
   }
 
-  // 2. Nieuws detail: /nieuws/:id
-  const nieuwsMatch = cleanPath.match(/^\/nieuws\/([a-zA-Z0-9_-]+)$/);
+  // 2. Nieuws detail: /nieuws/:id (ondersteunt ID, slug en genormaliseerde titelslug)
+  const nieuwsMatch = cleanPath.match(/^\/nieuws\/([^/?#]+)$/);
   if (nieuwsMatch) {
-    const articleId = nieuwsMatch[1].toLowerCase();
+    let articleId = nieuwsMatch[1].toLowerCase();
+    try {
+      articleId = decodeURIComponent(nieuwsMatch[1]).toLowerCase();
+    } catch {
+      // keep raw
+    }
     const article = (db?.news || []).find((n: any) =>
       String(n.id).toLowerCase() === articleId ||
-      (n.slug && n.slug.toLowerCase() === articleId)
+      (n.slug && String(n.slug).toLowerCase() === articleId) ||
+      (n.title && slugifySeo(n.title) === articleId)
     );
 
     if (article) {
-      const cleanDesc = truncate(stripHtml(article.excerpt || article.description || article.content || ""), 160);
+      const cleanDesc =
+        truncate(stripHtml(article.excerpt || article.description || article.content || ""), 160) ||
+        `${article.title} — Nieuws en onderzoek van Onafhankelijk Steenwijkerland (OSL).`;
       const rawImage = article.thumbnailUrl || article.headerUrl || article.image || article.imageUrl;
       const articleImage = resolveImageUrl(baseUrl, rawImage);
       const title = `${article.title} | Onafhankelijk Steenwijkerland`;
+      const rawAuthor = String(article.authorName || article.author || "").trim();
+      const safeAuthor =
+        !rawAuthor || rawAuthor.toLowerCase().startsWith("tempadmin")
+          ? "Onafhankelijk Steenwijkerland"
+          : rawAuthor;
 
       return {
         title,
@@ -251,7 +279,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
         ogImageAlt: article.title,
         ogType: "article",
         canonicalUrl,
-        author: article.author || "Onafhankelijk Steenwijkerland",
+        author: safeAuthor,
         publishedTime: article.createdAt || article.date,
         modifiedTime: article.updatedAt || article.createdAt || article.date,
         structuredData: {
@@ -1214,13 +1242,89 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
     };
   }
 
-  // 13. Login / Register / Reset Password / Dashboard / Admin / SSO (Noindex for private / auth pages)
+  // 12b. Dossiers / Raadspaneel
+  if (cleanPath === "/dossiers" || cleanPath === "/raadspaneel" || cleanPath.startsWith("/dossiers/")) {
+    const dossierSlug = cleanPath.startsWith("/dossiers/") ? cleanPath.replace("/dossiers/", "") : "";
+    const dossierTitle = dossierSlug
+      ? dossierSlug
+          .split("-")
+          .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : ""))
+          .join(" ")
+      : "Raadsdossiers & Beleidsonderzoek";
+    return {
+      title: `${dossierTitle} | Onafhankelijk Steenwijkerland`,
+      description: `Bekijk raadsstukken, documenten en onderzoek binnen het dossier ${dossierTitle} van Onafhankelijk Steenwijkerland (OSL).`,
+      ogTitle: `${dossierTitle} | Onafhankelijk Steenwijkerland`,
+      ogDescription: `Openbare dossiers, onderbouwing en raadsdocumenten voor Steenwijkerland.`,
+      ogImage: DEFAULT_IMAGE,
+      ogType: "website",
+      canonicalUrl,
+    };
+  }
+
+  // 12c. Peilingen / Polls
+  if (cleanPath === "/peilingen" || cleanPath === "/polls") {
+    return {
+      title: "Peilingen & Stellingen Steenwijkerland | Onafhankelijk Steenwijkerland",
+      description: "Geef uw mening over actuele onderwerpen en stellingen in de gemeente Steenwijkerland via de peilingen van Onafhankelijk Steenwijkerland (OSL).",
+      ogTitle: "Peilingen & Stellingen | Onafhankelijk Steenwijkerland",
+      ogDescription: "Laat uw stem horen over lokale thema's in Steenwijkerland.",
+      ogImage: DEFAULT_IMAGE,
+      ogType: "website",
+      canonicalUrl,
+    };
+  }
+
+  // 12d. Juridische pagina's
+  if (cleanPath === "/privacyverklaring" || cleanPath === "/privacy") {
+    return {
+      title: "Privacyverklaring (AVG) | Onafhankelijk Steenwijkerland",
+      description: "Lees hoe Onafhankelijk Steenwijkerland (OSL) zorgvuldig en volgens de AVG omgaat met persoonsgegevens.",
+      ogTitle: "Privacyverklaring | Onafhankelijk Steenwijkerland",
+      ogDescription: "Privacyverklaring en gegevensbescherming van Onafhankelijk Steenwijkerland.",
+      ogImage: DEFAULT_IMAGE,
+      ogType: "website",
+      canonicalUrl,
+    };
+  }
+
+  if (cleanPath === "/algemene-voorwaarden" || cleanPath === "/voorwaarden") {
+    return {
+      title: "Algemene Voorwaarden | Onafhankelijk Steenwijkerland",
+      description: "De algemene voorwaarden voor het gebruik van de website, evenementen en diensten van Onafhankelijk Steenwijkerland.",
+      ogTitle: "Algemene Voorwaarden | Onafhankelijk Steenwijkerland",
+      ogDescription: "Algemene voorwaarden van Onafhankelijk Steenwijkerland (OSL).",
+      ogImage: DEFAULT_IMAGE,
+      ogType: "website",
+      canonicalUrl,
+    };
+  }
+
+  if (cleanPath === "/verwerkingsreglement") {
+    return {
+      title: "Verwerkingsreglement | Onafhankelijk Steenwijkerland",
+      description: "Overzicht van gegevensverwerking en beveiligingsmaatregelen binnen Onafhankelijk Steenwijkerland.",
+      ogTitle: "Verwerkingsreglement | Onafhankelijk Steenwijkerland",
+      ogDescription: "Verwerkingsreglement en privacywaarborgen van Onafhankelijk Steenwijkerland.",
+      ogImage: DEFAULT_IMAGE,
+      ogType: "website",
+      canonicalUrl,
+    };
+  }
+
+  // 13. Login / Register / Reset Password / Dashboard / Admin / SSO / Unsubscribe (Noindex for private / auth pages)
   if (
     cleanPath === "/login" ||
     cleanPath === "/registreren" ||
+    cleanPath === "/word-lid" ||
+    cleanPath === "/wordlid" ||
     cleanPath === "/reset-wachtwoord" ||
     cleanPath === "/dashboard" ||
     cleanPath === "/admin" ||
+    cleanPath === "/secretaris" ||
+    cleanPath === "/penningmeester" ||
+    cleanPath === "/voorzitter" ||
+    cleanPath === "/nieuwsbrief/afmelden" ||
     cleanPath === "/authorize" ||
     cleanPath === "/sso/login" ||
     cleanPath === "/sso/logout"
@@ -1264,10 +1368,10 @@ export function injectMetadataIntoHtml(html: string, meta: PageMetadata): string
     modified = modified.replace("</head>", `  <title>${escapeHtml(meta.title)}</title>\n</head>`);
   }
 
-  // Helper to replace or inject meta tag
+  // Helper to replace or inject meta tag (attribute-order independent)
   function setMetaName(name: string, content: string) {
     const escaped = escapeHtml(content);
-    const regex = new RegExp(`<meta\\s+name=["']${name}["'][^>]*>`, "i");
+    const regex = new RegExp(`<meta\\b[^>]*\\bname=["']${name}["'][^>]*>`, "gi");
     if (regex.test(modified)) {
       modified = modified.replace(regex, `<meta name="${name}" content="${escaped}">`);
     } else {
@@ -1277,7 +1381,7 @@ export function injectMetadataIntoHtml(html: string, meta: PageMetadata): string
 
   function setMetaProperty(prop: string, content: string) {
     const escaped = escapeHtml(content);
-    const regex = new RegExp(`<meta\\s+property=["']${prop}["'][^>]*>`, "i");
+    const regex = new RegExp(`<meta\\b[^>]*\\bproperty=["']${prop}["'][^>]*>`, "gi");
     if (regex.test(modified)) {
       modified = modified.replace(regex, `<meta property="${prop}" content="${escaped}">`);
     } else {
@@ -1316,11 +1420,22 @@ export function injectMetadataIntoHtml(html: string, meta: PageMetadata): string
   // Twitter Card
   setMetaName("twitter:card", "summary_large_image");
 
-  // Canonical link tag
-  if (/<link\s+rel=["']canonical["'][^>]*>/i.test(modified)) {
-    modified = modified.replace(/<link\s+rel=["']canonical["'][^>]*>/i, `<link rel="canonical" href="${meta.canonicalUrl}">`);
+  // Canonical link tag + hreflang alternates
+  const safeCanonical = escapeHtml(meta.canonicalUrl);
+  const canonicalRegex = /<link\b[^>]*\brel=["']canonical["'][^>]*>/gi;
+  if (canonicalRegex.test(modified)) {
+    modified = modified.replace(canonicalRegex, `<link rel="canonical" href="${safeCanonical}">`);
   } else {
-    modified = modified.replace("</head>", `  <link rel="canonical" href="${meta.canonicalUrl}">\n</head>`);
+    modified = modified.replace("</head>", `  <link rel="canonical" href="${safeCanonical}">\n</head>`);
+  }
+
+  const hreflangNlRegex = /<link\b[^>]*\bhreflang=["']nl-NL["'][^>]*>/gi;
+  if (hreflangNlRegex.test(modified)) {
+    modified = modified.replace(hreflangNlRegex, `<link rel="alternate" href="${safeCanonical}" hreflang="nl-NL" />`);
+  }
+  const hreflangDefaultRegex = /<link\b[^>]*\bhreflang=["']x-default["'][^>]*>/gi;
+  if (hreflangDefaultRegex.test(modified)) {
+    modified = modified.replace(hreflangDefaultRegex, `<link rel="alternate" href="${safeCanonical}" hreflang="x-default" />`);
   }
 
   // Optional Robots (e.g. noindex for /admin and /login)

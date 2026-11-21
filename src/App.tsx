@@ -1,6 +1,6 @@
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -13,6 +13,7 @@ import { PwaUpdatePrompt } from "./components/PwaUpdatePrompt";
 import { ScrollToTop } from "./components/ScrollToTop";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { VisitorPerformanceTracker } from "./components/telemetry/VisitorPerformanceTracker";
+import { getRouteFallbackSeo, updateClientSeoHead } from "./lib/seoHead";
 
 // Self-healing lazy loading helper to prevent blank pages or chunk loading failures
 function safeLazy<T extends React.ComponentType<any>>(
@@ -156,6 +157,29 @@ const AppRoutes = () => {
   );
 };
 
+const SeoRouteSync = () => {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    const clean = pathname.toLowerCase();
+    // Detail routes update their own rich article/event/wijk/video metadata asynchronously once loaded;
+    // still immediately sync canonical/og:url on route change so it never stays stuck on homepage.
+    const isDetailRoute =
+      /^\/nieuws\/.+/.test(clean) ||
+      /^\/agenda\/.+/.test(clean) ||
+      /^\/videos?\/.+/.test(clean) ||
+      /^\/wijken-en[-/]kernen\/.+/.test(clean);
+    const fallback = getRouteFallbackSeo(pathname);
+    if (isDetailRoute) {
+      updateClientSeoHead({
+        canonicalUrl: fallback.canonicalUrl,
+      });
+    } else {
+      updateClientSeoHead(fallback);
+    }
+  }, [pathname]);
+  return null;
+};
+
 const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
@@ -168,6 +192,7 @@ const App = () => {
               <ErrorBoundary>
                 <BrowserRouter>
                   <ScrollToTop />
+                  <SeoRouteSync />
                   <VisitorPerformanceTracker />
                   <PWARedirectHandler />
                   <PwaUpdatePrompt />

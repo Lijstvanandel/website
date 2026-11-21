@@ -89,6 +89,7 @@ import {
   getJwksResponse,
   isAllowedSsoOrigin,
   isAllowedRedirectUri,
+  isKnownSsoClient,
   resolveSsoClientInfo,
   createAuthorizationCode,
   consumeAuthorizationCode,
@@ -96,6 +97,11 @@ import {
   verifyRefreshToken,
   revokeRefreshToken,
   verifySsoOrPortalAccessToken,
+  recordSsoTelemetryEvent,
+  getSsoAnalyticsSummary,
+  resetSsoAnalytics,
+  type SsoActorStatus,
+  type SsoTelemetryEventType,
 } from "./src/server/ssoService.js";
 import {
   initDatabase,
@@ -3813,6 +3819,17 @@ async function startServer() {
   // ==========================================
   // CENTRALE OSL SSO / IDENTITY PROVIDER API
   // ==========================================
+  const ssoTelemetryLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minuut
+    max: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      error: "Te veel telemetrieverzoeken vanaf dit IP-adres.",
+      code: "RATE_LIMIT_EXCEEDED",
+    },
+  });
+
   const applySsoCors = (req: any, res: any, allowWildcard = false) => {
     const reqOrigin = req.headers.origin;
     if (reqOrigin && isAllowedSsoOrigin(reqOrigin)) {
@@ -3822,7 +3839,7 @@ async function startServer() {
       res.setHeader("Access-Control-Allow-Origin", "*");
     }
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-OSL-Action, X-OSL-Client");
   };
 
   app.options(
@@ -3833,6 +3850,7 @@ async function startServer() {
       "/api/auth/verify",
       "/api/auth/userinfo",
       "/api/auth/logout",
+      "/api/sso/telemetry",
     ],
     (req: any, res: any) => {
       applySsoCors(req, res, true);
@@ -4007,9 +4025,179 @@ async function startServer() {
         scope: consumed.entry.scope,
         nonce: consumed.entry.nonce,
       });
+
+      recordSsoTelemetryEvent({
+        clientId: consumed.entry.clientId,
+        redirectUri: consumed.entry.redirectUri,
+        eventType: "sso_login_completed",
+        actorStatus: tokens.user.is_member ? "member" : "non_member",
+        scope: consumed.entry.scope,
+        userLabel: `${tokens.user.name} (${tokens.user.is_member ? "Lid" : "Geen lid"})`,
+        note: "SSO autorisatiecode omgewisseld",
+      });
+
       return res.json(tokens);
     }
   );
+
+  // Publiek CORS & sendBeacon telemetry-endpoint voor gekoppelde dataproducten
+  app.post(
+    "/api/sso/telemetry",
+    express.text({ type: "text/plain", limit: "32kb" }),
+    ssoTelemetryLimiter,
+    (req: any, res: any) => {
+      applySsoCors(req, res, true);
+      let body: Record<string, any> = {};
+      if (typeof req.body === "string") {
+        try {
+          body = JSON.parse(req.body);
+        } catch {
+          return res.status(400).json({ error: "Ongeldige JSON payload." });
+        }
+      } else if (req.body && typeof req.body === "object") {
+        body = req.body;
+      }
+
+      const clientId = String(body.client_id || body.clientId || "").trim();
+      const redirectUri = typeof body.redirect_uri === "string" ? body.redirect_uri : undefined;
+      const originHeader =
+        (typeof body.origin === "string" && body.origin) ||
+        (typeof req.headers.origin === "string" && req.headers.origin) ||
+        (typeof req.headers.referer === "string" && req.headers.referer) ||
+        redirectUri ||
+        undefined;
+
+      const allowedOrigin = isAllowedSsoOrigin(originHeader) || isAllowedSsoOrigin(redirectUri);
+      if (!allowedOrigin && !isKnownSsoClient(clientId)) {
+        return res.status(403).json({ error: "Herkomst of client_id is niet geregistreerd voor OSL SSO-telemetrie." });
+      }
+
+      const authHeader = String(req.headers.authorization || "");
+      const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+      const candidateToken = bearerToken || (typeof body.access_token === "string" ? body.access_token.trim() : "");
+
+      let actorStatus: SsoActorStatus = "anonymous";
+      let userLabel = "Anonieme bezoeker";
+
+      if (candidateToken) {
+        const db = getDb();
+        const verified = verifySsoOrPortalAccessToken(
+          candidateToken,
+          JWT_SECRET,
+          db.users || [],
+          getSafeUserWithMembership
+        );
+        if (verified.valid) {
+          actorStatus = verified.claims.is_member ? "member" : "non_member";
+          userLabel = `${verified.claims.name} (${verified.claims.is_member ? "Lid" : "Geen lid"})`;
+        } else {
+          // Ongeldig/verlopen token behandelen als anonieme poging tenzij expliciet niet-lid gerapporteerd
+          actorStatus = "anonymous";
+          userLabel = "Anonieme bezoeker (verlopen sessie)";
+        }
+      } else if (
+        body.actor_status === "non_member" ||
+        body.status === "non_member" ||
+        (body.authenticated === true && body.is_member === false)
+      ) {
+        actorStatus = "non_member";
+        userLabel = "Ingelogde gebruiker (geen lid)";
+      } else if (body.actor_status === "member" || (body.authenticated === true && body.is_member === true)) {
+        actorStatus = "member";
+        userLabel = "Ingelogd partijlid";
+      }
+
+      const rawEventType = String(body.event_type || body.eventType || "export_attempt").toLowerCase();
+      const eventType: SsoTelemetryEventType =
+        rawEventType === "sso_prompt_opened"
+          ? "sso_prompt_opened"
+          : rawEventType === "token_verified"
+          ? "token_verified"
+          : "export_attempt";
+
+      const format = typeof body.format === "string" ? body.format : undefined;
+      const scope = typeof body.scope === "string" ? body.scope : undefined;
+      const note = typeof body.note === "string" ? body.note : body.exported === false ? "Export geblokkeerd (inlog vereist)" : undefined;
+
+      recordSsoTelemetryEvent({
+        clientId: clientId || "osl-dataproduct",
+        redirectUri,
+        origin: originHeader,
+        eventType,
+        actorStatus,
+        format,
+        scope,
+        userLabel,
+        note,
+      });
+
+      return res.status(202).json({
+        recorded: true,
+        client_id: clientId || "osl-dataproduct",
+        actor_status: actorStatus,
+        event_type: eventType,
+      });
+    }
+  );
+
+  // Interne registratie vanuit /authorize zodat ook geannuleerde SSO-aanvragen vanuit dashboards zichtbaar zijn
+  app.post("/api/sso/prompt-opened", ssoTelemetryLimiter, (req: any, res: any) => {
+    const body = req.body || {};
+    const clientId = String(body.client_id || "osl-dataproduct").trim();
+    const redirectUri = typeof body.redirect_uri === "string" ? body.redirect_uri : undefined;
+    if (!redirectUri || !isAllowedRedirectUri(redirectUri)) {
+      return res.status(400).json({ error: "Ongeldige redirect_uri." });
+    }
+
+    const authHeader = String(req.headers.authorization || "");
+    const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+    let actorStatus: SsoActorStatus = "anonymous";
+    let userLabel = "Anonieme bezoeker";
+
+    if (bearerToken) {
+      const db = getDb();
+      const verified = verifySsoOrPortalAccessToken(
+        bearerToken,
+        JWT_SECRET,
+        db.users || [],
+        getSafeUserWithMembership
+      );
+      if (verified.valid) {
+        actorStatus = verified.claims.is_member ? "member" : "non_member";
+        userLabel = `${verified.claims.name} (${verified.claims.is_member ? "Lid" : "Geen lid"})`;
+      }
+    }
+
+    const scope = typeof body.scope === "string" ? body.scope : undefined;
+    const format = typeof body.format === "string" ? body.format : undefined;
+    const action = typeof body.action === "string" ? body.action.trim().toLowerCase() : "";
+
+    recordSsoTelemetryEvent({
+      clientId,
+      redirectUri,
+      eventType: "sso_prompt_opened",
+      actorStatus,
+      format,
+      scope,
+      userLabel,
+      note: action === "export" ? "SSO geopend via exportknop" : "SSO inlogscherm geopend",
+    });
+
+    if (action === "export" || action.startsWith("export")) {
+      recordSsoTelemetryEvent({
+        clientId,
+        redirectUri,
+        eventType: "export_attempt",
+        actorStatus,
+        format,
+        scope,
+        userLabel,
+        note: actorStatus === "anonymous" ? "Export aangeklikt (niet ingelogd -> naar SSO)" : "Export aangeklikt via SSO",
+      });
+    }
+
+    return res.status(202).json({ recorded: true, actor_status: actorStatus });
+  });
 
   const handleSsoVerify = (req: any, res: any) => {
     applySsoCors(req, res, true);
@@ -4017,7 +4205,35 @@ async function startServer() {
     const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
     const token = bearerToken || (typeof req.body?.token === "string" ? req.body.token.trim() : "");
 
+    const clientId = String(
+      req.query?.client_id || req.body?.client_id || req.headers["x-osl-client"] || ""
+    ).trim();
+    const action = String(
+      req.query?.action || req.body?.action || req.headers["x-osl-action"] || ""
+    )
+      .trim()
+      .toLowerCase();
+    const format =
+      (typeof req.query?.format === "string" && req.query.format) ||
+      (typeof req.body?.format === "string" && req.body.format) ||
+      undefined;
+    const originHeader =
+      (typeof req.headers.origin === "string" && req.headers.origin) ||
+      (typeof req.headers.referer === "string" && req.headers.referer) ||
+      undefined;
+
     if (!token) {
+      if (action === "export" && clientId) {
+        recordSsoTelemetryEvent({
+          clientId,
+          origin: originHeader,
+          eventType: "export_attempt",
+          actorStatus: "anonymous",
+          format,
+          userLabel: "Anonieme bezoeker",
+          note: "Export geblokkeerd bij backend-check (geen token)",
+        });
+      }
       return res.status(401).json({
         active: false,
         valid: false,
@@ -4028,10 +4244,43 @@ async function startServer() {
     const db = getDb();
     const result = verifySsoOrPortalAccessToken(token, JWT_SECRET, db.users || [], getSafeUserWithMembership);
     if (!result.valid) {
+      if (action === "export" && clientId) {
+        recordSsoTelemetryEvent({
+          clientId,
+          origin: originHeader,
+          eventType: "export_attempt",
+          actorStatus: "anonymous",
+          format,
+          userLabel: "Anonieme bezoeker (ongeldig token)",
+          note: "Export geweigerd bij token-verificatie",
+        });
+      }
       return res.status(401).json({
         active: false,
         valid: false,
         error: result.error,
+      });
+    }
+
+    const effectiveClientId = clientId || (typeof result.claims?.aud === "string" ? result.claims.aud : "");
+    if (action === "export") {
+      recordSsoTelemetryEvent({
+        clientId: effectiveClientId || "osl-dataproduct",
+        origin: originHeader,
+        eventType: "export_attempt",
+        actorStatus: result.claims.is_member ? "member" : "non_member",
+        format,
+        userLabel: `${result.claims.name} (${result.claims.is_member ? "Lid" : "Geen lid"})`,
+        note: "Export geverifieerd via /api/auth/verify",
+      });
+    } else if (clientId) {
+      recordSsoTelemetryEvent({
+        clientId,
+        origin: originHeader,
+        eventType: "token_verified",
+        actorStatus: result.claims.is_member ? "member" : "non_member",
+        format,
+        userLabel: `${result.claims.name} (${result.claims.is_member ? "Lid" : "Geen lid"})`,
       });
     }
 
@@ -4067,6 +4316,15 @@ async function startServer() {
     const refreshToken = req.body?.refresh_token;
     const revoked = revokeRefreshToken(typeof refreshToken === "string" ? refreshToken : null);
     return res.json({ success: true, revoked });
+  });
+
+  // Admin SSO & Dataproduct Export Analytics
+  app.get("/api/admin/sso/analytics", requireAuth, requireAdmin, (_req: any, res: any) => {
+    return res.json(getSsoAnalyticsSummary());
+  });
+
+  app.post("/api/admin/sso/analytics/reset", requireAuth, requireAdmin, (_req: any, res: any) => {
+    return res.json(resetSsoAnalytics());
   });
 
   // User Approval Routes (Key-Users & Admins)
@@ -8560,14 +8818,37 @@ async function startServer() {
 
   app.get("/api/news/:id", (req, res) => {
     const snap = getPublicSiteSnapshot(getDb);
-    const article = getCachedNewsArticleById(req.params.id, getDb) || (getDb().news || []).find((n: any) => n.id === req.params.id);
+    const paramLower = String(req.params.id || "").toLowerCase();
+    const article =
+      getCachedNewsArticleById(req.params.id, getDb) ||
+      (getDb().news || []).find(
+        (n: any) =>
+          String(n.id).toLowerCase() === paramLower ||
+          (n.slug && String(n.slug).toLowerCase() === paramLower) ||
+          slugify(n.title || "") === paramLower
+      );
     if (!article) return res.status(404).json({ error: "Nieuws niet gevonden" });
     if ((article.isHidden || article.isHidden === "true") && req.query.includeHidden !== "true") {
       return res.status(404).json({ error: "Nieuwsbericht is onzichtbaar of niet gevonden" });
     }
+    const {
+      createdBy: _cb,
+      createdByUsername: _cbu,
+      updatedBy: _ub,
+      updatedByUsername: _ubu,
+      editedBy: _eb,
+      authorUsername: _au,
+      ...publicArticle
+    } = article;
+    if (typeof publicArticle.author === "string" && publicArticle.author.toLowerCase().startsWith("tempadmin")) {
+      publicArticle.author = "Onafhankelijk Steenwijkerland";
+    }
+    if (typeof publicArticle.authorName === "string" && publicArticle.authorName.toLowerCase().startsWith("tempadmin")) {
+      publicArticle.authorName = "Onafhankelijk Steenwijkerland";
+    }
     res.setHeader("ETag", snap.etag);
     res.setHeader("Cache-Control", "public, max-age=30, s-maxage=300, stale-while-revalidate=3600");
-    res.json(article);
+    res.json(publicArticle);
   });
 
   app.post("/api/admin/news", requireAuth, requireAdmin, upload.fields([
@@ -9582,17 +9863,29 @@ async function startServer() {
       return dateA - dateB;
     });
 
-    // Sanitize address: only show street & house number if registered via portal or admin
+    // Sanitize event payload: strip PII (cancellations, attendees IDs, admin usernames) & hide exact address unless attending/admin
     const sanitizedEvents = events.map((e: any) => {
       const isAttending = Boolean(currentUserId && e.attendees?.includes(currentUserId));
       const canSeeFullAddress = Boolean(isAttending || isAdmin);
       const city = extractCity(e.address);
+      const {
+        cancellations: _canc,
+        attendees: _att,
+        tickets: _tkt,
+        guestRegistrations: _gr,
+        createdBy: _cb,
+        createdByUsername: _cbu,
+        updatedBy: _ub,
+        updatedByUsername: _ubu,
+        ...safeEvent
+      } = e;
 
       return {
-        ...e,
+        ...safeEvent,
         city,
         address: canSeeFullAddress ? e.address : city,
         fullAddress: canSeeFullAddress ? e.address : undefined,
+        attendeesCount: Array.isArray(e.attendees) ? e.attendees.length : 0,
         isAttending,
       };
     });
@@ -9798,12 +10091,26 @@ async function startServer() {
     const canSeeFullAddress = Boolean(isAdmin || (isAttending && locationEval.isReleased));
     const city = extractCity(ev.address);
 
+    const {
+      cancellations: _canc,
+      attendees: _att,
+      tickets: _tkt,
+      guestRegistrations: _gr,
+      createdBy: _cb,
+      createdByUsername: _cbu,
+      updatedBy: _ub,
+      updatedByUsername: _ubu,
+      ...safeEvent
+    } = ev;
+    const attendeesCount = Array.isArray(ev.attendees) ? ev.attendees.length : 0;
+
     if (!ev.isPublic && !isMember) {
       return res.json({
-        ...ev,
+        ...safeEvent,
         city,
         address: "Locatie zichtbaar voor leden na inloggen",
         fullAddress: undefined,
+        attendeesCount,
         isPrivateForUser: true,
         isAttending: false,
         locationStatus: { isReleased: false, message: "Besloten evenement" },
@@ -9811,10 +10118,11 @@ async function startServer() {
     }
 
     res.json({
-      ...ev,
+      ...safeEvent,
       city,
       address: canSeeFullAddress ? ev.address : city,
       fullAddress: canSeeFullAddress ? ev.address : undefined,
+      attendeesCount,
       isAttending,
       ticketCode: userTicket?.ticketCode,
       locationStatus: locationEval,

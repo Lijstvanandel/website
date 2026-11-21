@@ -4,6 +4,69 @@ import { loadVaultKv, saveVaultKv } from "./vaultDatabase.js";
 
 const KV_RSA_KEY = "sso_rsa_keypair_v1";
 const KV_REVOKED_REFRESH_KEY = "sso_revoked_refresh_v1";
+const KV_SSO_ANALYTICS_KEY = "sso_analytics_v1";
+
+export type SsoActorStatus = "anonymous" | "non_member" | "member";
+export type SsoExportFormat = "csv" | "json" | "other";
+export type SsoTelemetryEventType =
+  | "export_attempt"
+  | "sso_prompt_opened"
+  | "sso_login_completed"
+  | "token_verified";
+
+export interface SsoClientAnalytics {
+  clientId: string;
+  name: string;
+  firstParty: boolean;
+  totalExportClicks: number;
+  anonymousExportAttempts: number;
+  nonMemberExportAttempts: number;
+  memberExportAttempts: number;
+  csvAttempts: number;
+  jsonAttempts: number;
+  otherFormatAttempts: number;
+  ssoScreenOpens: number;
+  ssoScreenAnonOpens: number;
+  ssoScreenNonMemberOpens: number;
+  ssoScreenMemberOpens: number;
+  ssoLoginsCompleted: number;
+  ssoLoginsNonMember: number;
+  ssoLoginsMember: number;
+  verifyChecks: number;
+  lastActivityAt: string | null;
+  lastOrigin: string | null;
+}
+
+export interface SsoDailyAnalytics {
+  date: string;
+  totalExports: number;
+  anonymousExports: number;
+  nonMemberExports: number;
+  memberExports: number;
+  ssoOpens: number;
+  ssoLogins: number;
+}
+
+export interface SsoTelemetryEvent {
+  id: string;
+  timestamp: string;
+  clientId: string;
+  clientName: string;
+  eventType: SsoTelemetryEventType;
+  actorStatus: SsoActorStatus;
+  format: SsoExportFormat;
+  originHost: string | null;
+  userLabel: string;
+  note?: string;
+}
+
+interface StoredSsoAnalytics {
+  version: number;
+  updatedAt: string;
+  clients: Record<string, SsoClientAnalytics>;
+  daily: Record<string, SsoDailyAnalytics>;
+  recentEvents: SsoTelemetryEvent[];
+}
 
 export interface SsoPublicJwk {
   kty: string;
@@ -79,9 +142,61 @@ const KNOWN_CLIENTS: Record<string, Omit<SsoClientInfo, "clientId">> = {
   },
 };
 
+const PRIMARY_KNOWN_CLIENT_IDS = [
+  "vliegverkeer-radar",
+  "bekendmakingen",
+  "fietsveiligheid",
+  "mobiliteit",
+  "landbouw",
+  "verkeersveiligheid",
+];
+
 let cachedKeypair: StoredRsaKeypair | null = null;
 const authCodeStore = new Map<string, AuthorizationCodeEntry>();
 const revokedRefreshJtis = new Set<string>();
+let analyticsStore: StoredSsoAnalytics | null = null;
+
+function createEmptyAnalyticsStore(): StoredSsoAnalytics {
+  return {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    clients: {},
+    daily: {},
+    recentEvents: [],
+  };
+}
+
+function ensureAnalyticsStore(): StoredSsoAnalytics {
+  if (analyticsStore) return analyticsStore;
+  const existing = loadVaultKv<StoredSsoAnalytics>(KV_SSO_ANALYTICS_KEY);
+  if (existing && typeof existing === "object" && existing.clients && existing.daily) {
+    analyticsStore = {
+      version: existing.version || 1,
+      updatedAt: existing.updatedAt || new Date().toISOString(),
+      clients: existing.clients || {},
+      daily: existing.daily || {},
+      recentEvents: Array.isArray(existing.recentEvents) ? existing.recentEvents : [],
+    };
+  } else {
+    analyticsStore = createEmptyAnalyticsStore();
+  }
+  return analyticsStore;
+}
+
+function persistAnalyticsStore(): void {
+  if (!analyticsStore) return;
+  try {
+    analyticsStore.updatedAt = new Date().toISOString();
+    saveVaultKv(KV_SSO_ANALYTICS_KEY, analyticsStore);
+  } catch (err) {
+    console.error("[SSO] Opslaan van SSO-exportstatistieken mislukt:", err);
+  }
+}
+
+export function isKnownSsoClient(clientId?: string | null): boolean {
+  if (!clientId || typeof clientId !== "string") return false;
+  return Boolean(KNOWN_CLIENTS[clientId.trim().toLowerCase()]);
+}
 
 function cleanupExpiredCodes() {
   const now = Date.now();
@@ -101,6 +216,8 @@ export function getIssuerBaseUrl(): string {
 }
 
 export function initSsoService(): void {
+  ensureAnalyticsStore();
+
   if (cachedKeypair) return;
 
   const existing = loadVaultKv<StoredRsaKeypair>(KV_RSA_KEY);
@@ -245,6 +362,265 @@ export function resolveSsoClientInfo(clientId?: string | null, redirectUri?: str
     description: "Gekoppeld dashboard / dataproduct van Onafhankelijk Steenwijkerland.",
     firstParty: isAllowedRedirectUri(redirectUri),
   };
+}
+
+function normalizeFormat(format?: string | null, scope?: string | null): SsoExportFormat {
+  const f = String(format || "").trim().toLowerCase();
+  if (f === "csv" || f === "text/csv") return "csv";
+  if (f === "json" || f === "application/json") return "json";
+  if (f) return "other";
+
+  const s = String(scope || "").toLowerCase();
+  const hasCsv = s.includes("export:csv");
+  const hasJson = s.includes("export:json");
+  if (hasCsv && !hasJson) return "csv";
+  if (hasJson && !hasCsv) return "json";
+  return "other";
+}
+
+function extractOriginHost(originOrUrl?: string | null): string | null {
+  if (!originOrUrl || typeof originOrUrl !== "string") return null;
+  try {
+    return new URL(originOrUrl).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function createEmptyClientStats(clientId: string, info: SsoClientInfo): SsoClientAnalytics {
+  return {
+    clientId,
+    name: info.name,
+    firstParty: info.firstParty,
+    totalExportClicks: 0,
+    anonymousExportAttempts: 0,
+    nonMemberExportAttempts: 0,
+    memberExportAttempts: 0,
+    csvAttempts: 0,
+    jsonAttempts: 0,
+    otherFormatAttempts: 0,
+    ssoScreenOpens: 0,
+    ssoScreenAnonOpens: 0,
+    ssoScreenNonMemberOpens: 0,
+    ssoScreenMemberOpens: 0,
+    ssoLoginsCompleted: 0,
+    ssoLoginsNonMember: 0,
+    ssoLoginsMember: 0,
+    verifyChecks: 0,
+    lastActivityAt: null,
+    lastOrigin: null,
+  };
+}
+
+export function recordSsoTelemetryEvent(params: {
+  clientId?: string | null;
+  redirectUri?: string | null;
+  origin?: string | null;
+  eventType: SsoTelemetryEventType;
+  actorStatus: SsoActorStatus;
+  format?: string | null;
+  scope?: string | null;
+  userLabel?: string | null;
+  note?: string | null;
+}): void {
+  const store = ensureAnalyticsStore();
+  const rawClientId = String(params.clientId || "osl-dataproduct")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._:-]/g, "")
+    .slice(0, 64) || "osl-dataproduct";
+
+  const originCandidate = params.redirectUri || params.origin || null;
+  const originHost = extractOriginHost(originCandidate);
+  const clientInfo = resolveSsoClientInfo(rawClientId, originCandidate);
+  const effectiveFormat = normalizeFormat(params.format, params.scope);
+  const nowIso = new Date().toISOString();
+  const dateKey = nowIso.slice(0, 10);
+
+  if (!store.clients[rawClientId]) {
+    store.clients[rawClientId] = createEmptyClientStats(rawClientId, clientInfo);
+  }
+  const clientStats = store.clients[rawClientId];
+  // Refresh friendly name if redirectUri provides a better label for previously unknown client
+  if (clientInfo.name && clientStats.name === "OSL Dataproduct" && clientInfo.name !== "OSL Dataproduct") {
+    clientStats.name = clientInfo.name;
+  }
+  clientStats.firstParty = clientStats.firstParty || clientInfo.firstParty;
+  clientStats.lastActivityAt = nowIso;
+  if (originHost) clientStats.lastOrigin = originHost;
+
+  if (!store.daily[dateKey]) {
+    store.daily[dateKey] = {
+      date: dateKey,
+      totalExports: 0,
+      anonymousExports: 0,
+      nonMemberExports: 0,
+      memberExports: 0,
+      ssoOpens: 0,
+      ssoLogins: 0,
+    };
+  }
+  const dayStats = store.daily[dateKey];
+
+  if (params.eventType === "export_attempt") {
+    clientStats.totalExportClicks += 1;
+    dayStats.totalExports += 1;
+
+    if (params.actorStatus === "anonymous") {
+      clientStats.anonymousExportAttempts += 1;
+      dayStats.anonymousExports += 1;
+    } else if (params.actorStatus === "non_member") {
+      clientStats.nonMemberExportAttempts += 1;
+      dayStats.nonMemberExports += 1;
+    } else {
+      clientStats.memberExportAttempts += 1;
+      dayStats.memberExports += 1;
+    }
+
+    if (effectiveFormat === "csv") clientStats.csvAttempts += 1;
+    else if (effectiveFormat === "json") clientStats.jsonAttempts += 1;
+    else clientStats.otherFormatAttempts += 1;
+  } else if (params.eventType === "sso_prompt_opened") {
+    clientStats.ssoScreenOpens += 1;
+    dayStats.ssoOpens += 1;
+    if (params.actorStatus === "anonymous") clientStats.ssoScreenAnonOpens += 1;
+    else if (params.actorStatus === "non_member") clientStats.ssoScreenNonMemberOpens += 1;
+    else clientStats.ssoScreenMemberOpens += 1;
+  } else if (params.eventType === "sso_login_completed") {
+    clientStats.ssoLoginsCompleted += 1;
+    dayStats.ssoLogins += 1;
+    if (params.actorStatus === "non_member") clientStats.ssoLoginsNonMember += 1;
+    else if (params.actorStatus === "member") clientStats.ssoLoginsMember += 1;
+  } else if (params.eventType === "token_verified") {
+    clientStats.verifyChecks += 1;
+  }
+
+  // Prune daily entries older than 90 days
+  const dailyKeys = Object.keys(store.daily).sort();
+  if (dailyKeys.length > 90) {
+    for (const oldKey of dailyKeys.slice(0, dailyKeys.length - 90)) {
+      delete store.daily[oldKey];
+    }
+  }
+
+  const defaultUserLabel =
+    params.actorStatus === "anonymous"
+      ? "Anonieme bezoeker"
+      : params.actorStatus === "non_member"
+      ? "Ingelogd (geen partijlid)"
+      : "Actief partijlid";
+
+  const event: SsoTelemetryEvent = {
+    id: crypto.randomUUID(),
+    timestamp: nowIso,
+    clientId: rawClientId,
+    clientName: clientStats.name,
+    eventType: params.eventType,
+    actorStatus: params.actorStatus,
+    format: effectiveFormat,
+    originHost,
+    userLabel: String(params.userLabel || defaultUserLabel).slice(0, 100),
+    note: params.note ? String(params.note).slice(0, 140) : undefined,
+  };
+
+  store.recentEvents.unshift(event);
+  if (store.recentEvents.length > 250) {
+    store.recentEvents.length = 250;
+  }
+
+  persistAnalyticsStore();
+}
+
+export function getSsoAnalyticsSummary() {
+  const store = ensureAnalyticsStore();
+  const mergedClientsMap = new Map<string, SsoClientAnalytics>();
+
+  for (const id of PRIMARY_KNOWN_CLIENT_IDS) {
+    const info = resolveSsoClientInfo(id, null);
+    mergedClientsMap.set(id, createEmptyClientStats(id, info));
+  }
+
+  for (const [id, stats] of Object.entries(store.clients)) {
+    mergedClientsMap.set(id, { ...stats });
+  }
+
+  const clients = Array.from(mergedClientsMap.values()).sort((a, b) => {
+    if (b.totalExportClicks !== a.totalExportClicks) return b.totalExportClicks - a.totalExportClicks;
+    if (b.ssoScreenOpens !== a.ssoScreenOpens) return b.ssoScreenOpens - a.ssoScreenOpens;
+    if (b.ssoLoginsCompleted !== a.ssoLoginsCompleted) return b.ssoLoginsCompleted - a.ssoLoginsCompleted;
+    return a.name.localeCompare(b.name, "nl");
+  });
+
+  const totals = clients.reduce(
+    (acc, c) => {
+      acc.totalExportClicks += c.totalExportClicks;
+      acc.anonymousExportAttempts += c.anonymousExportAttempts;
+      acc.nonMemberExportAttempts += c.nonMemberExportAttempts;
+      acc.memberExportAttempts += c.memberExportAttempts;
+      acc.csvAttempts += c.csvAttempts;
+      acc.jsonAttempts += c.jsonAttempts;
+      acc.otherFormatAttempts += c.otherFormatAttempts;
+      acc.ssoScreenOpens += c.ssoScreenOpens;
+      acc.ssoScreenAnonOpens += c.ssoScreenAnonOpens;
+      acc.ssoLoginsCompleted += c.ssoLoginsCompleted;
+      acc.ssoLoginsNonMember += c.ssoLoginsNonMember;
+      acc.ssoLoginsMember += c.ssoLoginsMember;
+      acc.verifyChecks += c.verifyChecks;
+      return acc;
+    },
+    {
+      totalExportClicks: 0,
+      anonymousExportAttempts: 0,
+      nonMemberExportAttempts: 0,
+      memberExportAttempts: 0,
+      nonMemberOrAnonExportAttempts: 0,
+      csvAttempts: 0,
+      jsonAttempts: 0,
+      otherFormatAttempts: 0,
+      ssoScreenOpens: 0,
+      ssoScreenAnonOpens: 0,
+      ssoLoginsCompleted: 0,
+      ssoLoginsNonMember: 0,
+      ssoLoginsMember: 0,
+      verifyChecks: 0,
+    }
+  );
+  totals.nonMemberOrAnonExportAttempts = totals.anonymousExportAttempts + totals.nonMemberExportAttempts;
+
+  // Build chronological last 30 days array
+  const daily: SsoDailyAnalytics[] = [];
+  const today = new Date();
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(today);
+    d.setUTCDate(today.getUTCDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    daily.push(
+      store.daily[key] || {
+        date: key,
+        totalExports: 0,
+        anonymousExports: 0,
+        nonMemberExports: 0,
+        memberExports: 0,
+        ssoOpens: 0,
+        ssoLogins: 0,
+      }
+    );
+  }
+
+  return {
+    updatedAt: store.updatedAt,
+    totals,
+    clients,
+    daily,
+    recentEvents: store.recentEvents.slice(0, 150),
+    knownClients: PRIMARY_KNOWN_CLIENT_IDS.map((id) => resolveSsoClientInfo(id, null)),
+  };
+}
+
+export function resetSsoAnalytics() {
+  analyticsStore = createEmptyAnalyticsStore();
+  persistAnalyticsStore();
+  return getSsoAnalyticsSummary();
 }
 
 export function createAuthorizationCode(params: {

@@ -39,6 +39,8 @@ export default function SsoAuthorize() {
   const responseMode = (searchParams.get("response_mode") || "query").toLowerCase();
   const prompt = (searchParams.get("prompt") || "").toLowerCase();
   const nonce = searchParams.get("nonce") || "";
+  const actionParam = (searchParams.get("action") || "").toLowerCase();
+  const formatParam = (searchParams.get("format") || "").toLowerCase();
 
   const [clientInfo, setClientInfo] = useState<ClientInfo | null>(null);
   const [clientCheckLoading, setClientCheckLoading] = useState(true);
@@ -57,6 +59,7 @@ export default function SsoAuthorize() {
   const [forceLoginPrompt, setForceLoginPrompt] = useState(prompt === "login");
 
   const autoAttemptedRef = useRef(false);
+  const promptLoggedRef = useRef(false);
 
   const currentAuthorizeUrl = useMemo(() => {
     const qs = searchParams.toString();
@@ -182,6 +185,53 @@ export default function SsoAuthorize() {
     },
     [clientId, redirectUri, state, codeChallenge, codeChallengeMethod, scope, nonce, completeCallback, logout]
   );
+
+  // Log SSO prompt open (tracks anonymous/non-member visits even if user closes popup)
+  useEffect(() => {
+    if (
+      authLoading ||
+      clientCheckLoading ||
+      clientError ||
+      !clientInfo?.allowed ||
+      promptLoggedRef.current
+    ) {
+      return;
+    }
+
+    promptLoggedRef.current = true;
+    const reqHeaders: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (isAuthenticated && token) {
+      reqHeaders.Authorization = `Bearer ${token}`;
+    }
+
+    fetch("/api/sso/prompt-opened", {
+      method: "POST",
+      headers: reqHeaders,
+      body: JSON.stringify({
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        scope,
+        action: actionParam || undefined,
+        format: formatParam || undefined,
+      }),
+    }).catch(() => {
+      // telemetrie mag nooit het inlogscherm verstoren
+    });
+  }, [
+    authLoading,
+    clientCheckLoading,
+    clientError,
+    clientInfo,
+    isAuthenticated,
+    token,
+    clientId,
+    redirectUri,
+    scope,
+    actionParam,
+    formatParam,
+  ]);
 
   // Auto-authorize existing logged-in OSL sessions seamlessly
   useEffect(() => {

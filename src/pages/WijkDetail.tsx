@@ -54,6 +54,7 @@ import { getSubdossierClientThumbnail } from "@/lib/dossierClientUtils";
 import { BUURTKAART_WIJKEN, LEGACY_SLUG_MAP } from "@/data/defaultWijken";
 import { FormattedMathText } from "@/utils/mathRenderer";
 import { getVideoThumbnail } from "@/lib/videoUtils";
+import { buildCanonicalUrl, stripHtmlForMeta, updateClientSeoHead } from "@/lib/seoHead";
 
 function formatSocialUrl(platform: string, value?: string): string | undefined {
   if (!value) return undefined;
@@ -166,7 +167,19 @@ const WijkDetail = () => {
     if (initialWijk) {
       setWijk((prev) => prev || initialWijk);
       setLoading(false);
-      document.title = `${initialWijk.naam} (${initialWijk.type || 'Wijk/Kern'}) | Onafhankelijk Steenwijkerland`;
+      const initDesc =
+        stripHtmlForMeta(initialWijk.beschrijving || "", 160) ||
+        `Informatie, speerpunten en nieuws voor ${initialWijk.naam} in de gemeente Steenwijkerland.`;
+      updateClientSeoHead({
+        title: `${initialWijk.naam} (${initialWijk.type || "Wijk/Kern"}) | Onafhankelijk Steenwijkerland`,
+        description: initDesc,
+        ogTitle: `${initialWijk.naam} - Lokale plannen & speerpunten`,
+        ogDescription: initDesc,
+        ogImage: initialWijk.bannerUrl || initialWijk.heroBannerUrl,
+        ogImageAlt: initialWijk.naam,
+        ogType: "website",
+        canonicalUrl: buildCanonicalUrl(`/wijken-en-kernen/${initialWijk.slug}`),
+      });
     } else {
       setLoading(true);
     }
@@ -184,7 +197,19 @@ const WijkDetail = () => {
       .then((data: WijkItem | null) => {
         if (!data) return;
         setWijk(data);
-        document.title = `${data.naam} (${data.type || 'Wijk/Kern'}) | Onafhankelijk Steenwijkerland`;
+        const wijkDesc =
+          stripHtmlForMeta(data.beschrijving || "", 160) ||
+          `Informatie, speerpunten en nieuws voor ${data.naam} in de gemeente Steenwijkerland.`;
+        updateClientSeoHead({
+          title: `${data.naam} (${data.type || "Wijk/Kern"}) | Onafhankelijk Steenwijkerland`,
+          description: wijkDesc,
+          ogTitle: `${data.naam} - Lokale plannen & speerpunten`,
+          ogDescription: wijkDesc,
+          ogImage: data.bannerUrl || data.heroBannerUrl,
+          ogImageAlt: data.naam,
+          ogType: "website",
+          canonicalUrl: buildCanonicalUrl(`/wijken-en-kernen/${data.slug || slug}`),
+        });
         setLoading(false);
       })
       .catch((err) => {

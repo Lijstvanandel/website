@@ -72,6 +72,7 @@ import {
   Globe,
   ShieldAlert,
   Lock,
+  Database,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VideoPlayer } from "@/components/VideoPlayer";
@@ -97,6 +98,7 @@ import { BestuurManager } from "@/components/admin/BestuurManager";
 import { PodcastManager } from "@/components/admin/PodcastManager";
 import { PerformanceLogsManager } from "@/components/admin/PerformanceLogsManager";
 import { LoginBenefitsManager } from "@/components/admin/LoginBenefitsManager";
+import { SsoAnalyticsManager } from "@/components/admin/SsoAnalyticsManager";
 import { safeJson } from "@/lib/api";
 import { WIJKEN_EN_KERNEN } from "@/data/wijken";
 import { NewsItem, LinkedStandpuntItem } from "@/data/news";
@@ -2376,6 +2378,9 @@ export default function AdminDashboard() {
           </TabsTrigger>
           <TabsTrigger value="performance" className="gap-2 text-xs font-semibold text-rose-600 dark:text-rose-400">
             <Activity className="w-4 h-4 text-rose-500" /> Laadtijden &amp; Diagnostiek
+          </TabsTrigger>
+          <TabsTrigger value="sso-analytics" className="gap-2 text-xs font-semibold text-accent">
+            <Database className="w-4 h-4 text-accent" /> SSO &amp; Dataproducten
           </TabsTrigger>
           <TabsTrigger value="system" className="gap-2 text-xs text-accent">
             <Server className="w-4 h-4" /> Systeem & Updates
@@ -6341,6 +6346,11 @@ export default function AdminDashboard() {
         {/* INLOGPAGINA (/LOGIN) AFBEELDINGEN, VOORDELEN & CARROUSEL BEHEER */}
         <TabsContent value="login-beheer">
           <LoginBenefitsManager token={token || effectiveToken} headers={headers} />
+        </TabsContent>
+
+        {/* SSO & DATAPRODUCT EXPORTS */}
+        <TabsContent value="sso-analytics">
+          <SsoAnalyticsManager token={token || effectiveToken} />
         </TabsContent>
 
         {/* SYSTEEM, CACHE & GITHUB UPDATES */}

@@ -41,7 +41,7 @@ export function GooglePreferredSourceCard({
     return null;
   }
 
-  const targetUrl = "https://www.google.com/preferences/source?q=swl.scientiarum.nl";
+  const targetUrl = "https://www.google.com/preferences/source?q=onafhankelijksteenwijkerland.nl";
 
   return (
     <div
@@ -100,7 +100,7 @@ export function GooglePreferredSourceCard({
 
       <div className="pt-4 mt-2 flex items-center justify-between gap-3 border-t border-border/50">
         <span className="text-[11px] text-muted-foreground hidden sm:inline">
-          swl.scientiarum.nl
+          onafhankelijksteenwijkerland.nl
         </span>
         <a
           href={targetUrl}

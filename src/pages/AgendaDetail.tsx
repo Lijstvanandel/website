@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
+import { buildCanonicalUrl, stripHtmlForMeta, updateClientSeoHead } from "@/lib/seoHead";
 import {
   ArrowLeft,
   Calendar,
@@ -122,7 +123,19 @@ export default function AgendaDetail() {
       .then((data: EventDetailItem | null) => {
         if (data && data.title) {
           setEvent(data);
-          document.title = `${data.title} | Agenda Onafhankelijk Steenwijkerland`;
+          const cleanDesc =
+            stripHtmlForMeta(data.shortDescription || data.description || "", 160) ||
+            `${data.title} — Agenda van Onafhankelijk Steenwijkerland.`;
+          updateClientSeoHead({
+            title: `${data.title} | Agenda Onafhankelijk Steenwijkerland`,
+            description: cleanDesc,
+            ogTitle: data.title,
+            ogDescription: cleanDesc,
+            ogImage: data.thumbnailUrl || data.backgroundUrl || data.headerUrl || data.image,
+            ogImageAlt: data.title,
+            ogType: "website",
+            canonicalUrl: buildCanonicalUrl(`/agenda/${data.id}`),
+          });
           if (data.isAttending || (user?.id && data.attendees?.includes(user.id))) {
             setIsAttending(true);
           }

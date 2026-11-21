@@ -56,9 +56,121 @@ function stripHtmlTags(raw?: string): string {
     .trim();
 }
 
+const INTERNAL_ADMIN_USERNAMES = new Set([
+  "tempadmin",
+  "admin",
+  "superadmin",
+  "root",
+  "moderator",
+  "system",
+]);
+
+function extractSafePublicCity(rawAddress?: string, fallbackCity?: string): string {
+  if (fallbackCity && typeof fallbackCity === "string" && fallbackCity.trim()) {
+    return fallbackCity.trim();
+  }
+  if (!rawAddress || typeof rawAddress !== "string") return "Steenwijkerland";
+  const trimmed = rawAddress.trim();
+  if (!trimmed) return "Steenwijkerland";
+  const parts = trimmed.split(",").map((p) => p.trim()).filter(Boolean);
+  if (parts.length > 1) {
+    const lastPart = parts[parts.length - 1];
+    return lastPart.replace(/^\d{4}\s*[A-Za-z]{2}\s+/, "").trim() || "Steenwijkerland";
+  }
+  if (/\d/.test(trimmed)) {
+    const tokens = trimmed.split(/\s+/);
+    const nonNumericTail = tokens.filter((t) => !/\d/.test(t));
+    if (nonNumericTail.length > 0 && nonNumericTail.length < tokens.length) {
+      return nonNumericTail[nonNumericTail.length - 1];
+    }
+  }
+  return trimmed;
+}
+
+export function sanitizePublicAuthorName(rawAuthor?: string): string {
+  if (!rawAuthor || typeof rawAuthor !== "string") return "";
+  const trimmed = rawAuthor.trim();
+  if (!trimmed) return "";
+  const lower = trimmed.toLowerCase();
+  if (INTERNAL_ADMIN_USERNAMES.has(lower) || lower.startsWith("tempadmin")) {
+    return "Onafhankelijk Steenwijkerland";
+  }
+  return trimmed;
+}
+
+export function sanitizePublicEventForSnapshot(e: any, includeDescription = true): any {
+  if (!e) return e;
+  const city = extractSafePublicCity(e.address, e.city);
+  const publicAddress = city || "Steenwijkerland";
+  const result: Record<string, any> = {
+    id: e.id,
+    ...(e.slug ? { slug: e.slug } : {}),
+    title: e.title || "",
+    date: e.date || "",
+    startTime: e.startTime || "",
+    endTime: e.endTime || "",
+    city: publicAddress,
+    address: publicAddress,
+    shortDescription: e.shortDescription || "",
+    ...(includeDescription ? { description: e.description || "" } : {}),
+    thumbnailUrl: e.thumbnailUrl || "",
+    backgroundUrl: e.backgroundUrl || "",
+    ...(e.headerUrl ? { headerUrl: e.headerUrl } : {}),
+    ...(e.image ? { image: e.image } : {}),
+    ...(e.imageUrl ? { imageUrl: e.imageUrl } : {}),
+    ...(e.bannerUrl ? { bannerUrl: e.bannerUrl } : {}),
+    ...(e.fotoUrl ? { fotoUrl: e.fotoUrl } : {}),
+    ...(e.lat !== undefined ? { lat: e.lat } : {}),
+    ...(e.lng !== undefined ? { lng: e.lng } : {}),
+    ...(e.latitude !== undefined ? { latitude: e.latitude } : {}),
+    ...(e.longitude !== undefined ? { longitude: e.longitude } : {}),
+    ...(e.wijkSlug ? { wijkSlug: e.wijkSlug } : {}),
+    ...(e.wijkNaam ? { wijkNaam: e.wijkNaam } : {}),
+    ...(e.category ? { category: e.category } : {}),
+    isPublic: e.isPublic !== false,
+    isPublished: e.isPublished !== false,
+    isCancelled: Boolean(e.isCancelled),
+    ...(e.maxAttendees !== undefined ? { maxAttendees: e.maxAttendees } : {}),
+    ...(e.maxParticipants !== undefined ? { maxParticipants: e.maxParticipants } : {}),
+    nonMemberPrice: typeof e.nonMemberPrice === "number" ? e.nonMemberPrice : Number(e.nonMemberPrice) || 0,
+    ...(e.ticketNotes ? { ticketNotes: e.ticketNotes } : {}),
+    locationHiddenUntil12h: e.locationHiddenUntil12h !== false,
+    attendeesCount: Array.isArray(e.attendees) ? e.attendees.length : 0,
+    ...(e.createdAt ? { createdAt: e.createdAt } : {}),
+    ...(e.updatedAt ? { updatedAt: e.updatedAt } : {}),
+  };
+  return result;
+}
+
+function stripInternalAuditFields(obj: any): any {
+  if (!obj || typeof obj !== "object") return obj;
+  const {
+    createdBy: _cb,
+    createdByUsername: _cbu,
+    createdById: _cbi,
+    updatedBy: _ub,
+    updatedByUsername: _ubu,
+    editedBy: _eb,
+    authorUsername: _au,
+    password: _pw,
+    passwordHash: _pwh,
+    salt: _salt,
+    twoFactorSecret: _tfa,
+    token: _tok,
+    refreshToken: _rtok,
+    cancellations: _canc,
+    attendees: _att,
+    tickets: _tkt,
+    guestRegistrations: _gr,
+    ...rest
+  } = obj;
+  return rest;
+}
+
 export function sanitizeMemberPhotoForSnapshot(member: any): any {
   if (!member) return member;
-  const copy = { ...member };
+  const copy = stripInternalAuditFields({ ...member });
+  delete copy.username;
   const def = DEFAULT_FRACTIELEDEN.find(
     (d) =>
       String(d.id) === String(copy.id) ||
@@ -80,6 +192,30 @@ export function buildPublicSiteSnapshot(db: any, forceNewVersion = false): Publi
   const version = `v_${snapshotVersionCounter}`;
   const generatedAt = new Date().toISOString();
 
+  // Collect known internal admin usernames that should never leak into public author fields
+  const blockedInternalUsernames = new Set<string>(INTERNAL_ADMIN_USERNAMES);
+  if (Array.isArray(db?.users)) {
+    for (const u of db.users) {
+      if (u && u.username && (u.role === "admin" || u.role === "superadmin" || u.role === "key-user")) {
+        const uname = String(u.username).trim().toLowerCase();
+        const fName = String(u.fullName || "").trim().toLowerCase();
+        if (uname && uname !== fName) {
+          blockedInternalUsernames.add(uname);
+        }
+      }
+    }
+  }
+  const cleanPublicAuthor = (val?: string) => {
+    if (!val || typeof val !== "string") return "";
+    const trimmed = val.trim();
+    if (!trimmed) return "";
+    const lower = trimmed.toLowerCase();
+    if (blockedInternalUsernames.has(lower) || lower.startsWith("tempadmin")) {
+      return "Onafhankelijk Steenwijkerland";
+    }
+    return trimmed;
+  };
+
   // 1. Fractieleden
   const rawMembers =
     db?.fractieleden && Array.isArray(db.fractieleden) && db.fractieleden.length > 0
@@ -91,15 +227,16 @@ export function buildPublicSiteSnapshot(db: any, forceNewVersion = false): Publi
   const rawVideos = Array.isArray(db?.videos) ? db.videos : [];
   const videos = rawVideos.map((v: any) => {
     const defSp = DEFAULT_VIDEO_STANDPUNTEN[String(v.id)];
+    const cleanedV = stripInternalAuditFields(v);
     const enriched =
-      defSp && v.hoofdstukNr === undefined && v.standpuntNr === undefined
+      defSp && cleanedV.hoofdstukNr === undefined && cleanedV.standpuntNr === undefined
         ? {
-            ...v,
+            ...cleanedV,
             hoofdstukNr: defSp.hoofdstukNr,
             standpuntNr: defSp.standpuntNr,
-            standpuntTitel: v.standpuntTitel || defSp.standpuntTitel,
+            standpuntTitel: cleanedV.standpuntTitel || defSp.standpuntTitel,
           }
-        : { ...v };
+        : { ...cleanedV };
 
     const cleanId = String(enriched.id || "").replace(/[^a-zA-Z0-9_-]/g, "");
     const memberId =
@@ -137,6 +274,8 @@ export function buildPublicSiteSnapshot(db: any, forceNewVersion = false): Publi
 
     return {
       ...enriched,
+      ...(enriched.author ? { author: cleanPublicAuthor(enriched.author) } : {}),
+      ...(enriched.authorName ? { authorName: cleanPublicAuthor(enriched.authorName) } : {}),
       thumbnailUrl: needsAutoThumb ? staticWebpUrl : enriched.thumbnailUrl,
       posterJpgUrl: needsAutoThumb ? staticJpgUrl : enriched.thumbnailUrl,
     };
@@ -155,9 +294,20 @@ export function buildPublicSiteSnapshot(db: any, forceNewVersion = false): Publi
   });
 
   const newsSummaries: any[] = [];
-  for (const n of sortedNews) {
-    if (!n || !n.id) continue;
-    articleMemoryCache.set(String(n.id), n);
+  for (const rawItem of sortedNews) {
+    if (!rawItem || !rawItem.id) continue;
+    const n = stripInternalAuditFields(rawItem);
+    const safeAuthor = cleanPublicAuthor(n.author);
+    const safeAuthorName = cleanPublicAuthor(n.authorName);
+    const sanitizedArticle = {
+      ...n,
+      ...(n.author !== undefined ? { author: safeAuthor } : {}),
+      ...(n.authorName !== undefined ? { authorName: safeAuthorName } : {}),
+    };
+    articleMemoryCache.set(String(n.id), sanitizedArticle);
+    if (n.slug) {
+      articleMemoryCache.set(String(n.slug).toLowerCase(), sanitizedArticle);
+    }
     if (n.isHidden || n.isHidden === "true") continue;
 
     const plainExcerpt =
@@ -165,7 +315,7 @@ export function buildPublicSiteSnapshot(db: any, forceNewVersion = false): Publi
       n.description ||
       stripHtmlTags(n.content).slice(0, 220);
 
-    const { content: _fullContent, ...restWithoutContent } = n;
+    const { content: _fullContent, ...restWithoutContent } = sanitizedArticle;
     newsSummaries.push({
       ...restWithoutContent,
       excerpt: plainExcerpt,
@@ -179,20 +329,33 @@ export function buildPublicSiteSnapshot(db: any, forceNewVersion = false): Publi
     });
   }
 
-  // 4. Events, Wijken, Categories, FAQs, Stemgedrag, Podcasts
+  // 4. Public-Only Events, Wijken, Categories, FAQs, Stemgedrag, Podcasts (Strict Allowlist — ZERO PII)
   const events = Array.isArray(db?.events)
-    ? db.events.filter((e: any) => e && e.isPublished !== false)
+    ? db.events
+        .filter((e: any) => e && e.isPublished !== false && e.isPublic !== false)
+        .map((e: any) => sanitizePublicEventForSnapshot(e, true))
     : [];
   const wijken =
     Array.isArray(db?.wijken) && db.wijken.length > 0 ? db.wijken : BUURTKAART_43_WIJKEN;
-  const categories = Array.isArray(db?.categories) ? db.categories : [];
-  const faqs = Array.isArray(db?.faqs)
-    ? db.faqs.filter((f: any) => f && f.published !== false)
+  const categories = Array.isArray(db?.categories)
+    ? db.categories.map(stripInternalAuditFields)
     : [];
-  const stemgedrag = Array.isArray(db?.stemgedrag) ? db.stemgedrag : [];
-  const podcasts = Array.isArray(db?.podcasts) ? db.podcasts : [];
+  const faqs = Array.isArray(db?.faqs)
+    ? db.faqs.filter((f: any) => f && f.published !== false).map(stripInternalAuditFields)
+    : [];
+  const stemgedrag = Array.isArray(db?.stemgedrag) ? db.stemgedrag.map(stripInternalAuditFields) : [];
+  const podcasts = Array.isArray(db?.podcasts)
+    ? db.podcasts.map((p: any) => {
+        const cleaned = stripInternalAuditFields(p);
+        return {
+          ...cleaned,
+          ...(cleaned.author !== undefined ? { author: cleanPublicAuthor(cleaned.author) } : {}),
+          ...(cleaned.authorName !== undefined ? { authorName: cleanPublicAuthor(cleaned.authorName) } : {}),
+        };
+      })
+    : [];
 
-  // 5. Compact Bootstrap Payload injected directly into index.html for 0ms First Load
+  // 5. Compact Bootstrap Payload injected directly into index.html for 0ms First Load (Zero PII)
   const inlinePayload = {
     version,
     generatedAt,
@@ -202,10 +365,7 @@ export function buildPublicSiteSnapshot(db: any, forceNewVersion = false): Publi
       description: v.description ? String(v.description).slice(0, 2000) : "",
     })),
     newsSummaries: newsSummaries.slice(0, 36),
-    events: events.slice(0, 16).map((e: any) => {
-      const { description: _desc, attendees: _att, ...lightEvent } = e;
-      return lightEvent;
-    }),
+    events: events.slice(0, 16).map((e: any) => sanitizePublicEventForSnapshot(e, false)),
     categories,
     faqs,
     podcasts,
@@ -260,7 +420,8 @@ export function getCachedNewsArticleById(id: string, dbFn: () => any): any | nul
   if (!activeSnapshot) {
     buildPublicSiteSnapshot(dbFn(), false);
   }
-  return articleMemoryCache.get(String(id)) || null;
+  const key = String(id || "");
+  return articleMemoryCache.get(key) || articleMemoryCache.get(key.toLowerCase()) || null;
 }
 
 export function getCachedHtmlPage(cacheKey: string): { html: string; etag: string } | null {
