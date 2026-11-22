@@ -47,12 +47,12 @@ export const Footer = () => {
     <footer className="border-t border-border/20 dark:border-accent/20 bg-twente-black transition-colors">
       <div className="container py-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
         <div>
-          <div className="flex items-center gap-3 mb-4">
+          <Link to="/" className="inline-block mb-4 group" aria-label="Onafhankelijk Steenwijkerland">
             <img
               src="/assets/osl-logo-light.webp?v=osl4"
               alt="Onafhankelijk Steenwijkerland (OSL) logo"
-              width="96"
-              height="52"
+              width="240"
+              height="128"
               loading="lazy"
               decoding="async"
               onError={(e) => {
@@ -62,13 +62,13 @@ export const Footer = () => {
                   img.src = "/assets/osl-logo-light.png?v=osl4";
                 }
               }}
-              className="block dark:hidden h-10 sm:h-11 w-auto object-contain shrink-0"
+              className="block dark:hidden h-24 sm:h-28 lg:h-32 w-auto max-w-full object-contain shrink-0 transition-transform duration-300 group-hover:scale-[1.02]"
             />
             <img
               src="/assets/osl-logo-dark.webp?v=osl4"
               alt="Onafhankelijk Steenwijkerland (OSL) logo"
-              width="96"
-              height="52"
+              width="240"
+              height="128"
               loading="lazy"
               decoding="async"
               onError={(e) => {
@@ -78,13 +78,9 @@ export const Footer = () => {
                   img.src = "/assets/osl-logo-dark.png?v=osl4";
                 }
               }}
-              className="hidden dark:block h-10 sm:h-11 w-auto object-contain shrink-0"
+              className="hidden dark:block h-24 sm:h-28 lg:h-32 w-auto max-w-full object-contain shrink-0 transition-transform duration-300 group-hover:scale-[1.02]"
             />
-            <div>
-              <div className="font-display text-lg">Onafhankelijk Steenwijkerland</div>
-              <div className="text-[10px] uppercase tracking-widest text-accent">OSL • Steenwijkerland</div>
-            </div>
-          </div>
+          </Link>
           <p className="text-sm text-muted-foreground leading-relaxed">
             Een lokale stem voor Steenwijkerland. Voor lokale binding, behoud van natuur en bestuur dichtbij de inwoner.
           </p>
@@ -113,12 +109,6 @@ export const Footer = () => {
             <li><Link to="/agenda" className="text-muted-foreground hover:text-accent transition-colors">Agenda</Link></li>
             <li><Link to="/nieuws" className="text-muted-foreground hover:text-accent transition-colors">Nieuws</Link></li>
             <li><Link to="/contact" className="text-muted-foreground hover:text-accent transition-colors">Contact</Link></li>
-            <li>
-              <Link to="/doneren" className="text-rose-400 hover:text-rose-300 transition-colors inline-flex items-center gap-1.5 font-medium">
-                <Heart className="w-3.5 h-3.5 fill-rose-500 text-rose-500" />
-                Doneren
-              </Link>
-            </li>
           </ul>
         </div>
 
