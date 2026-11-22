@@ -148,20 +148,21 @@ export const Header = () => {
     <>
       <header className="sticky top-0 z-40 backdrop-blur-md bg-background/95 border-b border-accent/20 w-full transition-colors">
         {/* Full-width responsive container giving optimal space without overflowing */}
-        <div className="w-full max-w-[1720px] mx-auto px-3 sm:px-4 xl:px-6 2xl:px-8 flex items-center justify-between h-16 sm:h-[72px] lg:h-20 gap-2 sm:gap-3 xl:gap-4">
+        <div className="w-full max-w-[1720px] mx-auto px-3 sm:px-4 xl:px-6 2xl:px-8 flex items-center justify-between h-[72px] sm:h-20 lg:h-[88px] gap-2 sm:gap-3 xl:gap-4">
           
-          {/* Left Side: Logo & Brand Name + Desktop Navigation */}
+          {/* Left Side: Logo & Location Subtitle + Desktop Navigation */}
           <div className="flex items-center gap-2 sm:gap-3 xl:gap-4 2xl:gap-6 min-w-0 shrink">
             {/* Full Party Website (Onafhankelijk Steenwijkerland) */}
             <Link
               to="/"
-              className="flex items-center gap-2.5 sm:gap-3 group shrink-0 select-none max-w-fit"
+              aria-label="Onafhankelijk Steenwijkerland"
+              className="flex items-center gap-2.5 sm:gap-3.5 group shrink-0 select-none max-w-fit"
             >
               <img
                 src="/assets/osl-logo-light.webp?v=osl4"
                 alt="Onafhankelijk Steenwijkerland (OSL) logo"
-                width="92"
-                height="48"
+                width="127"
+                height="68"
                 loading="eager"
                 decoding="async"
                 onError={(e) => {
@@ -171,13 +172,13 @@ export const Header = () => {
                     img.src = "/assets/osl-logo-light.png?v=osl4";
                   }
                 }}
-                className="block dark:hidden h-9 sm:h-10 xl:h-11 w-auto object-contain shrink-0 transition-transform duration-300 group-hover:scale-105"
+                className="block dark:hidden h-12 sm:h-14 lg:h-16 xl:h-[68px] w-auto object-contain shrink-0 transition-transform duration-300 group-hover:scale-105"
               />
               <img
                 src="/assets/osl-logo-dark.webp?v=osl4"
                 alt="Onafhankelijk Steenwijkerland (OSL) logo"
-                width="92"
-                height="48"
+                width="127"
+                height="68"
                 loading="eager"
                 decoding="async"
                 onError={(e) => {
@@ -187,13 +188,10 @@ export const Header = () => {
                     img.src = "/assets/osl-logo-dark.png?v=osl4";
                   }
                 }}
-                className="hidden dark:block h-9 sm:h-10 xl:h-11 w-auto object-contain shrink-0 transition-transform duration-300 group-hover:scale-105"
+                className="hidden dark:block h-12 sm:h-14 lg:h-16 xl:h-[68px] w-auto object-contain shrink-0 transition-transform duration-300 group-hover:scale-105"
               />
-              <div className="leading-tight flex-1 min-w-0">
-                <div className="font-display text-sm sm:text-base xl:text-lg 2xl:text-xl tracking-wide text-foreground whitespace-nowrap">
-                  Onafhankelijk Steenwijkerland
-                </div>
-                <div className="h-4 sm:h-4.5 overflow-visible flex items-center">
+              <div className="border-l border-accent/30 pl-2.5 sm:pl-3.5 py-0.5 flex items-center min-w-0">
+                <div className="h-5 overflow-visible flex items-center max-w-[135px] sm:max-w-[200px] xl:max-w-none">
                   <AnimatePresence mode="wait" initial={false}>
                     <motion.div
                       key={currentSubtitle}
@@ -201,7 +199,7 @@ export const Header = () => {
                       animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
                       exit={{ opacity: 0, y: -7, filter: "blur(2px)" }}
                       transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-                      className="text-[8px] sm:text-[9px] xl:text-[9.5px] 2xl:text-[10.5px] uppercase tracking-[0.08em] sm:tracking-[0.10em] xl:tracking-[0.12em] font-semibold text-accent whitespace-nowrap"
+                      className="text-[10px] sm:text-[11px] xl:text-xs uppercase tracking-[0.10em] sm:tracking-[0.12em] font-semibold text-accent whitespace-nowrap truncate"
                       title={currentSubtitle}
                     >
                       {currentSubtitle}
