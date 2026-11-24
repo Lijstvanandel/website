@@ -3184,6 +3184,24 @@ async function startServer() {
   app.use("/maps", express.static(path.join(publicDir, "maps"), staticAssetsOptions));
   app.use("/maps", express.static(path.join(process.cwd(), "dist", "maps"), staticAssetsOptions));
 
+  // Explicit OpenGraph root asset handler so social crawlers always receive 200 image/webp
+  app.get("/8842e9c9-2918-4e36-affe-c6a849fb0f0e.webp", (_req: any, res: any, next: any) => {
+    const candidates = [
+      path.join(publicDir, "8842e9c9-2918-4e36-affe-c6a849fb0f0e.webp"),
+      path.join(process.cwd(), "dist", "8842e9c9-2918-4e36-affe-c6a849fb0f0e.webp"),
+      path.join(process.cwd(), "8842e9c9-2918-4e36-affe-c6a849fb0f0e.webp"),
+    ];
+    for (const file of candidates) {
+      if (fs.existsSync(file) && fs.statSync(file).isFile()) {
+        res.setHeader("Content-Type", "image/webp");
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.setHeader("Cache-Control", "public, max-age=2592000, s-maxage=31536000, stale-while-revalidate=86400");
+        return res.sendFile(file);
+      }
+    }
+    next();
+  });
+
   // Fallback handler for /assets when direct static match didn't find the file
   app.use(["/assets", "/public/assets"], (req: any, res: any, next: any) => {
     const rawPath = req.path || "";

@@ -1,5 +1,5 @@
 const PRIMARY_PUBLIC_ORIGIN = "https://onafhankelijksteenwijkerland.nl";
-const DEFAULT_OG_IMAGE = `${PRIMARY_PUBLIC_ORIGIN}/assets/hero-banner.jpg`;
+const DEFAULT_OG_IMAGE = `${PRIMARY_PUBLIC_ORIGIN}/8842e9c9-2918-4e36-affe-c6a849fb0f0e.webp`;
 const DEFAULT_TITLE = "Onafhankelijk Steenwijkerland (OSL) | Voor alle inwoners";
 const DEFAULT_DESCRIPTION =
   "Onafhankelijk Steenwijkerland (OSL) zet zich in voor nuchtere politiek, betaalbare woningbouw voor inwoners en behoud van dorpen en wijken in Steenwijkerland.";
@@ -122,9 +122,18 @@ export function updateClientSeoHead(meta: ClientSeoMeta): void {
   upsertMeta("property", "og:url", canonicalUrl);
   upsertMeta("property", "og:image", ogImage);
   upsertMeta("property", "og:image:secure_url", ogImage);
-  if (meta.ogImageAlt) {
-    upsertMeta("property", "og:image:alt", meta.ogImageAlt);
+  const isDefaultOslWebp = ogImage.includes("8842e9c9-2918-4e36-affe-c6a849fb0f0e.webp");
+  const imageType = ogImage.toLowerCase().endsWith(".webp")
+    ? "image/webp"
+    : ogImage.toLowerCase().endsWith(".png")
+    ? "image/png"
+    : "image/jpeg";
+  upsertMeta("property", "og:image:type", imageType);
+  if (isDefaultOslWebp) {
+    upsertMeta("property", "og:image:width", "1024");
+    upsertMeta("property", "og:image:height", "1024");
   }
+  upsertMeta("property", "og:image:alt", meta.ogImageAlt || ogTitle);
   upsertMeta("name", "twitter:title", ogTitle);
   upsertMeta("name", "twitter:description", ogDescription);
   upsertMeta("name", "twitter:image", ogImage);

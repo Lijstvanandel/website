@@ -27,8 +27,8 @@ export interface PageMetadata {
   robots?: string;
 }
 
-const DEFAULT_IMAGE_PATH = "/assets/hero-banner.jpg";
-const DEFAULT_IMAGE = "https://onafhankelijksteenwijkerland.nl/assets/hero-banner.jpg";
+const DEFAULT_IMAGE_PATH = "/8842e9c9-2918-4e36-affe-c6a849fb0f0e.webp";
+const DEFAULT_IMAGE = "https://onafhankelijksteenwijkerland.nl/8842e9c9-2918-4e36-affe-c6a849fb0f0e.webp";
 const DEFAULT_TITLE = "Onafhankelijk Steenwijkerland (OSL) | Lokale Politiek Steenwijkerland";
 const DEFAULT_DESC = "Officiële website en ledenportaal van politieke partij Onafhankelijk Steenwijkerland (OSL) in Steenwijkerland met nieuws, fractieleden, agenda, standpunten en wijkpagina's.";
 
@@ -78,14 +78,21 @@ function resolveImageUrl(baseUrl: string, imgPath?: string): string {
   }
 
   if (imgPath.startsWith("http://") || imgPath.startsWith("https://")) {
-    if (imgPath.endsWith(".webp") && (imgPath.includes("onafhankelijksteenwijkerland.nl") || imgPath.includes("lijstvanandel.nl"))) {
+    if (
+      imgPath.endsWith(".webp") &&
+      !imgPath.includes("8842e9c9-2918-4e36-affe-c6a849fb0f0e.webp") &&
+      (imgPath.includes("onafhankelijksteenwijkerland.nl") || imgPath.includes("lijstvanandel.nl"))
+    ) {
       return imgPath.replace(/\.webp$/i, ".jpg");
     }
     return imgPath;
   }
 
   let cleanPath = imgPath.startsWith("/") ? imgPath : `/${imgPath}`;
-  // WhatsApp & certain crawlers do not unfurl .webp images. Convert to corresponding .jpg or .png if present
+  if (cleanPath === DEFAULT_IMAGE_PATH) {
+    return `${effectiveBase}${DEFAULT_IMAGE_PATH}`;
+  }
+  // WhatsApp & certain crawlers do not unfurl arbitrary .webp thumbnails. Convert to corresponding .jpg or .png if present
   if (cleanPath.endsWith(".webp")) {
     const jpgCandidate = cleanPath.replace(/\.webp$/i, ".jpg");
     const pngCandidate = cleanPath.replace(/\.webp$/i, ".png");
@@ -100,7 +107,7 @@ function resolveImageUrl(baseUrl: string, imgPath?: string): string {
     ) {
       cleanPath = pngCandidate;
     } else {
-      // Fallback: If no local jpg or png candidate exists, use guaranteed public hero banner jpg
+      // Fallback: If no local jpg or png candidate exists, use guaranteed public default image
       return `${effectiveBase}${DEFAULT_IMAGE_PATH}`;
     }
   }
@@ -172,6 +179,10 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
       ogTitle: "Onafhankelijk Steenwijkerland (OSL) - Onafhankelijke Lokale Politiek",
       ogDescription: "Voorrang voor lokale woningzoekenden, behoud van voorzieningen in onze dorpen en een direct aanspreekbare fractie.",
       ogImage: DEFAULT_IMAGE,
+      ogImageType: "image/webp",
+      ogImageWidth: 1024,
+      ogImageHeight: 1024,
+      ogImageAlt: "Onafhankelijk Steenwijkerland (OSL)",
       preloadImage: "/assets/steenwijk-aerial.webp",
       ogType: "website",
       canonicalUrl,
@@ -1399,18 +1410,27 @@ export function injectMetadataIntoHtml(html: string, meta: PageMetadata): string
   setMetaName("twitter:title", meta.ogTitle);
 
   // Images (Open Graph, WhatsApp, Facebook, iMessage & Twitter)
+  const isDefaultOslWebp = meta.ogImage.includes("8842e9c9-2918-4e36-affe-c6a849fb0f0e.webp");
+  const effectiveImageType =
+    meta.ogImageType ||
+    (meta.ogImage.toLowerCase().endsWith(".webp")
+      ? "image/webp"
+      : meta.ogImage.toLowerCase().endsWith(".png")
+      ? "image/png"
+      : "image/jpeg");
+  const effectiveWidth = meta.ogImageWidth || (isDefaultOslWebp ? 1024 : 1200);
+  const effectiveHeight = meta.ogImageHeight || (isDefaultOslWebp ? 1024 : 630);
+  const effectiveAlt =
+    meta.ogImageAlt || (isDefaultOslWebp ? "Onafhankelijk Steenwijkerland (OSL)" : meta.ogTitle || meta.title);
+
   setMetaProperty("og:image", meta.ogImage);
   setMetaProperty("og:image:secure_url", meta.ogImage);
-  setMetaProperty("og:image:type", meta.ogImageType || "image/jpeg");
-  setMetaProperty("og:image:width", String(meta.ogImageWidth || 1200));
-  setMetaProperty("og:image:height", String(meta.ogImageHeight || 630));
-  if (meta.ogImageAlt) {
-    setMetaProperty("og:image:alt", meta.ogImageAlt);
-  }
+  setMetaProperty("og:image:type", effectiveImageType);
+  setMetaProperty("og:image:width", String(effectiveWidth));
+  setMetaProperty("og:image:height", String(effectiveHeight));
+  setMetaProperty("og:image:alt", effectiveAlt);
   setMetaName("twitter:image", meta.ogImage);
-  if (meta.ogImageAlt) {
-    setMetaName("twitter:image:alt", meta.ogImageAlt);
-  }
+  setMetaName("twitter:image:alt", effectiveAlt);
 
   // Type and URL
   setMetaProperty("og:type", meta.ogType);
