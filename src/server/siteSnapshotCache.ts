@@ -338,8 +338,22 @@ export function buildPublicSiteSnapshot(db: any, forceNewVersion = false): Publi
         .filter((e: any) => e && e.isPublished !== false && e.isPublic !== false)
         .map((e: any) => sanitizePublicEventForSnapshot(e, true))
     : [];
-  const wijken =
+  const rawWijken =
     Array.isArray(db?.wijken) && db.wijken.length > 0 ? db.wijken : BUURTKAART_43_WIJKEN;
+  const wijken = rawWijken.map((w: any) => {
+    if (!w || typeof w !== "object") return w;
+    const normBanner =
+      typeof w.bannerUrl === "string" && w.bannerUrl.startsWith("/assets/") && /\.(png|jpg|jpeg)$/i.test(w.bannerUrl)
+        ? w.bannerUrl.replace(/\.(png|jpg|jpeg)$/i, ".webp")
+        : w.bannerUrl;
+    const normHero =
+      typeof w.heroBannerUrl === "string" && w.heroBannerUrl.startsWith("/assets/") && /\.(png|jpg|jpeg)$/i.test(w.heroBannerUrl)
+        ? w.heroBannerUrl.replace(/\.(png|jpg|jpeg)$/i, ".webp")
+        : w.heroBannerUrl;
+    return normBanner !== w.bannerUrl || normHero !== w.heroBannerUrl
+      ? { ...w, bannerUrl: normBanner, heroBannerUrl: normHero }
+      : w;
+  });
   const categories = Array.isArray(db?.categories)
     ? db.categories.map(stripInternalAuditFields)
     : [];

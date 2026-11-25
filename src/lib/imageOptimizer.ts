@@ -102,5 +102,30 @@ export function getResponsiveImageAttrs(
     };
   }
 
+  // 3. Optimize remote Unsplash URLs (serve WebP + appropriate width instead of huge 1920px JPEGs)
+  if (/^https:\/\/images\.unsplash\.com\//i.test(clean)) {
+    try {
+      const u = new URL(clean);
+      const sortedWidths = [...widths].sort((a, b) => a - b);
+      const makeUnsplash = (w: number) => {
+        const nu = new URL(u.toString());
+        nu.searchParams.set("w", String(w));
+        nu.searchParams.set("fm", "webp");
+        nu.searchParams.set("q", "75");
+        nu.searchParams.set("auto", "format");
+        nu.searchParams.set("fit", "crop");
+        return nu.toString();
+      };
+      return {
+        src: makeUnsplash(defaultWidth),
+        srcSet: sortedWidths.map((w) => `${makeUnsplash(w)} ${w}w`).join(", "),
+        sizes,
+        fallbackSrc: clean,
+      };
+    } catch {
+      return { src: clean, fallbackSrc: clean };
+    }
+  }
+
   return { src: clean, fallbackSrc: clean };
 }

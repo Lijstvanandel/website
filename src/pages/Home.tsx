@@ -13,7 +13,7 @@ import { format, parseISO } from "date-fns";
 import { nl } from "date-fns/locale";
 import { FormattedMathText } from "@/utils/mathRenderer";
 import { getInitialPublicSnapshot } from "@/lib/publicSnapshotClient";
-import { getResponsiveImageAttrs } from "@/lib/imageOptimizer";
+import { getResponsiveImageAttrs, normalizeStaticAssetWebp } from "@/lib/imageOptimizer";
 
 const formatDateSafe = (dateStr?: string) => {
   if (!dateStr) return "";
@@ -156,28 +156,49 @@ const Home = () => {
     }
 
     // Prioritize custom uploaded or configured photos over default generic aerial photo
-    const customHero = (hoveredWijk.heroBannerUrl && hoveredWijk.heroBannerUrl.trim() && hoveredWijk.heroBannerUrl !== "/assets/steenwijk-aerial.webp")
-      ? hoveredWijk.heroBannerUrl.trim()
+    const normHero = normalizeStaticAssetWebp(hoveredWijk.heroBannerUrl);
+    const normBanner = normalizeStaticAssetWebp(hoveredWijk.bannerUrl);
+    const customHero = (normHero && normHero !== "/assets/steenwijk-aerial.webp")
+      ? normHero
       : null;
-    const customBanner = (hoveredWijk.bannerUrl && hoveredWijk.bannerUrl.trim() && hoveredWijk.bannerUrl !== "/assets/hero-banner.webp" && hoveredWijk.bannerUrl !== "/assets/steenwijk-aerial.webp")
-      ? hoveredWijk.bannerUrl.trim()
+    const customBanner = (normBanner && normBanner !== "/assets/hero-banner.webp" && normBanner !== "/assets/steenwijk-aerial.webp")
+      ? normBanner
       : null;
 
-    const targetUrl = customHero || customBanner || hoveredWijk.heroBannerUrl?.trim() || hoveredWijk.bannerUrl?.trim();
-    if (targetUrl) {
-      // Preload image before fading to avoid any blank flash
-      const img = new Image();
-      img.src = targetUrl;
-      img.onload = () => {
+    const rawTargetUrl = customHero || customBanner;
+    if (rawTargetUrl) {
+      let cancelled = false;
+      const optAttrs = getResponsiveImageAttrs(rawTargetUrl, {
+        sizes: "100vw",
+        widths: [768, 1280],
+        defaultWidth: 1280,
+        fallback: rawTargetUrl,
+      });
+      const activateLayer = (finalUrl: string) => {
+        if (cancelled) return;
         if (activeBuffer === "A") {
-          setBgLayerB({ url: targetUrl, visible: true });
+          setBgLayerB({ url: finalUrl, visible: true });
           setBgLayerA((prev) => ({ ...prev, visible: false }));
           setActiveBuffer("B");
         } else {
-          setBgLayerA({ url: targetUrl, visible: true });
+          setBgLayerA({ url: finalUrl, visible: true });
           setBgLayerB((prev) => ({ ...prev, visible: false }));
           setActiveBuffer("A");
         }
+      };
+      // Preload optimized WebP image before fading to avoid any blank flash
+      const img = new Image();
+      img.onload = () => activateLayer(optAttrs.src);
+      img.onerror = () => {
+        if (optAttrs.fallbackSrc && optAttrs.fallbackSrc !== optAttrs.src) {
+          const fb = new Image();
+          fb.onload = () => activateLayer(optAttrs.fallbackSrc);
+          fb.src = optAttrs.fallbackSrc;
+        }
+      };
+      img.src = optAttrs.src;
+      return () => {
+        cancelled = true;
       };
     } else {
       setBgLayerA((prev) => ({ ...prev, visible: false }));
@@ -217,8 +238,9 @@ const Home = () => {
           <img
             src={bgLayerA.url}
             alt="Sfeerbeeld wijk of kern Steenwijkerland"
-            width={1920}
-            height={1080}
+            width={1280}
+            height={720}
+            decoding="async"
             className={`absolute inset-0 w-full h-full object-cover pointer-events-none z-[1] transition-opacity duration-700 ease-in-out ${
               bgLayerA.visible ? "opacity-100" : "opacity-0"
             }`}
@@ -231,8 +253,9 @@ const Home = () => {
           <img
             src={bgLayerB.url}
             alt="Sfeerbeeld wijk of kern Steenwijkerland"
-            width={1920}
-            height={1080}
+            width={1280}
+            height={720}
+            decoding="async"
             className={`absolute inset-0 w-full h-full object-cover pointer-events-none z-[1] transition-opacity duration-700 ease-in-out ${
               bgLayerB.visible ? "opacity-100" : "opacity-0"
             }`}
@@ -523,7 +546,12 @@ const Home = () => {
                     onError={(e) => {
                       const imgEl = e.target as HTMLImageElement;
                       imgEl.srcset = "";
-                      imgEl.src = heroBanner;
+                      if (!imgEl.dataset.fallback && newsAttrs.fallbackSrc && imgEl.src !== newsAttrs.fallbackSrc) {
+                        imgEl.dataset.fallback = "1";
+                        imgEl.src = newsAttrs.fallbackSrc;
+                      } else {
+                        imgEl.src = heroBanner;
+                      }
                     }}
                   />
                 </div>

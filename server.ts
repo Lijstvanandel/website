@@ -2977,7 +2977,7 @@ async function startServer() {
     return 1600;
   };
 
-  const imageCacheDir = path.join(uploadsPath, ".image-cache");
+  const imageCacheDir = path.join(uploadsPath, "image-cache");
   const getOrCreateOptimizedWebp = async (
     sourcePath: string,
     targetWidth: number | null
@@ -3018,7 +3018,14 @@ async function startServer() {
       return res.status(400).json({ error: "Geen bestandspad opgegeven" });
     }
 
-    const cleanPath = rawFile.replace(/^\/+/, "").replace(/\.\./g, "");
+    let decodedFile = rawFile;
+    try {
+      decodedFile = decodeURIComponent(rawFile);
+    } catch {
+      decodedFile = rawFile;
+    }
+
+    const cleanPath = decodedFile.split("?")[0].replace(/^\/+/, "").replace(/\.\./g, "");
     const baseName = path.basename(cleanPath);
     const subdirs = ["news", "fractieleden", "stemgedrag", "wijken", "events", "videos", "documents", "dataproducts"];
 
@@ -3033,6 +3040,20 @@ async function startServer() {
       candidatePaths.push(path.join(process.cwd(), "public", "uploads", sub, baseName));
       candidatePaths.push(path.join(process.cwd(), "dist", "uploads", sub, baseName));
     }
+
+    const sendOriginal = (filePath: string) => {
+      const ext = path.extname(filePath).toLowerCase();
+      if (ext === ".png") res.setHeader("Content-Type", "image/png");
+      else if (ext === ".jpg" || ext === ".jpeg") res.setHeader("Content-Type", "image/jpeg");
+      else if (ext === ".webp") res.setHeader("Content-Type", "image/webp");
+      else if (ext === ".svg") res.setHeader("Content-Type", "image/svg+xml");
+      else if (ext === ".gif") res.setHeader("Content-Type", "image/gif");
+      return res.sendFile(filePath, { dotfiles: "allow" }, (err: any) => {
+        if (err && !res.headersSent) {
+          res.status(404).json({ error: `Afbeelding '${baseName}' kon niet worden gelezen.` });
+        }
+      });
+    };
 
     for (const p of candidatePaths) {
       if (fs.existsSync(p) && fs.statSync(p).isFile()) {
@@ -3052,16 +3073,15 @@ async function startServer() {
               res.setHeader("Vary", "Accept");
             }
             res.setHeader("Content-Type", "image/webp");
-            return res.sendFile(optimizedPath);
+            return res.sendFile(optimizedPath, { dotfiles: "allow" }, (err: any) => {
+              if (err && !res.headersSent) {
+                sendOriginal(p);
+              }
+            });
           }
         }
 
-        if (ext === ".png") res.setHeader("Content-Type", "image/png");
-        else if (ext === ".jpg" || ext === ".jpeg") res.setHeader("Content-Type", "image/jpeg");
-        else if (ext === ".webp") res.setHeader("Content-Type", "image/webp");
-        else if (ext === ".svg") res.setHeader("Content-Type", "image/svg+xml");
-        else if (ext === ".gif") res.setHeader("Content-Type", "image/gif");
-        return res.sendFile(p);
+        return sendOriginal(p);
       }
     }
 
@@ -3221,7 +3241,13 @@ async function startServer() {
     if (req.method !== "GET" || req.query.raw === "1" || req.query.download === "1") {
       return next();
     }
-    const reqPath = (req.path || "").replace(/^\/+/, "").replace(/\.\./g, "");
+    let decodedPath = req.path || "";
+    try {
+      decodedPath = decodeURIComponent(decodedPath);
+    } catch {
+      decodedPath = req.path || "";
+    }
+    const reqPath = decodedPath.replace(/^\/+/, "").replace(/\.\./g, "");
     if (!/\.(png|jpe?g)$/i.test(reqPath)) {
       return next();
     }
@@ -3245,7 +3271,11 @@ async function startServer() {
           res.setHeader("Vary", "Accept");
           res.setHeader("Content-Type", "image/webp");
           res.setHeader("Cache-Control", "public, max-age=31536000, s-maxage=31536000, immutable");
-          return res.sendFile(optimized);
+          return res.sendFile(optimized, { dotfiles: "allow" }, (err: any) => {
+            if (err && !res.headersSent) {
+              next();
+            }
+          });
         }
         break;
       }

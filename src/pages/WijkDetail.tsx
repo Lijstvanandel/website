@@ -13,7 +13,6 @@ import {
   ArrowRight,
   FileText,
   Newspaper,
-  MessageSquare,
   BarChart3,
   User,
   Users,
@@ -55,6 +54,7 @@ import { BUURTKAART_WIJKEN, LEGACY_SLUG_MAP } from "@/data/defaultWijken";
 import { FormattedMathText } from "@/utils/mathRenderer";
 import { getVideoThumbnail } from "@/lib/videoUtils";
 import { buildCanonicalUrl, stripHtmlForMeta, updateClientSeoHead } from "@/lib/seoHead";
+import { getResponsiveImageAttrs } from "@/lib/imageOptimizer";
 
 function formatSocialUrl(platform: string, value?: string): string | undefined {
   if (!value) return undefined;
@@ -233,6 +233,22 @@ const WijkDetail = () => {
       })
       .catch(() => setWijkNews([]));
   }, [slug]);
+
+  const combinedMediaItems = useMemo(() => {
+    const items: Array<
+      | { kind: "video"; sortTime: number; item: WijkVideo }
+      | { kind: "news"; sortTime: number; item: NewsItem }
+    > = [];
+    for (const v of videos || []) {
+      const t = new Date(v.date || 0).getTime();
+      items.push({ kind: "video", sortTime: isNaN(t) ? 0 : t, item: v });
+    }
+    for (const n of wijkNews || []) {
+      const t = new Date(n.createdAt || n.date || 0).getTime();
+      items.push({ kind: "news", sortTime: isNaN(t) ? 0 : t, item: n });
+    }
+    return items.sort((a, b) => b.sortTime - a.sortTime);
+  }, [videos, wijkNews]);
 
   // 2. Fetch dossiers asynchronously in background (deferred lazy-load)
   useEffect(() => {
@@ -640,120 +656,129 @@ const WijkDetail = () => {
         </section>
 
         {/* ========================================================
-            VIDEOS VAN DEZE WIJK
+            MEDIA & NIEUWS UIT DEZE WIJK / KERN (SAMENGEVOEGD BLOK)
             ======================================================== */}
-        {videos && videos.length > 0 && (
+        {combinedMediaItems.length > 0 ? (
           <CarouselSection
-            icon={<MessageSquare className="w-3.5 h-3.5" />}
-            eyebrow="Media"
-            title={`Video's over ${wijk.naam}`}
-            ctaHref="#"
+            icon={<Newspaper className="w-3.5 h-3.5" />}
+            eyebrow="Media & Wat speelt er"
+            title={`Nieuws & video's uit ${wijk.naam}`}
+            ctaHref="/nieuws"
+            ctaLabel="Algemeen nieuws"
           >
-            {videos.map((v) => {
-              const memberId = v.fractieledenIds?.[0] || v.personId;
-              const effectivePoster =
-                getVideoThumbnail(v.videoUrl, v.thumbnailUrl, v.id, memberId) ||
-                v.posterJpgUrl ||
-                `/uploads/thumbnails/video-${v.id}.webp`;
+            {combinedMediaItems.map((entry) => {
+              if (entry.kind === "video") {
+                const v = entry.item;
+                const memberId = v.fractieledenIds?.[0] || v.personId;
+                const effectivePoster =
+                  getVideoThumbnail(v.videoUrl, v.thumbnailUrl, v.id, memberId) ||
+                  v.posterJpgUrl ||
+                  `/uploads/thumbnails/video-${v.id}.webp`;
+
+                return (
+                  <CarouselItem key={`video-${v.id}`} className="md:basis-1/2 lg:basis-1/3">
+                    <div className="bg-card border border-border h-full flex flex-col hover-lift overflow-hidden rounded-lg">
+                      <div className="aspect-video bg-black flex-shrink-0 relative overflow-hidden">
+                        <VideoPlayer
+                          url={v.videoUrl}
+                          title={v.burgerraadslidTitle || v.title}
+                          poster={effectivePoster}
+                          videoId={v.id}
+                          memberId={memberId}
+                          className="w-full h-full"
+                        />
+                      </div>
+                      <div className="p-5 flex flex-col flex-1 justify-between">
+                        <div>
+                          <div className="text-[10px] uppercase tracking-widest text-accent mb-2 flex items-center gap-1.5">
+                            <Video className="w-3 h-3" />
+                            <span>Video{v.category ? ` • ${v.category}` : ""}{v.date ? ` • ${v.date}` : ""}</span>
+                          </div>
+                          <h3 className="font-display text-lg mb-2 leading-snug">
+                            <Link to={`/video/${v.id}`} className="hover:text-accent transition-colors">
+                              {v.title}
+                            </Link>
+                          </h3>
+                        </div>
+                        <Link
+                          to={`/video/${v.id}`}
+                          className="text-xs text-accent hover:underline inline-flex items-center gap-1 mt-2"
+                        >
+                          Bekijk video <ArrowRight className="w-3 h-3" />
+                        </Link>
+                      </div>
+                    </div>
+                  </CarouselItem>
+                );
+              }
+
+              const n = entry.item;
+              const rawImg = n.thumbnailUrl || n.headerUrl || n.image || "/assets/steenwijk-aerial.webp";
+              const imgAttrs = getResponsiveImageAttrs(rawImg, {
+                sizes: "(max-width: 768px) 92vw, (max-width: 1024px) 46vw, 380px",
+                widths: [400, 640],
+                defaultWidth: 640,
+                fallback: "/assets/steenwijk-aerial.webp",
+              });
 
               return (
-                <CarouselItem key={v.id} className="md:basis-1/2 lg:basis-1/3">
-                  <div className="bg-card border border-border h-full flex flex-col hover-lift overflow-hidden rounded-lg">
-                    <div className="aspect-video bg-black flex-shrink-0 relative overflow-hidden">
-                      <VideoPlayer
-                        url={v.videoUrl}
-                        title={v.burgerraadslidTitle || v.title}
-                        poster={effectivePoster}
-                        videoId={v.id}
-                        memberId={memberId}
-                        className="w-full h-full"
+                <CarouselItem key={`news-${n.id}`} className="md:basis-1/2 lg:basis-1/3">
+                  <Link
+                    to={`/nieuws/${n.id}`}
+                    className="bg-card border border-border h-full flex flex-col hover-lift overflow-hidden rounded-lg"
+                  >
+                    <div className="aspect-video overflow-hidden bg-muted shrink-0">
+                      <img
+                        src={imgAttrs.src}
+                        srcSet={imgAttrs.srcSet}
+                        sizes={imgAttrs.sizes}
+                        alt={n.title}
+                        loading="lazy"
+                        decoding="async"
+                        className="w-full h-full object-cover transition-transform duration-700 hover:scale-105"
+                        onError={(e) => {
+                          const el = e.target as HTMLImageElement;
+                          el.srcset = "";
+                          if (!el.dataset.fallback && imgAttrs.fallbackSrc && el.src !== imgAttrs.fallbackSrc) {
+                            el.dataset.fallback = "1";
+                            el.src = imgAttrs.fallbackSrc;
+                          } else {
+                            el.src = "/assets/steenwijk-aerial.webp";
+                          }
+                        }}
                       />
                     </div>
-                    <div className="p-6 flex flex-col flex-1 justify-between">
+                    <div className="p-5 flex flex-col flex-1 justify-between">
                       <div>
-                        <div className="text-[10px] uppercase tracking-widest text-accent mb-3">
-                          {v.category} • {v.date}
+                        <div className="text-[10px] uppercase tracking-widest text-accent mb-2 flex items-center gap-1.5">
+                          <Newspaper className="w-3 h-3" />
+                          <span>Nieuws{n.category ? ` • ${n.category}` : ""}</span>
                         </div>
-                        <h3 className="font-display text-xl mb-3 leading-snug">
-                          <Link to={`/video/${v.id}`} className="hover:text-accent transition-colors">
-                            {v.title}
-                          </Link>
+                        <h3 className="font-display text-lg mb-2 leading-snug">
+                          <FormattedMathText text={n.title} />
                         </h3>
+                        <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+                          <FormattedMathText text={n.excerpt || n.description || ""} />
+                        </p>
                       </div>
-                      <Link
-                        to={`/video/${v.id}`}
-                        className="text-xs text-accent hover:underline inline-flex items-center gap-1 mt-1"
-                      >
-                        Bekijk video <ArrowRight className="w-3 h-3" />
-                      </Link>
+                      <span className="text-xs text-accent inline-flex items-center gap-1 mt-3">
+                        Lees artikel <ArrowRight className="w-3 h-3" />
+                      </span>
                     </div>
-                  </div>
+                  </Link>
                 </CarouselItem>
               );
             })}
           </CarouselSection>
-        )}
-
-        {/* ========================================================
-            NIEUWS UIT DEZE WIJK / KERN
-            ======================================================== */}
-        {wijkNews.length > 0 ? (
-          <CarouselSection
-            icon={<Newspaper className="w-3.5 h-3.5" />}
-            eyebrow="Wat speelt er"
-            title={`Nieuws uit ${wijk.naam}`}
-            ctaHref="/nieuws"
-          >
-            {wijkNews.map((n) => (
-              <CarouselItem key={n.id} className="md:basis-1/2 lg:basis-1/3">
-                <Link
-                  to={`/nieuws/${n.id}`}
-                  className="block bg-card border border-border h-full flex flex-col hover-lift overflow-hidden rounded-lg"
-                >
-                  <div className="aspect-[16/10] overflow-hidden bg-muted">
-                    <img
-                      src={
-                        (n.thumbnailUrl || n.headerUrl || n.image || "").startsWith("/uploads/") || (n.thumbnailUrl || n.headerUrl || n.image || "").startsWith("uploads/")
-                          ? `/api/image/view?file=${encodeURIComponent(n.thumbnailUrl || n.headerUrl || n.image || "")}`
-                          : n.thumbnailUrl || n.headerUrl || n.image || "/assets/steenwijk-aerial.webp"
-                      }
-                      alt={n.title}
-                      loading="lazy"
-                      className="w-full h-full object-cover transition-transform duration-700 hover:scale-105"
-                      onError={(e) => {
-                        const rawSrc = n.thumbnailUrl || n.headerUrl || n.image;
-                        if (rawSrc && (rawSrc.startsWith("/uploads/") || rawSrc.startsWith("uploads/")) && !(e.target as HTMLImageElement).src.includes("/api/image/view")) {
-                          (e.target as HTMLImageElement).src = `/api/image/view?file=${encodeURIComponent(rawSrc)}`;
-                        } else {
-                          (e.target as HTMLImageElement).src = "/assets/steenwijk-aerial.webp";
-                        }
-                      }}
-                    />
-                  </div>
-                  <div className="p-5 flex flex-col flex-1">
-                    <div className="text-[10px] uppercase tracking-widest text-accent mb-2">
-                      {n.category}
-                    </div>
-                    <h3 className="font-display text-lg mb-2 leading-snug">
-                      <FormattedMathText text={n.title} />
-                    </h3>
-                    <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
-                      <FormattedMathText text={n.excerpt || n.description || ""} />
-                    </p>
-                  </div>
-                </Link>
-              </CarouselItem>
-            ))}
-          </CarouselSection>
         ) : (
           <section className="space-y-4">
-            <div className="flex items-end justify-between gap-4">
+            <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <div className="text-[10px] uppercase tracking-[0.3em] text-accent mb-2 flex items-center gap-2">
-                  <Newspaper className="w-3.5 h-3.5" /> Wat speelt er
+                  <Newspaper className="w-3.5 h-3.5" /> Media & Wat speelt er
                 </div>
                 <h2 className="font-display text-4xl md:text-5xl border-gold-line pb-4">
-                  Nieuws uit {wijk.naam}
+                  Nieuws & video's uit {wijk.naam}
                 </h2>
               </div>
               <Button
@@ -768,9 +793,9 @@ const WijkDetail = () => {
             </div>
             <div className="bg-card/60 border border-dashed border-border rounded-2xl p-8 text-center">
               <Newspaper className="w-8 h-8 mx-auto text-accent/60 mb-3" />
-              <h3 className="font-display text-xl mb-1 text-foreground">Geen specifiek wijkverslag</h3>
+              <h3 className="font-display text-xl mb-1 text-foreground">Geen specifiek wijkverslag of video</h3>
               <p className="text-xs text-muted-foreground max-w-md mx-auto mb-4">
-                Er zijn momenteel geen nieuwsartikelen specifiek gekoppeld aan {wijk.naam}. Algemene gemeente-updates en fractiestandpunten vindt u in het nieuwsoverzicht.
+                Er zijn momenteel geen nieuwsartikelen of video's specifiek gekoppeld aan {wijk.naam}. Algemene gemeente-updates en fractiestandpunten vindt u in het nieuwsoverzicht.
               </p>
               <Button asChild variant="outline" size="sm" className="text-xs border-accent text-accent hover:bg-accent hover:text-accent-foreground">
                 <Link to="/nieuws">Bekijk Algemeen Nieuws</Link>
@@ -1520,16 +1545,18 @@ const CarouselSection = ({
   eyebrow,
   title,
   ctaHref,
+  ctaLabel = "Bekijk meer",
   children,
 }: {
   icon: React.ReactNode;
   eyebrow: string;
   title: string;
   ctaHref: string;
+  ctaLabel?: string;
   children: React.ReactNode;
 }) => (
   <section>
-    <div className="flex items-end justify-between mb-6 gap-4">
+    <div className="flex flex-wrap items-end justify-between mb-6 gap-4">
       <div>
         <div className="text-[10px] uppercase tracking-[0.3em] text-accent mb-2 flex items-center gap-2">
           {icon} {eyebrow}
@@ -1543,7 +1570,7 @@ const CarouselSection = ({
           className="border-accent/40 text-accent hover:bg-accent hover:text-accent-foreground uppercase tracking-wider text-xs font-semibold"
         >
           <Link to={ctaHref}>
-            Bekijk meer <ArrowRight className="w-3.5 h-3.5" />
+            {ctaLabel} <ArrowRight className="w-3.5 h-3.5 ml-1" />
           </Link>
         </Button>
       )}
