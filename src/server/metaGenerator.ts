@@ -195,7 +195,7 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
             "name": "Onafhankelijk Steenwijkerland",
             "alternateName": ["OSL", "Onafhankelijk Steenwijkerland (OSL)", "voorheen Lijst van Andel", "LvA"],
             "url": baseUrl,
-            "logo": `${baseUrl}/assets/osl-logo.png`,
+            "logo": `${baseUrl}/assets/osl-logo.webp`,
             "image": DEFAULT_IMAGE,
             "description": "Onafhankelijke lokale politieke partij in de gemeenteraad van Steenwijkerland, opkomend voor lokale inwoners, betaalbare starterswoningen en leefbare kernen.",
             "address": {
@@ -842,10 +842,10 @@ export function getPageMetadata(urlPath: string, host: string, db: Record<string
   if (videoMemberMatch && videoMemberMatch[1] !== "videos") {
     const memberId = videoMemberMatch[1].toLowerCase();
     const defaultMembers = [
-      { id: "1", name: "Sammy van Andel", role: "Fractievoorzitter", type: "Raadslid", imgUrl: "/assets/sammy.png" },
-      { id: "2", name: "Lisa Mars", role: "Raadslid", type: "Raadslid", imgUrl: "/assets/lisa.png" },
-      { id: "3", name: "Nathan ten Wolde", role: "Burgerraadslid", type: "Burgerraadslid", imgUrl: "/assets/nathan.png" },
-      { id: "4", name: "Chris van Andel", role: "Burgerraadslid", type: "Burgerraadslid", imgUrl: "/assets/chris.jpg" },
+      { id: "1", name: "Sammy van Andel", role: "Fractievoorzitter", type: "Raadslid", imgUrl: "/assets/sammy.webp" },
+      { id: "2", name: "Lisa Mars", role: "Raadslid", type: "Raadslid", imgUrl: "/assets/lisa.webp" },
+      { id: "3", name: "Nathan ten Wolde", role: "Burgerraadslid", type: "Burgerraadslid", imgUrl: "/assets/nathan.webp" },
+      { id: "4", name: "Chris van Andel", role: "Burgerraadslid", type: "Burgerraadslid", imgUrl: "/assets/chris.webp" },
     ];
     const member = (db?.fractieleden || []).find((m: any) =>
       String(m.id).toLowerCase() === memberId ||

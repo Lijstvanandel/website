@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
+import { pathToFileURL } from "url";
 import {
   parsePdfBufferInWorker,
   extractPdfFileInWorker,
@@ -230,7 +231,15 @@ export async function parsePdfBuffer(buf: Buffer): Promise<string> {
     if (PDFParseClass && typeof PDFParseClass === "function") {
       try {
         const u8 = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
-        const parser = new PDFParseClass(u8);
+        const stdDir = path.join(process.cwd(), "node_modules", "pdfjs-dist", "standard_fonts");
+        const cmapDir = path.join(process.cwd(), "node_modules", "pdfjs-dist", "cmaps");
+        const standardFontDataUrl = fs.existsSync(stdDir) ? pathToFileURL(stdDir).href.replace(/\/?$/, "/") : undefined;
+        const cMapUrl = fs.existsSync(cmapDir) ? pathToFileURL(cmapDir).href.replace(/\/?$/, "/") : undefined;
+        const parser = new PDFParseClass({
+          data: u8,
+          ...(standardFontDataUrl ? { standardFontDataUrl } : {}),
+          ...(cMapUrl ? { cMapUrl, cMapPacked: true } : {}),
+        });
         if (typeof parser.getText === "function") {
           const res = await parser.getText();
           if (res?.text) extractedText = String(res.text);

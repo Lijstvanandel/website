@@ -2522,7 +2522,7 @@ async function startServer() {
   }
 
   const staticUploadsOptions = {
-    maxAge: 86400000 * 7, // 7 days browser cache
+    maxAge: 31536000 * 1000, // 365 days browser cache for immutable timestamped uploads
     dotfiles: 'deny' as const,
     setHeaders: (res: any, filePath: string) => {
       res.setHeader("Access-Control-Allow-Origin", "*");
@@ -2533,8 +2533,8 @@ async function startServer() {
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-      } else if (/\.(jpg|jpeg|png|webp|svg|gif)$/i.test(filePath)) {
-        res.setHeader('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400');
+      } else if (/\.(jpg|jpeg|png|webp|avif|svg|gif|ico|woff2?|mp4|webm|mp3|m4a)$/i.test(filePath)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, s-maxage=31536000, immutable');
       }
     }
   };
@@ -2967,8 +2967,52 @@ async function startServer() {
     return res.status(404).json({ error: `Dataproduct '${baseName}' kon niet worden gevonden op de server.` });
   });
 
-  // Guaranteed endpoint for viewing images (bypasses Nginx static proxy issues)
-  app.get("/api/image/view", (req: any, res: any) => {
+  const ALLOWED_IMAGE_WIDTHS = [128, 256, 320, 400, 480, 640, 768, 960, 1280, 1600];
+  const snapImageWidth = (rawW: unknown): number | null => {
+    const parsed = Number(rawW);
+    if (!Number.isFinite(parsed) || parsed <= 0) return null;
+    for (const w of ALLOWED_IMAGE_WIDTHS) {
+      if (parsed <= w) return w;
+    }
+    return 1600;
+  };
+
+  const imageCacheDir = path.join(uploadsPath, ".image-cache");
+  const getOrCreateOptimizedWebp = async (
+    sourcePath: string,
+    targetWidth: number | null
+  ): Promise<string | null> => {
+    const sharp = await getSafeSharp();
+    if (!sharp) return null;
+    try {
+      const stat = fs.statSync(sourcePath);
+      const effectiveW = targetWidth || 1600;
+      const cacheKey = crypto
+        .createHash("sha1")
+        .update(`${sourcePath}|${stat.mtimeMs}|${stat.size}|${effectiveW}|webp78`)
+        .digest("hex");
+      if (!fs.existsSync(imageCacheDir)) {
+        fs.mkdirSync(imageCacheDir, { recursive: true });
+      }
+      const cachedFile = path.join(imageCacheDir, `${cacheKey}.webp`);
+      if (fs.existsSync(cachedFile) && fs.statSync(cachedFile).size > 0) {
+        return cachedFile;
+      }
+      const tmpFile = `${cachedFile}.${process.pid}.${Date.now()}.tmp`;
+      await sharp(sourcePath)
+        .rotate()
+        .resize({ width: effectiveW, withoutEnlargement: true })
+        .webp({ quality: 78, alphaQuality: 90, effort: 4 })
+        .toFile(tmpFile);
+      fs.renameSync(tmpFile, cachedFile);
+      return cachedFile;
+    } catch {
+      return null;
+    }
+  };
+
+  // Guaranteed endpoint for viewing images (supports responsive width ?w= & WebP ?fmt=webp with disk cache)
+  app.get("/api/image/view", async (req: any, res: any) => {
     const rawFile = req.query.file || req.query.path || "";
     if (!rawFile || typeof rawFile !== "string") {
       return res.status(400).json({ error: "Geen bestandspad opgegeven" });
@@ -2993,8 +3037,25 @@ async function startServer() {
     for (const p of candidatePaths) {
       if (fs.existsSync(p) && fs.statSync(p).isFile()) {
         res.setHeader("Access-Control-Allow-Origin", "*");
-        res.setHeader("Cache-Control", "public, max-age=604800, stale-while-revalidate=86400");
+        res.setHeader("Cache-Control", "public, max-age=31536000, s-maxage=31536000, immutable");
         const ext = path.extname(p).toLowerCase();
+        const reqWidth = snapImageWidth(req.query.w);
+        const wantsWebp =
+          req.query.fmt === "webp" ||
+          (req.query.fmt !== "raw" &&
+            (reqWidth !== null || (req.headers.accept || "").includes("image/webp")));
+
+        if (wantsWebp && /\.(png|jpe?g|webp)$/i.test(ext)) {
+          const optimizedPath = await getOrCreateOptimizedWebp(p, reqWidth);
+          if (optimizedPath) {
+            if (req.query.fmt !== "webp") {
+              res.setHeader("Vary", "Accept");
+            }
+            res.setHeader("Content-Type", "image/webp");
+            return res.sendFile(optimizedPath);
+          }
+        }
+
         if (ext === ".png") res.setHeader("Content-Type", "image/png");
         else if (ext === ".jpg" || ext === ".jpeg") res.setHeader("Content-Type", "image/jpeg");
         else if (ext === ".webp") res.setHeader("Content-Type", "image/webp");
@@ -3155,7 +3216,47 @@ async function startServer() {
     }
   });
 
+  // Automatic WebP + responsive width negotiation for direct /uploads/*.png|jpg requests
+  const negotiateUploadedWebp = async (req: any, res: any, next: any) => {
+    if (req.method !== "GET" || req.query.raw === "1" || req.query.download === "1") {
+      return next();
+    }
+    const reqPath = (req.path || "").replace(/^\/+/, "").replace(/\.\./g, "");
+    if (!/\.(png|jpe?g)$/i.test(reqPath)) {
+      return next();
+    }
+    const reqWidth = snapImageWidth(req.query.w);
+    const acceptsWebp = (req.headers.accept || "").includes("image/webp") || req.query.fmt === "webp";
+    if (!acceptsWebp && !reqWidth) {
+      return next();
+    }
+    const candidates = [
+      path.join(uploadsPath, reqPath),
+      path.join(distUploadsPath, reqPath),
+    ];
+    for (const cand of candidates) {
+      if (fs.existsSync(cand) && fs.statSync(cand).isFile()) {
+        if (fs.statSync(cand).size <= 4096 && !reqWidth) {
+          return next();
+        }
+        const optimized = await getOrCreateOptimizedWebp(cand, reqWidth);
+        if (optimized) {
+          res.setHeader("Access-Control-Allow-Origin", "*");
+          res.setHeader("Vary", "Accept");
+          res.setHeader("Content-Type", "image/webp");
+          res.setHeader("Cache-Control", "public, max-age=31536000, s-maxage=31536000, immutable");
+          return res.sendFile(optimized);
+        }
+        break;
+      }
+    }
+    return next();
+  };
+
   // Serve static uploads from BOTH public/uploads AND dist/uploads
+  app.use("/uploads", negotiateUploadedWebp);
+  app.use("/public/uploads", negotiateUploadedWebp);
+  app.use("/api/uploads", negotiateUploadedWebp);
   app.use("/uploads", express.static(uploadsPath, staticUploadsOptions));
   app.use("/uploads", express.static(distUploadsPath, staticUploadsOptions));
   app.use("/public/uploads", express.static(uploadsPath, staticUploadsOptions));
@@ -3168,10 +3269,10 @@ async function startServer() {
   const publicAssetsDir = path.join(publicDir, "assets");
   const distAssetsDir = path.join(process.cwd(), "dist", "assets");
   const staticAssetsOptions = {
-    maxAge: "30d",
+    maxAge: "365d",
     setHeaders: (res: any, filePath: string) => {
-      if (/\.(jpg|jpeg|png|webp|svg|ico)$/i.test(filePath)) {
-        res.setHeader("Cache-Control", "public, max-age=2592000, immutable");
+      if (/\.(jpg|jpeg|png|webp|avif|svg|ico|woff2?)$/i.test(filePath)) {
+        res.setHeader("Cache-Control", "public, max-age=31536000, s-maxage=31536000, immutable");
         res.setHeader("Access-Control-Allow-Origin", "*");
       }
     }
@@ -7436,20 +7537,58 @@ async function startServer() {
     res.json(lid);
   });
 
+  // Helper to convert newly uploaded fractielid images to optimized WebP (max 1200px)
+  const optimizeFractielidUploadToWebp = async (file?: Express.Multer.File): Promise<string | null> => {
+    if (!file?.path) return null;
+    const ext = path.extname(file.filename).toLowerCase();
+    if (!/\.(png|jpe?g|webp)$/i.test(ext)) {
+      syncFileAcrossUploadDirs(file.path);
+      return `/uploads/fractieleden/${file.filename}`;
+    }
+    const sharp = await getSafeSharp();
+    if (!sharp) {
+      syncFileAcrossUploadDirs(file.path);
+      return `/uploads/fractieleden/${file.filename}`;
+    }
+    try {
+      const webpFilename = file.filename.replace(/\.(png|jpe?g|webp)$/i, ".webp");
+      const targetPath = path.join(path.dirname(file.path), webpFilename);
+      const tmpPath = `${targetPath}.tmp`;
+      await sharp(file.path)
+        .rotate()
+        .resize({ width: 1200, withoutEnlargement: true })
+        .webp({ quality: 82, alphaQuality: 92, effort: 5 })
+        .toFile(tmpPath);
+      if (targetPath !== file.path && fs.existsSync(file.path)) {
+        try {
+          fs.unlinkSync(file.path);
+        } catch (_unlinkErr) {
+          // Ignore cleanup error
+        }
+      }
+      fs.renameSync(tmpPath, targetPath);
+      syncFileAcrossUploadDirs(targetPath);
+      return `/uploads/fractieleden/${webpFilename}`;
+    } catch {
+      syncFileAcrossUploadDirs(file.path);
+      return `/uploads/fractieleden/${file.filename}`;
+    }
+  };
+
   app.post(
     "/api/admin/fractieleden",
     requireAuth,
     requireAdmin,
     upload.fields([{ name: "img", maxCount: 1 }, { name: "cutout", maxCount: 1 }]),
-    (req: any, res: any) => {
+    async (req: any, res: any) => {
       const db = getDb();
       const { name, firstName, role, type, bio, speerpunten, email, facebook, instagram, linkedin } = req.body;
       const imgFile = req.files?.["img"]?.[0];
       const cutoutFile = req.files?.["cutout"]?.[0];
-      if (imgFile?.path) syncFileAcrossUploadDirs(imgFile.path);
-      if (cutoutFile?.path) syncFileAcrossUploadDirs(cutoutFile.path);
-      const imgUrl = imgFile ? `/uploads/fractieleden/${imgFile.filename}` : (req.body.imgUrl || "");
-      const cutoutImageUrl = cutoutFile ? `/uploads/fractieleden/${cutoutFile.filename}` : (req.body.cutoutImageUrl || "");
+      const optimizedImgUrl = await optimizeFractielidUploadToWebp(imgFile);
+      const optimizedCutoutUrl = await optimizeFractielidUploadToWebp(cutoutFile);
+      const imgUrl = optimizedImgUrl || (req.body.imgUrl || "");
+      const cutoutImageUrl = optimizedCutoutUrl || (req.body.cutoutImageUrl || "");
       const newLid = {
         id: Date.now().toString(),
         name,
@@ -7477,7 +7616,7 @@ async function startServer() {
     requireAuth,
     requireAdmin,
     upload.fields([{ name: "img", maxCount: 1 }, { name: "cutout", maxCount: 1 }]),
-    (req: any, res: any) => {
+    async (req: any, res: any) => {
       const db = getDb();
       const idx = (db.fractieleden || []).findIndex((f: any) => String(f.id) === String(req.params.id));
       if (idx === -1) return res.status(404).json({ error: "Fractielid niet gevonden" });
@@ -7485,11 +7624,11 @@ async function startServer() {
       const { name, firstName, role, type, bio, speerpunten, email, facebook, instagram, linkedin } = req.body;
       const imgFile = req.files?.["img"]?.[0];
       const cutoutFile = req.files?.["cutout"]?.[0];
-      if (imgFile?.path) syncFileAcrossUploadDirs(imgFile.path);
-      if (cutoutFile?.path) syncFileAcrossUploadDirs(cutoutFile.path);
+      const optimizedImgUrl = await optimizeFractielidUploadToWebp(imgFile);
+      const optimizedCutoutUrl = await optimizeFractielidUploadToWebp(cutoutFile);
 
-      const imgUrl = imgFile ? `/uploads/fractieleden/${imgFile.filename}` : (req.body.imgUrl !== undefined ? req.body.imgUrl : current.imgUrl);
-      const cutoutImageUrl = cutoutFile ? `/uploads/fractieleden/${cutoutFile.filename}` : (req.body.cutoutImageUrl !== undefined ? req.body.cutoutImageUrl : current.cutoutImageUrl);
+      const imgUrl = optimizedImgUrl || (req.body.imgUrl !== undefined ? req.body.imgUrl : current.imgUrl);
+      const cutoutImageUrl = optimizedCutoutUrl || (req.body.cutoutImageUrl !== undefined ? req.body.cutoutImageUrl : current.cutoutImageUrl);
 
       const updatedLid = {
         ...current,
@@ -13629,17 +13768,17 @@ Sitemap: ${baseUrl}/sitemap.xml
         assignedMemberRole = f.role || (f.type === "burgerraadslid" ? "Burgerraadslid" : "Raadslid");
         assignedMemberId = f.id || null;
       } else if (user) {
-        assignedMemberAvatar = user.avatarUrl || user.photo || (user.fullName?.toLowerCase().includes("sammy") ? "/assets/sammy.png" : null);
+        assignedMemberAvatar = user.avatarUrl || user.photo || (user.fullName?.toLowerCase().includes("sammy") ? "/assets/sammy.webp" : null);
         assignedMemberRole = user.role === "admin" ? "Fractievoorzitter" : user.role === "raadslid" ? "Raadslid" : "Fractielid";
       } else if (fullName?.toLowerCase().includes("sammy")) {
-        assignedMemberAvatar = "/assets/sammy.png";
+        assignedMemberAvatar = "/assets/sammy.webp";
         assignedMemberRole = "Fractievoorzitter";
       }
     }
 
     return {
       ...t,
-      assignedMemberAvatar: assignedMemberAvatar || (t.assignedName?.toLowerCase().includes("sammy") ? "/assets/sammy.png" : null),
+      assignedMemberAvatar: assignedMemberAvatar || (t.assignedName?.toLowerCase().includes("sammy") ? "/assets/sammy.webp" : null),
       assignedMemberRole: assignedMemberRole || (t.assignedName?.toLowerCase().includes("sammy") ? "Fractievoorzitter" : (t.assignedTo ? "Fractielid" : null)),
       assignedMemberId: assignedMemberId || null
     };

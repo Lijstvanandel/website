@@ -243,9 +243,26 @@ async function extractIntroTextFromPdfBuffer(pdfBuffer: Buffer, maxPages = 2): P
 
     if (typeof PDFParseClass === "function") {
       try {
-        const parser = new PDFParseClass({ data: pdfBuffer, max: maxPages });
-        const res = await parser.getText();
-        if (res && res.text) return String(res.text).trim();
+        const fsMod = await import("fs");
+        const pathMod = await import("path");
+        const urlMod = await import("url");
+        const stdDir = pathMod.default.join(process.cwd(), "node_modules", "pdfjs-dist", "standard_fonts");
+        const cmapDir = pathMod.default.join(process.cwd(), "node_modules", "pdfjs-dist", "cmaps");
+        const standardFontDataUrl = fsMod.default.existsSync(stdDir) ? urlMod.pathToFileURL(stdDir).href.replace(/\/?$/, "/") : undefined;
+        const cMapUrl = fsMod.default.existsSync(cmapDir) ? urlMod.pathToFileURL(cmapDir).href.replace(/\/?$/, "/") : undefined;
+        const parser = new PDFParseClass({
+          data: pdfBuffer,
+          ...(standardFontDataUrl ? { standardFontDataUrl } : {}),
+          ...(cMapUrl ? { cMapUrl, cMapPacked: true } : {}),
+        });
+        try {
+          const res = await parser.getText({ first: maxPages });
+          if (res && res.text) return String(res.text).trim();
+        } finally {
+          if (typeof parser.destroy === "function") {
+            await parser.destroy().catch(() => {});
+          }
+        }
       } catch {
         const res = await (PDFParseClass as any)(pdfBuffer, { max: maxPages });
         if (res && res.text) return String(res.text).trim();

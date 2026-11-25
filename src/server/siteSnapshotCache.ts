@@ -179,6 +179,9 @@ export function sanitizeMemberPhotoForSnapshot(member: any): any {
   if (!copy.imgUrl && def?.imgUrl) {
     copy.imgUrl = def.imgUrl;
   }
+  if (typeof copy.imgUrl === "string" && copy.imgUrl.startsWith("/assets/") && /\.(png|jpg|jpeg)$/i.test(copy.imgUrl)) {
+    copy.imgUrl = copy.imgUrl.replace(/\.(png|jpg|jpeg)$/i, ".webp");
+  }
   if (!copy.cutoutImageUrl && def?.cutoutImageUrl) {
     copy.cutoutImageUrl = def.cutoutImageUrl;
   }

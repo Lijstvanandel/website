@@ -1,6 +1,16 @@
 import katex from "katex";
 import DOMPurify from "dompurify";
 
+let katexCssRequested = false;
+
+export function ensureKatexCss(): void {
+  if (katexCssRequested || typeof window === "undefined") return;
+  katexCssRequested = true;
+  import("katex/dist/katex.min.css").catch(() => {
+    katexCssRequested = false;
+  });
+}
+
 /**
  * Standardizes Dutch decimal notation in math if needed, e.g., "0,05" inside math
  * KaTeX parses commas as list separators by default unless wrapped or formatted.
@@ -50,6 +60,7 @@ export function renderMathInHtml(rawContent: string): string {
     const math = (p1 !== undefined ? p1 : p2 || "").trim();
     if (!math) return "";
     try {
+      ensureKatexCss();
       const normalized = normalizeDutchDecimals(math);
       const rendered = katex.renderToString(normalized, {
         displayMode: true,
@@ -79,6 +90,7 @@ export function renderMathInHtml(rawContent: string): string {
     }
 
     try {
+      ensureKatexCss();
       const normalized = normalizeDutchDecimals(math);
       const rendered = katex.renderToString(normalized, {
         displayMode: false,

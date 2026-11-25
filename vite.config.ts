@@ -1,8 +1,37 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 import { VitePWA } from "vite-plugin-pwa";
+
+/**
+ * Inlines the small main stylesheet into index.html during production builds
+ * so CSS never blocks First Contentful Paint / Largest Contentful Paint.
+ */
+function inlineMainCssPlugin(): Plugin {
+  return {
+    name: "inline-main-css",
+    apply: "build",
+    enforce: "post",
+    transformIndexHtml(html, ctx) {
+      if (!ctx.bundle) return html;
+      return html.replace(
+        /<link\s+rel="stylesheet"[^>]*href="(\/assets\/[^"]+\.css)"[^>]*>/gi,
+        (fullTag, hrefPath: string) => {
+          const assetKey = hrefPath.replace(/^\//, "");
+          const chunk = ctx.bundle?.[assetKey];
+          if (chunk && chunk.type === "asset" && typeof chunk.source === "string") {
+            // Only inline stylesheets without relative url() font/image assets (e.g. main index.css, not katex.min.css)
+            if (!chunk.source.includes("url(") && chunk.source.length < 300_000) {
+              return `<style>${chunk.source}</style>`;
+            }
+          }
+          return fullTag;
+        }
+      );
+    },
+  };
+}
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
@@ -43,7 +72,7 @@ export default defineConfig(({ mode }) => ({
       srcDir: "src",
       filename: "sw.ts",
       registerType: "autoUpdate",
-      injectRegister: "auto",
+      injectRegister: "inline",
       manifest: false,
       injectManifest: {
         globPatterns: ["index.html"],
@@ -53,6 +82,7 @@ export default defineConfig(({ mode }) => ({
         type: "module",
       },
     }),
+    inlineMainCssPlugin(),
   ],
   esbuild: {
     legalComments: "none",

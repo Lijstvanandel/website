@@ -52,6 +52,8 @@ export function getEventLoopLagMetrics(): EventLoopMetrics {
 const WORKER_SCRIPT = `
 const { parentPort } = require('node:worker_threads');
 const fs = require('node:fs');
+const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 
 let pdfModule = null;
 let PDFParseClass = null;
@@ -62,6 +64,26 @@ try {
 } catch (e) {
   // Will report error if called
 }
+
+function resolvePdfJsAssetUrl(subdir) {
+  const candidates = [];
+  try {
+    const pkgDir = path.dirname(require.resolve('pdfjs-dist/package.json'));
+    candidates.push(path.join(pkgDir, subdir));
+  } catch (_) {}
+  candidates.push(path.join(process.cwd(), 'node_modules', 'pdfjs-dist', subdir));
+  for (const dir of candidates) {
+    try {
+      if (fs.existsSync(dir)) {
+        return pathToFileURL(dir).href.replace(/\\/?$/, '/');
+      }
+    } catch (_) {}
+  }
+  return undefined;
+}
+
+const standardFontDataUrl = resolvePdfJsAssetUrl('standard_fonts');
+const cMapUrl = resolvePdfJsAssetUrl('cmaps');
 
 parentPort.on('message', async (task) => {
   const { id, buffer, filePath, maxPages } = task;
@@ -84,8 +106,13 @@ parentPort.on('message', async (task) => {
     // Method 1: PDFParse class (pdf-parse v2)
     if (PDFParseClass && typeof PDFParseClass === 'function') {
       try {
-        const parser = new PDFParseClass(u8);
-        const res = await parser.getText();
+        const parserOptions = {
+          data: u8,
+          ...(standardFontDataUrl ? { standardFontDataUrl } : {}),
+          ...(cMapUrl ? { cMapUrl, cMapPacked: true } : {}),
+        };
+        const parser = new PDFParseClass(parserOptions);
+        const res = await parser.getText(maxPages ? { first: maxPages } : undefined);
         if (res && typeof res.text === 'string') {
           extractedText = res.text;
         } else if (typeof res === 'string') {

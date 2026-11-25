@@ -13,6 +13,7 @@ import { format, parseISO } from "date-fns";
 import { nl } from "date-fns/locale";
 import { FormattedMathText } from "@/utils/mathRenderer";
 import { getInitialPublicSnapshot } from "@/lib/publicSnapshotClient";
+import { getResponsiveImageAttrs } from "@/lib/imageOptimizer";
 
 const formatDateSafe = (dateStr?: string) => {
   if (!dateStr) return "";
@@ -311,19 +312,39 @@ const Home = () => {
 
         <div className="bg-card border border-accent/20 p-6 md:p-8 rounded-sm">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 md:gap-6">
-              {fractieleden.map((lid: any) => (
+              {fractieleden.map((lid: any) => {
+                const imgAttrs = lid.imgUrl
+                  ? getResponsiveImageAttrs(lid.imgUrl, {
+                      sizes: "(max-width: 640px) 92vw, (max-width: 1024px) 45vw, 280px",
+                      widths: [400, 640, 960],
+                      defaultWidth: 640,
+                    })
+                  : null;
+                return (
                 <Link
                   key={lid.id}
                   to={`/fractie/${lid.id}/videos`}
                   className="group flex flex-col bg-muted/20 border border-border/60 hover:border-accent/80 rounded-sm overflow-hidden transition-all hover-lift"
                 >
                   <div className="relative aspect-[4/5] w-full bg-muted overflow-hidden border-b border-border/50">
-                    {lid.imgUrl ? (
+                    {imgAttrs ? (
                       <img
-                        src={lid.imgUrl}
+                        src={imgAttrs.src}
+                        srcSet={imgAttrs.srcSet}
+                        sizes={imgAttrs.sizes}
                         alt={lid.name}
+                        width={480}
+                        height={600}
                         loading="lazy"
                         decoding="async"
+                        onError={(e) => {
+                          const el = e.target as HTMLImageElement;
+                          if (!el.dataset.fallback) {
+                            el.dataset.fallback = "1";
+                            el.srcset = "";
+                            el.src = imgAttrs.fallbackSrc;
+                          }
+                        }}
                         className="w-full h-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
                       />
                     ) : (
@@ -347,7 +368,8 @@ const Home = () => {
                     </div>
                   </div>
                 </Link>
-              ))}
+                );
+              })}
             </div>
 
             <div className="mt-6 pt-5 border-t border-border/60 flex flex-col md:flex-row items-center justify-between gap-4 text-center md:text-left px-2">
@@ -380,36 +402,40 @@ const Home = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 sm:gap-4">
           {[
             {
-              image: "/assets/speerpunt-voorrang.jpg",
+              image: "/assets/speerpunt-voorrang.webp",
               title: "Voorrang voor inwoners",
               text: "Lokale binding telt bij woningtoewijzing. Onze eigen jongeren en starters verdienen een eerlijke kans op een betaalbaar thuis.",
               to: "/standpunten",
             },
             {
-              image: "/assets/speerpunt-natuur.jpg",
+              image: "/assets/speerpunt-natuur.webp",
               title: "Behoud van natuur",
               text: "Bescherming van Nationaal Park Weerribben-Wieden en onze kenmerkende landschappen als groen erfgoed.",
               to: "/standpunten",
             },
             {
-              image: "/assets/speerpunt-boeren.jpg",
+              image: "/assets/speerpunt-boeren.webp",
               title: "Boer terug in beleid",
               text: "Een gemeente die als betrouwbare bondgenoot náást de agrariërs en lokale ondernemers staat, niet ertegenover.",
               to: "/standpunten",
             },
             {
-              image: "/assets/speerpunt-lasten.jpg",
+              image: "/assets/speerpunt-lasten.webp",
               title: "Geen lastenverhoging",
               text: "Zuinig huishoudboekje en een lage OZB. De gemeente moet eerst op eigen apparaat besparen voordat lasten stijgen.",
               to: "/standpunten",
             },
             {
-              image: "/assets/speerpunt-kernen.jpg",
+              image: "/assets/speerpunt-kernen.webp",
               title: "Leefbare kernen",
               text: "Behoud van dorpshuizen, scholen, veilige fietspaden en directe inspraak voor alle 43 wijken en kernen.",
               to: "/standpunten",
             },
-          ].map((f) => (
+          ].map((f) => {
+            const spAttrs = getResponsiveImageAttrs(f.image, {
+              sizes: "(max-width: 640px) 92vw, (max-width: 1024px) 46vw, 260px",
+            });
+            return (
             <Link
               key={f.title}
               to={f.to}
@@ -418,8 +444,14 @@ const Home = () => {
               <div>
                 <div className="relative h-40 w-full overflow-hidden bg-black/20 border-b border-border/50">
                   <img
-                    src={f.image}
+                    src={spAttrs.src}
+                    srcSet={spAttrs.srcSet}
+                    sizes={spAttrs.sizes}
                     alt={f.title}
+                    width={600}
+                    height={400}
+                    loading="lazy"
+                    decoding="async"
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     referrerPolicy="no-referrer"
                   />
@@ -438,7 +470,8 @@ const Home = () => {
                 Lees meer <ArrowRight className="w-3 h-3" />
               </div>
             </Link>
-          ))}
+            );
+          })}
         </div>
       </section>
 
@@ -462,7 +495,15 @@ const Home = () => {
           </div>
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {homeNews.slice(0, 4).map((n) => (
+            {homeNews.slice(0, 4).map((n) => {
+              const rawNewsImg = n.image || n.thumbnailUrl || n.headerUrl || heroBanner;
+              const newsAttrs = getResponsiveImageAttrs(rawNewsImg, {
+                sizes: "(max-width: 640px) 92vw, (max-width: 1024px) 46vw, 320px",
+                widths: [400, 640],
+                defaultWidth: 640,
+                fallback: heroBanner,
+              });
+              return (
               <Link
                 key={n.id}
                 to={`/nieuws/${n.id}`}
@@ -470,21 +511,19 @@ const Home = () => {
               >
                 <div className="aspect-[16/9] overflow-hidden bg-muted">
                   <img
-                    src={
-                      (n.image || n.thumbnailUrl || n.headerUrl || "").startsWith("/uploads/") || (n.image || n.thumbnailUrl || n.headerUrl || "").startsWith("uploads/")
-                        ? `/api/image/view?file=${encodeURIComponent(n.image || n.thumbnailUrl || n.headerUrl || "")}`
-                        : n.image || n.thumbnailUrl || n.headerUrl || heroBanner
-                    }
+                    src={newsAttrs.src}
+                    srcSet={newsAttrs.srcSet}
+                    sizes={newsAttrs.sizes}
                     alt={n.title || "Nieuwsbericht"}
+                    width={640}
+                    height={360}
                     className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                     loading="lazy"
+                    decoding="async"
                     onError={(e) => {
-                      const rawSrc = n.image || n.thumbnailUrl || n.headerUrl;
-                      if (rawSrc && (rawSrc.startsWith("/uploads/") || rawSrc.startsWith("uploads/")) && !(e.target as HTMLImageElement).src.includes("/api/image/view")) {
-                        (e.target as HTMLImageElement).src = `/api/image/view?file=${encodeURIComponent(rawSrc)}`;
-                      } else {
-                        (e.target as HTMLImageElement).src = heroBanner;
-                      }
+                      const imgEl = e.target as HTMLImageElement;
+                      imgEl.srcset = "";
+                      imgEl.src = heroBanner;
                     }}
                   />
                 </div>
@@ -506,7 +545,8 @@ const Home = () => {
                   </div>
                 </div>
               </Link>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>

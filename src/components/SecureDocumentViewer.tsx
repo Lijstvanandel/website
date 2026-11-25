@@ -214,6 +214,9 @@ export const SecureDocumentViewer: React.FC<SecureDocumentViewerProps> = ({
         const loadingTask = getDocFn({
           url: doc.fileUrl,
           withCredentials: false,
+          standardFontDataUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/",
+          cMapUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/",
+          cMapPacked: true,
         });
 
         const pdf = await loadingTask.promise;

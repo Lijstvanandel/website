@@ -41,6 +41,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import katex from "katex";
+import { ensureKatexCss } from "@/utils/mathRenderer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -58,6 +59,9 @@ export const NewsContentEditor: React.FC<NewsContentEditorProps> = ({
   onChange,
   required = false,
 }) => {
+  React.useEffect(() => {
+    ensureKatexCss();
+  }, []);
   const { token: authContextToken } = useAuth();
   const [activeView, setActiveView] = useState<"visual" | "code" | "preview">("visual");
   const [htmlFileName, setHtmlFileName] = useState<string>("");

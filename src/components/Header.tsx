@@ -159,7 +159,9 @@ export const Header = () => {
               className="flex items-center gap-2.5 sm:gap-3.5 group shrink-0 select-none max-w-fit"
             >
               <img
-                src="/assets/osl-logo-light.webp?v=osl4"
+                src="/assets/osl-logo-light-256.webp?v=osl5"
+                srcSet="/assets/osl-logo-light-256.webp?v=osl5 256w, /assets/osl-logo-light-480.webp?v=osl5 480w"
+                sizes="(max-width: 1024px) 112px, 127px"
                 alt="Onafhankelijk Steenwijkerland (OSL) logo"
                 width="127"
                 height="68"
@@ -169,13 +171,16 @@ export const Header = () => {
                   const img = e.target as HTMLImageElement;
                   if (!img.dataset.fallback) {
                     img.dataset.fallback = "1";
+                    img.srcset = "";
                     img.src = "/assets/osl-logo-light.png?v=osl4";
                   }
                 }}
                 className="block dark:hidden h-12 sm:h-14 lg:h-16 xl:h-[68px] w-auto object-contain shrink-0 transition-transform duration-300 group-hover:scale-105"
               />
               <img
-                src="/assets/osl-logo-dark.webp?v=osl4"
+                src="/assets/osl-logo-dark-256.webp?v=osl5"
+                srcSet="/assets/osl-logo-dark-256.webp?v=osl5 256w, /assets/osl-logo-dark-480.webp?v=osl5 480w"
+                sizes="(max-width: 1024px) 112px, 127px"
                 alt="Onafhankelijk Steenwijkerland (OSL) logo"
                 width="127"
                 height="68"
@@ -185,6 +190,7 @@ export const Header = () => {
                   const img = e.target as HTMLImageElement;
                   if (!img.dataset.fallback) {
                     img.dataset.fallback = "1";
+                    img.srcset = "";
                     img.src = "/assets/osl-logo-dark.png?v=osl4";
                   }
                 }}

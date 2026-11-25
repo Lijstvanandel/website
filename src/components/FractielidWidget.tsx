@@ -2,6 +2,7 @@ import React from "react";
 import { Phone, Mail, Instagram, Facebook, Linkedin, Video, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
+import { getResponsiveImageAttrs } from "@/lib/imageOptimizer";
 
 export interface FractielidItem {
   id: string;
@@ -41,10 +42,13 @@ export const FractielidWidget: React.FC<FractielidWidgetProps> = ({
   className = "",
   eagerPhoto = true,
 }) => {
-  const isStaticAssetWithWebp = Boolean(lid.imgUrl && lid.imgUrl.startsWith("/assets/"));
-  const primaryPhotoSrc = isStaticAssetWithWebp
-    ? lid.imgUrl!.replace(/\.(jpg|jpeg|png)$/i, ".webp")
-    : lid.imgUrl || "/assets/silhouette.webp";
+  const imgAttrs = lid.imgUrl
+    ? getResponsiveImageAttrs(lid.imgUrl, {
+        sizes: "(max-width: 640px) 92vw, 220px",
+        widths: [256, 480, 640],
+        defaultWidth: 480,
+      })
+    : null;
 
   return (
     <article
@@ -57,9 +61,11 @@ export const FractielidWidget: React.FC<FractielidWidgetProps> = ({
 
       <div className="grid grid-cols-1 sm:grid-cols-[200px_1fr] md:grid-cols-[180px_1fr] lg:grid-cols-[220px_1fr]">
         <div className="aspect-[4/5] overflow-hidden bg-muted flex items-center justify-center">
-          {lid.imgUrl ? (
+          {imgAttrs ? (
             <img
-              src={primaryPhotoSrc}
+              src={imgAttrs.src}
+              srcSet={imgAttrs.srcSet}
+              sizes={imgAttrs.sizes}
               alt={lid.name}
               loading={eagerPhoto ? "eager" : "lazy"}
               // @ts-expect-error fetchpriority is standard HTML attribute
@@ -70,9 +76,12 @@ export const FractielidWidget: React.FC<FractielidWidgetProps> = ({
               className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
-                if (lid.imgUrl && target.src !== window.location.origin + lid.imgUrl) {
-                  target.src = lid.imgUrl;
+                if (!target.dataset.fallback) {
+                  target.dataset.fallback = "1";
+                  target.srcset = "";
+                  target.src = imgAttrs.fallbackSrc || "/assets/silhouette.webp";
                 } else {
+                  target.srcset = "";
                   target.src = "/assets/silhouette.webp";
                 }
               }}

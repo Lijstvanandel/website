@@ -49,7 +49,9 @@ export const Footer = () => {
         <div>
           <Link to="/" className="inline-block mb-4 group" aria-label="Onafhankelijk Steenwijkerland">
             <img
-              src="/assets/osl-logo-light.webp?v=osl4"
+              src="/assets/osl-logo-light-480.webp?v=osl5"
+              srcSet="/assets/osl-logo-light-256.webp?v=osl5 256w, /assets/osl-logo-light-480.webp?v=osl5 480w"
+              sizes="(max-width: 640px) 180px, 240px"
               alt="Onafhankelijk Steenwijkerland (OSL) logo"
               width="240"
               height="128"
@@ -59,13 +61,16 @@ export const Footer = () => {
                 const img = e.target as HTMLImageElement;
                 if (!img.dataset.fallback) {
                   img.dataset.fallback = "1";
+                  img.srcset = "";
                   img.src = "/assets/osl-logo-light.png?v=osl4";
                 }
               }}
               className="block dark:hidden h-24 sm:h-28 lg:h-32 w-auto max-w-full object-contain shrink-0 transition-transform duration-300 group-hover:scale-[1.02]"
             />
             <img
-              src="/assets/osl-logo-dark.webp?v=osl4"
+              src="/assets/osl-logo-dark-480.webp?v=osl5"
+              srcSet="/assets/osl-logo-dark-256.webp?v=osl5 256w, /assets/osl-logo-dark-480.webp?v=osl5 480w"
+              sizes="(max-width: 640px) 180px, 240px"
               alt="Onafhankelijk Steenwijkerland (OSL) logo"
               width="240"
               height="128"
@@ -75,6 +80,7 @@ export const Footer = () => {
                 const img = e.target as HTMLImageElement;
                 if (!img.dataset.fallback) {
                   img.dataset.fallback = "1";
+                  img.srcset = "";
                   img.src = "/assets/osl-logo-dark.png?v=osl4";
                 }
               }}

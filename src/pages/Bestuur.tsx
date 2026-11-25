@@ -16,9 +16,9 @@ import {
   HardDrive,
   Eye
 } from "lucide-react";
-const placeholder = "/assets/silhouette.png";
-const sammyImg = "/assets/sammy.png";
-const stefImg = "/assets/stef-mars.jpg";
+const placeholder = "/assets/silhouette.webp";
+const sammyImg = "/assets/sammy.webp";
+const stefImg = "/assets/stef-mars.webp";
 import { useAuth } from "@/context/AuthContext";
 import { safeJson } from "@/lib/api";
 import { BestuurDocumentViewer, BestuurDocViewerItem } from "@/components/BestuurDocumentViewer";

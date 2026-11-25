@@ -1,5 +1,5 @@
-const kopwijzerImg = "/assets/news-kopwijzer.jpg";
-const marktImg = "/assets/markt-steenwijk.jpg";
+const kopwijzerImg = "/assets/news-kopwijzer.webp";
+const marktImg = "/assets/markt-steenwijk.webp";
 
 export interface MediaRetentionStats {
   starts: number;
@@ -76,7 +76,7 @@ export const news: NewsItem[] = [
     authorId: "1",
     authorName: "Sammy van Andel",
     authorRole: "Fractievoorzitter",
-    authorAvatar: "/assets/sammy.png",
+    authorAvatar: "/assets/sammy.webp",
     image: kopwijzerImg,
     thumbnailUrl: kopwijzerImg,
     category: "Media",
@@ -96,7 +96,7 @@ export const news: NewsItem[] = [
     authorId: "1",
     authorName: "Sammy van Andel",
     authorRole: "Fractievoorzitter",
-    authorAvatar: "/assets/sammy.png",
+    authorAvatar: "/assets/sammy.webp",
     category: "Wonen & Bouwen",
     image: kopwijzerImg,
     thumbnailUrl: kopwijzerImg,
@@ -118,7 +118,7 @@ export const news: NewsItem[] = [
     authorId: "2",
     authorName: "Lisa Mars",
     authorRole: "Raadslid",
-    authorAvatar: "/assets/lisa.png",
+    authorAvatar: "/assets/lisa.webp",
     image: marktImg,
     thumbnailUrl: marktImg,
     category: "Politiek",
@@ -140,7 +140,7 @@ export const news: NewsItem[] = [
     authorId: "2",
     authorName: "Lisa Mars",
     authorRole: "Raadslid",
-    authorAvatar: "/assets/lisa.png",
+    authorAvatar: "/assets/lisa.webp",
     category: "Sociaal & Zorg",
     image: marktImg,
     thumbnailUrl: marktImg,
@@ -160,7 +160,7 @@ export const news: NewsItem[] = [
     authorId: "3",
     authorName: "Nathan ten Wolde",
     authorRole: "Burgerraadslid",
-    authorAvatar: "/assets/nathan.png",
+    authorAvatar: "/assets/nathan.webp",
     category: "Economie & MKB",
     image: marktImg,
     thumbnailUrl: marktImg,
