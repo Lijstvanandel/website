@@ -8707,7 +8707,7 @@ async function startServer() {
     }
   });
 
-  // Dynamisch gegenereerde preview thumbnail op basis van query params (voor admin live preview)
+  // Dynamisch gegenereerde preview thumbnail op basis van query params (voor admin live preview & 45s korte video's)
   app.get("/api/thumbnail/video/compose", async (req, res) => {
     try {
       const db = getDb();
@@ -8715,6 +8715,8 @@ async function startServer() {
       const wijkSlug = (req.query.wijk as string) || "";
       const personId = (req.query.personId || req.query.memberId as string) || "";
       const category = (req.query.category as string) || "Raadsdebat";
+      const format = req.query.format === "webp" ? "webp" : "jpeg";
+      const allowCache = req.query.cache === "1" || Boolean(req.query.v);
 
       const buffer = await generateVideoThumbnailBuffer(
         {
@@ -8723,12 +8725,17 @@ async function startServer() {
           wijkSlug,
           personId,
         },
-        db
+        db,
+        format
       );
 
-      res.setHeader("Content-Type", "image/jpeg");
-      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Content-Type", format === "webp" ? "image/webp" : "image/jpeg");
+      if (allowCache) {
+        res.setHeader("Cache-Control", "public, max-age=3600");
+      } else {
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        res.setHeader("Pragma", "no-cache");
+      }
       return res.send(buffer);
     } catch (err: any) {
       console.error("[VIDEO THUMBNAIL COMPOSE ERROR]:", err);

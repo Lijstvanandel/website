@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Video, Calendar, Tag, MapPin, AlertCircle, Share2, ChevronLeft, ChevronRight, Play, Phone, CheckCircle2, Film } from "lucide-react";
+import { ArrowLeft, ArrowRight, Video, Calendar, Tag, MapPin, AlertCircle, Share2, ChevronLeft, ChevronRight, Play, CheckCircle2, Film, LayoutGrid } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -119,7 +119,20 @@ export default function FractielidVideos() {
     imageUrl: "",
   });
 
-  // 45-seconden maandresultaat video dialog state
+  // 45-seconden maandresultaat video dialog & filter/tegeloverzicht state
+  const [shortResultFilter, setShortResultFilter] = useState<"all" | "with-video">("all");
+  const [shortVideosGridOpen, setShortVideosGridOpen] = useState(false);
+  const [shortGridShowAllResults, setShortGridShowAllResults] = useState(false);
+  const [shortVideoPage, setShortVideoPage] = useState(1);
+  const SHORT_VIDEOS_PER_PAGE = 6;
+  const [shortVideoModalPlaying, setShortVideoModalPlaying] = useState<{
+    title: string;
+    subtitle?: string;
+    url: string;
+    poster?: string;
+    videoId?: string;
+    durationLabel?: string;
+  } | null>(null);
   const [activeShortVideo, setActiveShortVideo] = useState<{
     title: string;
     subtitle?: string;
@@ -205,9 +218,15 @@ export default function FractielidVideos() {
     }
   }, [id, defaultMember, initialSnapshot]);
 
-  // Reset paginering als het fractielid verandert
+  // Reset paginering en filters als het fractielid verandert
   useEffect(() => {
     setVideoPage(1);
+    setShortVideoPage(1);
+    setShortResultFilter("all");
+    setShortVideosGridOpen(false);
+    setShortGridShowAllResults(false);
+    setShortVideoModalPlaying(null);
+    setActiveShortVideo(null);
   }, [id]);
 
   const totalVideoPages = Math.ceil(videos.length / VIDEOS_PER_PAGE) || 1;
@@ -318,6 +337,57 @@ export default function FractielidVideos() {
     }
     return map;
   }, [initialSnapshot?.videos, videos]);
+
+  const enrichedMonthlyResults = React.useMemo(() => {
+    return monthlyResults.map((item, idx) => {
+      const linkedVideo = item.videoId ? allKnownVideos.get(String(item.videoId)) : undefined;
+      const resolvedUrl = (item.videoUrl && item.videoUrl.trim()) || linkedVideo?.videoUrl || "";
+      const durationText = item.durationLabel?.trim() || "0:45";
+      const composeParams = new URLSearchParams({
+        title: item.title || "het raadsvoorstel",
+        personId: member?.id || "",
+        category: `45s · ${durationText}`,
+        cache: "1",
+      });
+      const composedThumbUrl = `/api/thumbnail/video/compose?${composeParams.toString()}`;
+      const resolvedPoster = linkedVideo
+        ? getVideoThumbnail(linkedVideo.videoUrl, linkedVideo.thumbnailUrl, linkedVideo.id, member?.id) ||
+          composedThumbUrl
+        : composedThumbUrl;
+      return {
+        ...item,
+        keyId: item.id || `mr-${idx}`,
+        linkedVideo,
+        resolvedUrl,
+        resolvedPoster,
+        composedThumbUrl,
+        durationText,
+      };
+    });
+  }, [monthlyResults, member?.id, allKnownVideos]);
+
+  const shortResultsWithVideo = React.useMemo(
+    () => enrichedMonthlyResults.filter((item) => Boolean(item.resolvedUrl)),
+    [enrichedMonthlyResults]
+  );
+
+  const filteredShortResults = React.useMemo(
+    () => (shortResultFilter === "with-video" ? shortResultsWithVideo : enrichedMonthlyResults),
+    [shortResultFilter, shortResultsWithVideo, enrichedMonthlyResults]
+  );
+
+  const shortGridSourceItems = React.useMemo(() => {
+    if (shortGridShowAllResults || shortResultsWithVideo.length === 0) {
+      return enrichedMonthlyResults;
+    }
+    return shortResultsWithVideo;
+  }, [shortGridShowAllResults, shortResultsWithVideo, enrichedMonthlyResults]);
+
+  const totalShortVideoPages = Math.ceil(shortGridSourceItems.length / SHORT_VIDEOS_PER_PAGE) || 1;
+  const paginatedShortGridItems = shortGridSourceItems.slice(
+    (shortVideoPage - 1) * SHORT_VIDEOS_PER_PAGE,
+    shortVideoPage * SHORT_VIDEOS_PER_PAGE
+  );
 
   if (loading) {
     return (
@@ -476,38 +546,129 @@ export default function FractielidVideos() {
                 </span>
               </div>
 
-              {monthlyResults.length > 0 ? (
-                <ul className="divide-y divide-border/60">
-                  {monthlyResults.map((item, idx) => {
-                    const linkedVideo = item.videoId ? allKnownVideos.get(String(item.videoId)) : undefined;
-                    const resolvedUrl = (item.videoUrl && item.videoUrl.trim()) || linkedVideo?.videoUrl || "";
-                    const resolvedPoster = linkedVideo
-                      ? getVideoThumbnail(linkedVideo.videoUrl, linkedVideo.thumbnailUrl, linkedVideo.id, member?.id)
-                      : undefined;
-                    const durationText = item.durationLabel?.trim() || "0:45";
+              {enrichedMonthlyResults.length > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-3 pb-2.5 border-b border-border/50">
+                  <div className="inline-flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setShortResultFilter("all")}
+                      className={`px-2.5 py-1 rounded-sm text-xs font-medium border transition-colors cursor-pointer ${
+                        shortResultFilter === "all"
+                          ? "bg-accent text-accent-foreground border-accent"
+                          : "bg-background text-muted-foreground border-border hover:border-accent/50 hover:text-foreground"
+                      }`}
+                    >
+                      Alles <span className="tabular-nums">({enrichedMonthlyResults.length})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShortResultFilter("with-video")}
+                      className={`px-2.5 py-1 rounded-sm text-xs font-medium border transition-colors cursor-pointer ${
+                        shortResultFilter === "with-video"
+                          ? "bg-accent text-accent-foreground border-accent"
+                          : "bg-background text-muted-foreground border-border hover:border-accent/50 hover:text-foreground"
+                      }`}
+                    >
+                      Alleen met 45s video <span className="tabular-nums">({shortResultsWithVideo.length})</span>
+                    </button>
+                  </div>
 
-                    return (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setShortVideoPage(1);
+                      setShortVideoModalPlaying(null);
+                      setShortGridShowAllResults(shortResultsWithVideo.length === 0);
+                      setShortVideosGridOpen(true);
+                    }}
+                    className="h-7 px-2.5 text-xs font-semibold border-accent/40 text-accent hover:bg-accent hover:text-accent-foreground transition-colors"
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5 mr-1.5" />
+                    <span>Bekijk alles</span>
+                  </Button>
+                </div>
+              )}
+
+              {filteredShortResults.length > 0 ? (
+                <>
+                  <ul className="divide-y divide-border/60">
+                    {filteredShortResults.slice(0, 3).map((item) => (
                       <li
-                        key={item.id || `mr-${idx}`}
+                        key={item.keyId}
                         className="py-3 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                       >
-                        <div className="min-w-0">
-                          <div className="flex items-start gap-2">
-                            <CheckCircle2 className="w-4 h-4 text-accent shrink-0 mt-0.5" />
-                            <div>
-                              <div className="text-sm font-medium text-foreground leading-snug">
-                                {item.title}
+                        <div className="min-w-0 flex items-start gap-3">
+                          {item.resolvedUrl ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setActiveShortVideo({
+                                  title: item.title,
+                                  subtitle: item.result,
+                                  url: item.resolvedUrl,
+                                  poster: item.resolvedPoster,
+                                  videoId: item.linkedVideo?.id,
+                                  durationLabel: item.durationText,
+                                })
+                              }
+                              title={`Bekijk 45-seconden video: ${item.title}`}
+                              className="w-24 aspect-video rounded-sm overflow-hidden bg-black relative shrink-0 border border-border/80 group/mini cursor-pointer"
+                            >
+                              <img
+                                src={item.resolvedPoster}
+                                alt={`${member.name} over ${item.title}`}
+                                loading="lazy"
+                                decoding="async"
+                                className="w-full h-full object-cover transition-transform duration-300 group-hover/mini:scale-105"
+                                onError={(e) => {
+                                  const img = e.target as HTMLImageElement;
+                                  if (item.linkedVideo?.id) {
+                                    const nextSrc = getVideoThumbnailFallbackUrl(
+                                      item.linkedVideo.id,
+                                      member?.id,
+                                      img.src
+                                    );
+                                    if (img.src !== window.location.origin + nextSrc && !img.dataset.fallbackDone) {
+                                      img.dataset.fallbackDone = "1";
+                                      img.src = nextSrc;
+                                      return;
+                                    }
+                                  }
+                                  if (!img.dataset.composeFallback && item.composedThumbUrl) {
+                                    img.dataset.composeFallback = "1";
+                                    if (img.src !== window.location.origin + item.composedThumbUrl) {
+                                      img.src = item.composedThumbUrl;
+                                      return;
+                                    }
+                                  }
+                                  img.src = "/assets/markt-steenwijk.jpg";
+                                }}
+                              />
+                              <div className="absolute inset-0 bg-black/25 group-hover/mini:bg-black/10 transition-colors flex items-center justify-center">
+                                <div className="w-6 h-6 rounded-full bg-accent/95 text-accent-foreground flex items-center justify-center shadow">
+                                  <Play className="w-3 h-3 fill-current translate-x-0.5" />
+                                </div>
                               </div>
-                              {item.result && (
-                                <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                                  {item.result}
-                                </p>
-                              )}
+                            </button>
+                          ) : (
+                            <CheckCircle2 className="w-4 h-4 text-accent shrink-0 mt-0.5" />
+                          )}
+
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium text-foreground leading-snug">
+                              {item.title}
                             </div>
+                            {item.result && (
+                              <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed line-clamp-2">
+                                {item.result}
+                              </p>
+                            )}
                           </div>
                         </div>
 
-                        {resolvedUrl ? (
+                        {item.resolvedUrl ? (
                           <Button
                             type="button"
                             variant="outline"
@@ -516,16 +677,16 @@ export default function FractielidVideos() {
                               setActiveShortVideo({
                                 title: item.title,
                                 subtitle: item.result,
-                                url: resolvedUrl,
-                                poster: resolvedPoster,
-                                videoId: linkedVideo?.id,
-                                durationLabel: durationText,
+                                url: item.resolvedUrl,
+                                poster: item.resolvedPoster,
+                                videoId: item.linkedVideo?.id,
+                                durationLabel: item.durationText,
                               })
                             }
                             className="shrink-0 h-8 px-3 text-xs font-semibold border-accent/40 text-accent hover:bg-accent hover:text-accent-foreground transition-colors"
                           >
                             <Play className="w-3.5 h-3.5 mr-1.5 fill-current" />
-                            <span className="tabular-nums">45s video ({durationText})</span>
+                            <span className="tabular-nums">45s ({item.durationText})</span>
                           </Button>
                         ) : (
                           <span className="text-[11px] text-muted-foreground shrink-0">
@@ -533,35 +694,65 @@ export default function FractielidVideos() {
                           </span>
                         )}
                       </li>
-                    );
-                  })}
-                </ul>
+                    ))}
+                  </ul>
+                  {filteredShortResults.length > 3 && (
+                    <div className="mt-3 pt-2.5 border-t border-border/40 flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground tabular-nums">
+                        Toont 3 van {filteredShortResults.length} resultaten
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShortVideoPage(1);
+                          setShortVideoModalPlaying(null);
+                          setShortGridShowAllResults(shortResultFilter === "all" && shortResultsWithVideo.length === 0);
+                          setShortVideosGridOpen(true);
+                        }}
+                        className="text-accent hover:text-accent/80 font-semibold inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>Open volledig tegeloverzicht</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </>
               ) : (
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Nog geen maandresultaten of 45-seconden video&apos;s toegevoegd voor {member.name}.
+                  {shortResultFilter === "with-video" && enrichedMonthlyResults.length > 0
+                    ? "Geen resultaten met 45-seconden video gevonden in dit filter."
+                    : `Nog geen maandresultaten of 45-seconden video's toegevoegd voor ${member.name}.`}
                 </p>
               )}
             </div>
 
-            {/* Blok 3: Direct contact & raadsbijdragen */}
+            {/* Blok 3: Direct meedenken of controleren */}
             <div className="border-t border-border/60 pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <div className="text-xs font-semibold text-foreground">
                   3. Direct meedenken of controleren
                 </div>
                 <div className="text-xs text-muted-foreground mt-0.5 tabular-nums">
-                  {videos.length} volledige {videos.length === 1 ? "raadsbijdrage" : "raadsbijdragen"} · {newsItems.length} {newsItems.length === 1 ? "bericht" : "berichten"}
+                  {shortResultsWithVideo.length} korte 45s {shortResultsWithVideo.length === 1 ? "video" : "video's"} · {videos.length} volledige {videos.length === 1 ? "raadsbijdrage" : "raadsbijdragen"} · {newsItems.length} {newsItems.length === 1 ? "bericht" : "berichten"}
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => handleOpenBelafspraak(member)}
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold h-8 px-3"
-                >
-                  <Phone className="w-3.5 h-3.5 mr-1.5" /> Belafspraak met {member.name.split(" ")[0]}
-                </Button>
+                {shortResultsWithVideo.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setShortVideoPage(1);
+                      setShortVideoModalPlaying(null);
+                      setShortGridShowAllResults(false);
+                      setShortVideosGridOpen(true);
+                    }}
+                    className="text-xs h-8 px-3 border-accent/40 text-accent hover:bg-accent hover:text-accent-foreground"
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5 mr-1.5" /> Bekijk alle 45s video&apos;s
+                  </Button>
+                )}
                 {videos.length > 0 && (
                   <Button
                     type="button"
@@ -877,7 +1068,7 @@ export default function FractielidVideos() {
         defaultRaadslid={voorgeselecteerd}
       />
 
-      {/* 45-seconden Video Dialog */}
+      {/* 45-seconden Video Dialog (enkelvoudig vanaf hoofdpagina) */}
       <Dialog
         open={Boolean(activeShortVideo)}
         onOpenChange={(open) => {
@@ -905,6 +1096,325 @@ export default function FractielidVideos() {
                 videoId={activeShortVideo.videoId}
                 memberId={member.id}
               />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Gepagineerd Tegeloverzicht: Alle Korte 45-seconden Video's */}
+      <Dialog
+        open={shortVideosGridOpen}
+        onOpenChange={(open) => {
+          setShortVideosGridOpen(open);
+          if (!open) {
+            setShortVideoModalPlaying(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pr-6">
+              <div>
+                <DialogTitle className="font-display text-2xl sm:text-3xl flex items-center gap-2.5">
+                  <Film className="w-6 h-6 text-accent" />
+                  <span>
+                    {shortVideoModalPlaying
+                      ? shortVideoModalPlaying.title
+                      : `Korte video's — ${member.name}`}
+                  </span>
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground mt-1">
+                  {shortVideoModalPlaying ? (
+                    <>
+                      {member.name}
+                      {member.monthlyResultsMonth?.trim() ? ` · ${member.monthlyResultsMonth.trim()}` : ""}
+                      {shortVideoModalPlaying.durationLabel ? ` · ${shortVideoModalPlaying.durationLabel}` : " · 45-seconden video"}
+                      {shortVideoModalPlaying.subtitle ? ` — ${shortVideoModalPlaying.subtitle}` : ""}
+                    </>
+                  ) : (
+                    <>
+                      Wat {member.name} concreet heeft afgedwongen ·{" "}
+                      <span className="tabular-nums">
+                        {shortGridSourceItems.length} {shortGridSourceItems.length === 1 ? "item" : "items"}
+                      </span>
+                      {totalShortVideoPages > 1 && (
+                        <span className="tabular-nums">
+                          {" "}
+                          · Pagina {shortVideoPage} van {totalShortVideoPages}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </DialogDescription>
+              </div>
+
+              {!shortVideoModalPlaying && enrichedMonthlyResults.length > shortResultsWithVideo.length && (
+                <div className="inline-flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShortGridShowAllResults(false);
+                      setShortVideoPage(1);
+                    }}
+                    className={`px-2.5 py-1 rounded-sm text-xs font-medium border transition-colors cursor-pointer ${
+                      !shortGridShowAllResults
+                        ? "bg-accent text-accent-foreground border-accent"
+                        : "bg-background text-muted-foreground border-border hover:border-accent/50"
+                    }`}
+                  >
+                    Alleen 45s video&apos;s <span className="tabular-nums">({shortResultsWithVideo.length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShortGridShowAllResults(true);
+                      setShortVideoPage(1);
+                    }}
+                    className={`px-2.5 py-1 rounded-sm text-xs font-medium border transition-colors cursor-pointer ${
+                      shortGridShowAllResults
+                        ? "bg-accent text-accent-foreground border-accent"
+                        : "bg-background text-muted-foreground border-border hover:border-accent/50"
+                    }`}
+                  >
+                    Alles <span className="tabular-nums">({enrichedMonthlyResults.length})</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </DialogHeader>
+
+          {shortVideoModalPlaying ? (
+            <div className="space-y-4 mt-2">
+              <div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShortVideoModalPlaying(null)}
+                  className="text-xs h-8 border-border hover:border-accent"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5 mr-1.5" /> Terug naar tegeloverzicht
+                </Button>
+              </div>
+              <VideoPlayer
+                url={shortVideoModalPlaying.url}
+                title={shortVideoModalPlaying.title}
+                poster={shortVideoModalPlaying.poster}
+                videoId={shortVideoModalPlaying.videoId}
+                memberId={member.id}
+              />
+            </div>
+          ) : paginatedShortGridItems.length === 0 ? (
+            <div className="bg-card border border-border rounded-sm p-10 text-center my-4">
+              <Film className="w-10 h-10 text-accent/60 mx-auto mb-3" />
+              <h3 className="font-display text-lg mb-1">Nog geen korte video&apos;s beschikbaar</h3>
+              <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                Er zijn op dit moment nog geen 45-seconden video&apos;s gekoppeld aan de maandresultaten van {member.name}.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-6 mt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                {paginatedShortGridItems.map((item) => {
+                  const formattedHeadline = `${member.name} over ‘${item.title}’`;
+                  return (
+                    <article
+                      key={item.keyId}
+                      className="bg-card border border-border rounded-sm overflow-hidden flex flex-col hover-lift transition-all group shadow-sm"
+                    >
+                      {item.resolvedUrl ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShortVideoModalPlaying({
+                              title: item.title,
+                              subtitle: item.result,
+                              url: item.resolvedUrl,
+                              poster: item.resolvedPoster,
+                              videoId: item.linkedVideo?.id,
+                              durationLabel: item.durationText,
+                            })
+                          }
+                          className="aspect-video bg-black relative overflow-hidden flex-shrink-0 block w-full cursor-pointer group/thumb"
+                          title={`Bekijk 45-seconden video: ${formattedHeadline}`}
+                        >
+                          <img
+                            src={item.resolvedPoster}
+                            alt={formattedHeadline}
+                            loading="lazy"
+                            decoding="async"
+                            width={640}
+                            height={360}
+                            className="w-full h-full object-cover transition-transform duration-300 group-hover/thumb:scale-105"
+                            onError={(e) => {
+                              const img = e.target as HTMLImageElement;
+                              if (item.linkedVideo?.id) {
+                                const nextSrc = getVideoThumbnailFallbackUrl(
+                                  item.linkedVideo.id,
+                                  member?.id,
+                                  img.src
+                                );
+                                if (img.src !== window.location.origin + nextSrc && !img.dataset.fallbackDone) {
+                                  img.dataset.fallbackDone = "1";
+                                  img.src = nextSrc;
+                                  return;
+                                }
+                              }
+                              if (!img.dataset.composeFallback && item.composedThumbUrl) {
+                                img.dataset.composeFallback = "1";
+                                if (img.src !== window.location.origin + item.composedThumbUrl) {
+                                  img.src = item.composedThumbUrl;
+                                  return;
+                                }
+                              }
+                              img.src = "/assets/markt-steenwijk.jpg";
+                            }}
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60 group-hover/thumb:opacity-20 transition-opacity pointer-events-none" />
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <div className="w-11 h-11 rounded-full bg-accent/90 text-accent-foreground flex items-center justify-center shadow-xl group-hover/thumb:scale-110 group-hover/thumb:bg-accent transition-all ring-4 ring-black/40">
+                              <Play className="w-5 h-5 fill-current translate-x-0.5" />
+                            </div>
+                          </div>
+                          <span className="absolute bottom-2 right-2 bg-black/80 text-white px-1.5 py-0.5 rounded-sm text-[10px] font-mono tabular-nums">
+                            {item.durationText}
+                          </span>
+                        </button>
+                      ) : (
+                        <div className="aspect-video bg-muted/40 relative overflow-hidden flex-shrink-0">
+                          <img
+                            src={item.composedThumbUrl}
+                            alt={formattedHeadline}
+                            loading="lazy"
+                            decoding="async"
+                            width={640}
+                            height={360}
+                            className="w-full h-full object-cover opacity-70"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = "/assets/markt-steenwijk.jpg";
+                            }}
+                          />
+                          <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                            <span className="text-xs font-medium text-white bg-black/70 px-2.5 py-1 rounded-sm">
+                              Video volgt
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="p-4 flex-1 flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center gap-2 text-[11px] text-muted-foreground mb-1.5">
+                            <span className="uppercase tracking-wider text-accent font-semibold">
+                              45-seconden video
+                            </span>
+                            {member.monthlyResultsMonth?.trim() && (
+                              <>
+                                <span>·</span>
+                                <span>{member.monthlyResultsMonth.trim()}</span>
+                              </>
+                            )}
+                          </div>
+                          <h3 className="font-display text-base sm:text-lg font-semibold leading-snug mb-1.5 line-clamp-2 text-foreground">
+                            {formattedHeadline}
+                          </h3>
+                          {item.result && (
+                            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 mb-2">
+                              {item.result}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="mt-2 pt-2.5 border-t border-border/60 flex items-center justify-between text-[11px]">
+                          {item.resolvedUrl ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setShortVideoModalPlaying({
+                                  title: item.title,
+                                  subtitle: item.result,
+                                  url: item.resolvedUrl,
+                                  poster: item.resolvedPoster,
+                                  videoId: item.linkedVideo?.id,
+                                  durationLabel: item.durationText,
+                                })
+                              }
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:text-accent/80 transition-colors cursor-pointer"
+                            >
+                              <span>Bekijk 45s video</span>
+                              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                            </button>
+                          ) : (
+                            <span className="text-muted-foreground">Binnenkort beschikbaar</span>
+                          )}
+                          <span className="text-muted-foreground tabular-nums">{item.durationText}</span>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+
+              {/* Paginering voor het tegeloverzicht (per 6) */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-border">
+                <div className="text-xs text-muted-foreground tabular-nums">
+                  Toont {(shortVideoPage - 1) * SHORT_VIDEOS_PER_PAGE + 1}–
+                  {Math.min(shortVideoPage * SHORT_VIDEOS_PER_PAGE, shortGridSourceItems.length)} van{" "}
+                  {shortGridSourceItems.length} korte video&apos;s
+                </div>
+
+                {totalShortVideoPages > 1 ? (
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={shortVideoPage === 1}
+                      onClick={() => setShortVideoPage((p) => Math.max(1, p - 1))}
+                      className="h-8 px-2.5 text-xs border-border hover:border-accent text-foreground"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5 mr-1" />
+                      <span>Vorige</span>
+                    </Button>
+
+                    {Array.from({ length: totalShortVideoPages }).map((_, idx) => {
+                      const pageNum = idx + 1;
+                      return (
+                        <Button
+                          key={pageNum}
+                          type="button"
+                          variant={shortVideoPage === pageNum ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setShortVideoPage(pageNum)}
+                          className={`h-8 w-8 p-0 text-xs font-semibold tabular-nums ${
+                            shortVideoPage === pageNum
+                              ? "bg-accent text-accent-foreground hover:bg-accent/90"
+                              : "border-border hover:border-accent text-foreground"
+                          }`}
+                        >
+                          {pageNum}
+                        </Button>
+                      );
+                    })}
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={shortVideoPage === totalShortVideoPages}
+                      onClick={() => setShortVideoPage((p) => Math.min(totalShortVideoPages, p + 1))}
+                      className="h-8 px-2.5 text-xs border-border hover:border-accent text-foreground"
+                    >
+                      <span>Volgende</span>
+                      <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-muted-foreground/80">
+                    Alle korte video&apos;s weergegeven
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </DialogContent>
