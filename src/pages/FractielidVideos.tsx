@@ -1,8 +1,15 @@
 import React, { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Video, Calendar, Tag, MapPin, AlertCircle, Share2, ChevronLeft, ChevronRight, Play } from "lucide-react";
+import { ArrowLeft, ArrowRight, Video, Calendar, Tag, MapPin, AlertCircle, Share2, ChevronLeft, ChevronRight, Play, Phone, CheckCircle2, Film } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { FractielidWidget, FractielidItem } from "@/components/FractielidWidget";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { FractielidWidget, FractielidItem, FractielidBelofte } from "@/components/FractielidWidget";
 import { BelafspraakDialog } from "@/components/BelafspraakDialog";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { ShareDialog } from "@/components/ShareDialog";
@@ -111,6 +118,16 @@ export default function FractielidVideos() {
     url: "",
     imageUrl: "",
   });
+
+  // 45-seconden maandresultaat video dialog state
+  const [activeShortVideo, setActiveShortVideo] = useState<{
+    title: string;
+    subtitle?: string;
+    url: string;
+    poster?: string;
+    videoId?: string;
+    durationLabel?: string;
+  } | null>(null);
 
   useEffect(() => {
     if (defaultMember) {
@@ -279,6 +296,29 @@ export default function FractielidVideos() {
     member?.type?.toLowerCase() === "burgerraadslid" ||
     member?.role?.toLowerCase().includes("burgerraadslid");
 
+  const resolvedBeloftes: FractielidBelofte[] = React.useMemo(() => {
+    if (member?.beloftes && member.beloftes.length > 0) {
+      return member.beloftes.slice(0, 3);
+    }
+    if (member?.speerpunten && member.speerpunten.length > 0) {
+      return member.speerpunten.slice(0, 3).map((s) => ({ title: s }));
+    }
+    return [];
+  }, [member]);
+
+  const monthlyResults = member?.monthlyResults || [];
+
+  const allKnownVideos = React.useMemo(() => {
+    const map = new Map<string, VideoItem>();
+    for (const v of initialSnapshot?.videos || []) {
+      if (v?.id) map.set(String(v.id), v as VideoItem);
+    }
+    for (const v of videos) {
+      if (v?.id) map.set(String(v.id), v);
+    }
+    return map;
+  }, [initialSnapshot?.videos, videos]);
+
   if (loading) {
     return (
       <div className="container py-12 md:py-20 min-h-[75vh]">
@@ -355,18 +395,188 @@ export default function FractielidVideos() {
         </p>
       </div>
 
-      {/* EXACT DEZELFDE WIDGET VAN HET (BURGER)RAADSLID */}
-      <div className="mb-14 max-w-4xl">
-        <div className="text-xs uppercase tracking-widest text-muted-foreground mb-3 font-semibold flex items-center gap-2">
-          <span>Profiel & Gegevens</span>
+      {/* PROFIEL & GEGEVENS + DRIE SCANBARE BLOKKEN NAAST ELKAAR */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch mb-14">
+        <div className="lg:col-span-6 flex flex-col">
+          <div className="text-xs uppercase tracking-widest text-muted-foreground mb-3 font-semibold flex items-center gap-2">
+            <span>Profiel & Gegevens</span>
+          </div>
+          <FractielidWidget
+            lid={member}
+            videoCount={videos.length}
+            onPlanBelafspraak={handleOpenBelafspraak}
+            showVideoButton={false}
+            eagerPhoto={true}
+            className="flex-1 h-full"
+          />
         </div>
-        <FractielidWidget
-          lid={member}
-          videoCount={videos.length}
-          onPlanBelafspraak={handleOpenBelafspraak}
-          showVideoButton={false}
-          eagerPhoto={true}
-        />
+
+        <section
+          aria-labelledby="beloftes-maandresultaat-heading"
+          className="lg:col-span-6 flex flex-col"
+        >
+          <div className="text-xs uppercase tracking-widest text-muted-foreground mb-3 font-semibold flex items-center justify-between gap-2">
+            <span id="beloftes-maandresultaat-heading">Beloftes &amp; Maandresultaat</span>
+            <span className="text-[11px] font-normal tracking-normal normal-case text-accent">
+              {member.monthlyResultsMonth?.trim() || "Actueel overzicht"}
+            </span>
+          </div>
+
+          <div className="bg-card border border-border rounded-sm shadow-sm p-5 md:p-6 flex-1 flex flex-col justify-between gap-6">
+            {/* Blok 1: Mijn 3 beloftes voor jou */}
+            <div>
+              <div className="flex items-baseline justify-between gap-3 mb-3">
+                <h2 className="font-display text-xl sm:text-2xl text-foreground">
+                  1. Mijn 3 beloftes voor jou
+                </h2>
+                <span className="text-[11px] uppercase tracking-wider text-muted-foreground tabular-nums shrink-0">
+                  {resolvedBeloftes.length}/3
+                </span>
+              </div>
+
+              {resolvedBeloftes.length > 0 ? (
+                <ol className="divide-y divide-border/60">
+                  {resolvedBeloftes.map((belofte, index) => (
+                    <li
+                      key={`${index}-${belofte.title}`}
+                      className="py-2.5 first:pt-0 last:pb-0 flex items-start gap-3"
+                    >
+                      <span className="font-mono text-xs font-semibold text-accent tabular-nums pt-0.5 shrink-0">
+                        0{index + 1}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-foreground leading-snug">
+                          {belofte.title}
+                        </div>
+                        {belofte.detail && (
+                          <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                            {belofte.detail}
+                          </p>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  De 3 kernbeloftes van {member.name} worden binnenkort ingevuld.
+                </p>
+              )}
+            </div>
+
+            {/* Blok 2: Wat ik deze maand concreet heb afgedwongen (met 45-seconden video's) */}
+            <div className="border-t border-border/60 pt-5">
+              <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+                <h2 className="font-display text-xl sm:text-2xl text-foreground">
+                  2. Wat ik deze maand concreet heb afgedwongen
+                </h2>
+                <span className="text-xs text-muted-foreground">
+                  met 45-seconden video&apos;s
+                  {member.monthlyResultsMonth?.trim() ? ` · ${member.monthlyResultsMonth.trim()}` : ""}
+                </span>
+              </div>
+
+              {monthlyResults.length > 0 ? (
+                <ul className="divide-y divide-border/60">
+                  {monthlyResults.map((item, idx) => {
+                    const linkedVideo = item.videoId ? allKnownVideos.get(String(item.videoId)) : undefined;
+                    const resolvedUrl = (item.videoUrl && item.videoUrl.trim()) || linkedVideo?.videoUrl || "";
+                    const resolvedPoster = linkedVideo
+                      ? getVideoThumbnail(linkedVideo.videoUrl, linkedVideo.thumbnailUrl, linkedVideo.id, member?.id)
+                      : undefined;
+                    const durationText = item.durationLabel?.trim() || "0:45";
+
+                    return (
+                      <li
+                        key={item.id || `mr-${idx}`}
+                        className="py-3 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-start gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-accent shrink-0 mt-0.5" />
+                            <div>
+                              <div className="text-sm font-medium text-foreground leading-snug">
+                                {item.title}
+                              </div>
+                              {item.result && (
+                                <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                                  {item.result}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {resolvedUrl ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              setActiveShortVideo({
+                                title: item.title,
+                                subtitle: item.result,
+                                url: resolvedUrl,
+                                poster: resolvedPoster,
+                                videoId: linkedVideo?.id,
+                                durationLabel: durationText,
+                              })
+                            }
+                            className="shrink-0 h-8 px-3 text-xs font-semibold border-accent/40 text-accent hover:bg-accent hover:text-accent-foreground transition-colors"
+                          >
+                            <Play className="w-3.5 h-3.5 mr-1.5 fill-current" />
+                            <span className="tabular-nums">45s video ({durationText})</span>
+                          </Button>
+                        ) : (
+                          <span className="text-[11px] text-muted-foreground shrink-0">
+                            Video volgt
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Nog geen maandresultaten of 45-seconden video&apos;s toegevoegd voor {member.name}.
+                </p>
+              )}
+            </div>
+
+            {/* Blok 3: Direct contact & raadsbijdragen */}
+            <div className="border-t border-border/60 pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold text-foreground">
+                  3. Direct meedenken of controleren
+                </div>
+                <div className="text-xs text-muted-foreground mt-0.5 tabular-nums">
+                  {videos.length} volledige {videos.length === 1 ? "raadsbijdrage" : "raadsbijdragen"} · {newsItems.length} {newsItems.length === 1 ? "bericht" : "berichten"}
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => handleOpenBelafspraak(member)}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold h-8 px-3"
+                >
+                  <Phone className="w-3.5 h-3.5 mr-1.5" /> Belafspraak met {member.name.split(" ")[0]}
+                </Button>
+                {videos.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => document.getElementById("videos-header")?.scrollIntoView({ behavior: "smooth" })}
+                    className="text-xs h-8 px-3 border-border hover:border-accent"
+                  >
+                    <Film className="w-3.5 h-3.5 mr-1.5 text-accent" /> Alle video&apos;s
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
 
       {/* GEKOPPELDE VIDEO'S EN GEKOPPELDE BERICHTEN NAAST ELKAAR */}
@@ -666,6 +876,39 @@ export default function FractielidVideos() {
         onOpenChange={setBelOpen}
         defaultRaadslid={voorgeselecteerd}
       />
+
+      {/* 45-seconden Video Dialog */}
+      <Dialog
+        open={Boolean(activeShortVideo)}
+        onOpenChange={(open) => {
+          if (!open) setActiveShortVideo(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-xl sm:text-2xl pr-6">
+              {activeShortVideo?.title}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              {member.name}
+              {member.monthlyResultsMonth?.trim() ? ` · ${member.monthlyResultsMonth.trim()}` : ""}
+              {activeShortVideo?.durationLabel ? ` · ${activeShortVideo.durationLabel}` : " · 45-seconden video"}
+              {activeShortVideo?.subtitle ? ` — ${activeShortVideo.subtitle}` : ""}
+            </DialogDescription>
+          </DialogHeader>
+          {activeShortVideo?.url && (
+            <div className="mt-2">
+              <VideoPlayer
+                url={activeShortVideo.url}
+                title={activeShortVideo.title}
+                poster={activeShortVideo.poster}
+                videoId={activeShortVideo.videoId}
+                memberId={member.id}
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -185,6 +185,9 @@ export function sanitizeMemberPhotoForSnapshot(member: any): any {
   if (!copy.cutoutImageUrl && def?.cutoutImageUrl) {
     copy.cutoutImageUrl = def.cutoutImageUrl;
   }
+  if (copy.beloftes === undefined && def?.beloftes) {
+    copy.beloftes = def.beloftes;
+  }
   return copy;
 }
 

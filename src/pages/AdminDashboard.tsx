@@ -73,8 +73,20 @@ import {
   ShieldAlert,
   Lock,
   Database,
+  KeyRound,
+  Plus,
+  Film,
 } from "lucide-react";
+import { FractielidBelofte, FractielidMonthlyResult } from "@/components/FractielidWidget";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { NewsContentEditor } from "@/components/NewsContentEditor";
 import { CategoryManager, NewsCategory } from "@/components/CategoryManager";
@@ -136,10 +148,18 @@ interface FractielidItem {
   type: string;
   bio?: string;
   speerpunten?: string[];
+  beloftes?: FractielidBelofte[];
+  monthlyResultsMonth?: string;
+  monthlyResults?: FractielidMonthlyResult[];
   email?: string;
   facebook?: string;
   instagram?: string;
   linkedin?: string;
+  socials?: {
+    facebook?: string;
+    instagram?: string;
+    linkedin?: string;
+  };
   imageUrl?: string;
   imgUrl?: string;
   cutoutImageUrl?: string;
@@ -262,6 +282,11 @@ export default function AdminDashboard() {
   const [attendeesMap, setAttendeesMap] = useState<Record<string, EventAttendee[]>>({});
   const [isTicketScannerOpen, setIsTicketScannerOpen] = useState(false);
   const [isPurgingServerCache, setIsPurgingServerCache] = useState(false);
+  const [resetPwUser, setResetPwUser] = useState<UserItem | null>(null);
+  const [resetPwValue, setResetPwValue] = useState("");
+  const [resetPwConfirm, setResetPwConfirm] = useState("");
+  const [resetPwShow, setResetPwShow] = useState(false);
+  const [resetPwSaving, setResetPwSaving] = useState(false);
 
   const handlePurgeServerCache = async () => {
     if (isPurgingServerCache) return;
@@ -310,6 +335,23 @@ export default function AdminDashboard() {
   const [editingFractielidId, setEditingFractielidId] = useState<string | null>(null);
   const [editingFImgUrl, setEditingFImgUrl] = useState<string>("");
   const [editingFCutoutUrl, setEditingFCutoutUrl] = useState<string>("");
+  const [newFBeloftes, setNewFBeloftes] = useState<Array<{ title: string; detail: string }>>([
+    { title: "", detail: "" },
+    { title: "", detail: "" },
+    { title: "", detail: "" },
+  ]);
+  const [newFMonthlyMonth, setNewFMonthlyMonth] = useState("");
+  const [newFMonthlyResults, setNewFMonthlyResults] = useState<
+    Array<{
+      id: string;
+      title: string;
+      result: string;
+      videoId: string;
+      videoUrl: string;
+      durationLabel: string;
+    }>
+  >([]);
+  const [uploadingShortVideoIdx, setUploadingShortVideoIdx] = useState<number | null>(null);
 
   // -- State for new / edit Video --
   const [newVTitle, setNewVTitle] = useState("");
@@ -1080,6 +1122,81 @@ export default function AdminDashboard() {
     }
   };
 
+  const openResetPasswordDialog = (targetUser: UserItem) => {
+    setResetPwUser(targetUser);
+    setResetPwValue("");
+    setResetPwConfirm("");
+    setResetPwShow(false);
+    setResetPwSaving(false);
+  };
+
+  const closeResetPasswordDialog = () => {
+    setResetPwUser(null);
+    setResetPwValue("");
+    setResetPwConfirm("");
+    setResetPwShow(false);
+    setResetPwSaving(false);
+  };
+
+  const generateRandomTempPassword = () => {
+    const charset = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
+    const randomBytes = new Uint32Array(12);
+    window.crypto.getRandomValues(randomBytes);
+    const generated = Array.from(randomBytes, (n) => charset[n % charset.length]).join("");
+    setResetPwValue(generated);
+    setResetPwConfirm(generated);
+    setResetPwShow(true);
+  };
+
+  const copyTempPassword = async () => {
+    if (!resetPwValue) return;
+    try {
+      await navigator.clipboard.writeText(resetPwValue);
+      toast.success("Nieuw wachtwoord gekopieerd naar klembord");
+    } catch {
+      toast.error("Kon wachtwoord niet kopiëren");
+    }
+  };
+
+  const handleResetUserPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetPwUser || resetPwSaving) return;
+
+    const trimmed = resetPwValue.trim();
+    if (trimmed.length < 6) {
+      toast.error("Het nieuwe wachtwoord moet minimaal 6 tekens lang zijn.");
+      return;
+    }
+    if (trimmed.length > 128) {
+      toast.error("Het nieuwe wachtwoord mag maximaal 128 tekens lang zijn.");
+      return;
+    }
+    if (resetPwValue !== resetPwConfirm) {
+      toast.error("De ingevoerde wachtwoorden komen niet overeen.");
+      return;
+    }
+
+    setResetPwSaving(true);
+    try {
+      const res = await fetch(`/api/admin/users/${resetPwUser.id}/password`, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ newPassword: trimmed }),
+      });
+      const data = await safeJson(res);
+      if (!res.ok) {
+        toast.error(data.error || "Fout bij resetten van wachtwoord");
+        setResetPwSaving(false);
+        return;
+      }
+      toast.success(`Wachtwoord van ${resetPwUser.fullName || resetPwUser.username} succesvol gereset`);
+      closeResetPasswordDialog();
+    } catch {
+      toast.error("Verbindingsfout bij resetten van wachtwoord");
+      setResetPwSaving(false);
+    }
+  };
+
   const changeUserRole = async (id: string, newRole: string) => {
     setUsers((prev) =>
       prev.map((u) => (u.id === id ? { ...u, role: newRole } : u))
@@ -1271,13 +1388,38 @@ export default function AdminDashboard() {
     setNewFBio(item.bio || "");
     setNewFSpeerpunten(item.speerpunten ? item.speerpunten.join("\n") : "");
     setNewFEmail(item.email || "");
-    setNewFFacebook(item.facebook || "");
-    setNewFInstagram(item.instagram || "");
-    setNewFLinkedin(item.linkedin || "");
+    setNewFFacebook(item.socials?.facebook || item.facebook || "");
+    setNewFInstagram(item.socials?.instagram || item.instagram || "");
+    setNewFLinkedin(item.socials?.linkedin || item.linkedin || "");
     setNewFFile(null);
     setNewFCutoutFile(null);
     setEditingFImgUrl(item.imageUrl || item.imgUrl || "");
     setEditingFCutoutUrl(item.cutoutImageUrl || "");
+
+    const sourceBeloftes =
+      Array.isArray(item.beloftes) && item.beloftes.length > 0
+        ? item.beloftes
+        : (item.speerpunten || []).slice(0, 3).map((s) => ({ title: s, detail: "" }));
+    setNewFBeloftes(
+      [0, 1, 2].map((i) => ({
+        title: sourceBeloftes[i]?.title || "",
+        detail: sourceBeloftes[i]?.detail || "",
+      }))
+    );
+    setNewFMonthlyMonth(item.monthlyResultsMonth || "");
+    setNewFMonthlyResults(
+      Array.isArray(item.monthlyResults)
+        ? item.monthlyResults.map((mr, i) => ({
+            id: mr.id || `mr-${Date.now()}-${i}`,
+            title: mr.title || "",
+            result: mr.result || "",
+            videoId: mr.videoId ? String(mr.videoId) : "",
+            videoUrl: mr.videoUrl || "",
+            durationLabel: mr.durationLabel || "0:45",
+          }))
+        : []
+    );
+    setUploadingShortVideoIdx(null);
   };
 
   const cancelEditFractielid = () => {
@@ -1296,6 +1438,40 @@ export default function AdminDashboard() {
     setNewFCutoutFile(null);
     setEditingFImgUrl("");
     setEditingFCutoutUrl("");
+    setNewFBeloftes([
+      { title: "", detail: "" },
+      { title: "", detail: "" },
+      { title: "", detail: "" },
+    ]);
+    setNewFMonthlyMonth("");
+    setNewFMonthlyResults([]);
+    setUploadingShortVideoIdx(null);
+  };
+
+  const handleUploadMonthlyResultVideo = async (idx: number, file: File) => {
+    setUploadingShortVideoIdx(idx);
+    try {
+      const fd = new FormData();
+      fd.append("video", file);
+      const res = await fetch("/api/admin/news/upload-video", {
+        method: "POST",
+        headers,
+        body: fd,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.url) {
+        toast.error(data?.error || "Kon 45-seconden video niet uploaden.");
+        return;
+      }
+      setNewFMonthlyResults((prev) =>
+        prev.map((row, i) => (i === idx ? { ...row, videoUrl: data.url } : row))
+      );
+      toast.success("45-seconden video geüpload!");
+    } catch {
+      toast.error("Netwerkfout bij uploaden van 45-seconden video.");
+    } finally {
+      setUploadingShortVideoIdx(null);
+    }
   };
 
   const submitFractielid = async (e: React.FormEvent) => {
@@ -1310,6 +1486,27 @@ export default function AdminDashboard() {
       "speerpunten",
       JSON.stringify(newFSpeerpunten.split("\n").filter((s) => s.trim()))
     );
+    const cleanedBeloftes = newFBeloftes
+      .map((b) => ({
+        title: b.title.trim(),
+        ...(b.detail.trim() ? { detail: b.detail.trim() } : {}),
+      }))
+      .filter((b) => b.title.length > 0)
+      .slice(0, 3);
+    formData.append("beloftes", JSON.stringify(cleanedBeloftes));
+    formData.append("monthlyResultsMonth", newFMonthlyMonth.trim());
+    const cleanedResults = newFMonthlyResults
+      .filter((r) => r.title.trim().length > 0)
+      .map((r, i) => ({
+        id: r.id || `mr-${Date.now()}-${i}`,
+        title: r.title.trim(),
+        ...(r.result.trim() ? { result: r.result.trim() } : {}),
+        ...(r.videoId.trim() ? { videoId: r.videoId.trim() } : {}),
+        ...(r.videoUrl.trim() ? { videoUrl: r.videoUrl.trim() } : {}),
+        durationLabel: r.durationLabel.trim() || "0:45",
+      }));
+    formData.append("monthlyResults", JSON.stringify(cleanedResults));
+
     formData.append("email", newFEmail);
     formData.append("facebook", newFFacebook);
     formData.append("instagram", newFInstagram);
@@ -2643,7 +2840,7 @@ export default function AdminDashboard() {
                         </td>
                         <td className="px-4 py-3 text-right">
                           {u.portalApproved === false ? (
-                            <div className="flex items-center justify-end gap-1.5">
+                            <div className="flex items-center justify-end gap-1.5 flex-wrap">
                               <Button
                                 size="sm"
                                 className="text-xs h-8 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
@@ -2661,15 +2858,31 @@ export default function AdminDashboard() {
                                 Weigeren
                               </Button>
                             </div>
-                          ) : u.id !== user?.id && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-xs h-8"
-                              onClick={() => toggleUserStatus(u.id, u.isActive)}
-                            >
-                              {u.isActive ? "Deactiveer" : "Activeer"}
-                            </Button>
+                          ) : (
+                            <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                              {(!((u.role === "admin" || u.role === "superadmin") && user?.role !== "admin" && user?.role !== "superadmin")) && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-xs h-8"
+                                  title={`Wachtwoord van ${u.fullName || u.username} handmatig resetten`}
+                                  onClick={() => openResetPasswordDialog(u)}
+                                >
+                                  <KeyRound className="w-3.5 h-3.5 mr-1" />
+                                  Wachtwoord resetten
+                                </Button>
+                              )}
+                              {u.id !== user?.id && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-xs h-8"
+                                  onClick={() => toggleUserStatus(u.id, u.isActive)}
+                                >
+                                  {u.isActive ? "Deactiveer" : "Activeer"}
+                                </Button>
+                              )}
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -3039,6 +3252,226 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
+                {/* Scanbaar Blok 1: Mijn 3 beloftes voor jou */}
+                <div className="space-y-3 pt-3 border-t border-border/60">
+                  <div>
+                    <div className="text-sm font-semibold">1. Mijn 3 beloftes voor jou</div>
+                    <p className="text-xs text-muted-foreground">
+                      Zichtbaar naast Profiel &amp; Gegevens op de video-/profielpagina van dit fractielid.
+                    </p>
+                  </div>
+                  <div className="space-y-2.5">
+                    {newFBeloftes.map((b, idx) => (
+                      <div key={idx} className="p-2.5 rounded-md border border-border/60 bg-background/40 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs font-semibold text-accent tabular-nums">
+                            0{idx + 1}
+                          </span>
+                          <Input
+                            value={b.title}
+                            onChange={(e) =>
+                              setNewFBeloftes((prev) =>
+                                prev.map((row, i) => (i === idx ? { ...row, title: e.target.value } : row))
+                              )
+                            }
+                            placeholder={`Belofte ${idx + 1} (kort & krachtig)`}
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                        <Input
+                          value={b.detail}
+                          onChange={(e) =>
+                            setNewFBeloftes((prev) =>
+                              prev.map((row, i) => (i === idx ? { ...row, detail: e.target.value } : row))
+                            )
+                          }
+                          placeholder="Optionele korte toelichting (1 zin)"
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Scanbaar Blok 2: Wat ik deze maand concreet heb afgedwongen */}
+                <div className="space-y-3 pt-3 border-t border-border/60">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <div className="text-sm font-semibold flex items-center gap-1.5">
+                        <Film className="w-4 h-4 text-accent" />
+                        <span>2. Wat ik deze maand concreet heb afgedwongen</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Concrete maandresultaten met optioneel een 45-seconden video.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setNewFMonthlyResults((prev) => [
+                          ...prev,
+                          {
+                            id: `mr-${Date.now()}-${prev.length}`,
+                            title: "",
+                            result: "",
+                            videoId: "",
+                            videoUrl: "",
+                            durationLabel: "0:45",
+                          },
+                        ])
+                      }
+                      className="h-8 text-xs shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5 mr-1" /> Resultaat toevoegen
+                    </Button>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium mb-1 block">Maandlabel (bijv. November 2026)</label>
+                    <Input
+                      value={newFMonthlyMonth}
+                      onChange={(e) => setNewFMonthlyMonth(e.target.value)}
+                      placeholder="November 2026"
+                      className="h-8 text-xs"
+                    />
+                  </div>
+
+                  {newFMonthlyResults.length === 0 ? (
+                    <p className="text-xs text-muted-foreground italic py-1">
+                      Nog geen maandresultaten toegevoegd. Klik op &quot;Resultaat toevoegen&quot; om een resultaat + 45s video toe te voegen.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {newFMonthlyResults.map((mr, idx) => (
+                        <div key={mr.id || idx} className="p-3 rounded-md border border-border/70 bg-background/50 space-y-2.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-semibold text-accent tabular-nums">
+                              Resultaat #{idx + 1}
+                            </span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() =>
+                                setNewFMonthlyResults((prev) => prev.filter((_, i) => i !== idx))
+                              }
+                              className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                              title="Verwijder resultaat"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                          <Input
+                            value={mr.title}
+                            onChange={(e) =>
+                              setNewFMonthlyResults((prev) =>
+                                prev.map((row, i) => (i === idx ? { ...row, title: e.target.value } : row))
+                              )
+                            }
+                            placeholder="Wat is er concreet afgedwongen?"
+                            className="h-8 text-xs"
+                          />
+                          <Input
+                            value={mr.result}
+                            onChange={(e) =>
+                              setNewFMonthlyResults((prev) =>
+                                prev.map((row, i) => (i === idx ? { ...row, result: e.target.value } : row))
+                              )
+                            }
+                            placeholder="Korte toelichting / impact (optioneel)"
+                            className="h-8 text-xs"
+                          />
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[11px] font-medium mb-1 block text-muted-foreground">
+                                Bestaande video koppelen (optioneel)
+                              </label>
+                              <select
+                                value={mr.videoId}
+                                onChange={(e) =>
+                                  setNewFMonthlyResults((prev) =>
+                                    prev.map((row, i) =>
+                                      i === idx ? { ...row, videoId: e.target.value } : row
+                                    )
+                                  )
+                                }
+                                className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs"
+                              >
+                                <option value="">-- Geen bestaande video --</option>
+                                {videos.map((v) => (
+                                  <option key={v.id} value={v.id}>
+                                    {v.burgerraadslidTitle || v.title}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-[11px] font-medium mb-1 block text-muted-foreground">
+                                Duur label (bijv. 0:45)
+                              </label>
+                              <Input
+                                value={mr.durationLabel}
+                                onChange={(e) =>
+                                  setNewFMonthlyResults((prev) =>
+                                    prev.map((row, i) =>
+                                      i === idx ? { ...row, durationLabel: e.target.value } : row
+                                    )
+                                  )
+                                }
+                                placeholder="0:45"
+                                className="h-8 text-xs"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[11px] font-medium mb-1 block text-muted-foreground">
+                                45s video-URL (YouTube/Vimeo/MP4)
+                              </label>
+                              <Input
+                                value={mr.videoUrl}
+                                onChange={(e) =>
+                                  setNewFMonthlyResults((prev) =>
+                                    prev.map((row, i) =>
+                                      i === idx ? { ...row, videoUrl: e.target.value } : row
+                                    )
+                                  )
+                                }
+                                placeholder="https://... of /uploads/videos/..."
+                                className="h-8 text-xs"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[11px] font-medium mb-1 block text-muted-foreground">
+                                Of upload directe 45s video (.mp4/.mov)
+                              </label>
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  type="file"
+                                  accept="video/mp4,video/webm,video/quicktime,video/x-m4v,.mp4,.webm,.mov,.m4v"
+                                  disabled={uploadingShortVideoIdx === idx}
+                                  onChange={(e) => {
+                                    const f = e.target.files?.[0];
+                                    if (f) handleUploadMonthlyResultVideo(idx, f);
+                                  }}
+                                  className="h-8 text-[11px]"
+                                />
+                                {uploadingShortVideoIdx === idx && (
+                                  <Loader2 className="w-4 h-4 animate-spin text-accent shrink-0" />
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <div className="space-y-4 pt-2 border-t border-border/50">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
@@ -3145,7 +3578,7 @@ export default function AdminDashboard() {
                         <div className="text-xs text-muted-foreground">
                           {f.role} ({f.type})
                         </div>
-                        <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                        <div className="mt-1 flex items-center gap-2 flex-wrap text-[11px] text-muted-foreground">
                           {f.cutoutImageUrl ? (
                             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 font-semibold">
                               <span>✂️</span> Vrijstaande foto aanwezig
@@ -3155,6 +3588,9 @@ export default function AdminDashboard() {
                               Geen vrijstaande foto
                             </span>
                           )}
+                          <span className="tabular-nums">
+                            {Array.isArray(f.beloftes) ? f.beloftes.length : Math.min(3, f.speerpunten?.length || 0)}/3 beloftes · {Array.isArray(f.monthlyResults) ? f.monthlyResults.length : 0} maandresultaten
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -6365,6 +6801,133 @@ export default function AdminDashboard() {
         onOpenChange={setIsTicketScannerOpen}
         token={token}
       />
+
+      {/* Handmatig Wachtwoord Resetten Modal */}
+      <Dialog
+        open={Boolean(resetPwUser)}
+        onOpenChange={(open) => {
+          if (!open && !resetPwSaving) closeResetPasswordDialog();
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="w-5 h-5 text-accent" />
+              <span>Wachtwoord handmatig resetten</span>
+            </DialogTitle>
+            <DialogDescription>
+              Stel een nieuw wachtwoord in voor{" "}
+              <span className="font-semibold text-foreground">
+                {resetPwUser?.salutation ? `${resetPwUser.salutation} ` : ""}
+                {resetPwUser?.fullName || resetPwUser?.username}
+              </span>{" "}
+              ({resetPwUser?.username}). Eventuele tijdelijke inlogblokkades worden hiermee ook opgeheven.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleResetUserPassword} className="space-y-4">
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <label htmlFor="admin-reset-pw-input" className="text-xs font-semibold text-foreground">
+                  Nieuw wachtwoord (minimaal 6 tekens)
+                </label>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={generateRandomTempPassword}
+                  >
+                    Genereer
+                  </Button>
+                  {resetPwValue && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={copyTempPassword}
+                    >
+                      <Copy className="w-3.5 h-3.5 mr-1" />
+                      Kopieer
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <div className="relative">
+                <Input
+                  id="admin-reset-pw-input"
+                  type={resetPwShow ? "text" : "password"}
+                  autoComplete="new-password"
+                  value={resetPwValue}
+                  onChange={(e) => setResetPwValue(e.target.value)}
+                  placeholder="Voer nieuw wachtwoord in..."
+                  className="pr-10"
+                  required
+                  minLength={6}
+                  maxLength={128}
+                />
+                <button
+                  type="button"
+                  onClick={() => setResetPwShow((prev) => !prev)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label={resetPwShow ? "Wachtwoord verbergen" : "Wachtwoord tonen"}
+                >
+                  {resetPwShow ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="admin-reset-pw-confirm" className="text-xs font-semibold text-foreground">
+                Bevestig nieuw wachtwoord
+              </label>
+              <Input
+                id="admin-reset-pw-confirm"
+                type={resetPwShow ? "text" : "password"}
+                autoComplete="new-password"
+                value={resetPwConfirm}
+                onChange={(e) => setResetPwConfirm(e.target.value)}
+                placeholder="Herhaal nieuw wachtwoord..."
+                required
+                minLength={6}
+                maxLength={128}
+              />
+              {resetPwConfirm && resetPwValue !== resetPwConfirm && (
+                <p className="text-xs text-destructive">De ingevoerde wachtwoorden komen niet overeen.</p>
+              )}
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={resetPwSaving}
+                onClick={closeResetPasswordDialog}
+              >
+                Annuleren
+              </Button>
+              <Button
+                type="submit"
+                disabled={resetPwSaving || resetPwValue.trim().length < 6 || resetPwValue !== resetPwConfirm}
+              >
+                {resetPwSaving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Opslaan...
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-4 h-4 mr-2" />
+                    Wachtwoord opslaan
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

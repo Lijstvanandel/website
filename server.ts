@@ -6938,6 +6938,54 @@ async function startServer() {
     res.json({ message: "Status bijgewerkt", user });
   });
 
+  app.patch("/api/admin/users/:id/password", requireAuth, requireAdmin, async (req: any, res: any) => {
+    const rawPassword = req.body?.newPassword;
+    if (typeof rawPassword !== "string") {
+      return res.status(400).json({ error: "Geef een geldig nieuw wachtwoord op." });
+    }
+    const trimmedPassword = rawPassword.trim();
+    if (trimmedPassword.length < 6) {
+      return res.status(400).json({ error: "Het nieuwe wachtwoord moet minimaal 6 tekens lang zijn." });
+    }
+    if (trimmedPassword.length > 128) {
+      return res.status(400).json({ error: "Het nieuwe wachtwoord mag maximaal 128 tekens lang zijn." });
+    }
+
+    const db = getDb();
+    const user = (db.users || []).find((u: any) => u.id === req.params.id);
+    if (!user) {
+      return res.status(404).json({ error: "Gebruiker niet gevonden" });
+    }
+
+    const callerRole = String(req.user?.role || "").toLowerCase().trim();
+    const targetRole = String(user.role || "").toLowerCase().trim();
+    if ((targetRole === "admin" || targetRole === "superadmin") && callerRole !== "admin" && callerRole !== "superadmin") {
+      return res.status(403).json({ error: "Alleen een hoofdbeheerder mag het wachtwoord van een beheerder resetten." });
+    }
+
+    user.password = await bcrypt.hash(trimmedPassword, 10);
+    user.failedLoginAttempts = 0;
+    delete user.lockoutUntil;
+    delete user.resetToken;
+    delete user.resetPasswordToken;
+
+    if (Array.isArray(db.passwordResetTokens) && db.passwordResetTokens.length > 0) {
+      const beforeCount = db.passwordResetTokens.length;
+      db.passwordResetTokens = db.passwordResetTokens.filter((t: any) => t.userId !== user.id);
+      if (db.passwordResetTokens.length !== beforeCount) {
+        saveDb(db);
+      }
+    }
+
+    saveVaultItem("users", user);
+    console.log(`[ADMIN PASSWORD RESET] Wachtwoord handmatig gereset voor ${user.username} door ${req.user?.username || "admin"}`);
+    res.json({
+      success: true,
+      message: "Wachtwoord succesvol gereset",
+      user: getSafeUserWithMembership(user),
+    });
+  });
+
   app.patch("/api/admin/users/:id/role", requireAuth, requireBoardOrAdmin, (req: any, res: any) => {
     if (req.user.role !== 'admin' && req.user.role !== 'voorzitter') {
       return res.status(403).json({ error: "Alleen de beheerder kan gebruikersrollen toekennen." });
@@ -7544,7 +7592,18 @@ async function startServer() {
         cutout = matchDefault.cutoutImageUrl;
       }
     }
-    return { ...m, imgUrl: img, img: img, cutoutImageUrl: cutout };
+    let beloftes = m.beloftes;
+    if (beloftes === undefined) {
+      const matchDefault = DEFAULT_FRACTIELEDEN.find(
+        (df) =>
+          String(df.id) === String(m.id) ||
+          df.name.toLowerCase() === (m.name || "").toLowerCase()
+      );
+      if (matchDefault?.beloftes) {
+        beloftes = matchDefault.beloftes;
+      }
+    }
+    return { ...m, imgUrl: img, img: img, cutoutImageUrl: cutout, beloftes };
   };
 
   // Public & Admin Routes - Fractieleden (Served from In-Memory Snapshot with CDN ETag & Cache-Control)
@@ -7605,6 +7664,58 @@ async function startServer() {
     }
   };
 
+  const parseSafeJsonArray = (raw: any): any[] => {
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === "string" && raw.trim()) {
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  };
+
+  const sanitizeSafeVideoUrl = (raw?: any): string => {
+    if (typeof raw !== "string") return "";
+    const trimmed = raw.trim();
+    if (!trimmed) return "";
+    if (trimmed.startsWith("/") && !trimmed.startsWith("//")) return trimmed.slice(0, 500);
+    if (/^https?:\/\//i.test(trimmed)) return trimmed.slice(0, 500);
+    return "";
+  };
+
+  const sanitizeBeloftes = (raw: any) => {
+    return parseSafeJsonArray(raw)
+      .map((item: any) => ({
+        title: typeof item?.title === "string" ? item.title.trim().slice(0, 200) : "",
+        detail: typeof item?.detail === "string" ? item.detail.trim().slice(0, 400) : "",
+      }))
+      .filter((item) => item.title.length > 0)
+      .slice(0, 3);
+  };
+
+  const sanitizeMonthlyResults = (raw: any) => {
+    return parseSafeJsonArray(raw)
+      .map((item: any, idx: number) => ({
+        id:
+          typeof item?.id === "string" && item.id.trim()
+            ? item.id.trim().slice(0, 64)
+            : `mr-${Date.now()}-${idx}`,
+        title: typeof item?.title === "string" ? item.title.trim().slice(0, 220) : "",
+        result: typeof item?.result === "string" ? item.result.trim().slice(0, 500) : "",
+        videoId: typeof item?.videoId === "string" ? item.videoId.trim().slice(0, 64) : "",
+        videoUrl: sanitizeSafeVideoUrl(item?.videoUrl),
+        durationLabel:
+          typeof item?.durationLabel === "string" && item.durationLabel.trim()
+            ? item.durationLabel.trim().slice(0, 20)
+            : "0:45",
+      }))
+      .filter((item) => item.title.length > 0)
+      .slice(0, 12);
+  };
+
   app.post(
     "/api/admin/fractieleden",
     requireAuth,
@@ -7612,7 +7723,7 @@ async function startServer() {
     upload.fields([{ name: "img", maxCount: 1 }, { name: "cutout", maxCount: 1 }]),
     async (req: any, res: any) => {
       const db = getDb();
-      const { name, firstName, role, type, bio, speerpunten, email, facebook, instagram, linkedin } = req.body;
+      const { name, firstName, role, type, bio, speerpunten, beloftes, monthlyResultsMonth, monthlyResults, email, facebook, instagram, linkedin } = req.body;
       const imgFile = req.files?.["img"]?.[0];
       const cutoutFile = req.files?.["cutout"]?.[0];
       const optimizedImgUrl = await optimizeFractielidUploadToWebp(imgFile);
@@ -7626,7 +7737,11 @@ async function startServer() {
         role,
         type,
         bio,
-        speerpunten: speerpunten ? (typeof speerpunten === "string" ? JSON.parse(speerpunten) : speerpunten) : [],
+        speerpunten: speerpunten ? parseSafeJsonArray(speerpunten) : [],
+        beloftes: beloftes !== undefined ? sanitizeBeloftes(beloftes) : [],
+        monthlyResultsMonth:
+          typeof monthlyResultsMonth === "string" ? monthlyResultsMonth.trim().slice(0, 80) : "",
+        monthlyResults: monthlyResults !== undefined ? sanitizeMonthlyResults(monthlyResults) : [],
         email,
         socials: { facebook, instagram, linkedin },
         imgUrl,
@@ -7651,7 +7766,7 @@ async function startServer() {
       const idx = (db.fractieleden || []).findIndex((f: any) => String(f.id) === String(req.params.id));
       if (idx === -1) return res.status(404).json({ error: "Fractielid niet gevonden" });
       const current = db.fractieleden[idx];
-      const { name, firstName, role, type, bio, speerpunten, email, facebook, instagram, linkedin } = req.body;
+      const { name, firstName, role, type, bio, speerpunten, beloftes, monthlyResultsMonth, monthlyResults, email, facebook, instagram, linkedin } = req.body;
       const imgFile = req.files?.["img"]?.[0];
       const cutoutFile = req.files?.["cutout"]?.[0];
       const optimizedImgUrl = await optimizeFractielidUploadToWebp(imgFile);
@@ -7667,7 +7782,14 @@ async function startServer() {
         role: role !== undefined ? role : current.role,
         type: type !== undefined ? type : current.type,
         bio: bio !== undefined ? bio : current.bio,
-        speerpunten: speerpunten !== undefined ? (typeof speerpunten === "string" ? JSON.parse(speerpunten) : speerpunten) : current.speerpunten,
+        speerpunten: speerpunten !== undefined ? parseSafeJsonArray(speerpunten) : current.speerpunten,
+        beloftes: beloftes !== undefined ? sanitizeBeloftes(beloftes) : current.beloftes,
+        monthlyResultsMonth:
+          monthlyResultsMonth !== undefined
+            ? String(monthlyResultsMonth || "").trim().slice(0, 80)
+            : current.monthlyResultsMonth,
+        monthlyResults:
+          monthlyResults !== undefined ? sanitizeMonthlyResults(monthlyResults) : current.monthlyResults,
         email: email !== undefined ? email : current.email,
         socials: {
           facebook: facebook !== undefined ? facebook : current.socials?.facebook,

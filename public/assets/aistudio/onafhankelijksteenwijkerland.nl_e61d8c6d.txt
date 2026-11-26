@@ -1,0 +1,53 @@
+;;
+;; Domain:     onafhankelijksteenwijkerland.nl.
+;; Exported:   2026-11-25 14:38:09
+;;
+;; This file is intended for use for informational and archival
+;; purposes ONLY and MUST be edited before use on a production
+;; DNS server.  In particular, you must:
+;;   -- update the SOA record with the correct authoritative name server
+;;   -- update the SOA record with the contact e-mail address information
+;;   -- update the NS record(s) with the authoritative name servers for this domain.
+;;
+;; For further information, please consult the BIND documentation
+;; located on the following website:
+;;
+;; http://www.isc.org/
+;;
+;; And RFC 1035:
+;;
+;; http://www.ietf.org/rfc/rfc1035.txt
+;;
+;; Please note that we do NOT offer technical support for any use
+;; of this zone data, the BIND name server, or any other third-party
+;; DNS software.
+;;
+;; Use at your own risk.
+;; SOA Record
+onafhankelijksteenwijkerland.nl	3600	IN	SOA	alaric.ns.cloudflare.com. dns.cloudflare.com. 2054728408 10000 2400 604800 3600
+
+;; NS Records
+onafhankelijksteenwijkerland.nl.	86400	IN	NS	alaric.ns.cloudflare.com.
+onafhankelijksteenwijkerland.nl.	86400	IN	NS	miki.ns.cloudflare.com.
+
+;; A Records
+mail.onafhankelijksteenwijkerland.nl.	1	IN	A	185.104.29.184 ; cf_tags=cf-proxied:false
+mobiliteit.onafhankelijksteenwijkerland.nl.	1	IN	A	141.94.203.160 ; cf_tags=cf-proxied:false
+onafhankelijksteenwijkerland.nl.	1	IN	A	141.94.203.160 ; cf_tags=cf-proxied:false
+pop.onafhankelijksteenwijkerland.nl.	1	IN	A	185.104.29.184 ; cf_tags=cf-proxied:false
+smtp.onafhankelijksteenwijkerland.nl.	1	IN	A	185.104.29.184 ; cf_tags=cf-proxied:false
+vliegverkeer.onafhankelijksteenwijkerland.nl.	1	IN	A	141.94.203.160 ; cf_tags=cf-proxied:false
+www.onafhankelijksteenwijkerland.nl.	1	IN	A	141.94.203.160 ; cf_tags=cf-proxied:false
+
+;; AAAA Records
+mail.onafhankelijksteenwijkerland.nl.	1	IN	AAAA	2a06:2ec0:1::176 ; cf_tags=cf-proxied:false
+pop.onafhankelijksteenwijkerland.nl.	1	IN	AAAA	2a06:2ec0:1::176 ; cf_tags=cf-proxied:false
+smtp.onafhankelijksteenwijkerland.nl.	1	IN	AAAA	2a06:2ec0:1::176 ; cf_tags=cf-proxied:false
+
+;; MX Records
+onafhankelijksteenwijkerland.nl.	1	IN	MX	10 spamrelay.zxcs.nl.
+
+;; TXT Records
+_dmarc.onafhankelijksteenwijkerland.nl.	1	IN	TXT	"v=DMARC1; p=none; sp=none;"
+onafhankelijksteenwijkerland.nl.	1	IN	TXT	"v=spf1 a mx ip4:185.104.29.184 ip6:2a06:2ec0:1:0:0:0:0:176 exists:spf-filterout.%{ir}.zxcs.nl ~all"
+x._domainkey.onafhankelijksteenwijkerland.nl.	1	IN	TXT	"v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsPRG9dTkv0cKUTJSoAUARLZUclkdyoX4lWAPUoJhvNE+CdCQ/yZt4y0rIiyi26BhgTSryJvaJ5T8cyDGduNu7LiiWElivaFX7w5ROt0QRfqfR5+fvVr55ehuShV51nzRZWgCiHuunO8iNjzoi2EhfulAFsXpS1kBpeJZWl4uqyZjczTBQCaQ8Ok62Hpefqgh/" "240AMD5lXIxVzuYOM1Li5otfZK8lrRSA43CF5Rnqowbo2A9nlQxuK+AKdcn4lMBVd8L/8WDe0JS2yY5dAy452AFagtud1R2pZHXTF6LXAojWg34npTs6xiLayDNBW1jQ9sQ3X+3I5IZL2ADFLjm1wIDAQAB"

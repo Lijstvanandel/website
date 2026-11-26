@@ -4,6 +4,20 @@ import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { getResponsiveImageAttrs } from "@/lib/imageOptimizer";
 
+export interface FractielidBelofte {
+  title: string;
+  detail?: string;
+}
+
+export interface FractielidMonthlyResult {
+  id: string;
+  title: string;
+  result?: string;
+  videoId?: string;
+  videoUrl?: string;
+  durationLabel?: string;
+}
+
 export interface FractielidItem {
   id: string;
   name: string;
@@ -11,6 +25,9 @@ export interface FractielidItem {
   type: string;
   bio?: string;
   speerpunten?: string[];
+  beloftes?: FractielidBelofte[];
+  monthlyResultsMonth?: string;
+  monthlyResults?: FractielidMonthlyResult[];
   email?: string;
   facebook?: string;
   instagram?: string;
